@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    },
+    "DeprecationNotice": {
+      "additionalProperties": false,
+      "description": "A structured deprecation declaration attached to a public surface.",
+      "properties": {
+        "docsUrl": {
+          "format": "uri",
+          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "removeIn": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "note"
+      ],
+      "title": "Deprecation Notice",
+      "type": "object"
+    },
+    "DeprecationUse": {
+      "additionalProperties": false,
+      "description": "A recorded runtime use of a deprecated public surface.",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "callsite": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "flag",
+            "arg",
+            "tooling-task",
+            "recipe",
+            "recipe-prompt",
+            "landofile-key",
+            "config-key",
+            "env-override",
+            "schema",
+            "schema-field",
+            "event",
+            "event-field",
+            "render-event",
+            "service-type",
+            "service-feature",
+            "route-filter",
+            "provider-extension",
+            "manifest-field",
+            "manifest-contribution",
+            "plugin",
+            "export",
+            "tagged-error"
+          ],
+          "type": "string"
+        },
+        "notice": {
+          "$ref": "#/$defs/DeprecationNotice"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "notice",
+        "timestamp"
+      ],
+      "title": "Deprecation Use",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/DeprecationUse",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

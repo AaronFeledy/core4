@@ -1,0 +1,36 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "task.complete"
+      ],
+      "type": "string"
+    },
+    "durationMs": {
+      "type": "number"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "taskId": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "taskId",
+    "timestamp"
+  ],
+  "type": "object"
+}

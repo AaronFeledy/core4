@@ -1,6 +1,9 @@
 # Build output
-dist/
 **/dist/
+/dist/*
+!/dist/
+!/dist/schemas/
+!/dist/schemas/*.json
 *.tsbuildinfo
 **/*.tsbuildinfo
 

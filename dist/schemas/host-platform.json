@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "enum": [
+    "darwin",
+    "linux",
+    "win32",
+    "wsl"
+  ],
+  "type": "string"
+}

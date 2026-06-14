@@ -511,8 +511,8 @@
         "Lint passes."
       ],
       "priority": 29,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "The schema snapshot gate now enforces explicit public-schema contract coverage, validates happy/error/encode-decode round trips for every JSON_SCHEMA_NAMES entry, keeps annotation/example/deprecation/JSON Schema generation checks in the codegen path, verifies generated JSON artifacts and MDX reference docs are drift-free, and the merge-blocking schema-snapshot CI job diffs snapshot, tracked dist/schemas artifacts, and docs/reference/schemas together."
     },
     {
       "id": "US-229",

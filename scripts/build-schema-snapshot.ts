@@ -25,6 +25,7 @@ import {
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
+import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
@@ -52,6 +53,7 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
 
 const renderSnapshot = (): string => {
   assertPublicSchemaAnnotations();
+  assertPublicSchemaContractCoverage(REPO_ROOT);
   const sdkSchemas = Object.fromEntries(
     JSON_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(generateJsonSchema(schemaName))]),
   );
@@ -94,6 +96,12 @@ const main = async (): Promise<void> => {
     const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, schemaArtifactFilename(schemaName));
     artifactPaths.push(artifactPath);
     await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
+  }
+  const schemaArtifactPaths = new Set(artifactPaths);
+  for (const entry of await readdir(SCHEMA_ARTIFACT_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const path = resolve(SCHEMA_ARTIFACT_DIR, entry.name);
+    if (!schemaArtifactPaths.has(path)) await rm(path);
   }
   const referencePages = renderPublicSchemaReferencePages();
   const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));

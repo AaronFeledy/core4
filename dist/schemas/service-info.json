@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "api": {
+      "enum": [
+        4
+      ],
+      "type": "number"
+    },
+    "app": {
+      "type": "string"
+    },
+    "endpoints": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": "number"
+          },
+          "protocol": {
+            "enum": [
+              "http",
+              "https",
+              "tcp",
+              "udp",
+              "unix"
+            ],
+            "type": "string"
+          },
+          "socketPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "primary": {
+      "type": "boolean"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "routes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "pathPrefix": {
+            "type": "string"
+          },
+          "scheme": {
+            "enum": [
+              "http",
+              "https",
+              "both"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "scheme",
+          "service"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "service": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "unknown",
+        "stopped",
+        "starting",
+        "running",
+        "healthy",
+        "unhealthy",
+        "error"
+      ],
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "app",
+    "service",
+    "api",
+    "type",
+    "provider",
+    "primary",
+    "status"
+  ],
+  "type": "object"
+}

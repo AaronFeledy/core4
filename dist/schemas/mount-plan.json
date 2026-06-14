@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "readOnly": {
+      "type": "boolean"
+    },
+    "realization": {
+      "enum": [
+        "passthrough",
+        "accelerated"
+      ],
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "bind",
+        "tmpfs",
+        "volume"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "target",
+    "readOnly",
+    "realization"
+  ],
+  "type": "object"
+}

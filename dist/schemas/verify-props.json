@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "MatcherAnyOf": {
+      "additionalProperties": false,
+      "properties": {
+        "anyOf": {
+          "items": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "anyOf"
+      ],
+      "type": "object"
+    },
+    "MatcherNot": {
+      "additionalProperties": false,
+      "properties": {
+        "not": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        }
+      },
+      "required": [
+        "not"
+      ],
+      "type": "object"
+    },
+    "MatcherPartialObject": {
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "MatcherRegex": {
+      "additionalProperties": false,
+      "properties": {
+        "regex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "regex"
+      ],
+      "type": "object"
+    },
+    "MatcherScalar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "MatcherSchema": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MatcherScalar"
+        },
+        {
+          "items": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/MatcherRegex"
+        },
+        {
+          "$ref": "#/$defs/MatcherSchemaRef"
+        },
+        {
+          "$ref": "#/$defs/MatcherAnyOf"
+        },
+        {
+          "$ref": "#/$defs/MatcherNot"
+        },
+        {
+          "$ref": "#/$defs/MatcherPartialObject"
+        }
+      ],
+      "description": "Alpha 2 declarative matcher subset for executable-guide verification.",
+      "title": "Matcher Schema"
+    },
+    "MatcherSchemaRef": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "type": "object"
+    },
+    "VerifyProps": {
+      "additionalProperties": false,
+      "description": "Alpha 2 <Verify> component props.",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "errorTag": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "expect": {
+          "$ref": "#/$defs/MatcherSchema"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "Verify Props",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/VerifyProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

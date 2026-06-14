@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "endpoint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ]
+    },
+    "hostname": {
+      "type": "string"
+    },
+    "pathPrefix": {
+      "type": "string"
+    },
+    "scheme": {
+      "enum": [
+        "http",
+        "https",
+        "both"
+      ],
+      "type": "string"
+    },
+    "service": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "hostname",
+    "scheme",
+    "service"
+  ],
+  "type": "object"
+}

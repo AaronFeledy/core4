@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "port": {
+      "type": "number"
+    },
+    "protocol": {
+      "enum": [
+        "http",
+        "https",
+        "tcp",
+        "udp",
+        "unix"
+      ],
+      "type": "string"
+    },
+    "socketPath": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol"
+  ],
+  "type": "object"
+}

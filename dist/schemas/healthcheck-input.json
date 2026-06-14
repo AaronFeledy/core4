@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "command": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "intervalSeconds": {
+      "type": "number"
+    },
+    "kind": {
+      "enum": [
+        "command",
+        "http",
+        "tcp",
+        "none"
+      ],
+      "type": "string"
+    },
+    "port": {
+      "type": "number"
+    },
+    "retries": {
+      "type": "number"
+    },
+    "startPeriodSeconds": {
+      "type": "number"
+    },
+    "timeoutSeconds": {
+      "type": "number"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

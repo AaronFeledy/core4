@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "column": {
+      "type": "number"
+    },
+    "line": {
+      "type": "number"
+    },
+    "message": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "suggestedFix": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "path",
+    "message"
+  ],
+  "type": "object"
+}

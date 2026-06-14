@@ -1,0 +1,5040 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    },
+    "DeprecationNotice": {
+      "additionalProperties": false,
+      "description": "A structured deprecation declaration attached to a public surface.",
+      "properties": {
+        "docsUrl": {
+          "format": "uri",
+          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "removeIn": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "note"
+      ],
+      "title": "Deprecation Notice",
+      "type": "object"
+    },
+    "DeprecationUse": {
+      "additionalProperties": false,
+      "description": "A recorded runtime use of a deprecated public surface.",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "callsite": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "flag",
+            "arg",
+            "tooling-task",
+            "recipe",
+            "recipe-prompt",
+            "landofile-key",
+            "config-key",
+            "env-override",
+            "schema",
+            "schema-field",
+            "event",
+            "event-field",
+            "render-event",
+            "service-type",
+            "service-feature",
+            "route-filter",
+            "provider-extension",
+            "manifest-field",
+            "manifest-contribution",
+            "plugin",
+            "export",
+            "tagged-error"
+          ],
+          "type": "string"
+        },
+        "notice": {
+          "$ref": "#/$defs/DeprecationNotice"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "notice",
+        "timestamp"
+      ],
+      "title": "Deprecation Use",
+      "type": "object"
+    },
+    "DeprecationUsedEvent": {
+      "additionalProperties": false,
+      "description": "Emitted after a deprecated surface use is recorded; telemetry and embedding subscribers should consume it as a late observer.",
+      "properties": {
+        "_tag": {
+          "enum": [
+            "deprecation-used"
+          ],
+          "type": "string"
+        },
+        "use": {
+          "$ref": "#/$defs/DeprecationUse"
+        }
+      },
+      "required": [
+        "_tag",
+        "use"
+      ],
+      "title": "Deprecation Used Event",
+      "type": "object"
+    },
+    "FileSyncSessionSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "excludes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "two-way-safe",
+            "two-way-resolved",
+            "one-way-safe",
+            "one-way-replica"
+          ],
+          "type": "string"
+        },
+        "mountKey": {
+          "type": "string"
+        },
+        "permissions": {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "service": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": [
+                    "volume"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "_tag",
+                "name",
+                "path"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": [
+                    "service"
+                  ],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "_tag",
+                "service",
+                "path"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "app",
+        "service",
+        "mountKey",
+        "source",
+        "target",
+        "mode",
+        "excludes"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-bootstrap"
+          ],
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "minimal",
+            "plugins",
+            "commands",
+            "provider",
+            "app",
+            "tooling"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "level",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-bootstrap"
+          ],
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "minimal",
+            "plugins",
+            "commands",
+            "provider",
+            "app",
+            "tooling"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "level",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "ready"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "before-exit"
+          ],
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "exitCode",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-init"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-init"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-start"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": [
+                  "engineId",
+                  "session"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [
+                    4
+                  ],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resolvedAt",
+                "source",
+                "runtime"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "aliases"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "perAppBridge"
+              ],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "globalServices"
+              ],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": [
+                      "http",
+                      "https",
+                      "both"
+                    ],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname",
+                  "scheme",
+                  "service"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": [
+                          "passthrough",
+                          "accelerated"
+                        ],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "target",
+                      "readOnly",
+                      "excludes",
+                      "includes",
+                      "realization"
+                    ],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "ref"
+                            ],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "build"
+                            ],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "context"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cn",
+                      "sans",
+                      "caId"
+                    ],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": [
+                            "started",
+                            "healthy"
+                          ],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "condition"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": [
+                            "http",
+                            "https",
+                            "tcp",
+                            "udp",
+                            "unix"
+                          ],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "protocol"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": [
+                          "command",
+                          "http",
+                          "tcp",
+                          "none"
+                        ],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "intervalSeconds",
+                      "timeoutSeconds",
+                      "retries"
+                    ],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "hostname",
+                        "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [
+                          4
+                        ],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "resolvedAt",
+                      "source",
+                      "runtime"
+                    ],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": [
+                            "passthrough",
+                            "accelerated"
+                          ],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "bind",
+                            "tmpfs",
+                            "volume"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "target",
+                        "readOnly",
+                        "realization"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "index"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "store",
+                        "target",
+                        "readOnly"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "service",
+                      "app",
+                      "global"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "app"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "triggeredBy": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "plan",
+        "triggeredBy",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-start"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": [
+                  "engineId",
+                  "session"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [
+                    4
+                  ],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resolvedAt",
+                "source",
+                "runtime"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "aliases"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "perAppBridge"
+              ],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "globalServices"
+              ],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": [
+                      "http",
+                      "https",
+                      "both"
+                    ],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname",
+                  "scheme",
+                  "service"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": [
+                          "passthrough",
+                          "accelerated"
+                        ],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "target",
+                      "readOnly",
+                      "excludes",
+                      "includes",
+                      "realization"
+                    ],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "ref"
+                            ],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "build"
+                            ],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "context"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cn",
+                      "sans",
+                      "caId"
+                    ],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": [
+                            "started",
+                            "healthy"
+                          ],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "condition"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": [
+                            "http",
+                            "https",
+                            "tcp",
+                            "udp",
+                            "unix"
+                          ],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "protocol"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": [
+                          "command",
+                          "http",
+                          "tcp",
+                          "none"
+                        ],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "intervalSeconds",
+                      "timeoutSeconds",
+                      "retries"
+                    ],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "hostname",
+                        "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [
+                          4
+                        ],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "resolvedAt",
+                      "source",
+                      "runtime"
+                    ],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": [
+                            "passthrough",
+                            "accelerated"
+                          ],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "bind",
+                            "tmpfs",
+                            "volume"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "target",
+                        "readOnly",
+                        "realization"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "index"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "store",
+                        "target",
+                        "readOnly"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "service",
+                      "app",
+                      "global"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "app"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "plan",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-stop"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "app"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-stop"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "app"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-rebuild"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-rebuild"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-destroy"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-destroy"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-global-start"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "ensuringServices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": [
+                  "engineId",
+                  "session"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [
+                    4
+                  ],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resolvedAt",
+                "source",
+                "runtime"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "aliases"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "perAppBridge"
+              ],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "globalServices"
+              ],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": [
+                      "http",
+                      "https",
+                      "both"
+                    ],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname",
+                  "scheme",
+                  "service"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": [
+                          "passthrough",
+                          "accelerated"
+                        ],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "target",
+                      "readOnly",
+                      "excludes",
+                      "includes",
+                      "realization"
+                    ],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "ref"
+                            ],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "build"
+                            ],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "context"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cn",
+                      "sans",
+                      "caId"
+                    ],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": [
+                            "started",
+                            "healthy"
+                          ],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "condition"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": [
+                            "http",
+                            "https",
+                            "tcp",
+                            "udp",
+                            "unix"
+                          ],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "protocol"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": [
+                          "command",
+                          "http",
+                          "tcp",
+                          "none"
+                        ],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "intervalSeconds",
+                      "timeoutSeconds",
+                      "retries"
+                    ],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "hostname",
+                        "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [
+                          4
+                        ],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "resolvedAt",
+                      "source",
+                      "runtime"
+                    ],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": [
+                            "passthrough",
+                            "accelerated"
+                          ],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "bind",
+                            "tmpfs",
+                            "volume"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "target",
+                        "readOnly",
+                        "realization"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "index"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "store",
+                        "target",
+                        "readOnly"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "service",
+                      "app",
+                      "global"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "global"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "triggeredBy": {
+          "enum": [
+            "meta:global:start",
+            "apps:poweroff",
+            "ensure-running",
+            "meta:setup"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "plan",
+        "triggeredBy",
+        "ensuringServices",
+        "cached",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-global-start"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": [
+                  "engineId",
+                  "session"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [
+                    4
+                  ],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resolvedAt",
+                "source",
+                "runtime"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "aliases"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "perAppBridge"
+              ],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "globalServices"
+              ],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": [
+                      "http",
+                      "https",
+                      "both"
+                    ],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname",
+                  "scheme",
+                  "service"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": [
+                          "passthrough",
+                          "accelerated"
+                        ],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "target",
+                      "readOnly",
+                      "excludes",
+                      "includes",
+                      "realization"
+                    ],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "ref"
+                            ],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "ref"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "build"
+                            ],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "context"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "cn",
+                      "sans",
+                      "caId"
+                    ],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": [
+                            "started",
+                            "healthy"
+                          ],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "service",
+                        "condition"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": [
+                            "http",
+                            "https",
+                            "tcp",
+                            "udp",
+                            "unix"
+                          ],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "protocol"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": [
+                          "command",
+                          "http",
+                          "tcp",
+                          "none"
+                        ],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "intervalSeconds",
+                      "timeoutSeconds",
+                      "retries"
+                    ],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "hostname",
+                        "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [
+                          4
+                        ],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "resolvedAt",
+                      "source",
+                      "runtime"
+                    ],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": [
+                            "passthrough",
+                            "accelerated"
+                          ],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "bind",
+                            "tmpfs",
+                            "volume"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "target",
+                        "readOnly",
+                        "realization"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "index"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "store",
+                        "target",
+                        "readOnly"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "service",
+                      "app",
+                      "global"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "scope"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "global"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "plan",
+        "cached",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-global-stop"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "global"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "triggeredBy": {
+          "enum": [
+            "meta:global:stop",
+            "apps:poweroff"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "triggeredBy",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-global-stop"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "scope": {
+          "enum": [
+            "global"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "scope",
+        "app",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-app-start"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "pre-app-start"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-app-start"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "post-app-start"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-app-stop"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "pre-app-stop"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-app-stop"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "post-app-stop"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-service-start"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "pre-service-start"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "serviceName",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-service-start"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "post-service-start"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "serviceName",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-service-stop"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "pre-service-stop"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-service-stop"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "post-service-stop"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-build"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "pre-build"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-build"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "eventName": {
+          "enum": [
+            "post-build"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-provider-apply"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-provider-apply"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "providerId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-provider-exec"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "service": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "service",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-provider-exec"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "service": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "service",
+        "exitCode",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "cli-command-init"
+          ],
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "commandId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "cli-command-run"
+          ],
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "commandId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "cli-command-error"
+          ],
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "commandId",
+        "message",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "$ref": "#/$defs/DeprecationUsedEvent"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.tree.start"
+          ],
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "list",
+            "grid"
+          ],
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "parentId",
+        "label",
+        "children",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.start"
+          ],
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "label",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.detail"
+          ],
+          "type": "string"
+        },
+        "line": {
+          "type": "string"
+        },
+        "stream": {
+          "enum": [
+            "stdout",
+            "stderr"
+          ],
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "stream",
+        "line",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.detail.expand"
+          ],
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.detail.collapse"
+          ],
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.complete"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.fail"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "taskId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "task.tree.complete"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "failed": {
+          "type": "number"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "succeeded": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "parentId",
+        "succeeded",
+        "failed",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "message.info"
+          ],
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "body",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "message.warn"
+          ],
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "body",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "message.error"
+          ],
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "body",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "paint.banner"
+          ],
+          "type": "string"
+        },
+        "banner": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "banner",
+        "timestamp"
+      ],
+      "type": "object"
+    }
+  ]
+}

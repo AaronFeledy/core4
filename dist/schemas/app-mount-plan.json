@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "excludes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "includes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "readOnly": {
+      "type": "boolean"
+    },
+    "realization": {
+      "enum": [
+        "passthrough",
+        "accelerated"
+      ],
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "target",
+    "readOnly",
+    "excludes",
+    "includes",
+    "realization"
+  ],
+  "type": "object"
+}

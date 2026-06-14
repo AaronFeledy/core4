@@ -1,0 +1,885 @@
+{
+  "$defs": {
+    "DeprecationNotice": {
+      "additionalProperties": false,
+      "description": "A structured deprecation declaration attached to a public surface.",
+      "properties": {
+        "docsUrl": {
+          "format": "uri",
+          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "removeIn": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "note"
+      ],
+      "title": "Deprecation Notice",
+      "type": "object"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-": {
+      "$id": "/schemas/unknown",
+      "title": "unknown"
+    }
+  },
+  "properties": {
+    "configs": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "external": {
+            "type": "boolean"
+          },
+          "file": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "include": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "includes": {
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "checksum": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "landofile"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "networks": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "providers": {
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "proxy": {
+      "additionalProperties": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "hostname": {
+              "type": "string"
+            },
+            "pathPrefix": {
+              "type": "string"
+            },
+            "scheme": {
+              "enum": [
+                "http",
+                "https",
+                "both"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "hostname"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "recipe": {
+      "type": "string"
+    },
+    "runtime": {
+      "enum": [
+        4
+      ],
+      "type": "number"
+    },
+    "secrets": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "environment": {
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "file": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "services": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "enum": [
+              4
+            ],
+            "type": "number"
+          },
+          "appMount": {
+            "anyOf": [
+              {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "excludes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "includes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "build": {
+            "additionalProperties": false,
+            "properties": {
+              "app": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "artifact": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "composeBuild": {
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "context": {
+                "type": "string"
+              },
+              "dockerfile": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "context"
+            ],
+            "type": "object"
+          },
+          "cores": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "database": {
+            "type": "string"
+          },
+          "dependsOn": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "endpoints": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "number"
+                },
+                "protocol": {
+                  "enum": [
+                    "http",
+                    "https",
+                    "tcp",
+                    "udp",
+                    "unix"
+                  ],
+                  "type": "string"
+                },
+                "socketPath": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "protocol"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "entrypoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "environment": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "framework": {
+            "type": "string"
+          },
+          "healthcheck": {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "intervalSeconds": {
+                "type": "number"
+              },
+              "kind": {
+                "enum": [
+                  "command",
+                  "http",
+                  "tcp",
+                  "none"
+                ],
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              },
+              "retries": {
+                "type": "number"
+              },
+              "startPeriodSeconds": {
+                "type": "number"
+              },
+              "timeoutSeconds": {
+                "type": "number"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "hostnames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "image": {
+            "type": "string"
+          },
+          "mounts": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "excludes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "includes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "bind",
+                        "tmpfs",
+                        "volume"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "target"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "port": {
+            "type": "number"
+          },
+          "ports": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "providers": {
+            "additionalProperties": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "root": {
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "endpoint": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "hostname": {
+                  "type": "string"
+                },
+                "pathPrefix": {
+                  "type": "string"
+                },
+                "scheme": {
+                  "enum": [
+                    "http",
+                    "https",
+                    "both"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "hostname"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "storage": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "enum": [
+                        "service",
+                        "app",
+                        "global"
+                      ],
+                      "type": "string"
+                    },
+                    "store": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "store",
+                    "target"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "type": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "volumes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workingDirectory": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "sshAgent": {
+      "additionalProperties": false,
+      "properties": {
+        "sidecar": {
+          "enum": [
+            true
+          ],
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "tooling": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "deprecated": {
+                  "$ref": "#/$defs/DeprecationNotice"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "cmd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "cmds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "deprecated": {
+            "$ref": "#/$defs/DeprecationNotice"
+          },
+          "description": {
+            "type": "string"
+          },
+          "flags": {
+            "additionalProperties": {
+              "additionalProperties": false,
+              "properties": {
+                "default": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "deprecated": {
+                  "$ref": "#/$defs/DeprecationNotice"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "boolean",
+                    "option"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "service": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "vars": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "default": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "default"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "sh": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sh"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "prompt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "prompt"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "properties": {},
+            "required": [],
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "toolingEngine": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "volumes": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "external": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

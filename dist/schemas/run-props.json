@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "RunProps": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "command": {
+              "type": "string"
+            },
+            "expectExit": {
+              "description": "an integer",
+              "title": "int",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "expectExit": {
+              "description": "an integer",
+              "title": "int",
+              "type": "integer"
+            },
+            "shell": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "shell"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "displayCode": {
+              "type": "string"
+            },
+            "runtime": {
+              "enum": [
+                "library"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "runtime",
+            "code",
+            "displayCode"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Alpha 2 <Run> component props.",
+      "title": "Run Props"
+    }
+  },
+  "$ref": "#/$defs/RunProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

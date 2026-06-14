@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "enum": [
+    "none",
+    "minimal",
+    "plugins",
+    "commands",
+    "tooling",
+    "provider",
+    "global",
+    "scratch",
+    "app"
+  ],
+  "type": "string"
+}

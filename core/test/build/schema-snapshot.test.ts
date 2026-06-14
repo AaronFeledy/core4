@@ -110,7 +110,8 @@ describe("schema snapshot gate", () => {
   });
 
   test("generated reference pages include Starlight frontmatter, artifact links, and field details", () => {
-    const page = renderPublicSchemaReferencePages().find((entry) => entry.id === "DeprecationNotice");
+    const pages = renderPublicSchemaReferencePages();
+    const page = pages.find((entry) => entry.id === "DeprecationNotice");
 
     expect(page?.content).toContain("---\ntitle: Deprecation Notice");
     expect(page?.content).toContain(
@@ -125,11 +126,11 @@ describe("schema snapshot gate", () => {
       "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
     );
 
-    const primitivePage = renderPublicSchemaReferencePages().find((entry) => entry.id === "AppId");
+    const primitivePage = pages.find((entry) => entry.id === "AppId");
     expect(primitivePage?.content).toContain("---\ntitle: App Id");
     expect(primitivePage?.content).toContain("Public Lando schema contract for App Id.");
 
-    const enumPage = renderPublicSchemaReferencePages().find((entry) => entry.id === "BootstrapLevel");
+    const enumPage = pages.find((entry) => entry.id === "BootstrapLevel");
     expect(enumPage?.content).toContain("| Type | Default | Accepted values | Examples |");
     expect(enumPage?.content).toContain(
       "`none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app`",
@@ -509,6 +510,31 @@ describe("schema snapshot gate", () => {
       >;
 
       expect(artifact.$schema, schemaName).toBe("http://json-schema.org/draft-07/schema#");
+    }
+  });
+
+  test("generated JSON schema artifacts are tracked by git for the drift gate", () => {
+    const ignored = Bun.spawnSync(
+      ["git", "check-ignore", "-q", "--no-index", "dist/schemas/new-schema.json"],
+      {
+        cwd: repoRoot,
+      },
+    );
+    expect(ignored.exitCode).toBe(1);
+
+    const tracked = Bun.spawnSync(["git", "ls-files", "dist/schemas"], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect({ exitCode: tracked.exitCode, stderr: tracked.stderr.toString() }).toMatchObject({
+      exitCode: 0,
+    });
+
+    const trackedFiles = new Set(tracked.stdout.toString().trim().split("\n"));
+    expect(trackedFiles).toContain("dist/schemas/index.json");
+    for (const schemaName of JSON_SCHEMA_NAMES) {
+      expect(trackedFiles).toContain(`dist/schemas/${schemaArtifactFilename(schemaName)}`);
     }
   });
 });

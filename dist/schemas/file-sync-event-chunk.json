@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "progress"
+          ],
+          "type": "string"
+        },
+        "completed": {
+          "description": "a number between 0 and 1",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "between(0, 1)",
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "initial-scan",
+            "staging",
+            "transitioning",
+            "watching"
+          ],
+          "type": "string"
+        },
+        "sessionRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "sessionRef",
+        "phase"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "conflict"
+          ],
+          "type": "string"
+        },
+        "conflictedPaths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sessionRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "sessionRef",
+        "conflictedPaths"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "info"
+          ],
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "sessionRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "sessionRef",
+        "message"
+      ],
+      "type": "object"
+    }
+  ]
+}

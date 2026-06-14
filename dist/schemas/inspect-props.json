@@ -1,0 +1,33 @@
+{
+  "$defs": {
+    "InspectProps": {
+      "additionalProperties": false,
+      "description": "Beta <Inspect> component props.",
+      "properties": {
+        "events": {
+          "enum": [
+            true
+          ],
+          "type": "boolean"
+        },
+        "file": {
+          "type": "string"
+        },
+        "json": {
+          "type": "string"
+        },
+        "output": {
+          "enum": [
+            true
+          ],
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "title": "Inspect Props",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/InspectProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
