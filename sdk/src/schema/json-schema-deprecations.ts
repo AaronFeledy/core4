@@ -343,12 +343,9 @@ const markdownTextCell = (value: string): string => mdxText(value);
 const codeValue = (value: unknown): string => `\`${String(value)}\``;
 
 const resolveLocalSchemaRef = (target: JsonObject, root: JsonObject): JsonObject | undefined => {
-  const ref = typeof target.$ref === "string" ? target.$ref : undefined;
-  if (!ref?.startsWith("#/$defs/")) return undefined;
-  const key = ref.slice("#/$defs/".length);
-  const defs = jsonObject(root.$defs);
-  const resolved = jsonObject(defs?.[key]);
+  const resolved = jsonObject(localRefTarget(target, { root }));
   if (resolved === undefined) return undefined;
+  const defs = jsonObject(root.$defs);
   return defs === undefined ? resolved : { ...resolved, $defs: defs };
 };
 
@@ -387,7 +384,10 @@ const jsonSchemaEnumValues = (jsonSchema: JsonObject | undefined): ReadonlyArray
   return values;
 };
 
-const unionBranches = (jsonSchema: JsonObject | undefined): ReadonlyArray<JsonObject> => {
+const unionBranches = (
+  jsonSchema: JsonObject | undefined,
+  root: JsonObject = jsonSchema ?? {},
+): ReadonlyArray<JsonObject> => {
   const branches = Array.isArray(jsonSchema?.anyOf)
     ? jsonSchema.anyOf
     : Array.isArray(jsonSchema?.oneOf)
@@ -396,7 +396,7 @@ const unionBranches = (jsonSchema: JsonObject | undefined): ReadonlyArray<JsonOb
   return branches.flatMap((branch) => {
     const branchObject = jsonObject(branch);
     if (branchObject === undefined) return [];
-    return [resolveLocalSchemaRef(branchObject, jsonSchema ?? branchObject) ?? branchObject];
+    return [resolveLocalSchemaRef(branchObject, root) ?? branchObject];
   });
 };
 
@@ -412,22 +412,30 @@ const uniqueValues = (values: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
   return unique;
 };
 
-const jsonSchemaAcceptedValues = (jsonSchema: JsonObject | undefined): ReadonlyArray<unknown> => {
+const jsonSchemaAcceptedValues = (
+  jsonSchema: JsonObject | undefined,
+  root: JsonObject = jsonSchema ?? {},
+): ReadonlyArray<unknown> => {
   const values: unknown[] = [];
   const collect = (schema: JsonObject): void => {
-    values.push(...jsonSchemaEnumValues(schema));
-    for (const branch of unionBranches(schema)) collect(branch);
+    const resolved = resolveLocalSchemaRef(schema, root) ?? schema;
+    values.push(...jsonSchemaEnumValues(resolved));
+    for (const branch of unionBranches(resolved, root)) collect(branch);
   };
   if (jsonSchema !== undefined) collect(jsonSchema);
   return uniqueValues(values);
 };
 
-const jsonSchemaTypes = (jsonSchema: JsonObject | undefined): ReadonlyArray<string> => {
+const jsonSchemaTypes = (
+  jsonSchema: JsonObject | undefined,
+  root: JsonObject = jsonSchema ?? {},
+): ReadonlyArray<string> => {
   const types = new Set<string>();
   const collect = (schema: JsonObject): void => {
-    if (typeof schema.type === "string") types.add(schema.type);
-    for (const value of jsonSchemaEnumValues(schema)) types.add(jsonValueType(value));
-    for (const branch of unionBranches(schema)) collect(branch);
+    const resolved = resolveLocalSchemaRef(schema, root) ?? schema;
+    if (typeof resolved.type === "string") types.add(resolved.type);
+    for (const value of jsonSchemaEnumValues(resolved)) types.add(jsonValueType(value));
+    for (const branch of unionBranches(resolved, root)) collect(branch);
   };
   if (jsonSchema !== undefined) collect(jsonSchema);
   return [...types];
@@ -455,8 +463,11 @@ const astFieldType = (property: AST.PropertySignature): string => {
 const fieldType = (
   property: AST.PropertySignature | undefined,
   jsonSchemas: ReadonlyArray<JsonObject | undefined>,
+  jsonSchemaRoot: JsonObject,
 ): string => {
-  const jsonTypes = uniqueValues(jsonSchemas.flatMap((jsonSchema) => jsonSchemaTypes(jsonSchema)));
+  const jsonTypes = uniqueValues(
+    jsonSchemas.flatMap((jsonSchema) => jsonSchemaTypes(jsonSchema, jsonSchemaRoot)),
+  );
   if (jsonTypes.length > 0) return jsonTypes.map(codeValue).join(", ");
   return property === undefined ? "—" : astFieldType(property);
 };
@@ -471,14 +482,20 @@ const literalValues = (ast: AST.AST): ReadonlyArray<unknown> => {
 const acceptedValues = (
   property: AST.PropertySignature | undefined,
   jsonSchemas: ReadonlyArray<JsonObject | undefined>,
+  jsonSchemaRoot: JsonObject,
 ): string => {
-  const values = uniqueValues(jsonSchemas.flatMap((jsonSchema) => jsonSchemaAcceptedValues(jsonSchema)));
+  const values = uniqueValues(
+    jsonSchemas.flatMap((jsonSchema) => jsonSchemaAcceptedValues(jsonSchema, jsonSchemaRoot)),
+  );
   const fallbackValues = values.length > 0 || property === undefined ? values : literalValues(property.type);
   return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
 };
 
+const formattedJsonValue = (value: unknown): string =>
+  typeof value === "string" ? String(value) : JSON.stringify(value);
+
 const defaultValue = (jsonSchema: JsonObject | undefined): string =>
-  Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(JSON.stringify(jsonSchema?.default)) : "—";
+  Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(formattedJsonValue(jsonSchema?.default)) : "—";
 
 const exampleValue = (value: unknown): string =>
   typeof value === "string" ? codeValue(value) : codeValue(JSON.stringify(value));
@@ -489,11 +506,18 @@ const exampleValues = (values: unknown): string =>
 const examples = (property: AST.PropertySignature): string =>
   exampleValues(property.type.annotations[AST.ExamplesAnnotationId]);
 
-const defaultValues = (jsonSchemas: ReadonlyArray<JsonObject | undefined>): string => {
+const defaultValues = (
+  jsonSchemas: ReadonlyArray<JsonObject | undefined>,
+  jsonSchemaRoot: JsonObject,
+): string => {
   const values = uniqueValues(
-    jsonSchemas.flatMap((jsonSchema) =>
-      Object.hasOwn(jsonSchema ?? {}, "default") ? [JSON.stringify(jsonSchema?.default)] : [],
-    ),
+    jsonSchemas.flatMap((jsonSchema) => {
+      const resolved =
+        jsonSchema === undefined
+          ? undefined
+          : (resolveLocalSchemaRef(jsonSchema, jsonSchemaRoot) ?? jsonSchema);
+      return Object.hasOwn(resolved ?? {}, "default") ? [formattedJsonValue(resolved?.default)] : [];
+    }),
   );
   return values.length > 0 ? values.map(codeValue).join(", ") : "—";
 };
@@ -501,7 +525,7 @@ const defaultValues = (jsonSchemas: ReadonlyArray<JsonObject | undefined>): stri
 const schemaExamples = (ast: AST.AST): string => exampleValues(ast.annotations[AST.ExamplesAnnotationId]);
 
 const schemaAcceptedValues = (ast: AST.AST, jsonSchema: JsonObject): string => {
-  const values = jsonSchemaAcceptedValues(jsonSchema);
+  const values = jsonSchemaAcceptedValues(jsonSchema, jsonSchema);
   const fallbackValues = values.length > 0 ? values : literalValues(ast);
   return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
 };
@@ -511,6 +535,7 @@ type SchemaReferenceField = {
   readonly required: boolean;
   readonly property?: AST.PropertySignature;
   readonly jsonSchemas: ReadonlyArray<JsonObject | undefined>;
+  readonly jsonSchemaRoot: JsonObject;
 };
 
 const isRequiredJsonSchemaProperty = (jsonSchema: JsonObject, name: string): boolean =>
@@ -529,6 +554,7 @@ const typeLiteralFields = (
         required: !property.isOptional,
         property,
         jsonSchemas: [properties === undefined ? undefined : jsonObject(properties[property.name])],
+        jsonSchemaRoot: jsonSchema,
       },
     ];
   });
@@ -554,7 +580,7 @@ const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<
     }
   }
 
-  const objectBranches = unionBranches(jsonSchema).filter((branch) => branch.type === "object");
+  const objectBranches = unionBranches(jsonSchema, jsonSchema).filter((branch) => branch.type === "object");
   const fields = new Map<
     string,
     { appearances: number; requiredInPresentBranches: boolean; jsonSchemas: Array<JsonObject | undefined> }
@@ -582,6 +608,7 @@ const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<
       required: field.appearances === objectBranches.length && field.requiredInPresentBranches,
       ...(property === undefined ? {} : { property }),
       jsonSchemas: field.jsonSchemas,
+      jsonSchemaRoot: jsonSchema,
     };
   });
 };
@@ -600,10 +627,10 @@ const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyA
       [
         codeValue(field.name),
         field.required ? "Yes" : "No",
-        fieldType(field.property, field.jsonSchemas),
+        fieldType(field.property, field.jsonSchemas, field.jsonSchemaRoot),
         field.property === undefined ? "—" : markdownTextCell(fieldDescription(field.property) ?? "—"),
-        defaultValues(field.jsonSchemas),
-        acceptedValues(field.property, field.jsonSchemas),
+        defaultValues(field.jsonSchemas, field.jsonSchemaRoot),
+        acceptedValues(field.property, field.jsonSchemas, field.jsonSchemaRoot),
         field.property === undefined ? "—" : examples(field.property),
         propertyNotice === undefined ? "—" : markdownTextCell(formatDeprecationNotice(propertyNotice)),
       ]
@@ -624,6 +651,8 @@ const indexSignatureKeyType = (signature: AST.IndexSignature): string => {
     case "TemplateLiteral":
     case "Refinement":
       return "patterned `string`";
+    default:
+      return "—";
   }
 };
 
@@ -632,7 +661,7 @@ const renderIndexSignatureRows = (ast: AST.TypeLiteral, jsonSchema: JsonObject):
   const rows = ["| Keys | Values |", "| --- | --- |"];
   for (const signature of ast.indexSignatures) {
     const indexSchema = jsonObject(indexSignatureJsonSchema(jsonSchema, signature));
-    const jsonTypes = jsonSchemaTypes(indexSchema);
+    const jsonTypes = jsonSchemaTypes(indexSchema, jsonSchema);
     const valueType =
       jsonTypes.length > 0
         ? jsonTypes.map(codeValue).join(", ")
@@ -688,7 +717,7 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
     lines.push("## Schema details", "", ...renderIndexSignatureRows(ast, jsonSchema), "");
   }
 
-  const schemaTypes = jsonSchemaTypes(jsonSchema);
+  const schemaTypes = jsonSchemaTypes(jsonSchema, jsonSchema);
   const hasNonObjectRootBranch = schemaTypes.some((type) => type !== "object");
   if (!AST.isTypeLiteral(ast) && (fields.length === 0 || hasNonObjectRootBranch)) {
     const rows = [

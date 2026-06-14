@@ -178,6 +178,31 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
   });
 
+  test("reference renderer resolves property refs against the full JSON Schema document", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "RefBackedShape",
+      Schema.Struct({
+        value: Schema.String.annotations({ description: "Documented value." }),
+      }),
+      {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            value: { $ref: "#/$defs/NamedValue" },
+          },
+          $defs: {
+            NamedValue: { type: "string", default: "alpha", enum: ["alpha", "beta"] },
+          },
+        },
+      },
+    );
+
+    expect(rendered).toContain(
+      "| `value` | Yes | `string` | Documented value. | `alpha` | `alpha`, `beta` | — | — |",
+    );
+    expect(rendered).not.toContain('`"alpha"`');
+  });
+
   test("reference renderer formats examples without double-encoding strings", () => {
     const fieldRendered = renderSchemaReferenceMarkdown(
       "ExampleShape",
