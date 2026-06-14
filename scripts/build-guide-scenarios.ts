@@ -540,10 +540,17 @@ const renderScenarioTest = (
   const skippedE2eTestName = quote(
     `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
   );
-  const testNameExpression = usesE2eRuntime
-    ? `(e2eGateEnabled ? ${runnableTestName} : ${skippedE2eTestName})`
-    : runnableTestName;
-  const testFnExpression = usesE2eRuntime ? "(e2eGateEnabled ? test : test.skip)" : testFn;
+  const e2eForcedSkip = usesE2eRuntime && testFn === "test.skip";
+  const testNameExpression =
+    usesE2eRuntime && !e2eForcedSkip
+      ? `(e2eGateEnabled ? ${runnableTestName} : ${skippedE2eTestName})`
+      : runnableTestName;
+  const testFnExpression = usesE2eRuntime
+    ? e2eForcedSkip
+      ? "test.skip"
+      : "(e2eGateEnabled ? test : test.skip)"
+    : testFn;
+  const testTimeoutArg = usesE2eRuntime ? `, ${guide.frontmatter.timeout}` : "";
   const contextRunner = usesE2eRuntime
     ? "ScenarioContextFactory.e2e"
     : usesLibraryRuntime
@@ -600,7 +607,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
       }),
     ),
   );
-});
+}${testTimeoutArg});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };
 

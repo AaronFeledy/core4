@@ -247,6 +247,52 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("e2e tests carry the frontmatter timeout and force skip for skipped variants", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-e2e-skip-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/e2e-variant.mdx"),
+        [
+          "---",
+          "id: e2e-variant",
+          "provider: test",
+          "defaultLayer: e2e",
+          "timeout: 120000",
+          "tabs: [alpha, beta]",
+          "variants:",
+          "  alpha:",
+          "    skip:",
+          "      reason: not ready yet",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="provider-path" render>',
+          '    <Step name="version">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      await emitGuideScenarioTests(asts, root);
+      const dir = join(root, "test/scenarios/generated/guides/e2e-variant");
+      const skipped = await Bun.file(join(dir, "provider-path.alpha.test.ts")).text();
+      const gated = await Bun.file(join(dir, "provider-path.beta.test.ts")).text();
+
+      expect(skipped).toContain("test.skip(");
+      expect(skipped).not.toContain("e2eGateEnabled ? test : test.skip");
+      expect(gated).toContain("(e2eGateEnabled ? test : test.skip)");
+      expect(skipped).toContain("}, 120000);");
+      expect(gated).toContain("}, 120000);");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("clears stale generated guide tests before writing current scenarios", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-clear-"));
     try {
