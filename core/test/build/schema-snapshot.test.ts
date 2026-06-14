@@ -2,14 +2,17 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 import type { JsonSchemaName } from "../../../sdk/src/schema/index.ts";
 
 import {
   JSON_SCHEMA_NAMES,
+  assertPublicSchemaAnnotations,
   publicSchemaMetadataIndex,
   publicSchemaRegistry,
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
+  validatePublicSchemaAnnotations,
 } from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
@@ -100,6 +103,64 @@ describe("schema snapshot gate", () => {
       docsPath: "docs/reference/schemas/deprecation-notice.mdx",
       content: expect.stringContaining("# Deprecation Notice"),
     });
+  });
+
+  test("public schema registry entries carry required annotations", () => {
+    expect(validatePublicSchemaAnnotations()).toEqual([]);
+  });
+
+  test("schema annotation gate names missing top-level annotations", () => {
+    const MissingTopLevelAnnotations = Schema.Struct({ id: Schema.String }).annotations({
+      identifier: "MissingTopLevelAnnotations",
+    });
+
+    expect(() => assertPublicSchemaAnnotations({ MissingTopLevelAnnotations })).toThrow(
+      /MissingTopLevelAnnotations: Missing required title annotation/,
+    );
+  });
+
+  test("schema annotation gate names undescribed public fields", () => {
+    const MissingFieldDescription = Schema.Struct({ id: Schema.String }).annotations({
+      identifier: "MissingFieldDescription",
+      title: "Missing Field Description",
+      description: "A schema used to prove field annotation enforcement.",
+    });
+
+    expect(() => assertPublicSchemaAnnotations({ MissingFieldDescription })).toThrow(
+      /MissingFieldDescription\.id: Missing field description annotation/,
+    );
+  });
+
+  test("schema annotation gate validates attached examples", () => {
+    const InvalidExample = Schema.Struct({
+      mode: Schema.Literal("valid").annotations({ description: "Allowed mode literal." }),
+    }).annotations({
+      identifier: "InvalidExample",
+      title: "Invalid Example",
+      description: "A schema used to prove example validation.",
+      examples: [{ mode: "invalid" }],
+    });
+
+    expect(() => assertPublicSchemaAnnotations({ InvalidExample })).toThrow(
+      /InvalidExample\.examples\[0\]: Example does not decode successfully/,
+    );
+  });
+
+  test("schema annotation gate validates attached field examples", () => {
+    const InvalidFieldExample = Schema.Struct({
+      mode: Schema.Literal("valid").annotations({
+        description: "Allowed mode literal.",
+        examples: ["invalid"],
+      }),
+    }).annotations({
+      identifier: "InvalidFieldExample",
+      title: "Invalid Field Example",
+      description: "A schema used to prove field-level example validation.",
+    });
+
+    expect(() => assertPublicSchemaAnnotations({ InvalidFieldExample })).toThrow(
+      /InvalidFieldExample\.mode\.examples\[0\]: Example does not decode successfully/,
+    );
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {

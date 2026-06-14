@@ -495,3 +495,9 @@
 - Review feedback: fixed (four Cursor Bugbot findings across three triage rounds — scratch-registry double out of sync with the scratch service, cache double ignoring TTL, filesystem double allowing a path to be both file and directory, and trust-store path containment using naive prefix matching instead of resolve/relative; each backed by a regression test) plus a main-advancement merge-conflict resolution in the coordination files (prd.json/progress.txt/INDEX.md)
 - Merge: merged (squash)
 ---
+
+## 2026-06-13 20:33 CDT - US-226
+- Implemented the public schema annotation gate: registry schemas now carry required metadata for generated references, field descriptions are enforced with path-scoped exemptions, schema and field examples decode during schema snapshot generation, and failures name the schema/field path.
+- Verification: typecheck, lint, schema snapshot/export/codegen focused tests, full `bun test`, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Keep JSON Schema generation on raw schemas when adding registry-only documentation annotations; wrapping the public registry is safe for metadata/docs, but artifacts that assert exact property shape should continue to use the original schema AST.
+---

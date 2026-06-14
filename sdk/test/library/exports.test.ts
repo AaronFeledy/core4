@@ -47,10 +47,12 @@ describe("@lando/sdk package exports", () => {
     expect(schema.RecipeChoicesFrom).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
+    expect(schema.assertPublicSchemaAnnotations).toBeDefined();
     expect(schema.publicSchemaRegistry).toBeDefined();
     expect(schema.publicSchemaMetadataIndex).toBeDefined();
     expect(schema.renderPublicSchemaReferencePages).toBeDefined();
     expect(schema.schemaArtifactFilename).toBeDefined();
+    expect(schema.validatePublicSchemaAnnotations).toBeDefined();
     expect(schema.getJsonSchemaWithDeprecations).toBeDefined();
     expect(schema.renderSchemaReferenceMarkdown).toBeDefined();
   });
