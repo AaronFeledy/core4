@@ -675,6 +675,48 @@ describe("lint:guides", () => {
     expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
   });
 
+  test("ignores @source and @step patterns inside library Run embedded code", () => {
+    const sourcePath = "core/test/lint/guides/lib-embed-source.mdx";
+    const content = [
+      "---",
+      "id: lib-embed-source",
+      "provider: test",
+      "diataxis: tutorial",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="library">',
+      '      <Run runtime="library" code={`// @source: fake.mdx:1\\n// @step: evil\\nexpect(1).toBe(1);`} displayCode={`ok`} />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
+  });
+
+  test("ignores @source inside library Run code that contains block-closing braces", () => {
+    const sourcePath = "core/test/lint/guides/lib-embed-braces.mdx";
+    const content = [
+      "---",
+      "id: lib-embed-braces",
+      "provider: test",
+      "diataxis: tutorial",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="library">',
+      '      <Run runtime="library" code={`if (true) {\\n// @source: fake.mdx:9\\n}\\n`} displayCode={`ok`} />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
+  });
+
   test("reports mixed runtime transcript build failures without throwing", () => {
     const sourcePath = "core/test/lint/guides/transcript-mixed-runtime.mdx";
     const content = [
