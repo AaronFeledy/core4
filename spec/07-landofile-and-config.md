@@ -422,6 +422,8 @@ Practical consequences:
 - Expressions and templates are pure and deterministic. They MUST NOT execute shell commands, perform network IO, or mutate process or global state. The only file IO permitted is via `load()` / `import()` (§7.3), where the read is captured in the app-plan cache key, plus the implicit read of a template body itself (resolved before render). Shell-backed dynamic values are allowed only in tooling-specific `vars.<name>.sh` (§8.5.3), where execution is explicit and goes through `ToolingEngine` / `ProcessRunner`.
 - Cyclic references, unknown paths at the consumer's level, type mismatches, and out-of-range bracket lookups all fail with a tagged `ConfigExpressionError` that includes the expression path, the source location, and remediation.
 - `${secret:KEY}` is a secret reference (distinct from `${KEY}` shell-parameter-expansion: the `secret:` prefix is the marker). Secret values resolve through `SecretStore` (§4.2), MUST be redacted in logs/errors and lifecycle event payloads, and MUST NOT be written decrypted into caches (§12). Secret references that appear inside `${VAR}` shell-style substitutions follow the same redaction rules.
+- A reference MAY be **backend-qualified** as `${secret:<backend>:<ref>}` to select a specific `SecretStore` backend (e.g. `${secret:op://vault/item/field}`, `${secret:keyring:my-token}`, `${secret:sops:db/password}`). Resolution is performed by the `SecretStoreRegistry` core service (§3.4) under a fixed **selection precedence**: an explicit per-reference backend wins; otherwise the global `secrets.defaultStore` (§7.5) is used; otherwise the built-in `env` store. Disambiguation rule: a single-segment reference (`${secret:KEY}`, no `<backend>:` prefix matching a registered backend) is always the default-store form; a multi-segment reference whose first segment is a registered backend id selects that backend, and the remainder (which MAY itself contain `:` or `/`, as in `op://…`) is passed verbatim to the backend as its `<ref>`. A `<backend>:` prefix that matches no registered backend fails with a tagged `SecretStoreUnknownBackendError` and remediation listing installed backends — it is never silently treated as a default-store key.
+- At v4.0 only the `env` backend ships; `keyring`, `1password`/`op`, and `sops` are plugin-contributed backends in a 4.x minor (§4.2). The `${secret:<backend>:<ref>}` grammar slot is **reserved in v4.0** (the only Beta-1-deadline item of the post-GA primitive set, per ROADMAP) so those backends are purely additive — no grammar break. A backend MAY require interactive unlock or a host binary; such a backend MUST be capability-gated so it is **never** invoked on the router/tooling hot path (a blocking 1Password CLI unlock during warm tooling resolution is forbidden). All backends honor the redaction guarantees above identically — decrypted values never reach caches, logs, telemetry, `LANDO_INFO`, or rendered config.
 - A plugin-contributed engine (§7.3.2) MUST honor the same purity guarantees. An engine that cannot — for example, a template engine whose helper API permits arbitrary host-side code — declares `unsafe: true` in its manifest contribution; `unsafe` engines are disabled by default and require explicit global config opt-in (§9.5).
 
 #### Helper design conventions
@@ -543,8 +545,33 @@ commandAliases:                        # app-scoped overrides for top-level CLI 
   custom:                              # add or override top-level aliases (overrides built-ins)
     <alias>: <canonical-id>
 
+ambient: true | false | <AmbientConfig>  # app-scoped shell-integration / ambient-mode control (§8.2.5)
+  # `false` hard-disables ambient mode for this app even when the user has trusted it;
+  # this is the committed, team-wide opt-out and overrides a host-level `lando ambient allow`.
+  # Object form:
+  #   enabled: true | false              # default true
+  #   shims:   true | false              # PATH shims for prefix-free tooling; default false (env-only)
+  #   env:                               # extra host-shell env exported on entry (resolved per §7.3.1)
+  #     <KEY>: <value>
+
 events:
   <event-name>: <EventCommand[]>
+
+hooks:                                 # git-hook declarations (§7.9); installed into .git/hooks via §12.7
+  enabled: true | false                # master toggle; default true
+  <git-stage>: <Check[]>               # e.g. pre-commit, pre-push, commit-msg
+
+processes:                             # host long-running processes (§7.10); supervised by ProcessSupervisor (§10.13)
+  <name>: <ProcessConfig>
+
+files:                                 # host-side generated files (§7.11); written/tracked via §12.7
+  <host-path>: <FileConfig>
+
+test:                                  # project check set for `lando test` (§7.12); run via CheckRunner (§10.11)
+  - <Check>
+
+on:                                    # trigger→action bindings (§10.12); git/lifecycle/watch sources
+  - { trigger: <source:qualifier>, run: <Check[] | task[]> }
 
 proxy:
   <service>: <RouteConfig[]>
@@ -762,6 +789,23 @@ commandAliases:
   disabled: []                         # opt out of specific top-level aliases (e.g. ["start", "poweroff"])
   custom: {}                           # add user-defined top-level aliases mapping to canonical ids (e.g. halt: app:stop)
 
+# Shell integration / ambient mode (§8.2.5). The hook itself is installed in the user's
+# shell profile via `lando shellenv --hook <shell>`; these keys tune behavior host-wide.
+ambient:
+  enabled: true                        # host-wide master switch; false disables ambient mode while leaving the hook installed
+  shims: false                         # default mode for trusted apps: false = env-only, true = also install PATH shims
+  # The per-app trust ledger is NOT configured here — it is state at
+  # <userConfRoot>/ambient-trust.yml, written by `lando ambient allow` / `deny` (§12.4).
+
+secrets:
+  defaultStore: env                    # default SecretStore backend for unqualified ${secret:KEY} (§7.3.1); default `env`
+
+hooks:
+  enabled: true                        # host-wide master switch for git hooks (§7.9); a Landofile `hooks.enabled: false` still wins per-app
+
+processes:
+  defaultRestart: "no"                 # default restart policy for `processes:` (§7.10) when unspecified: no | on-failure | always
+
 pluginConfig:
   "@lando/proxy-traefik":
     httpPort: 80
@@ -816,6 +860,7 @@ Rules:
 - Standard proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, lowercase variants) are honored for Lando-owned network clients unless explicit `network.proxy` config overrides them.
 - `LANDO_NETWORK_CA_CERTS` accepts a JSON array of additional CA certificate paths for Lando-owned network clients.
 - `commandAliases:` (§7.4 Landofile, §7.5 global) is overridable through the standard prefix rules but the nested map keys are JSON-encoded. The master switch is `LANDO_COMMAND_ALIASES_ENABLED=true|false`; the `disabled:` array is set with `LANDO_COMMAND_ALIASES_DISABLED='["start","poweroff"]'`; the `custom:` map is set with `LANDO_COMMAND_ALIASES_CUSTOM='{"halt":"app:stop"}'`. Per-alias scalar setters (`LANDO_COMMAND_ALIASES_CUSTOM_HALT=app:stop`) are NOT supported because alias names may contain characters incompatible with `UPPER_SNAKE_CASE` round-tripping; the JSON-document setter is the canonical mechanism.
+- `ambient:` (§7.5 global) follows the standard prefix rules: `LANDO_AMBIENT_ENABLED=true|false` is the host-wide master switch and `LANDO_AMBIENT_SHIMS=true|false` selects the default mode. Separately, `LANDO_NO_AMBIENT=1` is a per-shell-session escape hatch read by the shell-integration hook (§8.2.5) that no-ops ambient mode for the current shell without touching persisted config.
 
 Examples:
 
@@ -928,5 +973,109 @@ Build-time schema publication produces:
 - A schema metadata index consumed by docs navigation, editor integration docs, and release checks.
 
 Schema definitions MUST include useful annotations (`identifier`, `title`, `description`, and examples where helpful) because the same metadata powers validation errors, JSON Schema output, and generated docs. Human-authored docs remain in `docs/` and explain concepts and workflows; generated schema reference documents exact contract shape.
+
+### 7.9 `hooks:` — git hooks
+
+`hooks:` declares checks that run at git lifecycle stages — the Lando-native, provider-aware analogue of devenv's git-hooks / pre-commit integration. A `hooks.<git-stage>` entry is a list of **checks**; the stage names are the standard git hook points (`pre-commit`, `pre-push`, `commit-msg`, `prepare-commit-msg`, `post-checkout`, `post-merge`, …).
+
+```yaml
+hooks:
+  enabled: true                        # master toggle (default true); a global `hooks.enabled: false` (§7.5) disables host-wide
+  pre-commit:
+    - lint                             # string form: names a tooling task (§8.5)
+    - run: prettier --check .          # object form
+      files: ["**/*.{ts,tsx,css,md}"]  # only run when staged files match
+      fixable: true                    # may mutate files to satisfy itself → reports `fixed` (§10.11)
+      service: ":host"                 # run on the host (default: the task's service)
+  commit-msg:
+    - run: commitlint --edit
+  pre-push:
+    - test                             # run the `test:` set (§7.12) before pushing
+```
+
+A `Check` is either a string (the id of a `tooling:` task, §8.5) or an object `{ run, files?, exclude?, stages?, fixable?, service?, description? }` where `run` is a command line or a task id, `files:`/`exclude:` are globs that narrow which staged/changed files trigger the check, `stages:` optionally restricts an inline check to a subset of stages, and `service:` selects the execution target (`:host` or a service name, per the tooling engine in §8.6).
+
+Mechanism:
+
+- Checks are executed by `CheckRunner` (§10.11), which builds a `CheckPlan` from `hooks.<stage>` and returns `CheckResult[]`; any `failed` result fails the hook (non-zero exit), blocking the commit/push.
+- The git hook files themselves are installed into the repo's `.git/hooks/<stage>` as **Lando-owned host artifacts** tracked by `OwnedHostArtifactRegistry` (§12.7) — default-deny, idempotent, and never silently overwriting a user-edited hook. Install/remove/list/run is via `app:hooks:*` (§8.2.7); the installed dispatcher re-enters `lando app hooks run <stage>`.
+- The binding from a git stage to its check plan is the `git:` `TriggerSource` (§10.12).
+- By default a check sees only the **staged/changed** files for the stage; `files:`/`exclude:` narrow further, and `app:hooks:run --all-files` overrides to the whole tree.
+- The same checks are reusable from CI via `app:test` (§7.12) so "what the hook enforces" and "what CI enforces" share one declaration.
+
+### 7.10 `processes:` — host long-running processes
+
+`processes:` declares long-running **host** processes — dev servers, file watchers, queue workers — supervised by `ProcessSupervisor` (§10.13). This is the host-side, container-free analogue of devenv's `processes`: where `services:` (§6) run containerized workloads with networking/routing/TLS, `processes:` run a plain host process in the app's resolved environment.
+
+```yaml
+processes:
+  web:
+    command: npm run dev               # string or string[] argv
+    cwd: ./frontend                    # optional; default app root
+    env:
+      PORT: "5173"
+    readiness:                         # reuses the §6.7 healthcheck/probe vocabulary
+      url: http://localhost:5173
+      retry: 30
+      delay: 500
+    restart: on-failure                # no | on-failure | always (default from §7.5 `processes.defaultRestart`)
+  worker:
+    command: ["php", "artisan", "queue:work"]
+    dependsOn: [web]                   # starts only after `web` reports ready
+    restart: always
+```
+
+A `ProcessConfig` is `{ command, cwd?, env?, readiness?: <HealthcheckInput>, restart?: "no" | "on-failure" | "always", dependsOn?: <name[]>, autostart?: bool }`. `readiness:` accepts the same shapes as a service `healthcheck:` (§6.7); a process with a probe is not considered up until it passes, and `dependsOn` gates dependents on readiness.
+
+Mechanism and constraints:
+
+- Supervised by `ProcessSupervisor` (§10.13): scope-bound lifetime, readiness-gated `dependsOn` ordering, restart policy, captured+redacted logs. Run/inspect via `app:processes:*` (§8.2.8).
+- **Host backend only at v4.0**; foreground/scope-bound only — detached/background supervision (`--detach`) and the on-disk process registry are deferred to a 4.x minor because they require the persistent agent (§14.2). `command` runs through `ProcessRunner` (§3.4), not a container.
+- A `watch:<glob>` `TriggerSource` (§10.12) is the way to declare "re-run X when files change"; it is itself a supervised process and therefore ships with this surface (4.2).
+- `processes:` env resolves through the §7.3.1 expression engine, including `${secret:…}` references (which are redacted from captured logs).
+
+### 7.11 `files:` — host-side generated files
+
+`files:` declares files Lando generates into the **host** project tree — the analogue of devenv's `files`. The map key is a host path (relative to the app root); the value selects a content form.
+
+```yaml
+files:
+  .editorconfig:
+    text: |
+      root = true
+      [*]
+      indent_style = space
+  config/app.json:
+    json:
+      env: development
+      url: "https://{{ services.app.routes[0].hostname }}"   # §7.3.1 expressions allowed
+    mode: "0644"
+  bin/dev:
+    text: "#!/usr/bin/env bash\nexec lando app processes start\n"
+    executable: true
+```
+
+A `FileConfig` is exactly one of `{ text }`, `{ json }`, `{ yaml }`, `{ toml }`, `{ ini }`, `{ template: <path>, engine?, vars? }`, or `{ source: <path> }`, plus optional `mode:` (octal string) and `executable:` (bool). The `template:` form renders through a `TemplateEngine` (§7.3.2); the structured forms (`json`/`yaml`/`toml`/`ini`) serialize the given value; `source:` copies an existing host file.
+
+Mechanism and the critical distinction from container mounts:
+
+- `files:` writes to the **host** project tree and the outputs are tracked by `OwnedHostArtifactRegistry` (§12.7): materialized at `app:start` / `app:cache:refresh`, never silently overwriting a user-edited file (the modification guard refuses to clobber without `--force`), and reaped on `app:destroy` / `meta:uninstall`.
+- This is **distinct from** container-side file injection: `mounts: { type: template | inline }` (§6.4) writes *inside a service container* at build/mount time. Use `files:` for host artifacts an editor or git sees (`.editorconfig`, `.vscode/`, a local `.env`); use `mounts:` for files a service needs inside the container. The two are intentionally separate surfaces.
+- Host paths are resolved under the app root with the local-`includes:` containment rules (§7.7.6); a path escaping the app root is rejected unless explicitly allowed.
+
+### 7.12 `test:` — project check set
+
+`test:` declares the project's check set that `app:test` (`lando test`, §8.2.9) runs. It is the CI-friendly "is my environment and project healthy?" command — the analogue of devenv's `devenv test`.
+
+```yaml
+test:
+  - lint
+  - run: vitest run
+    service: node
+  - run: phpunit
+    service: php
+```
+
+`test:` is a list of `Check`s using the same shape as `hooks:` (§7.9). When `app:test` runs, the declared checks are combined with the app's **service healthchecks** (§6.7) into one `CheckPlan` executed by `CheckRunner` (§10.11); results aggregate with partial-success reporting and `--format table|json|junit`. `app:test` is **user-app-facing** and is deliberately distinct from the §19 executable-guide scenario tests (which run under `bun test` for the Lando repo and generated guides) — there is no namespace collision. Because `hooks:` (`pre-push`) can reference the `test` task, the same declaration drives both the local pre-push gate and CI.
 
 ---

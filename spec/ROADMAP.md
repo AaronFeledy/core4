@@ -480,6 +480,9 @@ Land the last feature surface — release engineering, governance, the plugin au
 - Generated reference docs (Starlight) ship with deprecation callouts
 - Schema gate (§13.2) enforced in CI
 
+**Forward-compatibility reservations (the only Beta-1 deadline the devenv-parity work carries):**
+- Reserve the backend-qualified `${secret:<backend>:<ref>}` grammar slot in the v4.0 expression language (§7.3.1) alongside the existing `${secret:<key>}`. Only the `env` store ships at v4.0; reserving the slot now is what lets the `keyring`/`1password`/`sops` backends (Phase 9 / 4.2) land additively without a grammar break. This is the one piece of the post-GA primitive set (§7.9–§7.12, §8.2.7–§8.2.10, §10.11–§10.15) that extends an already-shipping v4.0 surface, so it MUST land in Beta 1; the rest are new SDK schemas/services that ship with their features post-GA per the Phase 8–10 sequencing.
+
 **Executable guides and scenarios (§19):**
 - MDX → generated scenario TypeScript pipeline
 - Typed JSX component vocabulary for guides, scenarios, steps, actions, assertions, fixtures, and variants
@@ -615,6 +618,10 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 - Doctor depth: more checks driven by Beta 1 field reports
 - Bun version floor bump if Bun shipped a meaningfully better release
 - Hot-path tooling profiling fixes (real ~150ms target chasing)
+- **Devenv-parity wave 1 (the two Tier-1 differentiators):**
+  - **Git hooks** — the `hooks:` Landofile key (§7.9), `app:hooks:*` (§8.2.7), the `git:` `TriggerSource` (§10.12), installed through `OwnedHostArtifactRegistry` (§12.7) and run by `CheckRunner` (§10.11).
+  - **MCP server** — `lando mcp` / `meta:mcp` (§8.2.10, §10.14) exposing `InvocationPolicy.exposure.agent` commands (§8.3) and the `ProjectContext` resource (§8.2.6.1).
+  - **Primitives this wave freezes** (SDK schemas, stable from first ship): `CheckResult` / `Diagnostic` (§10.11) and `InvocationPolicy` (§8.3). The `CheckRunner` runner, the `git`/`lifecycle` `TriggerSource`s, and the MCP server are core-private.
 
 ---
 
@@ -628,8 +635,13 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 - Recipe registry beyond canonical built-ins — first-class support for community recipes via `@lando/recipe-*` npm convention
 - Plugin authoring docs as full Diátaxis tutorials (executable per §19)
 - Custom `ToolingEngine` examples (`processExec`, `dryRun`)
-- More `SecretStore` backends (1Password CLI, `op`, `age`)
 - Custom `PluginSource` examples (S3, OCI artifact)
+- **Devenv-parity wave 2 (the rest of the host-facing surface):**
+  - **Host processes** — the `processes:` Landofile key (§7.10), `app:processes:*` foreground supervision (§8.2.8) via `ProcessSupervisor` (§10.13), and the `watch:` `TriggerSource` (§10.12) it unblocks.
+  - **Host file generation** — the `files:` Landofile key (§7.11), written/tracked through `OwnedHostArtifactRegistry` (§12.7).
+  - **`lando test`** — the `test:` Landofile key (§7.12) and `app:test` (§8.2.9) over `CheckRunner` (§10.11).
+  - **Secret backends** — `keyring` / `1password` (`op`) / `sops` `SecretStore` backends behind the `SecretStoreRegistry` (§3.4, §4.2). The `${secret:<backend>:<ref>}` grammar slot they consume was reserved in v4.0 (Beta 1) per §7.3.1, so these land additively.
+  - **Language dev tooling** — formatter + LSP tasks contributed by the language service-types (§6.11.3), exposed on the host and as ambient shims.
 
 ---
 
@@ -647,6 +659,9 @@ These were called out in §14.2 and the canonical surface non-goals as **archite
 | **Kubernetes provider** | Likely lands as a community plugin first; may bundle in 4.x | Adoption justification |
 | **TCP/UDP forwarding via `FileSyncEngine`** | Future `PortForwardingService` abstraction reusing Mutagen daemon | Community demand |
 | **`dependsOn: ["global:<service>"]` in Landofile** | Deferred pending telemetry showing AppFeature path insufficient (§14.2) | Falsifiable telemetry trigger |
+| **Detached/background `ProcessRegistry`** | The on-disk registry of running supervised processes + `app:processes:start --detach` (§10.13, §8.2.8). Deferred because a daemon-less CLI cannot own background process lifetime; rides the persistent-agent work above. Must solve orphan trees (Windows/PowerShell), port/readiness races, log rotation, persistent-stdout redaction | Persistent local agent ships |
+| **`schedule:<cron>` `TriggerSource`** | Scheduled action bindings (§10.12). Deferred for the same reason — needs a resident scheduler/agent, which v4.0 deliberately does not ship | Persistent local agent ships |
+| **Unified `HostTrustService`** | Collapse the four separate host-trust ledgers (plugin-trust, host-proxy-allowlist, ambient-trust, owned-host-artifacts) behind one service once an Nth surface appears (§10.15). v4.0 keeps them separate but shares vocabulary | A 5th host-trust surface is proposed |
 
 ---
 

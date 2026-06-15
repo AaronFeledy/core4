@@ -322,7 +322,8 @@ Rules:
 - Platform-specific elevation runs through `PrivilegeService`.
 - Linux commands that may prompt for sudo set `SUDO_ASKPASS` when an askpass helper is available.
 - Setup honors corporate proxy and custom CA configuration for every Lando-owned download or registry call (§10.3.1).
-- `lando shellenv` prints shell-profile snippets to add `<userDataRoot>/bin` to `PATH`.
+- `lando shellenv` prints shell-profile snippets to add `<userDataRoot>/bin` to `PATH`. `lando shellenv --hook <shell>` additionally emits the **shell-integration hook** that drives ambient mode (§8.2.5).
+- The shell-integration stage of `lando setup` offers to install the ambient-mode hook into the user's shell profile (the same place the `PATH` snippet goes); `--skip-shell-integration` skips it. Installing the hook alone changes nothing observable — no app activates until the user runs `lando ambient allow` in it (§8.2.5). The stage detects the user's shell and writes the matching Tier-1 hook (bash, zsh, fish, PowerShell); unsupported shells (e.g. `cmd.exe`) are reported with remediation rather than failing setup.
 - When the resolved provider declares `bindMountPerformance: "slow"` (§5.4), setup also runs the active `FileSyncEngine`'s `setup()` (§10.6) — by default this downloads the bundled Mutagen host CLI and the per-platform agent binaries to `<userDataRoot>/bin/` against the plugin's pinned checksums. `--skip-file-sync` defers the download to first accelerated `app:start` instead. When the resolved provider declares `bindMountPerformance: "native"`, the file-sync stage is a no-op regardless of whether `--skip-file-sync` was passed.
 
 ### 10.9 Logs and diagnostics
@@ -468,5 +469,143 @@ If `LANDO_HOST_PROXY_SOCKET` is unset (the user is in a service without the feat
 - **Recording/test runs.** Capture every request for assertions; never call out to the real host.
 
 Plugin implementations MUST pass the same contract suite as the default and MUST honor the allowlist cache; weakening the security posture of the default (e.g., disabling token auth) is forbidden and is checked by the contract suite.
+
+### 10.11 CheckRunner and the check model
+
+`CheckRunner` is the core service that runs a set of named **checks** and returns structured results. It is the shared engine beneath two user surfaces — git hooks (§8.2.7) and `lando test` (§8.2.9) — and is deliberately a *separate, lightweight* runner from `BuildOrchestrator` (§6.13).
+
+**`CheckRunner` is NOT a generalization of `BuildOrchestrator`.** This is a load-bearing design decision, not an accident of layering. `BuildOrchestrator` is build-shaped: it compiles an `AppPlan` into a `BuildPlan` DAG with an artifact-build phase and a per-service app-build phase, drives provider primitives (`buildArtifact`, `pullArtifact`, `execStream`), stamps a content-hashed `buildKey`, writes unredacted per-step transcripts, and is `Layer.suspend`-wrapped because even app-level commands must avoid constructing it unless a build phase runs. A check run shares none of that machinery: it invokes tooling tasks (§8.5) and healthchecks (§10.5), has no provider build semantics, produces diagnostics with file/line spans, and aggregates partial success. The two share only the *idea* of a structured result — they share no code. Forcing one DAG to serve both would either bloat the build hot path or force a lowest-common-denominator contract that serves neither.
+
+**The check model.** A `CheckPlan` is a set of checks with `dependsOn` edges, an optional `skipIf` predicate (skip a check whose result is already satisfied — the check-level analogue of the `buildKey` up-to-date short-circuit, e.g. "no staged files match this check's globs"), and a failure policy (`failFast` aborts the remaining plan on the first `failed`; `continue` runs every check and aggregates). The `CheckPlan` and the `CheckRunner` service interface are **core-private**; only the result schemas are published.
+
+```ts
+// CheckResult and Diagnostic are FROZEN @lando/sdk schemas (§13.2 schema gate).
+export const Diagnostic = Schema.Struct({
+  file: Schema.optional(PortablePath),
+  line: Schema.optional(Schema.Number),
+  severity: Schema.Literal("error", "warning", "info"),
+  message: Schema.String,
+});
+
+export const CheckResult = Schema.Struct({
+  id: Schema.String,
+  status: Schema.Literal("passed", "failed", "skipped", "fixed"),
+  durationMs: Schema.Number,
+  diagnostics: Schema.Array(Diagnostic),
+  output: Schema.optional(Schema.String),                  // captured tool output; redacted per §3.4
+});
+
+// Core-private (NOT @lando/sdk):
+export class CheckRunner extends Context.Service<CheckRunner, {
+  readonly run: (plan: CheckPlan, opts: CheckRunOptions) => Effect.Effect<ReadonlyArray<CheckResult>, CheckRunError>;
+}>()("@lando/core/CheckRunner") {}
+```
+
+Rules:
+
+- The `fixed` status supports auto-fixing formatters: a check declared `fixable` that mutated files to satisfy itself reports `fixed` (distinct from `passed`), so the renderer and `app:hooks:run` can tell the user files changed.
+- Each check runs through the tooling path (§8.5/§8.6): a `service:` target uses `providerExec`; `service: :host` uses the `host` engine. `CheckRunner` does not invent a third execution path.
+- `CheckRunner` emits `check-start` / `check-complete` / `check-fail` lifecycle events (§3.5/§11.2) so subscribers and the renderer see per-check progress; the §11.1 zero-subscriber short-circuit keeps this free when nothing is listening.
+- Bootstrap level `app` (a check may target a service or a healthcheck); `Layer.suspend`-wrapped so non-check commands never construct it.
+- Consumers: `app:hooks:run` (§8.2.7) builds a `CheckPlan` from a `hooks.<stage>` declaration (§7.9); `app:test` (§8.2.9) builds one from `test:` (§7.12) plus service healthchecks (§6.7). Both render `CheckResult[]` and set `process.exitCode` on any `failed` (the §8.2.9 side-effect pattern) so `table` / `json` / `junit` output stays complete.
+- Check results are **not cached** at v4.0 (§12.7 "deliberately not persisted"); a `check-results` content-hash cache is a future optimization.
+
+### 10.12 TriggerSource (binding signals to actions)
+
+A **TriggerSource** maps an external signal to an action binding. The declarative surface is a Landofile `on:` list of `{ trigger, run }` entries, where `trigger` is a source-qualified id and `run` is a `CheckPlan` or a tooling-task list:
+
+```yaml
+on:
+  - trigger: git:pre-commit          # installed git hook → runs a check plan
+    run: [lint, format-check]
+  - trigger: watch:src/**            # resident watcher → restarts a process
+    run: [restart:webpack]
+  - trigger: lifecycle:post-start    # EventService subscriber
+    run: [seed-db]
+```
+
+**The three v4.0-spec sources have DIVERGENT mechanics — they do not share a runtime contract.** This is the reason `TriggerSource` is **not** frozen as a universal `@lando/sdk` schema, and why the `on:` surface is a convenience rather than a published contract at v4.0:
+
+| Source | Mechanism | Ships with |
+|---|---|---|
+| `git:<stage>` | Installs a dispatcher file under `.git/hooks/<stage>` via `OwnedHostArtifactRegistry` (§12.7); the file re-enters `lando app hooks run <stage>` (§8.2.7). Requires trust + installation + reversal, not an event subscription. | git hooks (4.1) via `hooks:` (§7.9) |
+| `lifecycle:<event>` | An `EventService` subscriber (§3.5/§11) — the same mechanism Landofile `events:` already uses. Purely in-process. | always (reuses `events:`) |
+| `watch:<glob>` | Requires a **resident process** watching the filesystem, so it can only exist while a supervisor is alive — it ships with `ProcessSupervisor` (§10.13) in 4.2. | host `processes:` (4.2) |
+
+`schedule:<cron>` is **reserved but deferred to a 4.x minor**: a cron trigger needs a resident scheduler, and v4.0 is transactional — there is no persistent agent or daemon to own a schedule (§14.2). Attempting to declare `schedule:` before that ships is rejected at validation with a deferred-feature error.
+
+A false unification here would be a real bug: a transactional CLI cannot host `watch:`/`schedule:` without a daemon, and `git:` needs host-file installation semantics an event bus does not have. v4.0 therefore implements each source behind its concrete consumer; a plugin-contributable `TriggerSource` seam (§4.2) is a candidate only once a second in-tree source of the same *kind* proves a shared interface.
+
+### 10.13 ProcessSupervisor and ProcessRegistry
+
+`ProcessSupervisor` runs and supervises **long-running host processes** declared in `processes:` (§7.10) — dev servers, watchers, queue workers — the host-side, container-free analogue of devenv's `processes`. It is the missing runtime primitive that `ProcessRunner` (one-shot spawn) and `ShellRunner` (shell pipelines) do not provide: neither offers restart policy, readiness, a process registry, log capture, or orphan cleanup.
+
+```ts
+// SupervisedProcessSpec is a core-internal type (NOT @lando/sdk) at v4.0.
+interface SupervisedProcessSpec {
+  readonly name: string;
+  readonly command: ReadonlyArray<string>;
+  readonly cwd?: PortablePath;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly readiness?: HealthcheckInput;                   // reuses the §10.5 probe vocabulary
+  readonly restart: "no" | "on-failure" | "always";
+  readonly dependsOn?: ReadonlyArray<string>;
+}
+
+export class ProcessSupervisor extends Context.Service<ProcessSupervisor, {
+  readonly start: (spec: SupervisedProcessSpec) => Effect.Effect<SupervisedProcess, ProcessSupervisorError, Scope.Scope>;
+}>()("@lando/core/ProcessSupervisor") {}
+
+export class ProcessRegistry extends Context.Service<ProcessRegistry, {
+  readonly list: () => Effect.Effect<ReadonlyArray<SupervisedProcessInfo>>;
+}>()("@lando/core/ProcessRegistry") {}
+```
+
+Rules and constraints:
+
+- **Scope-bound.** A supervised process is acquired against the ambient Effect `Scope`. `app:processes:start` (§8.2.8) runs under `Effect.scoped`; `SIGINT` interrupts the scope and finalizers stop every child the invocation started. There is no leak path on a clean exit.
+- **Readiness** reuses `HealthcheckRunner` / `UrlScanner` (§10.5): a process with `readiness:` is not considered up until its probe passes, and `dependsOn` gates a dependent process on its dependencies' readiness.
+- **Restart policy** (`no` / `on-failure` / `always`) governs re-spawn; restarts are counted and surfaced on the `process-exit` event.
+- **Logs** are captured and **redacted** through the same path as tooling/shell execution (§3.4) — secret values resolved into a process env never appear in captured stdout/stderr or `app:processes:logs`.
+- **Host backend only at v4.0.** The supervised process runs on the host via `ProcessRunner`. A service-exec backend (supervising a long-running process *inside* a container) is a deferred seam — long-running container processes belong to service commands / provider lifecycle, not here.
+- **Foreground / scope-bound only at v4.0.** `ProcessRegistry` tracks processes for the lifetime of the supervising command session. The **detached / background registry** — an on-disk record of running processes that survives the command, plus `app:processes:start --detach` — is **deferred to a 4.x minor** because it recreates the post-v4.0 persistent agent (§14.2). Before that ships, a detached registry must solve: orphan process trees on Windows/PowerShell, port-conflict and readiness races across sessions, log rotation for persistent stdout, secret redaction in long-lived logs, and the trap of a `watch:` trigger silently becoming an undeclared daemon. v4.0 does not attempt these; it ships the foreground primitive whose correctness is bounded by a `Scope`.
+- Emits `pre-process-start` / `post-process-start` / `process-exit` (§3.5/§11.2). Bootstrap `app`; `Layer.suspend`-wrapped.
+
+### 10.14 The MCP server
+
+`lando mcp` (canonical `meta:mcp`, §8.2.10) starts a **Model Context Protocol** server that exposes a Lando app to an AI agent or MCP-speaking host. It is the AI-facing analogue of the capability-gated host-proxy allowlist (§10.10): a narrow, explicitly-gated surface over capabilities Lando already has, reusing the **same `InvocationPolicy` descriptor** (§8.3) that governs host-proxy and recipe exposure.
+
+What it exposes:
+
+- **Agent-safe commands.** Every command whose `InvocationPolicy.exposure.agent` is set (§8.3) becomes an MCP tool. Calls dispatch through `@lando/core/cli` (§16.7), so renderers, redaction, lifecycle events, and command validation stay on the normal path — the MCP server is a *consumer* of the command registry, not a parallel dispatch path. The MCP tool manifest is generated from each command's `flags`, `args`, and `resultSchema` metadata.
+- **A read-only `ProjectContext` resource** (§8.2.6.1): the agent reads "what is this app, what services and URLs does it have, what is their status, and what can I do" from one composed document, never by re-deriving state.
+
+Security model (rigorous, and tied to the host-proxy threat model in §10.10):
+
+- **Read-only by default.** Only commands with `mutability: "read"` are agent-exposed by default. `write`, `lifecycle`, and `host-mutation` commands require *both* an explicit `exposure.agent` opt-in *and* `requiresConfirmation`, surfaced to the human through the MCP host's confirmation channel.
+- **Renderer text is never an API.** Only commands that declare a `resultSchema` (§8.3) are exposed as tools; an agent receives the typed result, not scraped human-facing output.
+- **Secret and filesystem gating.** A command's `secretAccess`, `filesystemScope`, and `networkAccess` (§8.3) are honored by the server; they are read from the policy, never inferred from the command name.
+- **Transport.** Stdio at v4.0 (one server per `lando mcp` invocation, lifetime bound to the process). A long-lived / daemonized MCP server would ride the deferred persistent agent (§14.2); the transactional stdio server ships first (4.1).
+- Emits `pre-mcp-call` / `post-mcp-call` (§3.5/§11.2) for every agent-dispatched command and `ProjectContext` read, with the redacted call shape. Bootstrap `plugins` (needs the full command registry). The server is core-private.
+
+### 10.15 Host trust and permission vocabulary
+
+This is a **cross-cutting governance note**, not a new shipped service. Lando v4 accumulates four distinct host-trust surfaces, each answering "may this project/plugin mutate or invoke host things?":
+
+| Surface | Ledger / gate | §  |
+|---|---|---|
+| Plugin postinstall trust | `<userConfRoot>/plugin-trust.yml` | §14.2 |
+| Host-proxy `runLando` allowlist | `host-proxy-allowlist` cache | §10.10 |
+| Ambient-mode trust | `<userConfRoot>/ambient-trust.yml` (precomputed into `ambient-state.bin`) | §8.2.5 |
+| Owned host-artifact ownership | `<userDataRoot>/owned-host-artifacts.bin` | §12.7 |
+
+These MUST share **discipline and vocabulary** even though they remain separate files at v4.0:
+
+- **Default-deny.** No surface activates trust implicitly; the user opts in once per subject.
+- **Key on resolved absolute identity.** Trust keys on a realpath-resolved absolute path or a package identity, never a relative or symlink-traversable name.
+- **Non-expiring until revoked**, with an explicit revoke/list pair per surface.
+- **`*-trust` / `*-allowlist` naming**, and the `InvocationPolicy` `exposure` / `mutability` descriptor (§8.3) as the single capability vocabulary that the host-proxy allowlist, the recipe post-init allowlist, and MCP agent exposure all read.
+
+v4.0 deliberately keeps these as **separate ledgers** — premature unification would couple unrelated lifecycles. A unified `HostTrustService` that collapses them behind one tag is **reserved for a 4.x minor**, triggered when a *fifth* host-trust surface appears (the falsifiable signal that the duplication is real). Until then, new host-trust surfaces MUST adopt this vocabulary rather than invent their own.
 
 ---
