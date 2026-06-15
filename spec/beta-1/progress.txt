@@ -719,3 +719,10 @@
 - Review notes (rejected): the same-line same-file hidden/visible collision in the transcript-discipline allowlist is left as-is — it is only reachable if the primary guard (`buildPublicTranscript`, which already drops `render={false}`, hidden steps, and `Variable`/`UseFixture`) is itself broken AND a guide authors excluded and visible components on one physical MDX line (no real guide does; the parser assigns distinct lines), and the line-denylist fix would false-positive on legitimate collisions. Disproportionate to a backstop gap.
 - Verification: typecheck, lint, and the focused lint-guides suite (48 pass / 0 fail) pass; `bun run lint:guides` stays clean on every real guide.
 ---
+
+## 2026-06-15 - Babysit
+- PR: #368 https://github.com/AaronFeledy/core4/pull/368
+- CI outcome: pass (Cursor Bugbot pass; no other workflows)
+- Review feedback: none
+- Merge: deferred (closed as duplicate of #366; US-232 already on main)
+---
