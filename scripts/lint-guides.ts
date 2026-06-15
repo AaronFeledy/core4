@@ -936,21 +936,28 @@ const parseSourceHeader = (line: string): { readonly path: string; readonly line
   return { path: match[1] ?? "", line: parsed };
 };
 
+const netBraceDelta = (line: string): number => {
+  let delta = 0;
+  for (const ch of line) {
+    if (ch === "{") delta += 1;
+    if (ch === "}") delta -= 1;
+  }
+  return delta;
+};
+
 const generatorAnnotationLines = (generatedSource: string): ReadonlyArray<string> => {
   const lines = generatedSource.split("\n");
   const out: Array<string> = [];
-  let inLibraryEmbed = false;
+  let libraryEmbedDepth = 0;
   for (const raw of lines) {
     const trimmed = raw.trim();
     if (trimmed === "void LandoCore;" || trimmed === "void LandoTesting;") {
-      inLibraryEmbed = true;
+      libraryEmbedDepth = 1;
       continue;
     }
-    if (inLibraryEmbed) {
-      if (trimmed === "}") {
-        inLibraryEmbed = false;
-        continue;
-      }
+    if (libraryEmbedDepth > 0) {
+      libraryEmbedDepth += netBraceDelta(trimmed);
+      if (libraryEmbedDepth <= 0) libraryEmbedDepth = 0;
       continue;
     }
     out.push(trimmed);
