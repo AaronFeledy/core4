@@ -220,4 +220,49 @@ describe("meta:plugin:build command", () => {
     expect(spawns).toEqual([]);
     expect(await exists(join(root, "dist", "package.json"))).toBe(false);
   });
+
+  test("refuses dist entrypoints mixed with non-src source trees", async () => {
+    await mkdir(join(root, "lib"), { recursive: true });
+    await mkdir(join(root, "dist"), { recursive: true });
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@acme/lando-plugin-build-lib-mixed-tree",
+          version: "0.0.0",
+          type: "module",
+          exports: { ".": "./lib/index.ts", "./built": "./dist/built.js" },
+          landoPlugin: {
+            name: "@acme/lando-plugin-build-lib-mixed-tree",
+            version: "0.0.0",
+            api: 4,
+            entry: "lib/index.ts",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(root, "lib", "index.ts"), "export const ok = true;\n");
+    await writeFile(join(root, "dist", "built.js"), "export const built = true;\n");
+    const spawns: Array<ReadonlyArray<string>> = [];
+
+    const exit = await Effect.runPromiseExit(
+      pluginBuild({
+        cwd: root,
+        spawner: {
+          spawn: async ({ cmd }) => {
+            spawns.push(cmd);
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Success") throw new Error("Expected pluginBuild to fail");
+    expect(JSON.stringify(exit.cause)).toContain("PluginBuildMixedTreeError");
+    expect(JSON.stringify(exit.cause)).toContain("package.json#exports mixes source and dist entrypoints");
+    expect(spawns).toEqual([]);
+  });
 });

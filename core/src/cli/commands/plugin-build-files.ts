@@ -32,20 +32,37 @@ const findNestedDist = async (dir: string): Promise<string | undefined> => {
   return undefined;
 };
 
+const withoutDotPrefix = (path: string): string => path.replace(/^\.\//, "");
+
+const isDistEntrypoint = (source: string): boolean => source === "./dist" || source.startsWith("./dist/");
+
+const sourceTreeRoots = (entries: ReadonlyArray<ExportEntry>): ReadonlyArray<string> => {
+  const roots = new Set<string>();
+  for (const entry of entries) {
+    if (isDistEntrypoint(entry.source)) continue;
+    const parts = withoutDotPrefix(entry.source).split("/");
+    const [root] = parts;
+    if (parts.length > 1 && root !== undefined && root !== "") roots.add(root);
+  }
+  return [...roots].sort((left, right) => left.localeCompare(right));
+};
+
 export const assertNoMixedTrees = async (
   pluginRoot: string,
   entries: ReadonlyArray<ExportEntry>,
 ): Promise<void> => {
-  const nestedDist = await findNestedDist(join(pluginRoot, "src"));
-  if (nestedDist !== undefined) {
-    throw new PluginBuildMixedTreeError({
-      message: `Plugin source tree contains build output at ${nestedDist}.`,
-      remediation: "Remove dist output from src/ before running meta:plugin:build.",
-      path: nestedDist,
-    });
+  for (const root of sourceTreeRoots(entries)) {
+    const nestedDist = await findNestedDist(join(pluginRoot, root));
+    if (nestedDist !== undefined) {
+      throw new PluginBuildMixedTreeError({
+        message: `Plugin source tree contains build output at ${nestedDist}.`,
+        remediation: `Remove dist output from ${root}/ before running meta:plugin:build.`,
+        path: nestedDist,
+      });
+    }
   }
-  const hasSourceEntry = entries.some((entry) => entry.source.startsWith("./src/"));
-  const hasDistEntry = entries.some((entry) => entry.source.startsWith("./dist/"));
+  const hasSourceEntry = entries.some((entry) => !isDistEntrypoint(entry.source));
+  const hasDistEntry = entries.some((entry) => isDistEntrypoint(entry.source));
   if (hasSourceEntry && hasDistEntry) {
     throw new PluginBuildMixedTreeError({
       message: "package.json#exports mixes source and dist entrypoints.",
