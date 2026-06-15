@@ -64,9 +64,14 @@ export const resolveHostGuidePlatform = (
   }
   if (platform === "win32") return "win32";
   if (platform === "darwin") return "darwin";
-  if (platform === "linux" && (env.WSL_DISTRO_NAME !== undefined || env.WSL_INTEROP !== undefined)) return "wsl";
+  if (platform === "linux" && (env.WSL_DISTRO_NAME !== undefined || env.WSL_INTEROP !== undefined))
+    return "wsl";
   return "linux";
 };
+
+// A WSL host executes the same Linux build, so it also satisfies guides that allow-list `linux`.
+const platformsSatisfiedByHost = (host: GuidePlatform): ReadonlyArray<GuidePlatform> =>
+  host === "wsl" ? ["wsl", "linux"] : [host];
 
 export type GuideStepComponent =
   | { readonly kind: "Run"; readonly props: RunProps; readonly line: number }
@@ -507,6 +512,15 @@ const effectiveScenarioTags = (
   ...new Set([...(variant?.tags ?? guide.frontmatter.tags ?? []), ...(scenario.tags ?? [])]),
 ];
 
+const variantTestNameLabel = (variant: GuideVariant | undefined): string => {
+  if (variant === undefined || variant.pairs.length === 0) return "";
+  const pairs = [...variant.pairs]
+    .sort((left, right) => left.axis.localeCompare(right.axis))
+    .map((pair) => `${pair.axis}=${pair.value}`)
+    .join(" ");
+  return ` (${pairs})`;
+};
+
 const renderScenarioTest = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
@@ -549,7 +563,9 @@ const renderScenarioTest = (
   const effectiveTags = effectiveScenarioTags(guide, scenario, variant);
   const effectivePlatforms = variant?.platforms ?? guide.frontmatter.platforms;
   const platformSkip =
-    effectivePlatforms !== undefined && effectivePlatforms.length > 0 && !effectivePlatforms.includes(hostPlatform)
+    effectivePlatforms !== undefined &&
+    effectivePlatforms.length > 0 &&
+    !platformsSatisfiedByHost(hostPlatform).some((p) => effectivePlatforms.includes(p))
       ? `skipped on ${hostPlatform}: requires platform [${effectivePlatforms.join(",")}]`
       : undefined;
   const annotationLines = [
@@ -562,10 +578,12 @@ const renderScenarioTest = (
   const skips = variant?.skip === undefined ? renderSkips(resolved.skips) : "";
   const forcedSkip = variant?.skip !== undefined || platformSkip !== undefined;
   const testFn = forcedSkip ? "test.skip" : "test";
-  const taggedTestName = `${effectiveTags.length === 0 ? "" : `${effectiveTags.join(" ")} `}${guide.frontmatter.id}:${scenario.id}${
+  const taggedTestName = `${effectiveTags.length === 0 ? "" : `${effectiveTags.join(" ")} `}${guide.frontmatter.id}:${scenario.id}${variantTestNameLabel(variant)}${
     usesE2eRuntime ? " [e2e]" : ""
   }`;
-  const runnableTestName = quote(platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`);
+  const runnableTestName = quote(
+    platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
+  );
   const skippedE2eTestName = quote(
     `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
   );
