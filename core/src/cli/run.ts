@@ -1355,8 +1355,9 @@ const runMetaPluginBuild = async (): Promise<void> => {
 const runMetaPluginLink = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:plugin:link", argv)) return;
   const input = compiledCommandInputFromArgv("meta:plugin:link", argv);
+  const options = typeof input.args.path === "string" ? { path: input.args.path } : {};
   await runCompiledCommand(
-    pluginLink({ ...(typeof input.args.path === "string" ? { path: input.args.path } : {}) }),
+    pluginLink(options),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginLinkResult,
   );
