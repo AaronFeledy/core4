@@ -278,7 +278,65 @@ describe("build-guide-scenarios public transcript emission", () => {
       expect(JSON.stringify(transcript)).not.toContain("s3cr3t-value");
       const runFrame = transcript.frames.find((frame) => frame.kind === "run");
       expect(runFrame?.commandDisplay).not.toContain("s3cr3t-value");
-      expect(transcript.frames.map((frame) => frame.displayText)).not.toContain("secret");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("redacts machine data and secrets from emitted public transcript artifacts (US-249)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-redact-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/redact-emit.mdx"),
+        [
+          "---",
+          "id: redact-emit",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="cli-leak" render>',
+          '    <Step name="start">',
+          '      <Variable name="root" value="/home/aaron/lando" display="root" />',
+          '      <Run command="lando start --root {{root}} --token s3cr3t" />',
+          "    </Step>",
+          "  </Scenario>",
+          '  <Scenario id="lib-leak" render>',
+          '    <Step name="lib">',
+          '      <Run runtime="library" code={`console.log("ok");`} displayCode={`LandoCore.from("/tmp/lando-xyz", "token secret")`} />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitPublicTranscripts(asts, root);
+
+      expect(written).toContain("dist/transcripts/public/guides/redact-emit/cli-leak.json");
+      expect(written).toContain("dist/transcripts/public/guides/redact-emit/lib-leak.json");
+
+      const cliTx = await readTranscript(root, "dist/transcripts/public/guides/redact-emit/cli-leak.json");
+      const jsonCli = JSON.stringify(cliTx);
+      expect(jsonCli).not.toContain("/home/aaron");
+      expect(jsonCli).not.toContain("s3cr3t");
+      const cliRun = cliTx.frames.find((f) => f.kind === "run");
+      expect(cliRun?.commandDisplay).toContain("<HOME>");
+      expect(cliRun?.commandDisplay).toContain("[REDACTED]");
+      expect(cliTx.frames.every((f) => f.sourceFile === "docs/guides/redact-emit.mdx")).toBe(true);
+      expect(cliTx.frames.every((f) => typeof f.sourceLine === "number" && f.sourceLine > 0)).toBe(true);
+
+      const libTx = await readTranscript(root, "dist/transcripts/public/guides/redact-emit/lib-leak.json");
+      const jsonLib = JSON.stringify(libTx);
+      expect(jsonLib).not.toContain("/tmp/lando-xyz");
+      expect(jsonLib).not.toContain("token secret");
+      const libRun = libTx.frames.find((f) => f.kind === "run");
+      expect(libRun?.commandDisplay).toContain("<TMP>");
+      expect(libRun?.commandDisplay).toContain("[REDACTED]");
+      expect(libTx.frames.every((f) => f.sourceFile === "docs/guides/redact-emit.mdx")).toBe(true);
+      expect(libTx.frames.every((f) => typeof f.sourceLine === "number" && f.sourceLine > 0)).toBe(true);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

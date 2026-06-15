@@ -36,6 +36,8 @@ import {
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
+
+import { redactPublicTranscript } from "../core/src/docs/render/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
@@ -1192,10 +1194,11 @@ export const emitPublicTranscripts = async (
       for (const variant of variants) {
         const transcript = buildPublicTranscript(guide, scenario, variant);
         if (transcript === undefined) continue;
+        const redacted = redactPublicTranscript(transcript);
         const relativePath = publicTranscriptRelativePath(guideId, scenario.id, variant, outputRoot);
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });
-        const encoded = Schema.encodeSync(PublicTranscript)(transcript);
+        const encoded = Schema.encodeSync(PublicTranscript)(redacted);
         await Bun.write(absolutePath, `${JSON.stringify(encoded, null, 2)}\n`);
         written.push(relativePath);
       }
