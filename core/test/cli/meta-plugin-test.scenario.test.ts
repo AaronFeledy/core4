@@ -102,6 +102,81 @@ describe("meta:plugin:test command", () => {
     expect(spawns).toEqual([{ cwd: root }]);
   });
 
+  test("skips malformed and non-object package.json files while walking to the plugin package", async () => {
+    await writePlugin(root);
+    const nested = join(root, "fixtures", "bad-package");
+    const child = join(nested, "child");
+    await mkdir(child, { recursive: true });
+    await writeFile(join(nested, "package.json"), "{ not json");
+    await writeFile(join(child, "package.json"), "[]\n");
+    const spawns: Array<{ readonly cwd: string }> = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: child,
+        spawner: {
+          spawn: async ({ cwd }) => {
+            spawns.push({ cwd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.pluginRoot).toBe(root);
+    expect(spawns).toEqual([{ cwd: root }]);
+  });
+
+  test("resolves keyword plugin packages through the declared plugin.yaml manifest", async () => {
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify({
+        name: "@acme/lando-plugin-yaml-package",
+        version: "0.0.0",
+        type: "module",
+        keywords: ["lando", "lando-plugin"],
+        lando: { manifest: "./plugin.yaml" },
+      })}\n`,
+    );
+    await writeFile(
+      join(root, "plugin.yaml"),
+      [
+        'name: "@acme/lando-plugin-yaml"',
+        'version: "0.0.0"',
+        "api: 4",
+        'description: "YAML manifest plugin"',
+        "entry: ./src/index.ts",
+        "updateable: true",
+        "provides:",
+        "  providers:",
+        "    - id: yaml-provider",
+        "      module: ./src/provider.ts",
+        "requires:",
+        '  "@lando/core": ^4.0.0',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(root, "src", "index.ts"), "export const ok = true;\n");
+    const spawns: Array<{ readonly cwd: string }> = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: root,
+        spawner: {
+          spawn: async ({ cwd }) => {
+            spawns.push({ cwd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.pluginName).toBe("@acme/lando-plugin-yaml");
+    expect(result.pluginRoot).toBe(root);
+    expect(spawns).toEqual([{ cwd: root }]);
+  });
+
   test("detects a top-level manifest plugin whose optional entry is omitted", async () => {
     await writeFile(
       join(root, "package.json"),
