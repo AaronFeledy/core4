@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve } from "node:path";
 
 import { PluginManifestError } from "@lando/sdk/errors";
 
@@ -60,23 +60,34 @@ const normalizeEntrypoint = (pluginRoot: string, source: string): string => {
   return `./${rel.replace(/\\/g, "/")}`;
 };
 
-const distNamesForSource = (source: string): { readonly js: string; readonly dts: string } => {
-  const parsed = source.replace(/^\.\//, "");
-  const extension = extname(parsed);
-  const name = basename(parsed, extension);
-  return { js: `./${name}.js`, dts: `./${name}.d.ts` };
+const withoutDotPrefix = (path: string): string => path.replace(/^\.\//, "");
+
+const distNamesForSource = (
+  source: string,
+  rootDir: string,
+): { readonly js: string; readonly dts: string } => {
+  const sourcePath = withoutDotPrefix(source);
+  const rootPath = withoutDotPrefix(rootDir);
+  const relativeSource = rootPath === "." ? sourcePath : relative(rootPath, sourcePath).replace(/\\/g, "/");
+  const extension = extname(relativeSource);
+  const withoutExtension = relativeSource.slice(0, relativeSource.length - extension.length);
+  return { js: `./${withoutExtension}.js`, dts: `./${withoutExtension}.d.ts` };
 };
 
-export const declarationRootDir = (entries: ReadonlyArray<ExportEntry>): string => {
-  const sourceDirs = entries.map((entry) => {
-    const withoutPrefix = entry.source.replace(/^\.\//, "");
-    const slash = withoutPrefix.lastIndexOf("/");
-    return slash === -1 ? "." : `./${withoutPrefix.slice(0, slash)}`;
-  });
+const commonSourceRoot = (sources: ReadonlyArray<string>): string => {
+  const sourceDirs = sources.map((source) => dirname(withoutDotPrefix(source)).replace(/\\/g, "/"));
   const [first] = sourceDirs;
-  if (first !== undefined && sourceDirs.every((dir) => dir === first)) return first;
-  return ".";
+  if (first === undefined) return ".";
+  const common = first.split("/");
+  for (const dir of sourceDirs.slice(1)) {
+    const parts = dir.split("/");
+    while (common.length > 0 && parts.slice(0, common.length).join("/") !== common.join("/")) common.pop();
+  }
+  return common.length === 0 || common.join("/") === "." ? "." : `./${common.join("/")}`;
 };
+
+export const declarationRootDir = (entries: ReadonlyArray<Pick<ExportEntry, "source">>): string =>
+  commonSourceRoot(entries.map((entry) => entry.source));
 
 export const entriesFromExports = (pluginRoot: string, exportsField: unknown): ReadonlyArray<ExportEntry> => {
   if (exportsField === undefined) {
@@ -87,7 +98,7 @@ export const entriesFromExports = (pluginRoot: string, exportsField: unknown): R
   }
   if (typeof exportsField === "string") {
     const source = normalizeEntrypoint(pluginRoot, exportsField);
-    return [{ key: ".", source, ...distNamesForSource(source) }];
+    return [{ key: ".", source, ...distNamesForSource(source, declarationRootDir([{ source }])) }];
   }
   if (typeof exportsField !== "object" || exportsField === null || Array.isArray(exportsField)) {
     throw commandError(
@@ -95,7 +106,7 @@ export const entriesFromExports = (pluginRoot: string, exportsField: unknown): R
       'Use a simple exports map such as { ".": "./src/index.ts" }.',
     );
   }
-  const entries: ExportEntry[] = [];
+  const sources: Array<{ readonly key: string; readonly source: string }> = [];
   for (const [key, value] of Object.entries(exportsField).sort(([left], [right]) =>
     left.localeCompare(right),
   )) {
@@ -108,15 +119,16 @@ export const entriesFromExports = (pluginRoot: string, exportsField: unknown): R
       );
     }
     const source = normalizeEntrypoint(pluginRoot, rawSource);
-    entries.push({ key, source, ...distNamesForSource(source) });
+    sources.push({ key, source });
   }
-  if (entries.length === 0) {
+  if (sources.length === 0) {
     throw commandError(
       "package.json#exports does not declare any plugin entrypoints.",
       'Add at least the default export entry, for example { ".": "./src/index.ts" }.',
     );
   }
-  return entries;
+  const rootDir = declarationRootDir(sources);
+  return sources.map((entry) => ({ ...entry, ...distNamesForSource(entry.source, rootDir) }));
 };
 
 const packageForDist = (pkg: PackageJson, entries: ReadonlyArray<ExportEntry>, entry: string) => {

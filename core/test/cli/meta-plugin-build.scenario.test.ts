@@ -85,19 +85,7 @@ describe("meta:plugin:build command", () => {
     expect(result.outputs).toEqual(["dist/index.d.ts", "dist/index.js", "dist/package.json"]);
     expect(spawns.map((spawn) => spawn.cmd)).toEqual([
       ["/opt/bun", "build", "./src/index.ts", "--outdir", "./dist", "--target", "bun", "--format", "esm"],
-      [
-        "/opt/bun",
-        "x",
-        "tsc",
-        "--declaration",
-        "--emitDeclarationOnly",
-        "--outDir",
-        "./dist",
-        "--rootDir",
-        "./src",
-        "--noEmit",
-        "false",
-      ],
+      ["/opt/bun", "x", "tsc", "--project", ".lando-plugin-build.tsconfig.json"],
     ]);
     expect(spawns.every((spawn) => spawn.cwd === root)).toBe(true);
 
@@ -116,6 +104,95 @@ describe("meta:plugin:build command", () => {
       "post-bun-self-exec",
       "cli-meta:plugin:build-complete",
     ]);
+    expect(await exists(join(root, ".lando-plugin-build.tsconfig.json"))).toBe(false);
+  });
+
+  test("matches dist export paths to declaration output for mixed export roots", async () => {
+    await mkdir(join(root, "src"), { recursive: true });
+    await mkdir(join(root, "lib"), { recursive: true });
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@acme/lando-plugin-build-mixed-roots",
+          version: "0.0.0",
+          type: "module",
+          exports: { ".": "./src/index.ts", "./tools": "./lib/tools.ts" },
+          landoPlugin: {
+            name: "@acme/lando-plugin-build-mixed-roots",
+            version: "0.0.0",
+            api: 4,
+            entry: "src/index.ts",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(
+      join(root, "tsconfig.json"),
+      `${JSON.stringify({ compilerOptions: { module: "ESNext" }, include: ["src/**/*.ts"] }, null, 2)}\n`,
+    );
+    await writeFile(join(root, "src", "index.ts"), "export const ok = true;\n");
+    await writeFile(join(root, "lib", "tools.ts"), "export const tool = true;\n");
+    let declarationConfig: unknown;
+
+    const result = await Effect.runPromise(
+      pluginBuild({
+        cwd: root,
+        execPath: "/opt/bun",
+        spawner: {
+          spawn: async ({ cmd }) => {
+            if (cmd.includes("build")) {
+              await mkdir(join(root, "dist", "src"), { recursive: true });
+              await mkdir(join(root, "dist", "lib"), { recursive: true });
+              await writeFile(join(root, "dist", "src", "index.js"), "export const ok = true;\n");
+              await writeFile(join(root, "dist", "lib", "tools.js"), "export const tool = true;\n");
+            }
+            if (cmd.includes("tsc")) {
+              declarationConfig = JSON.parse(
+                await readFile(join(root, ".lando-plugin-build.tsconfig.json"), "utf8"),
+              ) as unknown;
+              await writeFile(join(root, "dist", "src", "index.d.ts"), "export declare const ok: true;\n");
+              await writeFile(join(root, "dist", "lib", "tools.d.ts"), "export declare const tool: true;\n");
+            }
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.outputs).toEqual([
+      "dist/lib/tools.d.ts",
+      "dist/lib/tools.js",
+      "dist/package.json",
+      "dist/src/index.d.ts",
+      "dist/src/index.js",
+    ]);
+    expect(declarationConfig).toEqual({
+      extends: "./tsconfig.json",
+      compilerOptions: {
+        declaration: true,
+        emitDeclarationOnly: true,
+        outDir: "./dist",
+        rootDir: ".",
+        noEmit: false,
+      },
+      include: ["./src/index.ts", "./lib/tools.ts"],
+    });
+    const packageJson = JSON.parse(await readFile(join(root, "dist", "package.json"), "utf8")) as {
+      exports?: Record<string, { types?: string; import?: string }>;
+      landoPlugin?: { entry?: string };
+      types?: string;
+    };
+    expect(packageJson.exports?.["."]).toEqual({ types: "./src/index.d.ts", import: "./src/index.js" });
+    expect(packageJson.exports?.["./tools"]).toEqual({
+      types: "./lib/tools.d.ts",
+      import: "./lib/tools.js",
+    });
+    expect(packageJson.types).toBe("./src/index.d.ts");
+    expect(packageJson.landoPlugin?.entry).toBe("./src/index.js");
+    expect(await exists(join(root, ".lando-plugin-build.tsconfig.json"))).toBe(false);
   });
 
   test("refuses source trees polluted by dist output before spawning", async () => {

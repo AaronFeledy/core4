@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { Effect } from "effect";
@@ -37,6 +37,33 @@ export interface PluginBuildResult {
   readonly outputs: ReadonlyArray<string>;
   readonly exitCode: number;
 }
+
+const declarationTsconfigName = ".lando-plugin-build.tsconfig.json";
+
+const fileExists = async (path: string): Promise<boolean> =>
+  stat(path).then(
+    (entry) => entry.isFile(),
+    () => false,
+  );
+
+const writeDeclarationTsconfig = async (
+  pluginRoot: string,
+  entries: ReadonlyArray<{ readonly source: string }>,
+) => {
+  const hasBaseTsconfig = await fileExists(join(pluginRoot, "tsconfig.json"));
+  const config = {
+    ...(hasBaseTsconfig ? { extends: "./tsconfig.json" } : {}),
+    compilerOptions: {
+      declaration: true,
+      emitDeclarationOnly: true,
+      outDir: "./dist",
+      rootDir: declarationRootDir(entries),
+      noEmit: false,
+    },
+    include: entries.map((entry) => entry.source),
+  };
+  await writeFile(join(pluginRoot, declarationTsconfigName), `${JSON.stringify(config, null, 2)}\n`);
+};
 
 const publishPluginBuildEvent = (event: Readonly<Record<string, unknown>>) =>
   Effect.serviceOption(EventService).pipe(
@@ -100,18 +127,7 @@ export const pluginBuild = (
       "--format",
       "esm",
     ];
-    const declarationArgv = [
-      "x",
-      "tsc",
-      "--declaration",
-      "--emitDeclarationOnly",
-      "--outDir",
-      "./dist",
-      "--rootDir",
-      declarationRootDir(entries),
-      "--noEmit",
-      "false",
-    ];
+    const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
     yield* publishPluginBuildEvent({
       _tag: "cli-meta:plugin:build-start",
       pluginName: manifest.name,
@@ -129,6 +145,7 @@ export const pluginBuild = (
     });
     let declarationExitCode = 0;
     if (build.exitCode === 0) {
+      yield* Effect.promise(() => writeDeclarationTsconfig(pluginRoot, entries));
       const declarations = yield* bunSelfRun({
         argv: declarationArgv,
         cwd: pluginRoot,
@@ -137,6 +154,7 @@ export const pluginBuild = (
         ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
         ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
       });
+      yield* Effect.promise(() => rm(join(pluginRoot, declarationTsconfigName), { force: true }));
       declarationExitCode = declarations.exitCode;
     }
     const exitCode = build.exitCode === 0 ? declarationExitCode : build.exitCode;
