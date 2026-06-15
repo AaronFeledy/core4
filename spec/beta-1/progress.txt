@@ -637,3 +637,10 @@
 - Verification: typecheck, lint, build, guide coverage/lint/dev-guide generation, focused scaffold/deferred/parity tests, source+compiled CLI QA, and full tests passed.
 - **Learnings for future iterations:** Promoting a deferred command requires repointing every hard-coded deferred probe to an id that still remains deferred and regenerating the compiled OCLIF manifest in the same change.
 ---
+
+## 2026-06-14 19:05 CDT - Babysit
+- PR: #361 https://github.com/AaronFeledy/core4/pull/361
+- CI outcome: pass (a flaky `biome lint gate` 5s-timeout meta-test was re-run, not a code issue)
+- Review feedback: fixed (Bugbot + live CI: e2e generated tests ignored variant skip and applied no test timeout so the real-provider run hit bun's 5s default; the authoring scenario also used in-process `<Verify event>`/`<Inspect events>` assertions that cannot observe the compiled-binary subprocess — e2e scenarios verify via CLI exit codes/output instead)
+- Merge: merged (squash)
+---
