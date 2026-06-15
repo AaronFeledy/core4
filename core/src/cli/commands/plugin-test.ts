@@ -138,6 +138,20 @@ const stripYamlQuotes = (value: string): string => {
   return trimmed;
 };
 
+interface PluginManifestYamlLine {
+  readonly indent: number;
+  readonly line: number;
+  readonly text: string;
+}
+
+const malformedPluginYaml = (sourcePath: string, line: number): PluginManifestError =>
+  new PluginManifestError({
+    message: `Malformed plugin manifest YAML in ${sourcePath} at line ${line}.`,
+    issues: [`Malformed YAML at line ${line}.`],
+  });
+
+const stripYamlComment = (line: string): string => line.replace(/\s+#.*$/u, "");
+
 const parseYamlScalar = (raw: string): unknown => {
   const value = stripYamlQuotes(raw);
   if (value === "true") return true;
@@ -146,30 +160,165 @@ const parseYamlScalar = (raw: string): unknown => {
   return value;
 };
 
-const parsePluginManifestYaml = (content: string): Readonly<Record<string, unknown>> => {
-  const manifest: Record<string, unknown> = {};
-  const requires: Record<string, string> = {};
-  let inRequires = false;
-  for (const rawLine of content.split(/\r?\n/u)) {
-    const line = rawLine.replace(/\s+#.*$/u, "");
-    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
-    const topLevel = line.match(/^([A-Za-z0-9_.-]+):(?:\s*(.*))?$/u);
-    if (topLevel !== null) {
-      const [, key, rawValue = ""] = topLevel as [string, string, string?];
-      inRequires = key === "requires" && rawValue.trim() === "";
-      if (rawValue.trim() !== "") manifest[key] = parseYamlScalar(rawValue);
+const pluginManifestYamlLines = (
+  content: string,
+  sourcePath: string,
+): ReadonlyArray<PluginManifestYamlLine> => {
+  const lines: PluginManifestYamlLine[] = [];
+  for (const [index, rawLine] of content.split(/\r?\n/u).entries()) {
+    if (rawLine.includes("\t")) throw malformedPluginYaml(sourcePath, index + 1);
+    const withoutComment = stripYamlComment(rawLine);
+    const text = withoutComment.trim();
+    if (text === "" || text.startsWith("#")) continue;
+    lines.push({ indent: withoutComment.match(/^ */u)?.[0].length ?? 0, line: index + 1, text });
+  }
+  return lines;
+};
+
+const parseYamlKeyValue = (line: PluginManifestYamlLine, sourcePath: string): readonly [string, string] => {
+  const match = line.text.match(/^((?:"[^"]+"|'[^']+'|[^:])+):(.*)$/u);
+  if (match === null) throw malformedPluginYaml(sourcePath, line.line);
+  const [, rawKey, rawValue] = match as [string, string, string];
+  const key = stripYamlQuotes(rawKey);
+  if (key.trim() === "" || key === "__proto__") throw malformedPluginYaml(sourcePath, line.line);
+  return [key, rawValue];
+};
+
+const parsePluginYamlMap = (
+  lines: ReadonlyArray<PluginManifestYamlLine>,
+  sourcePath: string,
+  start: number,
+  indent: number,
+): readonly [Record<string, unknown>, number] => {
+  const result: Record<string, unknown> = {};
+  let index = start;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line === undefined || line.indent < indent) break;
+    if (line.indent > indent) throw malformedPluginYaml(sourcePath, line.line);
+    if (line.text.startsWith("- ")) break;
+
+    const [key, rawValue] = parseYamlKeyValue(line, sourcePath);
+    if (rawValue.trim() === "") {
+      const next = lines[index + 1];
+      if (next === undefined || next.indent <= line.indent) {
+        result[key] = {};
+        index += 1;
+        continue;
+      }
+      if (next.text.startsWith("- ")) {
+        const [items, nextIndex] = parsePluginYamlList(lines, sourcePath, index + 1, next.indent);
+        result[key] = items;
+        index = nextIndex;
+        continue;
+      }
+      const [nested, nextIndex] = parsePluginYamlMap(lines, sourcePath, index + 1, next.indent);
+      result[key] = nested;
+      index = nextIndex;
       continue;
     }
-    if (inRequires) {
-      const nested = line.match(/^\s+(.+?):\s*(.+)$/u);
-      if (nested !== null) {
-        const [, key, rawValue] = nested as [string, string, string];
-        requires[stripYamlQuotes(key)] = String(parseYamlScalar(rawValue));
-      }
-    }
+
+    result[key] = parseYamlScalar(rawValue);
+    index += 1;
   }
-  if (Object.keys(requires).length > 0) manifest.requires = requires;
-  return manifest;
+
+  return [result, index];
+};
+
+const parsePluginYamlList = (
+  lines: ReadonlyArray<PluginManifestYamlLine>,
+  sourcePath: string,
+  start: number,
+  indent: number,
+): readonly [ReadonlyArray<unknown>, number] => {
+  const result: unknown[] = [];
+  let index = start;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line === undefined || line.indent < indent) break;
+    if (line.indent > indent) throw malformedPluginYaml(sourcePath, line.line);
+    if (!line.text.startsWith("- ")) break;
+
+    const value = line.text.slice(2).trim();
+    const mapMatch = value.match(/^((?:"[^"]+"|'[^']+'|[^:])+):(.*)$/u);
+    if (mapMatch !== null) {
+      const [, firstRawKey, firstRawValue] = mapMatch as [string, string, string];
+      const [item, nextIndex] = parsePluginYamlListItemMap(
+        lines,
+        sourcePath,
+        index,
+        indent + 2,
+        stripYamlQuotes(firstRawKey),
+        firstRawValue,
+      );
+      result.push(item);
+      index = nextIndex;
+      continue;
+    }
+
+    result.push(parseYamlScalar(value));
+    index += 1;
+  }
+
+  return [result, index];
+};
+
+const parsePluginYamlListItemMap = (
+  lines: ReadonlyArray<PluginManifestYamlLine>,
+  sourcePath: string,
+  startIndex: number,
+  childIndent: number,
+  firstKey: string,
+  firstRawValue: string,
+): readonly [Record<string, unknown>, number] => {
+  const item: Record<string, unknown> = {};
+  let index = startIndex + 1;
+
+  const consumeKey = (key: string, rawValue: string, keyLine: number, keyIndent: number): void => {
+    if (key.trim() === "" || key === "__proto__") throw malformedPluginYaml(sourcePath, keyLine);
+    if (rawValue.trim() === "") {
+      const next = lines[index];
+      if (next === undefined || next.indent <= keyIndent) {
+        item[key] = {};
+        return;
+      }
+      if (next.text.startsWith("- ")) {
+        const [items, nextIndex] = parsePluginYamlList(lines, sourcePath, index, next.indent);
+        item[key] = items;
+        index = nextIndex;
+        return;
+      }
+      const [nested, nextIndex] = parsePluginYamlMap(lines, sourcePath, index, next.indent);
+      item[key] = nested;
+      index = nextIndex;
+      return;
+    }
+    item[key] = parseYamlScalar(rawValue);
+  };
+
+  consumeKey(firstKey, firstRawValue, lines[startIndex]?.line ?? 1, childIndent);
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line === undefined || line.indent < childIndent) break;
+    if (line.text.startsWith("- ")) break;
+    if (line.indent > childIndent) throw malformedPluginYaml(sourcePath, line.line);
+    const [key, rawValue] = parseYamlKeyValue(line, sourcePath);
+    index += 1;
+    consumeKey(key, rawValue, line.line, childIndent);
+  }
+
+  return [item, index];
+};
+
+const parsePluginManifestYaml = (content: string, sourcePath: string): Readonly<Record<string, unknown>> => {
+  const lines = pluginManifestYamlLines(content, sourcePath);
+  const [parsed, index] = parsePluginYamlMap(lines, sourcePath, 0, 0);
+  const extra = lines[index];
+  if (extra !== undefined) throw malformedPluginYaml(sourcePath, extra.line);
+  return parsed;
 };
 
 const decodeManifestCandidate = (
@@ -192,7 +341,7 @@ const readManifestFile = async (manifestPath: string): Promise<PluginManifestSha
   const content = await readFile(manifestPath, "utf8");
   const parsed = manifestPath.endsWith(".json")
     ? (JSON.parse(content) as unknown)
-    : parsePluginManifestYaml(content);
+    : parsePluginManifestYaml(content, manifestPath);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new PluginManifestError({
       message: `Plugin manifest in ${manifestPath} must contain an object.`,

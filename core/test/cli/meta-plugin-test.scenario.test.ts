@@ -177,6 +177,40 @@ describe("meta:plugin:test command", () => {
     expect(spawns).toEqual([{ cwd: root }]);
   });
 
+  test("rejects invalid nested plugin.yaml contributions instead of dropping them", async () => {
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify({
+        name: "@acme/lando-plugin-invalid-yaml-package",
+        version: "0.0.0",
+        type: "module",
+        keywords: ["lando-plugin"],
+        lando: { manifest: "./plugin.yaml" },
+      })}\n`,
+    );
+    await writeFile(
+      join(root, "plugin.yaml"),
+      [
+        'name: "@acme/lando-plugin-invalid-yaml"',
+        'version: "0.0.0"',
+        "api: 4",
+        "entry: ./src/index.ts",
+        "provides:",
+        "  providers:",
+        "    - module: ./src/provider.ts",
+        "requires:",
+        '  "@lando/core": ^4.0.0',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(root, "src", "index.ts"), "export const ok = true;\n");
+
+    const errorPromise = Effect.runPromise(pluginTest({ cwd: root }).pipe(Effect.flip));
+    const error = await errorPromise;
+    expect(error).toMatchObject({ _tag: "PluginManifestError" });
+  });
+
   test("detects a top-level manifest plugin whose optional entry is omitted", async () => {
     await writeFile(
       join(root, "package.json"),
