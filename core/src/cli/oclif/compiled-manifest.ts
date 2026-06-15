@@ -2012,7 +2012,13 @@ export const COMPILED_OCLIF_MANIFEST = {
     },
     "meta:plugin:link": {
       aliases: [],
-      args: {},
+      args: {
+        path: {
+          description: "Plugin authoring directory to link (defaults to cwd).",
+          name: "path",
+          required: false,
+        },
+      },
       description: "Symlink the current plugin into the user-global plugin store (authoring command).",
       flags: {},
       hasDynamicHelp: false,
@@ -2029,9 +2035,9 @@ export const COMPILED_OCLIF_MANIFEST = {
         summary: "Symlink the current plugin into the user-global plugin store (authoring command).",
         namespace: "meta",
         topLevelAlias: false,
-        bootstrap: "plugins",
+        bootstrap: "minimal",
       },
-      bootstrap: "plugins",
+      bootstrap: "minimal",
       isESM: true,
       relativePath: ["src", "cli", "oclif", "commands", "meta", "plugin", "link.ts"],
       aliasPermutations: [],

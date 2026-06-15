@@ -1,0 +1,169 @@
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Effect, Layer } from "effect";
+
+import { ConfigService } from "@lando/sdk/services";
+import { pluginCommandCachePath } from "../../src/cache/paths.ts";
+import { pluginLink, renderPluginLinkResult } from "../../src/cli/commands/plugin-link.ts";
+
+let root: string;
+let userDataRoot: string;
+let cacheRoot: string;
+
+const fakeConfigService = (dataRoot: string) =>
+  Layer.succeed(ConfigService, {
+    get: <K extends string>(key: K) =>
+      Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+    getEffective: () => Effect.succeed({} as never),
+  } as never);
+
+const exists = async (path: string): Promise<boolean> =>
+  stat(path).then(
+    () => true,
+    () => false,
+  );
+
+const makePluginRoot = async (name: string, dir = name.split("/").pop() ?? "plugin"): Promise<string> => {
+  const pluginRoot = join(root, dir);
+  await mkdir(pluginRoot, { recursive: true });
+  await writeFile(
+    join(pluginRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name,
+        version: "1.2.3",
+        type: "module",
+        landoPlugin: {
+          name,
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(pluginRoot, "index.js"), "export {};\n");
+  return pluginRoot;
+};
+
+const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, "utf8")) as T;
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "lando-plugin-link-"));
+  userDataRoot = join(root, "data");
+  cacheRoot = join(root, "cache");
+});
+
+afterEach(async () => {
+  if (root !== undefined) await rm(root, { recursive: true, force: true });
+});
+
+describe("meta:plugin:link command", () => {
+  test("defaults to cwd, symlinks the plugin, records linked registry state, and invalidates plugin command cache", async () => {
+    const pluginRoot = await makePluginRoot("@acme/lando-plugin-linked", "linked");
+    await mkdir(cacheRoot, { recursive: true });
+    await writeFile(pluginCommandCachePath(cacheRoot), "stale cache");
+
+    const result = await Effect.runPromise(
+      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result).toEqual({
+      pluginName: "@acme/lando-plugin-linked",
+      linkedPath: resolve(pluginRoot),
+      registryEntry: join(userDataRoot, "plugins", "@acme/lando-plugin-linked"),
+    });
+    expect(renderPluginLinkResult(result)).toContain("plugin-link: @acme/lando-plugin-linked");
+    const registryEntry = join(userDataRoot, "plugins", "@acme/lando-plugin-linked");
+    expect((await lstat(registryEntry)).isSymbolicLink()).toBe(true);
+    expect(await readlink(registryEntry)).toBe(resolve(pluginRoot));
+
+    const registry = await readJson<
+      Record<
+        string,
+        {
+          readonly path: string;
+          readonly version: string;
+          readonly source: string;
+          readonly linkedPath: string;
+        }
+      >
+    >(join(userDataRoot, "plugins", "registry.json"));
+    expect(registry["@acme/lando-plugin-linked"]).toEqual({
+      name: "@acme/lando-plugin-linked",
+      version: "1.2.3",
+      path: registryEntry,
+      source: "linked",
+      linkedPath: resolve(pluginRoot),
+    });
+    const linkedState = await readJson<
+      Record<string, { readonly source: string; readonly linkedPath: string; readonly registryEntry: string }>
+    >(join(userDataRoot, "plugins", ".lando-linked.json"));
+    expect(linkedState["@acme/lando-plugin-linked"]).toEqual({
+      source: "linked",
+      linkedPath: resolve(pluginRoot),
+      registryEntry,
+    });
+    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+  });
+
+  test("resolves an explicit relative path before tracking the link", async () => {
+    const pluginRoot = await makePluginRoot("lando-plugin-relative", "relative-plugin");
+
+    const result = await Effect.runPromise(
+      pluginLink({ cwd: root, path: "relative-plugin" }).pipe(
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
+    );
+
+    expect(result.linkedPath).toBe(resolve(pluginRoot));
+    const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
+      join(userDataRoot, "plugins", "registry.json"),
+    );
+    expect(registry["lando-plugin-relative"].linkedPath).toBe(resolve(pluginRoot));
+  });
+
+  test("refuses to replace an existing non-linked registry entry without touching the source tree", async () => {
+    const pluginRoot = await makePluginRoot("@acme/lando-plugin-conflict", "conflict");
+    const sourceSentinel = join(pluginRoot, "SOURCE_SENTINEL");
+    await writeFile(sourceSentinel, "unchanged");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const existing = join(pluginsRoot, "@acme", "lando-plugin-conflict", "1.0.0");
+    await mkdir(existing, { recursive: true });
+    await writeFile(join(existing, "package.json"), "{}\n");
+    await mkdir(dirname(join(pluginsRoot, "registry.json")), { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify(
+        {
+          "@acme/lando-plugin-conflict": {
+            name: "@acme/lando-plugin-conflict",
+            version: "1.0.0",
+            path: existing,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const exit = await Effect.runPromiseExit(
+      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
+    expect((await lstat(existing)).isDirectory()).toBe(true);
+    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginLinkConflictError");
+      expect(cause).toContain("already exists");
+    }
+  });
+});

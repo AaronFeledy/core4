@@ -726,3 +726,9 @@
 - Review feedback: none
 - Merge: deferred (closed as duplicate of #366; US-232 already on main)
 ---
+## 2026-06-15 16:58 CDT - US-233
+- Shipped local plugin linking: `meta:plugin:link` now validates a plugin manifest, resolves cwd or an explicit path to an absolute authoring checkout, creates the managed symlink under the user plugin registry, records linked metadata in the installed registry and `.lando-linked.json`, invalidates plugin command cache state, and refuses unsafe replacement of non-linked entries.
+- Promoted the command from deferred to MVP source/compiled dispatch metadata and added the required local-link guide coverage.
+- Verification: focused RED→GREEN plugin-link tests, deferred cutover, plugin/command registry tests, dispatch parity and OCLIF manifest tests, guide lint/coverage/dev guide, source CLI manual QA, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Linked plugin state rides both `registry.json` (for existing plugin discovery) and `.lando-linked.json` (for future unlink/restore bookkeeping); keep all link/unlink mutations confined to `<userDataRoot>/plugins/` and invalidate `plugin-command-cache.bin` only after the linked state is durable.
+---
