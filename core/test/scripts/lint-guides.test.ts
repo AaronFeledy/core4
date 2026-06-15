@@ -708,7 +708,7 @@ describe("lint:guides", () => {
       "<Guide>",
       '  <Scenario id="reader-path">',
       '    <Step name="library">',
-      "      <Run runtime=\"library\" code={`if (true) {\\n// @source: fake.mdx:9\\n}\\n`} displayCode={`ok`} />",
+      '      <Run runtime="library" code={`if (true) {\\n// @source: fake.mdx:9\\n}\\n`} displayCode={`ok`} />',
       "    </Step>",
       "  </Scenario>",
       "</Guide>",
