@@ -113,6 +113,20 @@ bun test plugins/service-lando/test --filter=integration
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer first; `provider-integration-linux-x64` then runs the live Podman/Docker integration path above, while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
+## Guide e2e smoke subset
+
+The `guide-scenarios-linux-x64` job runs generated guide scenarios twice. The first pass runs every generated guide test with the live-provider gate absent, so `layer: "e2e"` scenarios self-skip with a message naming `LANDO_GUIDE_E2E`, `LANDO_SCENARIO_E2E_BINARY`, and `LANDO_TEST_PODMAN_SOCKET`. The second pass downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`:
+
+```bash
+LANDO_GUIDE_E2E=1 \
+LANDO_MVP_BINARY_PATH="$PWD/dist/lando" \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock \
+bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
+```
+
+Failures still upload guide internal transcripts, plus `guide-e2e-provider-diagnostics-<run-id>` with the Podman service log and recent journal output.
+
 ## Nightly provider-lando e2e
 
 The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs smoke and non-smoke scenario tests against that binary:

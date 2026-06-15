@@ -37,6 +37,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-05 | US-230 | Scaffold a plugin from a bundled template | `docs/guides/plugins/authoring-new-plugin.mdx` | Shipped |
 | PRD-07 | US-243 | Public reader-scenario transcripts | `docs/guides/authoring/public-transcripts.mdx` | Shipped |
 | PRD-07 | US-245 | Library-mode guides | `docs/guides/embedding/library-mode-guide-scenarios.mdx` | Shipped |
+| PRD-07 | US-246 | E2e guide-scenario smoke layer | `docs/guides/authoring/e2e-smoke-scenarios.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |

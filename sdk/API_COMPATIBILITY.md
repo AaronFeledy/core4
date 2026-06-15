@@ -6,6 +6,7 @@
 
 - `GlobalConfig.telemetry.enabled` and `TelemetryConfig.enabled` decode omitted values as `true` for CLI global-config defaults; embedding hosts still get library-mode telemetry disabled unless they opt in through runtime construction.
 - `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaAnnotationIssue`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
+- `GuideFrontmatter.defaultLayer` and `ScenarioProps.layer` accept `"e2e"` in addition to `"scenario"`; e2e guide scenarios are generated behind an explicit live-provider gate rather than rejected at decode time.
 
 ## Additive Alpha schema exports
 

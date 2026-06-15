@@ -105,6 +105,8 @@ export interface GuideScenarioNode {
   readonly id: string;
   readonly render: boolean;
   readonly reason?: string;
+  readonly layer?: "scenario" | "e2e";
+  readonly tags?: ReadonlyArray<string>;
   readonly line: number;
   readonly steps: ReadonlyArray<GuideStepNode>;
   readonly body: ReadonlyArray<GuideScenarioBodyItem>;
@@ -233,7 +235,12 @@ export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant 
   return combinations.map((pairs) => {
     const override = overrides[pairs.map((pair) => pair.value).join(".")];
     const skip = override?.skip ?? guide.frontmatter.skip;
-    const tags = override?.tags === undefined ? undefined : [...new Set([...guideTags, ...override.tags])];
+    const tags =
+      override?.tags === undefined
+        ? guideTags.length === 0
+          ? undefined
+          : guideTags
+        : [...new Set([...guideTags, ...override.tags])];
     return {
       pairs,
       ...(skip === undefined ? {} : { skip }),
@@ -467,6 +474,17 @@ const renderStepComponent = (
 const renderSkips = (skips: ResolvedVariantSteps["skips"]): string =>
   skips.map((skip) => `// @skip: ${skip.reason}\ntest.skip(${quote(skip.stepName)}, () => {});`).join("\n");
 
+const effectiveScenarioLayer = (guide: GuideScenarioAst, scenario: GuideScenarioNode): "scenario" | "e2e" =>
+  scenario.layer ?? guide.frontmatter.defaultLayer ?? "scenario";
+
+const effectiveScenarioTags = (
+  guide: GuideScenarioAst,
+  scenario: GuideScenarioNode,
+  variant: GuideVariant | undefined,
+): ReadonlyArray<string> => [
+  ...new Set([...(variant?.tags ?? guide.frontmatter.tags ?? []), ...(scenario.tags ?? [])]),
+];
+
 const renderScenarioTest = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
@@ -474,7 +492,14 @@ const renderScenarioTest = (
 ): string => {
   const resolved = resolveVariantSteps(scenario, variant);
   const runMode = assertScenarioRunMode(guide, scenario, resolved.steps);
+  const scenarioLayer = effectiveScenarioLayer(guide, scenario);
+  if (scenarioLayer === "e2e" && runMode === "library") {
+    throw new Error(
+      `Guide ${guide.sourcePath} scenario ${guide.frontmatter.id}:${scenario.id} declares layer e2e with library <Run> steps; e2e guide scenarios must drive the CLI.`,
+    );
+  }
   const usesLibraryRuntime = runMode === "library";
+  const usesE2eRuntime = scenarioLayer === "e2e";
   const variables = collectVariables(resolved.steps);
   const variableSetup = renderVariableSetup(variables);
   const cleanupFinalizers = renderCleanupFinalizers(resolved.steps, guide.sourcePath);
@@ -498,14 +523,39 @@ const renderScenarioTest = (
     variant === undefined
       ? "// @variant:"
       : `// @variant: ${variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ")}`;
+  const effectiveTags = effectiveScenarioTags(guide, scenario, variant);
   const annotationLines = [
-    ...(variant?.tags === undefined ? [] : [`// @tags: ${variant.tags.join(",")}`]),
+    ...(effectiveTags.length === 0 ? [] : [`// @tags: ${effectiveTags.join(",")}`]),
+    ...(usesE2eRuntime ? ["// @layer: e2e"] : []),
     ...(variant?.platforms === undefined ? [] : [`// @platforms: ${variant.platforms.join(",")}`]),
     ...(variant?.skip === undefined ? [] : [`// @variant-skip: ${variant.skip.reason}`]),
   ];
   const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
   const skips = variant?.skip === undefined ? renderSkips(resolved.skips) : "";
   const testFn = variant?.skip === undefined ? "test" : "test.skip";
+  const taggedTestName = `${effectiveTags.length === 0 ? "" : `${effectiveTags.join(" ")} `}${guide.frontmatter.id}:${scenario.id}${
+    usesE2eRuntime ? " [e2e]" : ""
+  }`;
+  const runnableTestName = quote(taggedTestName);
+  const skippedE2eTestName = quote(
+    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
+  );
+  const e2eForcedSkip = usesE2eRuntime && testFn === "test.skip";
+  const testNameExpression =
+    usesE2eRuntime && !e2eForcedSkip
+      ? `(e2eGateEnabled ? ${runnableTestName} : ${skippedE2eTestName})`
+      : runnableTestName;
+  const testFnExpression = usesE2eRuntime
+    ? e2eForcedSkip
+      ? "test.skip"
+      : "(e2eGateEnabled ? test : test.skip)"
+    : testFn;
+  const testTimeoutArg = usesE2eRuntime ? `, ${guide.frontmatter.timeout}` : "";
+  const contextRunner = usesE2eRuntime
+    ? "ScenarioContextFactory.e2e"
+    : usesLibraryRuntime
+      ? "LandoTesting.withScenarioContext"
+      : "withScenarioContext";
 
   return `// @generated
 // @source: ${guide.sourcePath}:${scenario.line}
@@ -519,7 +569,15 @@ import { Effect, Either } from "effect";
 ${
   usesLibraryRuntime
     ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
-    : 'import { withScenarioContext } from "@lando/core/testing";'
+    : usesE2eRuntime
+      ? 'import { ScenarioContextFactory } from "@lando/core/testing";'
+      : 'import { withScenarioContext } from "@lando/core/testing";'
+}
+
+${
+  usesE2eRuntime
+    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && process.env.LANDO_TEST_PODMAN_SOCKET !== undefined;'
+    : ""
 }
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
@@ -539,9 +597,9 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   return Object.is(actual, expected);
 };
 
-${testFn}(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
+${testFnExpression}(${testNameExpression}, async () => {
   await Effect.runPromise(
-    ${usesLibraryRuntime ? "LandoTesting.withScenarioContext" : "withScenarioContext"}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
+    ${contextRunner}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
         let lastFailure: unknown;
@@ -549,7 +607,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
       }),
     ),
   );
-});
+}${testTimeoutArg});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };
 
@@ -826,6 +884,8 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
     id: scenario.id,
     render: scenario.render,
     ...(scenario.reason === undefined ? {} : { reason: scenario.reason }),
+    ...(scenario.layer === undefined ? {} : { layer: scenario.layer }),
+    ...(scenario.tags === undefined ? {} : { tags: scenario.tags }),
     line: lineOf(node),
     steps: unconditionalSteps(body),
     body,
@@ -1048,7 +1108,7 @@ export const buildPublicTranscript = (
     guideId: guide.frontmatter.id,
     scenarioId: scenario.id,
     variant: variantStringOf(variant),
-    runtime: runMode,
+    runtime: effectiveScenarioLayer(guide, scenario) === "e2e" ? "e2e" : runMode,
     render: true,
     frames,
   };

@@ -58,6 +58,60 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("requires e2e scenarios to carry cleanup", () => {
+    const sourcePath = "core/test/lint/guides/e2e-smoke.mdx";
+    const green = lintGuideContent(
+      sourcePath,
+      [
+        "---",
+        "id: e2e-smoke",
+        "provider: test",
+        "defaultLayer: e2e",
+        'tags: ["@smoke"]',
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="provider-path">',
+        '    <Step name="version">',
+        '      <Run command="version" />',
+        "    </Step>",
+        '    <Step name="teardown">',
+        "      <Cleanup />",
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    ).diagnostics.map(formatGuideLintDiagnostic);
+    expect(green).toEqual([]);
+
+    const missingCleanup = lintGuideContent(
+      sourcePath,
+      [
+        "---",
+        "id: e2e-smoke",
+        "provider: test",
+        "defaultLayer: e2e",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="provider-path">',
+        '    <Step name="version">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    ).diagnostics.map(formatGuideLintDiagnostic);
+
+    expect(missingCleanup).toEqual([
+      'core/test/lint/guides/e2e-smoke.mdx:9:3: guide.scenario.e2e-cleanup: <Scenario layer="e2e"> requires at least one <Cleanup> step so provider resources are torn down.',
+    ]);
+  });
+
   test("accepts a guide with a <Hidden> block carrying a reason", async () => {
     expect(await lintFixture("hidden-green")).toEqual([]);
   });

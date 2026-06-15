@@ -4687,7 +4687,7 @@
               "type": "object"
             },
             "defaultLayer": {
-              "enum": ["scenario"],
+              "enum": ["scenario", "e2e"],
               "type": "string"
             },
             "deprecated": {
@@ -16199,7 +16199,7 @@
               "$ref": "#/$defs/ComponentId"
             },
             "layer": {
-              "enum": ["scenario"],
+              "enum": ["scenario", "e2e"],
               "type": "string"
             },
             "reason": {
