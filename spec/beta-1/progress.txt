@@ -654,3 +654,10 @@
 - **Learnings for future iterations:**
   - Adding/removing a `guide-scenarios-<platform>` job is a lockstep change across `scripts/build-ci-workflow.ts`, regenerated `.github/workflows/ci.yml`, `docs/ci-runbook.md` (build/e2e prose + `## Branch protection` list), and THREE tests: `core/test/build/ci-workflow.test.ts`, `core/test/build/branch-protection.test.ts` (order-sensitive `requiredChecks`), and `core/test/scripts/codegen-ci.test.ts` (the `bun-version-file`/`setup-bun` occurrence COUNT — each guide job adds one `setup-bun`).
   - Guide `platforms` is OS-family (`darwin|linux|win32|wsl`), resolved per-platform at codegen time via `resolveHostGuidePlatform` (`LANDO_GUIDE_SCENARIO_PLATFORM` override else `process.platform` + WSL env detection). Generated guide tests are gitignored, so platform-dependent codegen is safe; a WSL dev host runs linux-allow-listed guides (don't reintroduce blanket WSL skips or local `bun test` silently drops guide-scenario coverage).
+
+## 2026-06-14 21:57 CDT - Babysit
+- PR: #363 https://github.com/AaronFeledy/core4/pull/363
+- CI outcome: pass (all five platform static-checks + guide-scenarios jobs and Cursor Bugbot green)
+- Review feedback: fixed (the new guide-scenario reporter fixture tests were non-hermetic — under CI's GITHUB_ACTIONS=true the source-mapper appends `::error` annotation lines the expected fixtures omit, so they passed locally but failed on linux-x64; scoped a GITHUB_ACTIONS reset to the fixture-comparison baseline with try/finally restore, leaving the dedicated annotation test as the GITHUB_ACTIONS=true coverage)
+- Merge: merged (squash)
+---
