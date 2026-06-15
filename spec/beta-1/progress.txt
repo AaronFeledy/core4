@@ -692,3 +692,10 @@
 - Review feedback: fixed (Bugbot flagged 3 plugin-test.ts findings — keyword/bad-JSON walk already addressed by prior commit; YAML manifest validation reworked to reuse canonical validatePluginManifest, removing the hand-rolled parser; Bugbot re-ran clean on new HEAD)
 - Merge: merged (squash)
 ---
+
+## 2026-06-15 15:11 CDT - US-232
+- Shipped `meta:plugin:build` as the plugin authoring build surface: it locates the nearest plugin package root, validates the plugin manifest, builds every `package.json#exports` entry into deterministic `dist/` JavaScript and declarations through `BunSelfRunner`, and writes publish-ready package metadata.
+- Mixed source/dist trees now fail before build output is written with tagged remediation, while source and compiled dispatch treat `meta:plugin:build` as a real command instead of a deferred placeholder.
+- Verification: focused plugin-build/deferred/dispatch tests passed; CLI QA covered successful build output and mixed-tree refusal; guide lint, guide coverage, targeted guide scenario, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Plugin authoring commands that can be run from nested paths should resolve the nearest valid plugin package root before validating the manifest, so shared guides and CLI QA can exercise commands from realistic authoring subdirectories.
+---

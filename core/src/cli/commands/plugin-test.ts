@@ -1,5 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { Effect } from "effect";
 
@@ -8,6 +7,7 @@ import { EventService } from "@lando/sdk/services";
 
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
+import { findNearestPluginPackageRoot } from "./plugin-package-root.ts";
 
 export interface PluginTestOptions {
   readonly argv?: ReadonlyArray<string>;
@@ -31,59 +31,6 @@ const splitPluginTestArgv = (
   return { paths: argv.slice(0, dash), forwarded: argv.slice(dash + 1) };
 };
 
-const isMissingPathError = (cause: unknown): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "code" in cause &&
-  (cause as { readonly code?: unknown }).code === "ENOENT";
-
-const parsePackageJson = async (
-  packagePath: string,
-): Promise<Readonly<Record<string, unknown>> | undefined> => {
-  const raw = await readFile(packagePath, "utf8");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return undefined;
-  }
-  return parsed as Readonly<Record<string, unknown>>;
-};
-
-const looksLikePluginPackage = (pkg: Readonly<Record<string, unknown>>): boolean => {
-  if ("landoPlugin" in pkg) return true;
-  // PluginManifest schema: `api` is Literal(4) and `entry` is optional (defaulted).
-  if (pkg.api === 4 && typeof pkg.name === "string") return true;
-  const keywords = pkg.keywords;
-  return Array.isArray(keywords) && keywords.some((entry) => entry === "lando-plugin");
-};
-
-const findNearestPackageRoot = async (cwd: string): Promise<string> => {
-  let current = resolve(cwd);
-  while (true) {
-    const packagePath = join(current, "package.json");
-    const packageStat = await stat(packagePath).catch((cause: unknown) => {
-      if (isMissingPathError(cause)) return undefined;
-      throw cause;
-    });
-    if (packageStat?.isFile() === true) {
-      const pkg = await parsePackageJson(packagePath);
-      if (pkg !== undefined && looksLikePluginPackage(pkg)) return current;
-    }
-    const parent = dirname(current);
-    if (parent === current) {
-      throw new PluginManifestError({
-        message: `No plugin package.json found from ${resolve(cwd)}.`,
-        issues: ["Run meta:plugin:test from inside a Lando plugin package."],
-      });
-    }
-    current = parent;
-  }
-};
-
 const publishPluginTestEvent = (event: Readonly<Record<string, unknown>>) =>
   Effect.serviceOption(EventService).pipe(
     Effect.flatMap((events) =>
@@ -97,7 +44,7 @@ export const pluginTest = (
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const pluginRoot = yield* Effect.tryPromise({
-      try: () => findNearestPackageRoot(cwd),
+      try: () => findNearestPluginPackageRoot(cwd, "meta:plugin:test"),
       catch: (cause) =>
         cause instanceof PluginManifestError
           ? cause

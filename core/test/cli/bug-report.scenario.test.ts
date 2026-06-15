@@ -73,11 +73,11 @@ const isolationEnv = (extra: Record<string, string> = {}): Record<string, string
 
 describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
   test("NotImplementedError plain output includes commandId, code, logsDir, cacheDir", async () => {
-    const result = await runCommand([process.execPath, sourceCliPath, "meta:plugin:build"], isolationEnv());
+    const result = await runCommand([process.execPath, sourceCliPath, "meta:plugin:publish"], isolationEnv());
     expect(result.exitCode).not.toBe(0);
     const stderr = stripAnsi(result.stderr);
     expect(stderr).toContain("NotImplementedError");
-    expect(stderr).toContain("commandId: meta:plugin:build");
+    expect(stderr).toContain("commandId: meta:plugin:publish");
     expect(stderr).toContain("code: NotImplementedError");
     expect(stderr).toContain(`logsDir: ${cacheDir}/logs`);
     expect(stderr).toContain(`cacheDir: ${cacheDir}`);
@@ -85,7 +85,7 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
 
   test("JSON renderer emits one NDJSON object on stderr with machine-readable code and remediation", async () => {
     const result = await runCommand(
-      [process.execPath, sourceCliPath, "meta:plugin:build", "--renderer=json"],
+      [process.execPath, sourceCliPath, "meta:plugin:publish", "--renderer=json"],
       isolationEnv(),
     );
     expect(result.exitCode).not.toBe(0);
@@ -104,7 +104,7 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
     if (candidate === undefined) throw new Error("expected NDJSON message.error line");
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
     expect(parsed.code).toBe("NotImplementedError");
-    expect(parsed.commandId).toBe("meta:plugin:build");
+    expect(parsed.commandId).toBe("meta:plugin:publish");
     expect(typeof parsed.remediation).toBe("string");
     expect((parsed.remediation as string).length).toBeGreaterThan(0);
     expect(parsed.logsDir).toBe(`${cacheDir}/logs`);
@@ -158,17 +158,17 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       expect(build.exitCode).toBe(0);
     }, 120_000);
     test("compiled NotImplementedError plain output mirrors source", async () => {
-      const result = await runCommand([compiledBinaryPath, "meta:plugin:build"], isolationEnv());
+      const result = await runCommand([compiledBinaryPath, "meta:plugin:publish"], isolationEnv());
       expect(result.exitCode).not.toBe(0);
       const stderr = stripAnsi(result.stderr);
-      expect(stderr).toContain("commandId: meta:plugin:build");
+      expect(stderr).toContain("commandId: meta:plugin:publish");
       expect(stderr).toContain("code: NotImplementedError");
       expect(stderr).toContain(`logsDir: ${cacheDir}/logs`);
     }, 60_000);
 
     test("compiled JSON renderer emits NDJSON message.error on stderr", async () => {
       const result = await runCommand(
-        [compiledBinaryPath, "meta:plugin:build", "--renderer=json"],
+        [compiledBinaryPath, "meta:plugin:publish", "--renderer=json"],
         isolationEnv(),
       );
       expect(result.exitCode).not.toBe(0);
@@ -188,7 +188,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       if (candidate === undefined) throw new Error("expected NDJSON message.error line");
       const parsed = JSON.parse(candidate) as Record<string, unknown>;
       expect(parsed.code).toBe("NotImplementedError");
-      expect(parsed.commandId).toBe("meta:plugin:build");
+      expect(parsed.commandId).toBe("meta:plugin:publish");
       expect(parsed.logsDir).toBe(`${cacheDir}/logs`);
     }, 60_000);
   },

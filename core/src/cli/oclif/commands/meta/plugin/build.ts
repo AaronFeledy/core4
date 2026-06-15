@@ -1,14 +1,27 @@
 import { Effect } from "effect";
 
+import {
+  type PluginBuildResult,
+  pluginBuild,
+  renderPluginBuildResult,
+} from "../../../../commands/plugin-build.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-export const pluginBuildSpec: LandoCommandSpec<never> = {
+export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   id: "meta:plugin:build",
   summary: "Build the current plugin source (authoring command).",
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: () => Effect.die("not yet implemented: meta:plugin:build"),
+  run: () =>
+    pluginBuild().pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.exitCode !== 0) process.exitCode = result.exitCode;
+        }),
+      ),
+    ),
+  render: (result) => renderPluginBuildResult(result as PluginBuildResult),
 };
 
 export default class PluginBuildCommand extends LandoCommandBase {
