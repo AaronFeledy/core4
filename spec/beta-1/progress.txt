@@ -692,3 +692,9 @@
 - Review feedback: fixed (Bugbot flagged 3 plugin-test.ts findings — keyword/bad-JSON walk already addressed by prior commit; YAML manifest validation reworked to reuse canonical validatePluginManifest, removing the hand-rolled parser; Bugbot re-ran clean on new HEAD)
 - Merge: merged (squash)
 ---
+## 2026-06-14 23:59 CDT - US-232
+- Shipped `meta:plugin:build` for authored plugin packages: the command now validates the current plugin manifest, reads `package.json#exports`, builds JavaScript and declarations into `dist/`, writes deterministic dist package metadata, and refuses source trees polluted by dist output before writing publish artifacts.
+- Promoted the command from deferred to MVP in both source and compiled dispatch, preserving renderer output and BunSelfRunner lifecycle events, and published the shared plugin test/build guide.
+- Verification: red/green focused build tests, source CLI build QA, guide lint/coverage/scenario/public-transcript gates, typecheck, lint, full tests, and build passed.
+- **Learnings for future iterations:** Plugin authoring build output should keep source package exports as the input contract and write publishable metadata only under `dist/`; do not point source package exports at dist or allow nested `src/dist` output, because that creates the mixed tree US-232 is designed to reject.
+---

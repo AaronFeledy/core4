@@ -1,0 +1,21 @@
+---
+id: test-and-build-plugin
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, authoring]
+---
+
+<Guide>
+  <Scenario id="test-and-build-plugin" render={false} reason="Core command tests exercise meta:plugin:test and meta:plugin:build against isolated authored plugin fixtures, including BunSelfRunner invocation, event publication, dist artifacts, and mixed-tree refusal">
+    <Step name="test-command">
+      <Variable name="command" value="lando meta:plugin:test test/plugin.test.ts -- --bail" display="Run the current plugin's Bun test suite from the detected plugin root while forwarding post-dash Bun arguments unchanged" />
+      <Variable name="events" value="cli-meta:plugin:test-start pre-bun-self-exec post-bun-self-exec cli-meta:plugin:test-complete" display="The command emits plugin-test lifecycle events around the BunSelfRunner test execution" />
+    </Step>
+    <Step name="build-command">
+      <Variable name="command" value="lando meta:plugin:build" display="Build publishable artifacts from package.json#exports using BunSelfRunner child work" />
+      <Variable name="outputs" value="dist/index.js dist/index.d.ts dist/package.json" display="The build writes deterministic JavaScript, TypeScript declarations, and package metadata into dist/" />
+      <Variable name="refusal" value="PluginBuildMixedTreeError" display="A source tree polluted by nested dist output is refused before publish artifacts are written" />
+    </Step>
+  </Scenario>
+</Guide>
