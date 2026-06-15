@@ -648,4 +648,30 @@ describe("lint:guides", () => {
     ].join("\n");
     expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
   });
+
+  test("passes transcript lint when a clean guide declares diataxis", () => {
+    const sourcePath = "core/test/lint/guides/transcript-diataxis.mdx";
+    const content = [
+      "---",
+      "id: transcript-diataxis",
+      "provider: test",
+      "diataxis: tutorial",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="run">',
+      '      <Run command="version" />',
+      "    </Step>",
+      "  </Scenario>",
+      '  <Scenario id="hidden-regression" render={false} reason="Regression coverage">',
+      '    <Step name="hidden-run">',
+      '      <Run command="status" />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
+  });
 });
