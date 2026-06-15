@@ -399,4 +399,57 @@ describe("build-guide-scenarios public transcript emission", () => {
       await rm(root, { force: true, recursive: true });
     }
   });
+
+  test("redacts secrets, paths, ids, ports, and host-specific data from public frames for determinism and safety", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-redact-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/redact-demo.mdx"),
+        [
+          "---",
+          "id: redact-demo",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="leak-test" render>',
+          '    <Step name="leak">',
+          '      <Run command="setup /tmp/lando-redact-xyz /home/redactuser/.config :65432 deadbeefcafebabe1234567890abcdef --token=sk_live_ABCDEF1234567890ABCDEF --password=mysecretvalue123" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitPublicTranscripts(asts, root);
+      expect(written).toEqual(["dist/transcripts/public/guides/redact-demo/leak-test.json"]);
+
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/redact-demo/leak-test.json",
+      );
+
+      const serialized = JSON.stringify(transcript);
+
+      expect(serialized).not.toContain("/tmp/lando-redact-xyz");
+      expect(serialized).not.toContain("/home/redactuser");
+      expect(serialized).not.toContain(":65432");
+      expect(serialized).not.toContain("deadbeefcafebabe1234567890abcdef");
+      expect(serialized).not.toContain("sk_live_ABCDEF1234567890ABCDEF");
+      expect(serialized).not.toContain("mysecretvalue123");
+
+      const runFrame = transcript.frames.find((frame) => frame.kind === "run");
+      const cmd = runFrame?.commandDisplay ?? "";
+      expect(cmd).toContain("<tmp>");
+      expect(cmd).toContain("<home>");
+      expect(cmd).toContain("<port>");
+      expect(cmd).toContain("<id>");
+      expect(cmd).toContain("[REDACTED]");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
 });

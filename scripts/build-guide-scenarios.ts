@@ -9,6 +9,7 @@ import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
+import { redactString } from "../core/src/cli/redact.ts";
 import { parseLandofile } from "../core/src/landofile/parser.ts";
 import {
   type CleanupProps,
@@ -1056,6 +1057,38 @@ const inspectDisplay = (props: InspectProps, variables: ReadonlyMap<string, Vari
   return "inspect output";
 };
 
+const POSIX_TEMP_PATTERN = /\/tmp\/[^\s"'`)]+/g;
+const POSIX_HOME_PATTERN = /\/home\/[^\s"'`)]+/g;
+const WIN_TEMP_PATTERN = /C:\\Users\\[^\\]+\\AppData\\Local\\Temp\\[^\s"'`)]+/gi;
+const WIN_HOME_PATTERN = /C:\\Users\\[^\\]+/gi;
+const FIXTURE_PATTERN = /(?:^|[\\/])fixtures[\\/][^\s"'`)]+/gi;
+const LONG_HEX_ID_PATTERN = /\b[a-f0-9]{16,}\b/gi;
+const HIGH_PORT_PATTERN = /:([5-9]\d{4}|[1-9]\d{5,})/g;
+const TOKEN_FLAG_PATTERN = /--(?:token|secret|password|key|auth|bearer|credential)=[^\s"'`)]+/gi;
+const SHORT_TOKEN_FLAG_PATTERN = /-(?:t|k)=[^\s"'`)]+/gi;
+
+const redactPublicText = (text: string | undefined): string | undefined => {
+  if (text === undefined) return undefined;
+  let out = redactString(text);
+  out = out.replace(POSIX_TEMP_PATTERN, "<tmp>");
+  out = out.replace(POSIX_HOME_PATTERN, "<home>");
+  out = out.replace(WIN_TEMP_PATTERN, "<tmp>");
+  out = out.replace(WIN_HOME_PATTERN, "<home>");
+  out = out.replace(FIXTURE_PATTERN, "<fixture>");
+  out = out.replace(LONG_HEX_ID_PATTERN, "<id>");
+  out = out.replace(HIGH_PORT_PATTERN, ":<port>");
+  out = out.replace(TOKEN_FLAG_PATTERN, "--token=[REDACTED]");
+  out = out.replace(SHORT_TOKEN_FLAG_PATTERN, "-t=[REDACTED]");
+  return out;
+};
+
+const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => ({
+  ...frame,
+  displayText: redactPublicText(frame.displayText),
+  commandDisplay: redactPublicText(frame.commandDisplay),
+  resultSummary: redactPublicText(frame.resultSummary),
+});
+
 const publicFrameForComponent = (
   component: GuideStepComponent,
   sourceFile: string,
@@ -1149,13 +1182,14 @@ export const buildPublicTranscript = (
       if (frame !== undefined) frames.push(frame);
     }
   }
+  const redactedFrames = frames.map(redactFrame);
   return {
     guideId: guide.frontmatter.id,
     scenarioId: scenario.id,
     variant: variantStringOf(variant),
     runtime: effectiveScenarioLayer(guide, scenario) === "e2e" ? "e2e" : runMode,
     render: true,
-    frames,
+    frames: redactedFrames,
   };
 };
 
