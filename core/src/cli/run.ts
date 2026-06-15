@@ -70,6 +70,7 @@ import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-s
 import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
 import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
+import { pluginBuild, renderPluginBuildResult } from "./commands/plugin-build.ts";
 import { pluginNew, renderPluginNewResult } from "./commands/plugin-new.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import { pluginTest, renderPluginTestResult } from "./commands/plugin-test.ts";
@@ -1336,6 +1337,20 @@ const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<void> => 
   );
 };
 
+const runMetaPluginBuild = async (): Promise<void> => {
+  await runCompiledCommand(
+    pluginBuild().pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.exitCode !== 0) process.exitCode = result.exitCode;
+        }),
+      ),
+    ),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginBuildResult,
+  );
+};
+
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
@@ -1773,6 +1788,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "meta:plugin:test") {
     await runMetaPluginTest(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:build") {
+    await runMetaPluginBuild();
     return;
   }
 
