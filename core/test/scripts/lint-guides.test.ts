@@ -4,10 +4,14 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { buildPublicTranscript, parseGuideScenarioAst } from "../../../scripts/build-guide-scenarios.ts";
 import {
   type GuideFixtureInventoryEntry,
+  checkScenarioSourceMap,
+  checkTranscriptFrameDiscipline,
   formatGuideLintDiagnostic,
   lintGuideContent,
+  lintGuideTranscripts,
   lintGuides,
 } from "../../../scripts/lint-guides.ts";
 
@@ -427,6 +431,61 @@ describe("lint:guides", () => {
     ).toEqual([]);
   });
 
+  test("forbids raw fenced shell blocks inside <Guide> but allows them in prose", async () => {
+    const diagnostics = await lintFixture("shell-fence");
+
+    expect(diagnostics).toEqual([
+      "core/test/lint/guides/shell-fence.mdx:19:1: guide.shell-fence: Raw fenced `bash` code block is not allowed inside <Guide>; use <Run> or <Inline>.",
+    ]);
+  });
+
+  test("requires every <Run> to declare a display-vs-execute binding", async () => {
+    const diagnostics = await lintFixture("run-binding-bad");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/run-binding-bad.mdx:10:7");
+    expect(diagnostics[0]).toContain("guide.run.binding");
+  });
+
+  test("rejects a library <Run> missing its explicit displayCode binding", () => {
+    const sourcePath = "core/test/lint/guides/run-library-missing-display.mdx";
+    const diagnostics = lintGuideContent(
+      sourcePath,
+      [
+        "---",
+        "id: run-library-missing-display",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="reader-path">',
+        '    <Step name="library">',
+        '      <Run runtime="library" code={`expect(1).toBe(1);`} />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    ).diagnostics.map(formatGuideLintDiagnostic);
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("run-library-missing-display.mdx:10:7");
+    expect(diagnostics[0]).toContain("guide.run.binding");
+  });
+
+  test("accepts valid cli, shell, and library <Run> bindings including backtick code", async () => {
+    expect(await lintFixture("run-binding-green")).toEqual([]);
+  });
+
+  test("validates props for components without a dedicated rule (e.g. <Variable>)", async () => {
+    const diagnostics = await lintFixture("component-props-bad");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/component-props-bad.mdx:9:5");
+    expect(diagnostics[0]).toContain("guide.component.props");
+  });
+
   test("does not flag an unreferenced shared fixture as unused", async () => {
     expect(
       await lintFixtureWithInventory("fixture-demo", [
@@ -444,5 +503,88 @@ describe("lint:guides", () => {
         },
       ]),
     ).toEqual([]);
+  });
+
+  test("excludes hidden, variable, and fixture content from public transcript frames", () => {
+    const sourcePath = "core/test/lint/guides/transcript-discipline.mdx";
+    const content = [
+      "---",
+      "id: transcript-discipline",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="run">',
+      '      <Variable name="secret" value="hunter2" />',
+      '      <Run command="version" />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    const guide = parseGuideScenarioAst(sourcePath, content);
+    const scenario = guide.scenarios[0];
+    if (scenario === undefined) throw new Error("expected a scenario");
+
+    const realTranscript = buildPublicTranscript(guide, scenario, undefined);
+    if (realTranscript === undefined) throw new Error("expected a public transcript");
+    expect(
+      checkTranscriptFrameDiscipline(scenario, realTranscript.frames, sourcePath).map(
+        formatGuideLintDiagnostic,
+      ),
+    ).toEqual([]);
+
+    const leaked = [...realTranscript.frames, { kind: "run", sourceFile: sourcePath, sourceLine: 9 }];
+    const leakDiagnostics = checkTranscriptFrameDiscipline(scenario, leaked, sourcePath).map(
+      formatGuideLintDiagnostic,
+    );
+    expect(leakDiagnostics).toHaveLength(1);
+    expect(leakDiagnostics[0]).toContain("transcript-discipline.mdx:9:1");
+    expect(leakDiagnostics[0]).toContain("guide.transcript.leak");
+  });
+
+  test("requires generated scenario blocks to carry source-map headers", () => {
+    const sourcePath = "docs/guides/example.mdx";
+    const withHeaders = [
+      "// @generated",
+      "// @source: docs/guides/example.mdx:8",
+      "// @scenario: reader-path",
+      "// @variant:",
+      "",
+      "test('reader-path', () => {});",
+    ].join("\n");
+    expect(checkScenarioSourceMap(withHeaders, sourcePath, 8).map(formatGuideLintDiagnostic)).toEqual([]);
+
+    const missing = ["import { test } from 'bun:test';", "test('reader-path', () => {});"].join("\n");
+    const diagnostics = checkScenarioSourceMap(missing, sourcePath, 8).map(formatGuideLintDiagnostic);
+    expect(diagnostics.length).toBeGreaterThanOrEqual(1);
+    expect(diagnostics[0]).toContain("docs/guides/example.mdx:8:1");
+    expect(diagnostics[0]).toContain("guide.transcript.source-map");
+  });
+
+  test("passes transcript discipline and source-map coverage on a clean guide", () => {
+    const sourcePath = "core/test/lint/guides/transcript-clean.mdx";
+    const content = [
+      "---",
+      "id: transcript-clean",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="run">',
+      '      <Run command="version" />',
+      "    </Step>",
+      "  </Scenario>",
+      '  <Scenario id="hidden-regression" render={false} reason="Regression coverage">',
+      '    <Step name="hidden-run">',
+      '      <Run command="status" />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
   });
 });

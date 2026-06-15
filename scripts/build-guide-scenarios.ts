@@ -518,7 +518,7 @@ const variantTestNameLabel = (variant: GuideVariant | undefined): string => {
   return ` (${pairs})`;
 };
 
-const renderScenarioTest = (
+export const renderScenarioTest = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
   variant: GuideVariant | undefined,
