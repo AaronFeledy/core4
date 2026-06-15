@@ -692,6 +692,7 @@
 - Review feedback: fixed (Bugbot flagged 3 plugin-test.ts findings — keyword/bad-JSON walk already addressed by prior commit; YAML manifest validation reworked to reuse canonical validatePluginManifest, removing the hand-rolled parser; Bugbot re-ran clean on new HEAD)
 - Merge: merged (squash)
 ---
+<<<<<<< HEAD
 ## 2026-06-14 23:59 CDT - US-232
 - Shipped `meta:plugin:build` for authored plugin packages: the command now validates the current plugin manifest, reads `package.json#exports`, builds JavaScript and declarations into `dist/`, writes deterministic dist package metadata, and refuses source trees polluted by dist output before writing publish artifacts.
 - Promoted the command from deferred to MVP in both source and compiled dispatch, preserving renderer output and BunSelfRunner lifecycle events, and published the shared plugin test/build guide.
@@ -702,4 +703,21 @@
 - Verified US-232 end-to-end against the compiled binary in `lando4-dev`: built `core/dist/lando`, ran `setup --provider=podman --yes`, built a throwaway plugin with multi-entry `package.json#exports` into flat `dist/` JavaScript/declaration/package artifacts, confirmed mixed `src/dist` trees fail before publish artifacts, and smoked adjacent `meta:plugin:test` on the same plugin.
 - Fixed declaration generation so plugin builds pass `--rootDir` derived from the export source roots, preserving flat publishable declaration paths instead of leaking source-tree layout into `dist/`.
 - **Learnings for future iterations:** Real plugin-build verification should include multi-entry exports and declaration output shape, not just the mocked BunSelfRunner argv, because publishability depends on `dist/package.json` matching actual emitted `.d.ts` paths.
+=======
+
+## 2026-06-15 CDT - US-248
+- Completed the `lint:guides` quality gate so it blocks every §19.10 drift class the story enumerates. Added pure content rules to `lintGuideContent`: raw fenced bash/sh/zsh/shell/console blocks inside `<Guide>` are rejected (prose fences outside `<Guide>` stay allowed), every executable `<Run>` must decode to a valid display-vs-execute binding (cli `command`, shell `shell`, or library `runtime`+`code`+`displayCode`) via the SDK `decodeRunPropsEither`, and a component-prop sweep now validates `Step`/`Variable`/`UseFixture`/`Inspect`/`Cleanup` props that previously had no lint coverage.
+- Added a disk-path `lintGuideTranscripts` (run only when a guide's content lint is clean) that builds each renderable public transcript and asserts no frame leaks hidden-step, `Variable`, or `UseFixture` content via an AST-derived allowlist, and renders each generated scenario through the now-exported `renderScenarioTest` to assert the `// @generated` / `// @source:` / `// @scenario:` source-map headers are present. `lint:guides` stays the merge-blocking CI gate covering content, fixtures, component props, transcript references, and source-map coverage.
+- Verification: typecheck, biome lint, and the focused lint-guides/scenario-generator/transcript suites pass (45 lint-guides cases + 48 generator/transcript cases). `bun run lint:guides` stays clean on every real guide with the new transcript+source-map checks active, and manual CLI QA against a `GUIDES_DIR_OVERRIDE` bad guide exits non-zero with the new `guide.shell-fence` and `guide.run.binding` diagnostics. Full `bun test` = 3731 pass / 38 skip / 1 fail, where the single failure (`@lando/sdk ... core schema re-exports the canonical deprecation notice`, a schema-identity check) reproduces on a clean tree and is unrelated to this story.
+- **Learnings for future iterations:**
+  - `lint-guides.ts` carries its own copy of the generator's `expressionToValue`; it must mirror the backtick template-literal handling (and `${...}` rejection) or library `<Run code={`...`}>` props throw during lint instead of producing a diagnostic.
+  - `diataxis:` is not a `GuideFrontmatter` field — `lintGuideContent` strips it before decode, but `parseGuideScenarioAst` rejects it and zero real guides declare it, so any lint test fixture that flows through `parseGuideScenarioAst`/`lintGuideTranscripts` must omit `diataxis:`.
+  - Public-transcript exclusion is best enforced as an AST-derived allowlist of visible frame source lines (not an excluded-line set, which collides); `Cleanup` is intentionally a public frame, so the allowlist must keep it.
+---
+
+## 2026-06-15 00:49 CDT - US-248 Review
+- Hardened the two transcript/source-map gates so they verify correctness, not just presence: the source-map checker now requires every generated `// @source:` header (scenario and per-step) to point at the guide being linted and the scenario header to anchor the scenario's line, and the public-transcript discipline check now rejects frames whose `sourceFile` is not the linted guide instead of accepting any non-empty path. Added regression tests for wrong-path, wrong-anchor-line, and cross-file frame leaks.
+- Review notes (rejected): the same-line same-file hidden/visible collision in the transcript-discipline allowlist is left as-is — it is only reachable if the primary guard (`buildPublicTranscript`, which already drops `render={false}`, hidden steps, and `Variable`/`UseFixture`) is itself broken AND a guide authors excluded and visible components on one physical MDX line (no real guide does; the parser assigns distinct lines), and the line-denylist fix would false-positive on legitimate collisions. Disproportionate to a backstop gap.
+- Verification: typecheck, lint, and the focused lint-guides suite (48 pass / 0 fail) pass; `bun run lint:guides` stays clean on every real guide.
+>>>>>>> origin/main
 ---

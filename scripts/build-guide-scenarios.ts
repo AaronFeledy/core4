@@ -518,7 +518,7 @@ const variantTestNameLabel = (variant: GuideVariant | undefined): string => {
   return ` (${pairs})`;
 };
 
-const renderScenarioTest = (
+export const renderScenarioTest = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
   variant: GuideVariant | undefined,
@@ -746,7 +746,8 @@ const fieldFromParseIssue = (issue: string): string => {
 };
 
 const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
-  const decoded = decodeGuideFrontmatterEither(input);
+  const { diataxis: _diataxis, ...schemaFrontmatter } = input;
+  const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
   if (Either.isRight(decoded)) return decoded.right;
   if (decoded.left instanceof NotImplementedError) throw decoded.left;
   const issue = String(decoded.left);

@@ -1,0 +1,25 @@
+---
+id: run-binding-green
+provider: test
+diataxis: tutorial
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="cli">
+      <Run command="version" />
+    </Step>
+    <Step name="shell">
+      <Run shell="echo hi" />
+    </Step>
+  </Scenario>
+  <Scenario id="library-path">
+    <Step name="library">
+      <Run
+        runtime="library"
+        code={`expect(context.guideId).toBe("run-binding-green");`}
+        displayCode={`expect(context.guideId).toBe("run-binding-green");`}
+      />
+    </Step>
+  </Scenario>
+</Guide>

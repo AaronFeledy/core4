@@ -11,16 +11,33 @@ import { unified } from "unified";
 
 import { parseLandofile } from "../core/src/landofile/parser.ts";
 import {
+  decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
+  decodeInspectPropsEither,
+  decodeRunPropsEither,
   decodeScenarioPropsEither,
+  decodeStepPropsEither,
+  decodeUseFixturePropsEither,
+  decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
+import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
   NotImplementedError,
 } from "../sdk/src/errors/index.ts";
-import { discoverGuideMdxFiles } from "./build-guide-scenarios.ts";
+import {
+  type GuideScenarioAst,
+  type GuideScenarioNode,
+  type GuideStepNode,
+  buildPublicTranscript,
+  discoverGuideMdxFiles,
+  parseGuideScenarioAst,
+  renderScenarioTest,
+  resolveHostGuidePlatform,
+  variantsOf,
+} from "./build-guide-scenarios.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -45,6 +62,7 @@ type MdxNode = {
   readonly type: string;
   readonly name?: string | null;
   readonly value?: unknown;
+  readonly lang?: string | null;
   readonly attributes?: ReadonlyArray<MdxAttribute>;
   readonly children?: ReadonlyArray<MdxNode>;
   readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } };
@@ -104,6 +122,15 @@ const expressionToValue = (expression: string): unknown => {
   ) {
     return trimmed.slice(1, -1);
   }
+  if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
+    const withoutEscapes = trimmed.replace(/\\./g, "");
+    if (withoutEscapes.includes("${")) {
+      throw new Error(
+        "Template literal interpolation is not allowed in guide props; use a literal backtick string without `${...}`.",
+      );
+    }
+    return trimmed.slice(1, -1);
+  }
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     const jsonish = trimmed.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3').replace(/'/g, '"');
     return JSON.parse(jsonish) as unknown;
@@ -146,6 +173,34 @@ const elementChildren = (node: MdxNode): ReadonlyArray<MdxNode> =>
 const walkElements = (node: MdxNode, visitor: (node: MdxNode) => void): void => {
   if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") visitor(node);
   for (const child of node.children ?? []) walkElements(child, visitor);
+};
+
+const walkAllNodes = (node: MdxNode, visitor: (node: MdxNode) => void): void => {
+  visitor(node);
+  for (const child of node.children ?? []) walkAllNodes(child, visitor);
+};
+
+const SHELL_FENCE_LANGS = new Set(["bash", "sh", "zsh", "shell", "console"]);
+
+const lintRawShellFences = (
+  sourcePath: string,
+  guide: MdxNode | undefined,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  if (guide === undefined) return;
+  walkAllNodes(guide, (node) => {
+    if (node.type !== "code") return;
+    const lang = typeof node.lang === "string" ? node.lang.toLowerCase() : undefined;
+    if (lang === undefined || !SHELL_FENCE_LANGS.has(lang)) return;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        node,
+        "guide.shell-fence",
+        `Raw fenced \`${node.lang}\` code block is not allowed inside <Guide>; use <Run> or <Inline>.`,
+      ),
+    );
+  });
 };
 
 const diagnostic = (
@@ -414,6 +469,87 @@ const lintVerifyMatchers = (
   });
 };
 
+const lintRunBindings = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  walkElements(root, (node) => {
+    if (node.name !== "Run") return;
+    let props: Record<string, unknown>;
+    try {
+      props = propsOf(node);
+    } catch (error) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.run.binding",
+          `Invalid <Run> props: ${formatErrorMessage(error)}.`,
+        ),
+      );
+      return;
+    }
+    const decoded = decodeRunPropsEither(props);
+    if (Either.isLeft(decoded)) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.run.binding",
+          `<Run> requires an explicit display-vs-execute binding: ${formatErrorMessage(decoded.left)}.`,
+        ),
+      );
+    }
+  });
+};
+
+// Excludes components with a dedicated prop rule above to avoid double-reporting.
+const COMPONENT_PROP_DECODERS: Record<string, (input: unknown) => Either.Either<unknown, unknown>> = {
+  Step: decodeStepPropsEither,
+  Variable: decodeVariablePropsEither,
+  UseFixture: decodeUseFixturePropsEither,
+  Inspect: decodeInspectPropsEither,
+  Cleanup: decodeCleanupPropsEither,
+};
+
+const lintComponentProps = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  walkElements(root, (node) => {
+    if (node.name === undefined || node.name === null) return;
+    const decode = COMPONENT_PROP_DECODERS[node.name];
+    if (decode === undefined) return;
+    let props: Record<string, unknown>;
+    try {
+      props = propsOf(node);
+    } catch (error) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.component.props",
+          `Invalid <${node.name}> props: ${formatErrorMessage(error)}.`,
+        ),
+      );
+      return;
+    }
+    const decoded = decode(props);
+    if (Either.isLeft(decoded)) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.component.props",
+          `Invalid <${node.name}> props: ${formatErrorMessage(decoded.left)}.`,
+        ),
+      );
+    }
+  });
+};
+
 const lintFixtures = (
   sourcePath: string,
   root: MdxNode,
@@ -617,6 +753,7 @@ export const lintGuideContent = (
   const frontmatter = validateFrontmatter(sourcePath, root, diagnostics);
   const guide = elementChildren(root).find((child) => child.name === "Guide");
   lintComponents(sourcePath, root, diagnostics);
+  lintRawShellFences(sourcePath, guide, diagnostics);
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintScenarioProps(sourcePath, scenarios, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
@@ -624,6 +761,8 @@ export const lintGuideContent = (
   lintSkipReason(sourcePath, root, diagnostics);
   lintInlineJustification(sourcePath, root, diagnostics);
   lintVerifyMatchers(sourcePath, root, diagnostics);
+  lintRunBindings(sourcePath, root, diagnostics);
+  lintComponentProps(sourcePath, root, diagnostics);
   lintFixtures(sourcePath, root, guide, frontmatter, options.fixtures ?? [], diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
@@ -735,6 +874,156 @@ const buildFixtureInventory = async (
   return inventory;
 };
 
+const allowedPublicLines = (scenario: GuideScenarioNode): ReadonlySet<number> => {
+  const allowed = new Set<number>([scenario.line]);
+  const addStep = (step: GuideStepNode): void => {
+    if (step.hidden) return;
+    allowed.add(step.line);
+    for (const component of step.components) {
+      if (component.kind === "Variable" || component.kind === "UseFixture") continue;
+      allowed.add(component.line);
+    }
+  };
+  for (const step of scenario.steps) addStep(step);
+  for (const item of scenario.body) {
+    switch (item.kind) {
+      case "step":
+        addStep(item.step);
+        break;
+      case "tabs":
+        allowed.add(item.line);
+        for (const tab of item.tabs) {
+          allowed.add(tab.line);
+          for (const step of tab.steps) addStep(step);
+        }
+        break;
+      case "skip":
+        allowed.add(item.line);
+        for (const step of item.steps) addStep(step);
+        break;
+    }
+  }
+  return allowed;
+};
+
+export const checkTranscriptFrameDiscipline = (
+  scenario: GuideScenarioNode,
+  frames: ReadonlyArray<{ readonly kind: string; readonly sourceFile: string; readonly sourceLine: number }>,
+  sourcePath: string,
+): ReadonlyArray<GuideLintDiagnostic> => {
+  const allowed = allowedPublicLines(scenario);
+  const diagnostics: Array<GuideLintDiagnostic> = [];
+  for (const frame of frames) {
+    if (frame.sourceFile === sourcePath && frame.sourceLine > 0 && allowed.has(frame.sourceLine)) continue;
+    diagnostics.push({
+      sourcePath,
+      line: frame.sourceLine > 0 ? frame.sourceLine : scenario.line,
+      column: 1,
+      code: "guide.transcript.leak",
+      message: `Public transcript frame (${frame.kind}) at line ${frame.sourceLine} does not map to a visible scenario component; hidden steps, fixtures, and variables must be excluded.`,
+    });
+  }
+  return diagnostics;
+};
+
+const SOURCE_HEADER_PATTERN = /^\/\/ @source: (.+):(\d+)$/;
+
+const parseSourceHeader = (line: string): { readonly path: string; readonly line: number } | undefined => {
+  const match = SOURCE_HEADER_PATTERN.exec(line);
+  if (match === null) return undefined;
+  const parsed = Number.parseInt(match[2] ?? "", 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return { path: match[1] ?? "", line: parsed };
+};
+
+export const checkScenarioSourceMap = (
+  generatedSource: string,
+  sourcePath: string,
+  anchorLine: number,
+): ReadonlyArray<GuideLintDiagnostic> => {
+  const diagnostics: Array<GuideLintDiagnostic> = [];
+  const push = (message: string): void => {
+    diagnostics.push({
+      sourcePath,
+      line: anchorLine,
+      column: 1,
+      code: "guide.transcript.source-map",
+      message,
+    });
+  };
+  const lines = generatedSource.split("\n").map((line) => line.trim());
+  if (!lines.includes("// @generated"))
+    push("Generated scenario block is missing its `// @generated` header.");
+  const sourceHeaders: Array<{ readonly path: string; readonly line: number }> = [];
+  for (const line of lines) {
+    const sourceHeader = parseSourceHeader(line);
+    if (sourceHeader !== undefined) sourceHeaders.push(sourceHeader);
+  }
+  if (sourceHeaders.length === 0) {
+    push(`Generated scenario block is missing a \`// @source: ${sourcePath}:<line>\` header.`);
+  } else {
+    if (sourceHeaders.some((entry) => entry.path !== sourcePath))
+      push(`Generated scenario block has a \`// @source:\` header that does not point at ${sourcePath}.`);
+    if (!sourceHeaders.some((entry) => entry.path === sourcePath && entry.line === anchorLine))
+      push(
+        `Generated scenario block is missing a \`// @source: ${sourcePath}:${anchorLine}\` header anchoring the scenario.`,
+      );
+  }
+  if (!lines.some((line) => line.startsWith("// @scenario: ") && line.length > "// @scenario: ".length))
+    push("Generated scenario block is missing its `// @scenario:` header.");
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index]?.startsWith("// @step:")) continue;
+    const preceding = parseSourceHeader(lines[index - 1] ?? "");
+    if (preceding === undefined || preceding.path !== sourcePath)
+      push("A generated step is missing its preceding `// @source:` annotation.");
+  }
+  return diagnostics;
+};
+
+export const lintGuideTranscripts = (
+  sourcePath: string,
+  content: string,
+  hostPlatform: GuidePlatform = resolveHostGuidePlatform(),
+): GuideLintResult => {
+  let guide: GuideScenarioAst;
+  try {
+    guide = parseGuideScenarioAst(sourcePath, content);
+  } catch (error) {
+    return {
+      diagnostics: [
+        {
+          sourcePath,
+          line: 1,
+          column: 1,
+          code: "guide.transcript.parse",
+          message: `Could not parse guide scenarios: ${formatErrorMessage(error)}`,
+        },
+      ],
+    };
+  }
+  const diagnostics: Array<GuideLintDiagnostic> = [];
+  for (const scenario of guide.scenarios) {
+    for (const variant of variantsOf(guide)) {
+      try {
+        const transcript = buildPublicTranscript(guide, scenario, variant);
+        if (transcript !== undefined)
+          diagnostics.push(...checkTranscriptFrameDiscipline(scenario, transcript.frames, sourcePath));
+        const generated = renderScenarioTest(guide, scenario, variant, hostPlatform);
+        diagnostics.push(...checkScenarioSourceMap(generated, sourcePath, scenario.line));
+      } catch (error) {
+        diagnostics.push({
+          sourcePath,
+          line: scenario.line,
+          column: 1,
+          code: "guide.transcript.source-map",
+          message: `Could not generate scenario block: ${formatErrorMessage(error)}`,
+        });
+      }
+    }
+  }
+  return { diagnostics };
+};
+
 export const lintGuides = async (
   root = REPO_ROOT,
   options: GuideLintOptions = {},
@@ -749,6 +1038,8 @@ export const lintGuides = async (
       guideId === undefined ? [] : await buildFixtureInventory(root, guideId, options.guideRoot);
     const result = lintGuideContent(sourcePath, content, { fixtures });
     diagnostics.push(...result.diagnostics);
+    if (result.diagnostics.length === 0)
+      diagnostics.push(...lintGuideTranscripts(sourcePath, content).diagnostics);
   }
   return { diagnostics };
 };
