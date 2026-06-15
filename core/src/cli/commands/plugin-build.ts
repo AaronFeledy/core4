@@ -21,6 +21,7 @@ import {
   readPackageJson,
   writeDistPackageJson,
 } from "./plugin-build-package.ts";
+import { findNearestPluginPackageRoot } from "./plugin-package-root.ts";
 
 export { PluginBuildMixedTreeError };
 
@@ -76,7 +77,17 @@ export const pluginBuild = (
   options: PluginBuildOptions = {},
 ): Effect.Effect<PluginBuildResult, NotImplementedError | PluginManifestError | PluginBuildMixedTreeError> =>
   Effect.gen(function* () {
-    const pluginRoot = resolve(options.cwd ?? process.cwd());
+    const cwd = options.cwd ?? process.cwd();
+    const pluginRoot = yield* Effect.tryPromise({
+      try: () => findNearestPluginPackageRoot(cwd, "meta:plugin:build"),
+      catch: (cause) =>
+        cause instanceof PluginManifestError
+          ? cause
+          : new PluginManifestError({
+              message: `Unable to locate plugin root from ${resolve(cwd)}.`,
+              issues: [String(cause)],
+            }),
+    });
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(pluginRoot),
       catch: (cause) =>
@@ -117,11 +128,14 @@ export const pluginBuild = (
     });
     yield* Effect.promise(() => mkdir(join(pluginRoot, "dist"), { recursive: true }));
     const callerSubsystem = `plugin-authoring:meta:plugin:build:${manifest.name}`;
+    const buildRoot = declarationRootDir(entries);
     const buildArgv = [
       "build",
       ...entries.map((entry) => entry.source),
       "--outdir",
       "./dist",
+      "--root",
+      buildRoot,
       "--target",
       "bun",
       "--format",
