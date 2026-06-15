@@ -929,11 +929,33 @@ export const checkTranscriptFrameDiscipline = (
 const SOURCE_HEADER_PATTERN = /^\/\/ @source: (.+):(\d+)$/;
 
 const parseSourceHeader = (line: string): { readonly path: string; readonly line: number } | undefined => {
-  const match = SOURCE_HEADER_PATTERN.exec(line);
+  const match = SOURCE_HEADER_PATTERN.exec(line.trim());
   if (match === null) return undefined;
   const parsed = Number.parseInt(match[2] ?? "", 10);
   if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
   return { path: match[1] ?? "", line: parsed };
+};
+
+const generatorAnnotationLines = (generatedSource: string): ReadonlyArray<string> => {
+  const lines = generatedSource.split("\n");
+  const out: Array<string> = [];
+  let inLibraryEmbed = false;
+  for (const raw of lines) {
+    const trimmed = raw.trim();
+    if (trimmed === "void LandoCore;" || trimmed === "void LandoTesting;") {
+      inLibraryEmbed = true;
+      continue;
+    }
+    if (inLibraryEmbed) {
+      if (trimmed === "}") {
+        inLibraryEmbed = false;
+        continue;
+      }
+      continue;
+    }
+    out.push(trimmed);
+  }
+  return out;
 };
 
 export const checkScenarioSourceMap = (
@@ -951,7 +973,7 @@ export const checkScenarioSourceMap = (
       message,
     });
   };
-  const lines = generatedSource.split("\n").map((line) => line.trim());
+  const lines = generatorAnnotationLines(generatedSource);
   if (!lines.includes("// @generated"))
     push("Generated scenario block is missing its `// @generated` header.");
   const sourceHeaders: Array<{ readonly path: string; readonly line: number }> = [];
