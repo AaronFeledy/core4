@@ -7,7 +7,11 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 import { pluginCommandCachePath } from "../../src/cache/paths.ts";
-import { pluginLink, renderPluginLinkResult } from "../../src/cli/commands/plugin-link.ts";
+import {
+  type PluginLinkOptions,
+  pluginLink,
+  renderPluginLinkResult,
+} from "../../src/cli/commands/plugin-link.ts";
 
 let root: string;
 let userDataRoot: string;
@@ -53,6 +57,12 @@ const makePluginRoot = async (name: string, dir = name.split("/").pop() ?? "plug
 
 const readJson = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, "utf8")) as T;
 
+const runPluginLink = (options: PluginLinkOptions) =>
+  Effect.runPromise(pluginLink(options).pipe(Effect.provide(fakeConfigService(userDataRoot))));
+
+const runPluginLinkExit = (options: PluginLinkOptions) =>
+  Effect.runPromiseExit(pluginLink(options).pipe(Effect.provide(fakeConfigService(userDataRoot))));
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "lando-plugin-link-"));
   userDataRoot = join(root, "data");
@@ -67,11 +77,10 @@ describe("meta:plugin:link command", () => {
   test("defaults to cwd, symlinks the plugin, records linked registry state, and invalidates plugin command cache", async () => {
     const pluginRoot = await makePluginRoot("@acme/lando-plugin-linked", "linked");
     await mkdir(cacheRoot, { recursive: true });
-    await writeFile(pluginCommandCachePath(cacheRoot), "stale cache");
+    const cachePath = pluginCommandCachePath(cacheRoot);
+    await writeFile(cachePath, "stale cache");
 
-    const result = await Effect.runPromise(
-      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
+    const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
 
     expect(result).toEqual({
       pluginName: "@acme/lando-plugin-linked",
@@ -109,17 +118,13 @@ describe("meta:plugin:link command", () => {
       linkedPath: resolve(pluginRoot),
       registryEntry,
     });
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+    expect(await exists(cachePath)).toBe(false);
   });
 
   test("resolves an explicit relative path before tracking the link", async () => {
     const pluginRoot = await makePluginRoot("lando-plugin-relative", "relative-plugin");
 
-    const result = await Effect.runPromise(
-      pluginLink({ cwd: root, path: "relative-plugin" }).pipe(
-        Effect.provide(fakeConfigService(userDataRoot)),
-      ),
-    );
+    const result = await runPluginLink({ cwd: root, path: "relative-plugin" });
 
     expect(result.linkedPath).toBe(resolve(pluginRoot));
     const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
@@ -152,9 +157,7 @@ describe("meta:plugin:link command", () => {
       )}\n`,
     );
 
-    const exit = await Effect.runPromiseExit(
-      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
+    const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
 
     expect(exit._tag).toBe("Failure");
     expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
@@ -171,9 +174,7 @@ describe("meta:plugin:link command", () => {
     const pluginRoot = await makePluginRoot("../escape/lando-plugin-hostile", "hostile");
     const pluginsRoot = join(userDataRoot, "plugins");
 
-    const exit = await Effect.runPromiseExit(
-      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
+    const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
