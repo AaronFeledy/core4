@@ -692,6 +692,17 @@
 - Review feedback: fixed (Bugbot flagged 3 plugin-test.ts findings — keyword/bad-JSON walk already addressed by prior commit; YAML manifest validation reworked to reuse canonical validatePluginManifest, removing the hand-rolled parser; Bugbot re-ran clean on new HEAD)
 - Merge: merged (squash)
 ---
+## 2026-06-14 23:59 CDT - US-232
+- Shipped `meta:plugin:build` for authored plugin packages: the command now validates the current plugin manifest, reads `package.json#exports`, builds JavaScript and declarations into `dist/`, writes deterministic dist package metadata, and refuses source trees polluted by dist output before writing publish artifacts.
+- Promoted the command from deferred to MVP in both source and compiled dispatch, preserving renderer output and BunSelfRunner lifecycle events, and published the shared plugin test/build guide.
+- Verification: red/green focused build tests, source CLI build QA, guide lint/coverage/scenario/public-transcript gates, typecheck, lint, full tests, and build passed.
+- **Learnings for future iterations:** Plugin authoring build output should keep source package exports as the input contract and write publishable metadata only under `dist/`; do not point source package exports at dist or allow nested `src/dist` output, because that creates the mixed tree US-232 is designed to reject.
+---
+## 2026-06-15 00:59 CDT - US-232 Verify
+- Verified US-232 end-to-end against the compiled binary in `lando4-dev`: built `core/dist/lando`, ran `setup --provider=podman --yes`, built a throwaway plugin with multi-entry `package.json#exports` into flat `dist/` JavaScript/declaration/package artifacts, confirmed mixed `src/dist` trees fail before publish artifacts, and smoked adjacent `meta:plugin:test` on the same plugin.
+- Fixed declaration generation so plugin builds pass `--rootDir` derived from the export source roots, preserving flat publishable declaration paths instead of leaking source-tree layout into `dist/`.
+- **Learnings for future iterations:** Real plugin-build verification should include multi-entry exports and declaration output shape, not just the mocked BunSelfRunner argv, because publishability depends on `dist/package.json` matching actual emitted `.d.ts` paths.
+---
 
 ## 2026-06-15 CDT - US-248
 - Completed the `lint:guides` quality gate so it blocks every §19.10 drift class the story enumerates. Added pure content rules to `lintGuideContent`: raw fenced bash/sh/zsh/shell/console blocks inside `<Guide>` are rejected (prose fences outside `<Guide>` stay allowed), every executable `<Run>` must decode to a valid display-vs-execute binding (cli `command`, shell `shell`, or library `runtime`+`code`+`displayCode`) via the SDK `decodeRunPropsEither`, and a component-prop sweep now validates `Step`/`Variable`/`UseFixture`/`Inspect`/`Cleanup` props that previously had no lint coverage.

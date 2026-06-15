@@ -580,8 +580,8 @@
         "Lint passes."
       ],
       "priority": 33,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "meta:plugin:build now validates the current plugin manifest, builds package.json#exports into dist artifacts and declarations through BunSelfRunner, refuses mixed source/dist trees with PluginBuildMixedTreeError before writing publish artifacts, publishes build lifecycle events, and renders build results through the renderer seam."
     },
     {
       "id": "US-233",

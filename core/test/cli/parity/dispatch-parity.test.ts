@@ -184,6 +184,29 @@ const makePluginTestFixture = (): { readonly root: string; readonly cleanup: () 
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
+const makePluginBuildMixedTreeFixture = (): { readonly root: string; readonly cleanup: () => void } => {
+  const root = mkdtempSync(join(tmpdir(), "lando-parity-plugin-build-"));
+  mkdirSync(join(root, "src", "dist"), { recursive: true });
+  writeFileSync(
+    join(root, "package.json"),
+    `${JSON.stringify({
+      name: "@acme/lando-plugin-build-parity",
+      version: "0.0.0",
+      type: "module",
+      exports: { ".": "./src/index.ts" },
+      landoPlugin: {
+        name: "@acme/lando-plugin-build-parity",
+        version: "0.0.0",
+        api: 4,
+        entry: "src/index.ts",
+      },
+    })}\n`,
+  );
+  writeFileSync(join(root, "src", "index.ts"), "export const ok = true;\n");
+  writeFileSync(join(root, "src", "dist", "stale.js"), "export {};\n");
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+};
+
 const lastJsonLine = (output: string): unknown => {
   const lines = output
     .split("\n")
@@ -477,6 +500,25 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
 
+    test("meta:plugin:build mixed-tree refusal dispatches on both paths", async () => {
+      const fixture = makePluginBuildMixedTreeFixture();
+      try {
+        const source = await runSourceCli(["meta:plugin:build", "--renderer=json"], { cwd: fixture.root });
+        const compiled = await runCompiledCli(["meta:plugin:build", "--renderer=json"], {
+          cwd: fixture.root,
+        });
+
+        expect(source.exitCode).toBe(1);
+        expect(compiled.exitCode).toBe(source.exitCode);
+        const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+        const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+        expect(compiledEnvelope).toEqual(sourceEnvelope);
+        expect(sourceEnvelope.code).toBe("PluginBuildMixedTreeError");
+      } finally {
+        fixture.cleanup();
+      }
+    }, 30_000);
+
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {
       const cwd = mkdtempSync(join(tmpdir(), "lando-parity-nostart-"));
       try {
@@ -495,7 +537,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   });
 
   describe("deferred canonical ids defer identically on both paths", () => {
-    const probeIds = ["meta:recipes:list", "meta:events:follow", "meta:plugin:build"] as const;
+    const probeIds = ["meta:recipes:list", "meta:events:follow", "meta:plugin:publish"] as const;
     for (const id of probeIds) {
       test(`${id}: both paths emit NotImplementedError with matching tagged fields`, async () => {
         const source = await runSourceCli([id, "--renderer=json"]);
