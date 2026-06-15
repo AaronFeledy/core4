@@ -173,6 +173,37 @@ If you are looking for…
 | `lando app shell` command (interactive Bun Shell REPL) | 08 | §8.2.3 |
 | `lando meta bun` / `lando bun` command (BUN_BE_BUN proxy) | 08 | §8.2.4 |
 | `lando meta x` / `lando x` command (bunx-equivalent) | 08 | §8.2.4 |
+| Shell integration and ambient mode (concept) | 08 | §8.2.5 |
+| `meta:ambient:*` commands (`allow`/`deny`/`export`/`list`/`status`) | 08 | §8.2.5 |
+| `lando shellenv --hook <shell>` (shell-integration hook) | 08 + 11 | §8.2.5 + §10.8 |
+| `ambient:` Landofile key (app-scoped opt-out) | 07 | §7.4 |
+| `ambient:` global config block | 07 | §7.5 |
+| `LANDO_NO_AMBIENT` / `LANDO_AMBIENT_*` env | 07 | §7.6 |
+| `ambient:` top-level alias prefix reservation | 08 | §8.1.2 |
+| `ambient-state.bin` cache (binary, per-prompt) + `ambient.json` debug mirror + shim dir | 12 | §12.1 + §12.4 |
+| `ambient-trust.yml` trust ledger (precomputed into `ambient-state.bin`) | 12 | §8.2.5 + §12.4 |
+| `EnvironmentProjection` core service | 03 + 08 | §3.4 + §8.2.6 |
+| `HostEnvProjection` SDK schema (host env + shims + paths only) | 08 | §8.2.6 |
+| `EnvDiff` (core-private; not an SDK schema at v4.0) | 08 | §8.2.6 |
+| `ProjectContext` document (deferred composition seam for MCP/devcontainer/VSCode) | 08 | §8.2.6.1 |
+| `OwnedHostArtifactRegistry` (ownership/cleanup ledger for user-visible files) | 03 + 12 | §3.4 + §12.7 |
+| `CheckRunner` core service + `CheckResult` / `Diagnostic` SDK schemas | 03 + 11 | §3.4 + §10.11 |
+| `TriggerSource` (core-private; `git`/`watch`/`lifecycle`/deferred `schedule`) | 04 + 11 | §4.2 + §10.12 |
+| `ProcessSupervisor` / `ProcessRegistry` core services | 03 + 11 | §3.4 + §10.13 |
+| MCP server (`lando mcp` / `meta:mcp`) | 08 + 11 | §8.2.10 + §10.14 |
+| Host trust and permission vocabulary (cross-cutting) | 11 | §10.15 |
+| `InvocationPolicy` SDK schema (on `LandoCommandSpec`) | 08 | §8.3 |
+| `hooks:` Landofile key (git hooks) | 07 | §7.9 |
+| `processes:` Landofile key (host long-running processes) | 07 | §7.10 |
+| `files:` Landofile key (host-side generated files) | 07 | §7.11 |
+| `test:` Landofile key (project check set) | 07 | §7.12 |
+| `${secret:<backend>:<ref>}` backend-qualified grammar + `SecretStoreRegistry` | 03 + 04 + 07 | §3.4 + §4.2 + §7.3.1 |
+| `app:hooks:*` commands (`install`/`uninstall`/`list`/`run`) | 08 | §8.2.7 |
+| `app:processes:*` commands (`start`/`stop`/`list`/`logs`) | 08 | §8.2.8 |
+| `app:test` command (`lando test`) | 08 | §8.2.9 |
+| `meta:mcp` command (`lando mcp`) | 08 | §8.2.10 |
+| Language dev tooling (formatter + LSP via service-type tooling) | 06 | §6.11.3 |
+| `Check` / `Hook` / `Process` / `MCP` lifecycle event scopes | 03 | §3.5 + §11.2 |
 | `lando uninstall` command | 08 + 15 | §8.2 + §17.7 |
 | `LandoCommandSpec` shape (with `namespace` and `topLevelAlias`) | 08 | §8.3 |
 | OCLIF integration policies (hooks, SIGINT, manifest, topic mapping) | 08 | §8.4 |
