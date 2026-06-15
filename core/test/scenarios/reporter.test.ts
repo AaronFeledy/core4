@@ -19,6 +19,8 @@ const fixtureNames = async (): Promise<ReadonlyArray<string>> =>
 describe("scenario source-mapper reporter", async () => {
   for (const name of await fixtureNames()) {
     test(`rewrites ${name} fixture output`, async () => {
+      const GITHUB_ACTIONS_ENV = "GITHUB_ACTIONS";
+      const previousGithubActions = process.env.GITHUB_ACTIONS;
       const input = (await readFile(resolve(fixturesRoot, name, "input.txt"), "utf8")).replaceAll(
         "<repo>",
         repoRoot,
@@ -28,7 +30,13 @@ describe("scenario source-mapper reporter", async () => {
         repoRoot,
       );
 
-      expect(rewriteScenarioSourceMappedOutput(input, { repoRoot })).toBe(expected);
+      try {
+        delete process.env[GITHUB_ACTIONS_ENV];
+        expect(rewriteScenarioSourceMappedOutput(input, { repoRoot })).toBe(expected);
+      } finally {
+        if (previousGithubActions === undefined) delete process.env[GITHUB_ACTIONS_ENV];
+        else process.env.GITHUB_ACTIONS = previousGithubActions;
+      }
     });
   }
 
