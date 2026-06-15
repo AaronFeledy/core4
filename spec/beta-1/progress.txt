@@ -685,3 +685,10 @@
 - Review feedback: fixed (the new guide-scenario reporter fixture tests were non-hermetic — under CI's GITHUB_ACTIONS=true the source-mapper appends `::error` annotation lines the expected fixtures omit, so they passed locally but failed on linux-x64; scoped a GITHUB_ACTIONS reset to the fixture-comparison baseline with try/finally restore, leaving the dedicated annotation test as the GITHUB_ACTIONS=true coverage)
 - Merge: merged (squash)
 ---
+
+## 2026-06-14 22:16 CDT - Babysit
+- PR: #362 https://github.com/AaronFeledy/core4/pull/362
+- CI outcome: pass
+- Review feedback: fixed (Bugbot flagged 3 plugin-test.ts findings — keyword/bad-JSON walk already addressed by prior commit; YAML manifest validation reworked to reuse canonical validatePluginManifest, removing the hand-rolled parser; Bugbot re-ran clean on new HEAD)
+- Merge: merged (squash)
+---
