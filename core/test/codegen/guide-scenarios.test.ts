@@ -11,6 +11,7 @@ import {
   discoverGuideMdxFiles,
   emitGuideScenarioTests,
   parseGuideScenarioAst,
+  resolveHostGuidePlatform,
 } from "../../../scripts/build-guide-scenarios.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -20,6 +21,24 @@ const fixture = async (name: string): Promise<string> => readFile(resolve(fixtur
 
 const linkNodeModules = async (root: string): Promise<void> => {
   await symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir");
+};
+
+const withGuideScenarioPlatform = async <T>(platform: string | undefined, run: () => Promise<T>): Promise<T> => {
+  const previous = process.env.LANDO_GUIDE_SCENARIO_PLATFORM;
+  try {
+    if (platform === undefined) {
+      delete process.env.LANDO_GUIDE_SCENARIO_PLATFORM;
+    } else {
+      process.env.LANDO_GUIDE_SCENARIO_PLATFORM = platform;
+    }
+    return await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.LANDO_GUIDE_SCENARIO_PLATFORM;
+    } else {
+      process.env.LANDO_GUIDE_SCENARIO_PLATFORM = previous;
+    }
+  }
 };
 
 describe("build-guide-scenarios MDX walker", () => {
@@ -288,6 +307,164 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(gated).toContain("(e2eGateEnabled ? test : test.skip)");
       expect(skipped).toContain("}, 120000);");
       expect(gated).toContain("}, 120000);");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("resolves the guide scenario host platform from override, WSL env, and process platform", () => {
+    expect(resolveHostGuidePlatform({ LANDO_GUIDE_SCENARIO_PLATFORM: "darwin" })).toBe("darwin");
+    expect(resolveHostGuidePlatform({ LANDO_GUIDE_SCENARIO_PLATFORM: "wsl", WSL_DISTRO_NAME: "Ubuntu" })).toBe(
+      "wsl",
+    );
+    expect(resolveHostGuidePlatform({ WSL_DISTRO_NAME: "Ubuntu" }, "linux")).toBe("wsl");
+    expect(resolveHostGuidePlatform({ WSL_INTEROP: "/run/WSL/1_interop" }, "linux")).toBe("wsl");
+    expect(resolveHostGuidePlatform({}, "win32")).toBe("win32");
+    expect(resolveHostGuidePlatform({}, "darwin")).toBe("darwin");
+    expect(resolveHostGuidePlatform({}, "freebsd")).toBe("linux");
+  });
+
+  test("emits platform-excluded scenario tests as skipped with a visible reason", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-platform-skip-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      const content = [
+        "---",
+        "id: platform-guide",
+        "provider: test",
+        "platforms: [linux, darwin]",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="main">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+
+      await withGuideScenarioPlatform("win32", async () => {
+        const asts = [parseGuideScenarioAst("docs/guides/platform-guide.mdx", content)];
+        await emitGuideScenarioTests(asts, root);
+      });
+
+      const generated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/platform-guide/main.test.ts"),
+      ).text();
+      expect(generated).toContain("// @platforms: linux,darwin");
+      expect(generated).toContain(
+        'test.skip("platform-guide:main (skipped on win32: requires platform [linux,darwin])"',
+      );
+      expect(generated).not.toContain('(e2eGateEnabled ? test : test.skip)');
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("emits normal scenario tests when the host is allowed or platforms is empty", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-platform-allowed-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      const allowed = [
+        "---",
+        "id: allowed-guide",
+        "provider: test",
+        "platforms: [linux, darwin]",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="main">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      const empty = [
+        "---",
+        "id: empty-platform-guide",
+        "provider: test",
+        "platforms: []",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="main">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+
+      await withGuideScenarioPlatform("linux", async () => {
+        const asts = [
+          parseGuideScenarioAst("docs/guides/allowed-guide.mdx", allowed),
+          parseGuideScenarioAst("docs/guides/empty-platform-guide.mdx", empty),
+        ];
+        await emitGuideScenarioTests(asts, root);
+      });
+
+      const allowedGenerated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/allowed-guide/main.test.ts"),
+      ).text();
+      const emptyGenerated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/empty-platform-guide/main.test.ts"),
+      ).text();
+      expect(allowedGenerated).toContain('test("allowed-guide:main"');
+      expect(allowedGenerated).not.toContain("skipped on linux");
+      expect(emptyGenerated).toContain('test("empty-platform-guide:main"');
+      expect(emptyGenerated).not.toContain("requires platform");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("variant platforms override guide platforms for generation-time platform skips", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-platform-variant-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      const content = [
+        "---",
+        "id: variant-platform-guide",
+        "provider: test",
+        "platforms: [linux]",
+        "tabs: [alpha, beta]",
+        "variants:",
+        "  beta:",
+        "    platforms: [win32]",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="main">',
+        '    <Step name="run">',
+        '      <Run command="version" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+
+      await withGuideScenarioPlatform("win32", async () => {
+        const asts = [parseGuideScenarioAst("docs/guides/variant-platform-guide.mdx", content)];
+        await emitGuideScenarioTests(asts, root);
+      });
+
+      const alpha = await Bun.file(
+        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.alpha.test.ts"),
+      ).text();
+      const beta = await Bun.file(
+        join(root, "test/scenarios/generated/guides/variant-platform-guide/main.beta.test.ts"),
+      ).text();
+      expect(alpha).toContain(
+        'test.skip("variant-platform-guide:main (skipped on win32: requires platform [linux])"',
+      );
+      expect(alpha).toContain("// @platforms: linux");
+      expect(beta).toContain('test("variant-platform-guide:main"');
+      expect(beta).toContain("// @platforms: win32");
     } finally {
       await rm(root, { force: true, recursive: true });
     }

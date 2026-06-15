@@ -36,6 +36,7 @@ import {
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
+import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
@@ -49,6 +50,23 @@ const PUBLIC_TRANSCRIPT_ROOT = "dist/transcripts/public/guides";
 
 const isNotFound = (cause: unknown): boolean =>
   cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
+
+const GUIDE_PLATFORMS: ReadonlyArray<GuidePlatform> = ["darwin", "linux", "win32", "wsl"];
+
+export const resolveHostGuidePlatform = (
+  env: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+): GuidePlatform => {
+  const override = env.LANDO_GUIDE_SCENARIO_PLATFORM;
+  if (override !== undefined) {
+    if (GUIDE_PLATFORMS.includes(override as GuidePlatform)) return override as GuidePlatform;
+    throw new Error(`LANDO_GUIDE_SCENARIO_PLATFORM must be one of ${GUIDE_PLATFORMS.join("|")}: ${override}`);
+  }
+  if (platform === "win32") return "win32";
+  if (platform === "darwin") return "darwin";
+  if (platform === "linux" && (env.WSL_DISTRO_NAME !== undefined || env.WSL_INTEROP !== undefined)) return "wsl";
+  return "linux";
+};
 
 export type GuideStepComponent =
   | { readonly kind: "Run"; readonly props: RunProps; readonly line: number }
@@ -123,7 +141,7 @@ export interface GuideVariant {
   readonly pairs: ReadonlyArray<GuideVariantPair>;
   readonly skip?: { readonly reason: string; readonly until?: string };
   readonly tags?: ReadonlyArray<string>;
-  readonly platforms?: ReadonlyArray<string>;
+  readonly platforms?: ReadonlyArray<GuidePlatform>;
 }
 
 interface ResolvedVariantSteps {
@@ -245,7 +263,11 @@ export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant 
       pairs,
       ...(skip === undefined ? {} : { skip }),
       ...(tags === undefined ? {} : { tags }),
-      ...(override?.platforms === undefined ? {} : { platforms: override.platforms }),
+      ...(override?.platforms === undefined
+        ? guide.frontmatter.platforms === undefined
+          ? {}
+          : { platforms: guide.frontmatter.platforms }
+        : { platforms: override.platforms }),
     };
   });
 };
@@ -489,6 +511,7 @@ const renderScenarioTest = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
   variant: GuideVariant | undefined,
+  hostPlatform: GuidePlatform,
 ): string => {
   const resolved = resolveVariantSteps(scenario, variant);
   const runMode = assertScenarioRunMode(guide, scenario, resolved.steps);
@@ -524,19 +547,25 @@ const renderScenarioTest = (
       ? "// @variant:"
       : `// @variant: ${variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ")}`;
   const effectiveTags = effectiveScenarioTags(guide, scenario, variant);
+  const effectivePlatforms = variant?.platforms ?? guide.frontmatter.platforms;
+  const platformSkip =
+    effectivePlatforms !== undefined && effectivePlatforms.length > 0 && !effectivePlatforms.includes(hostPlatform)
+      ? `skipped on ${hostPlatform}: requires platform [${effectivePlatforms.join(",")}]`
+      : undefined;
   const annotationLines = [
     ...(effectiveTags.length === 0 ? [] : [`// @tags: ${effectiveTags.join(",")}`]),
     ...(usesE2eRuntime ? ["// @layer: e2e"] : []),
-    ...(variant?.platforms === undefined ? [] : [`// @platforms: ${variant.platforms.join(",")}`]),
+    ...(effectivePlatforms === undefined ? [] : [`// @platforms: ${effectivePlatforms.join(",")}`]),
     ...(variant?.skip === undefined ? [] : [`// @variant-skip: ${variant.skip.reason}`]),
   ];
   const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
   const skips = variant?.skip === undefined ? renderSkips(resolved.skips) : "";
-  const testFn = variant?.skip === undefined ? "test" : "test.skip";
+  const forcedSkip = variant?.skip !== undefined || platformSkip !== undefined;
+  const testFn = forcedSkip ? "test.skip" : "test";
   const taggedTestName = `${effectiveTags.length === 0 ? "" : `${effectiveTags.join(" ")} `}${guide.frontmatter.id}:${scenario.id}${
     usesE2eRuntime ? " [e2e]" : ""
   }`;
-  const runnableTestName = quote(taggedTestName);
+  const runnableTestName = quote(platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`);
   const skippedE2eTestName = quote(
     `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
   );
@@ -1167,6 +1196,7 @@ export const emitGuideScenarioTests = async (
 ): Promise<ReadonlyArray<string>> => {
   await rm(resolve(root, outputRoot, options.clearGuideId ?? ""), { force: true, recursive: true });
   const written: string[] = [];
+  const hostPlatform = resolveHostGuidePlatform();
   for (const guide of asts) {
     const guideId = guide.frontmatter.id;
     const variants = variantsOf(guide);
@@ -1176,7 +1206,7 @@ export const emitGuideScenarioTests = async (
         const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.test.ts`;
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });
-        await Bun.write(absolutePath, renderScenarioTest(guide, scenario, variant));
+        await Bun.write(absolutePath, renderScenarioTest(guide, scenario, variant, hostPlatform));
         written.push(relativePath);
       }
     }
