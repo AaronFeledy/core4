@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 import { Data, Effect } from "effect";
@@ -63,7 +63,7 @@ const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): 
   const tmpPath = `${path}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`);
   await rm(path, { force: true });
-  await import("node:fs/promises").then(({ rename }) => rename(tmpPath, path));
+  await rename(tmpPath, path);
 };
 
 const loadRegistryEntry = async (
