@@ -20,10 +20,22 @@ interface SourceHeaders {
 interface MappedFrame {
   readonly originalLine: string;
   readonly prefix: string;
+  readonly sourcePath: string | null;
+  readonly sourceLine: number | null;
+  readonly guideId: string | null;
+  readonly scenarioId: string | null;
   readonly sourceFrame: string | null;
   readonly generatedFrame: string;
   readonly warningFrame: string | null;
   readonly rerunCommand: string | null;
+}
+
+interface FailureAnnotation {
+  readonly key: string;
+  readonly sourcePath: string;
+  readonly sourceLine: number;
+  readonly title: string;
+  readonly message: string;
 }
 
 const fileCache = new Map<string, ReadonlyArray<string>>();
@@ -116,6 +128,20 @@ const rerunCommandForHeaders = (headers: SourceHeaders): string | null => {
   return `bun run docs:scenario ${headers.guideId}`;
 };
 
+const escapeAnnotationMessage = (value: string): string =>
+  value.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+
+const escapeAnnotationProperty = (value: string): string =>
+  escapeAnnotationMessage(value).replaceAll(",", "%2C").replaceAll(":", "%3A");
+
+const annotationTitleForHeaders = (headers: SourceHeaders): string => {
+  const parts = [headers.guideId, headers.scenarioId].filter((part): part is string => part !== null);
+  return parts.length === 0 ? "guide-scenario" : parts.join(":");
+};
+
+const annotationLine = (annotation: FailureAnnotation): string =>
+  `::error file=${escapeAnnotationProperty(annotation.sourcePath)},line=${escapeAnnotationProperty(String(annotation.sourceLine))},title=${escapeAnnotationProperty(annotation.title)}::${escapeAnnotationMessage(annotation.message)}`;
+
 const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
   const match = line.match(STACK_FRAME_RE);
   const target = match?.groups?.target;
@@ -143,6 +169,10 @@ const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
       headers.guideId !== null && headers.scenarioId !== null
         ? `[${headers.guideId}:${headers.scenarioId}]`
         : "",
+    sourcePath: headers.sourcePath,
+    sourceLine: headers.sourceLine,
+    guideId: headers.guideId,
+    scenarioId: headers.scenarioId,
     sourceFrame,
     generatedFrame: `${indent.replace(/at\s+$/, "")}Generated: ${formatGeneratedPath(filePath, repoRoot)}:${rawLine}:${rawColumn}`,
     warningFrame:
@@ -155,6 +185,38 @@ const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
 
 const shouldPrefixFailureLine = (line: string): boolean =>
   line.startsWith("error: ") || /^\([^)]+Failure\) Error: /.test(line);
+
+const failureMessageForFrame = (
+  lines: ReadonlyArray<string>,
+  failureLineIndex: number,
+  frameLineIndex: number,
+): string => {
+  const messageLines: string[] = [];
+  for (let index = failureLineIndex; index < frameLineIndex; index += 1) {
+    const line = lines[index];
+    if (line === undefined) continue;
+    if (/^\s+at\s+/.test(line)) break;
+    messageLines.push(line);
+  }
+  return messageLines.join("\n").trim() || lines[failureLineIndex] || "Guide scenario failed";
+};
+
+const annotationForFrame = (
+  frame: MappedFrame,
+  lines: ReadonlyArray<string>,
+  failureLineIndex: number,
+  frameLineIndex: number,
+): FailureAnnotation | null => {
+  if (frame.sourcePath === null || frame.sourceLine === null) return null;
+  const title = annotationTitleForHeaders(frame);
+  return {
+    key: `${title}:${frame.sourceLine}`,
+    sourcePath: frame.sourcePath,
+    sourceLine: frame.sourceLine,
+    title,
+    message: failureMessageForFrame(lines, failureLineIndex, frameLineIndex),
+  };
+};
 
 export const rewriteScenarioSourceMappedOutput = (output: string, options: RewriteOptions = {}): string => {
   const repoRoot = resolve(options.repoRoot ?? process.cwd());
@@ -169,6 +231,7 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
   if (mapped.size === 0) return output;
 
   const prefixByLineIndex = new Map<number, string>();
+  const annotations = new Map<string, FailureAnnotation>();
   let pendingFailureLineIndex: number | undefined;
   for (const [index, line] of lines.entries()) {
     if (shouldPrefixFailureLine(line)) pendingFailureLineIndex = index;
@@ -176,6 +239,11 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
     if (frame === undefined || pendingFailureLineIndex === undefined) continue;
     if (frame.prefix !== "" && !prefixByLineIndex.has(pendingFailureLineIndex)) {
       prefixByLineIndex.set(pendingFailureLineIndex, frame.prefix);
+    }
+    if (process.env.GITHUB_ACTIONS === "true") {
+      const annotation = annotationForFrame(frame, lines, pendingFailureLineIndex, index);
+      if (annotation !== null && !annotations.has(annotation.key))
+        annotations.set(annotation.key, annotation);
     }
     pendingFailureLineIndex = undefined;
   }
@@ -208,7 +276,12 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
     }
   }
   if (pendingRerunCommand !== null) rewritten.push(`Re-run: ${pendingRerunCommand}`);
-  return rewritten.join("\n");
+  const rewrittenOutput = rewritten.join("\n");
+  if (annotations.size === 0) return rewrittenOutput;
+  const annotationOutput = [...annotations.values()].map(annotationLine).join("\n");
+  return rewrittenOutput.endsWith("\n")
+    ? `${rewrittenOutput}${annotationOutput}`
+    : `${rewrittenOutput}\n${annotationOutput}`;
 };
 
 if (import.meta.main) {
