@@ -671,3 +671,9 @@
   - `diataxis:` is not a `GuideFrontmatter` field — `lintGuideContent` strips it before decode, but `parseGuideScenarioAst` rejects it and zero real guides declare it, so any lint test fixture that flows through `parseGuideScenarioAst`/`lintGuideTranscripts` must omit `diataxis:`.
   - Public-transcript exclusion is best enforced as an AST-derived allowlist of visible frame source lines (not an excluded-line set, which collides); `Cleanup` is intentionally a public frame, so the allowlist must keep it.
 ---
+
+## 2026-06-15 00:49 CDT - US-248 Review
+- Hardened the two transcript/source-map gates so they verify correctness, not just presence: the source-map checker now requires every generated `// @source:` header (scenario and per-step) to point at the guide being linted and the scenario header to anchor the scenario's line, and the public-transcript discipline check now rejects frames whose `sourceFile` is not the linted guide instead of accepting any non-empty path. Added regression tests for wrong-path, wrong-anchor-line, and cross-file frame leaks.
+- Review notes (rejected): the same-line same-file hidden/visible collision in the transcript-discipline allowlist is left as-is — it is only reachable if the primary guard (`buildPublicTranscript`, which already drops `render={false}`, hidden steps, and `Variable`/`UseFixture`) is itself broken AND a guide authors excluded and visible components on one physical MDX line (no real guide does; the parser assigns distinct lines), and the line-denylist fix would false-positive on legitimate collisions. Disproportionate to a backstop gap.
+- Verification: typecheck, lint, and the focused lint-guides suite (48 pass / 0 fail) pass; `bun run lint:guides` stays clean on every real guide.
+---

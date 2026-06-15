@@ -909,7 +909,7 @@ export const checkTranscriptFrameDiscipline = (
   const allowed = allowedPublicLines(scenario);
   const diagnostics: Array<GuideLintDiagnostic> = [];
   for (const frame of frames) {
-    if (frame.sourceFile.length > 0 && frame.sourceLine > 0 && allowed.has(frame.sourceLine)) continue;
+    if (frame.sourceFile === sourcePath && frame.sourceLine > 0 && allowed.has(frame.sourceLine)) continue;
     diagnostics.push({
       sourcePath,
       line: frame.sourceLine > 0 ? frame.sourceLine : scenario.line,
@@ -922,6 +922,14 @@ export const checkTranscriptFrameDiscipline = (
 };
 
 const SOURCE_HEADER_PATTERN = /^\/\/ @source: (.+):(\d+)$/;
+
+const parseSourceHeader = (line: string): { readonly path: string; readonly line: number } | undefined => {
+  const match = SOURCE_HEADER_PATTERN.exec(line);
+  if (match === null) return undefined;
+  const parsed = Number.parseInt(match[2] ?? "", 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return { path: match[1] ?? "", line: parsed };
+};
 
 export const checkScenarioSourceMap = (
   generatedSource: string,
@@ -941,13 +949,25 @@ export const checkScenarioSourceMap = (
   const lines = generatedSource.split("\n").map((line) => line.trim());
   if (!lines.includes("// @generated"))
     push("Generated scenario block is missing its `// @generated` header.");
-  if (!lines.some((line) => SOURCE_HEADER_PATTERN.test(line)))
+  const sourceHeaders = lines
+    .map(parseSourceHeader)
+    .filter((entry): entry is { readonly path: string; readonly line: number } => entry !== undefined);
+  if (sourceHeaders.length === 0) {
     push(`Generated scenario block is missing a \`// @source: ${sourcePath}:<line>\` header.`);
+  } else {
+    if (sourceHeaders.some((entry) => entry.path !== sourcePath))
+      push(`Generated scenario block has a \`// @source:\` header that does not point at ${sourcePath}.`);
+    if (!sourceHeaders.some((entry) => entry.path === sourcePath && entry.line === anchorLine))
+      push(
+        `Generated scenario block is missing a \`// @source: ${sourcePath}:${anchorLine}\` header anchoring the scenario.`,
+      );
+  }
   if (!lines.some((line) => line.startsWith("// @scenario: ") && line.length > "// @scenario: ".length))
     push("Generated scenario block is missing its `// @scenario:` header.");
   for (let index = 0; index < lines.length; index += 1) {
     if (!lines[index]?.startsWith("// @step:")) continue;
-    if (!SOURCE_HEADER_PATTERN.test(lines[index - 1] ?? ""))
+    const preceding = parseSourceHeader(lines[index - 1] ?? "");
+    if (preceding === undefined || preceding.path !== sourcePath)
       push("A generated step is missing its preceding `// @source:` annotation.");
   }
   return diagnostics;

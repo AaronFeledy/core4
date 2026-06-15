@@ -563,6 +563,67 @@ describe("lint:guides", () => {
     expect(diagnostics[0]).toContain("guide.transcript.source-map");
   });
 
+  test("rejects source-map headers that point at a different guide", () => {
+    const sourcePath = "docs/guides/example.mdx";
+    const wrongPath = [
+      "// @generated",
+      "// @source: docs/guides/other.mdx:8",
+      "// @scenario: reader-path",
+      "// @variant:",
+    ].join("\n");
+    const diagnostics = checkScenarioSourceMap(wrongPath, sourcePath, 8).map(formatGuideLintDiagnostic);
+    expect(diagnostics.length).toBeGreaterThanOrEqual(1);
+    expect(diagnostics.every((entry) => entry.includes("guide.transcript.source-map"))).toBe(true);
+    expect(diagnostics.some((entry) => entry.includes("does not point at docs/guides/example.mdx"))).toBe(
+      true,
+    );
+  });
+
+  test("rejects a scenario source-map header whose line does not anchor the scenario", () => {
+    const sourcePath = "docs/guides/example.mdx";
+    const wrongLine = [
+      "// @generated",
+      "// @source: docs/guides/example.mdx:99",
+      "// @scenario: reader-path",
+      "// @variant:",
+    ].join("\n");
+    const diagnostics = checkScenarioSourceMap(wrongLine, sourcePath, 8).map(formatGuideLintDiagnostic);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("guide.transcript.source-map");
+    expect(diagnostics[0]).toContain("docs/guides/example.mdx:8");
+  });
+
+  test("flags a public transcript frame that maps to a different source file", () => {
+    const sourcePath = "core/test/lint/guides/transcript-cross-file.mdx";
+    const content = [
+      "---",
+      "id: transcript-cross-file",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="run">',
+      '      <Run command="version" />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    const guide = parseGuideScenarioAst(sourcePath, content);
+    const scenario = guide.scenarios[0];
+    if (scenario === undefined) throw new Error("expected a scenario");
+    const transcript = buildPublicTranscript(guide, scenario, undefined);
+    if (transcript === undefined) throw new Error("expected a public transcript");
+
+    const foreign = transcript.frames.map((frame) => ({ ...frame, sourceFile: "docs/guides/other.mdx" }));
+    const diagnostics = checkTranscriptFrameDiscipline(scenario, foreign, sourcePath).map(
+      formatGuideLintDiagnostic,
+    );
+    expect(diagnostics.length).toBeGreaterThanOrEqual(1);
+    expect(diagnostics[0]).toContain("guide.transcript.leak");
+  });
+
   test("passes transcript discipline and source-map coverage on a clean guide", () => {
     const sourcePath = "core/test/lint/guides/transcript-clean.mdx";
     const content = [
