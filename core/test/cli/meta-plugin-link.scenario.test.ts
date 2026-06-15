@@ -166,4 +166,23 @@ describe("meta:plugin:link command", () => {
       expect(cause).toContain("already exists");
     }
   });
+
+  test("refuses a manifest name that escapes the plugins root without mutating the filesystem", async () => {
+    const pluginRoot = await makePluginRoot("../escape/lando-plugin-hostile", "hostile");
+    const pluginsRoot = join(userDataRoot, "plugins");
+
+    const exit = await Effect.runPromiseExit(
+      pluginLink({ cwd: pluginRoot, cacheRoot }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginManifestError");
+      expect(cause).toContain("outside");
+    }
+    expect(await exists(pluginsRoot)).toBe(false);
+    expect(await exists(join(userDataRoot, "escape"))).toBe(false);
+    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+  });
 });

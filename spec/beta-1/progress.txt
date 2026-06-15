@@ -732,3 +732,8 @@
 - Verification: focused RED→GREEN plugin-link tests, deferred cutover, plugin/command registry tests, dispatch parity and OCLIF manifest tests, guide lint/coverage/dev guide, source CLI manual QA, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** Linked plugin state rides both `registry.json` (for existing plugin discovery) and `.lando-linked.json` (for future unlink/restore bookkeeping); keep all link/unlink mutations confined to `<userDataRoot>/plugins/` and invalidate `plugin-command-cache.bin` only after the linked state is durable.
 ---
+## 2026-06-15 17:25 CDT - US-233 Review
+- Fixed pre-mutation containment gap: `pluginLink` was running `mkdir(dirname(registryEntry), …)` before `assertInsidePluginsRoot`, so a hostile `package.json` with a `..`-escaping name could create directories outside `<userDataRoot>/plugins/` before the conflict check fired (`PluginName` is an unvalidated branded string). Hoisted the containment assertion ahead of any filesystem mutation and added a scenario regression that links a `../escape/...` name and verifies zero FS writes.
+- Verification: typecheck, lint, focused `meta-plugin-link.scenario.test.ts` (4 pass) green. Full `bun test` showed one pre-existing flake unrelated to this story (`core/test/scripts/dev-guides.test.ts` SIGINT exit on the dev:guides watcher; the dev-guides files are byte-identical to `origin/main` on this branch).
+- **Learnings for future iterations:** `@lando/sdk`'s `PluginName` is a bare branded `Schema.String` with no format validation, so any core path that maps `manifest.name` to a filesystem location must enforce containment BEFORE the first `mkdir`/`writeFile` (mirror `plugin-add.ts`'s `assertSafeInstallSegment` ordering).
+---

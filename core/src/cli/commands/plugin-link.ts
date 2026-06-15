@@ -160,6 +160,22 @@ export const pluginLink = (
             }),
     });
     const registryEntry = resolve(pluginsRoot, manifest.name);
+    // Refuse before any filesystem mutation if the manifest name resolves
+    // outside the plugins root (PluginName is an unvalidated branded string,
+    // so a hostile package.json could otherwise cause `mkdir` to create
+    // parent directories outside <userDataRoot>/plugins/ before the
+    // collision/containment check inside `prepareRegistryEntry` fires).
+    yield* Effect.try({
+      try: () => assertInsidePluginsRoot(pluginsRoot, registryEntry, manifest.name),
+      catch: (cause) =>
+        cause instanceof PluginManifestError
+          ? cause
+          : new PluginManifestError({
+              message: `Plugin ${manifest.name} link target resolves outside ${pluginsRoot}.`,
+              pluginName: manifest.name,
+              issues: [String(cause)],
+            }),
+    });
 
     yield* Effect.tryPromise({
       try: async () => {
