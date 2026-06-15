@@ -9,7 +9,6 @@
     { "id": "meta:plugin:build" },
     { "id": "meta:plugin:link" },
     { "id": "meta:plugin:publish" },
-    { "id": "meta:plugin:test" },
     { "id": "meta:plugin:unlink" }
   ]
 }
