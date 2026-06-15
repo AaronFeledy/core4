@@ -84,7 +84,19 @@ describe("meta:plugin:build command", () => {
     expect(result.entrypoints).toEqual(["./src/index.ts"]);
     expect(result.outputs).toEqual(["dist/index.d.ts", "dist/index.js", "dist/package.json"]);
     expect(spawns.map((spawn) => spawn.cmd)).toEqual([
-      ["/opt/bun", "build", "./src/index.ts", "--outdir", "./dist", "--target", "bun", "--format", "esm"],
+      [
+        "/opt/bun",
+        "build",
+        "./src/index.ts",
+        "--outdir",
+        "./dist",
+        "--root",
+        "./src",
+        "--target",
+        "bun",
+        "--format",
+        "esm",
+      ],
       ["/opt/bun", "x", "tsc", "--project", ".lando-plugin-build.tsconfig.json"],
     ]);
     expect(spawns.every((spawn) => spawn.cwd === root)).toBe(true);
