@@ -258,6 +258,7 @@ export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant 
   return combinations.map((pairs) => {
     const override = overrides[pairs.map((pair) => pair.value).join(".")];
     const skip = override?.skip ?? guide.frontmatter.skip;
+    const platforms = override?.platforms ?? guide.frontmatter.platforms;
     const tags =
       override?.tags === undefined
         ? guideTags.length === 0
@@ -268,11 +269,7 @@ export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant 
       pairs,
       ...(skip === undefined ? {} : { skip }),
       ...(tags === undefined ? {} : { tags }),
-      ...(override?.platforms === undefined
-        ? guide.frontmatter.platforms === undefined
-          ? {}
-          : { platforms: guide.frontmatter.platforms }
-        : { platforms: override.platforms }),
+      ...(platforms === undefined ? {} : { platforms }),
     };
   });
 };
@@ -587,7 +584,7 @@ const renderScenarioTest = (
   const skippedE2eTestName = quote(
     `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
   );
-  const e2eForcedSkip = usesE2eRuntime && testFn === "test.skip";
+  const e2eForcedSkip = usesE2eRuntime && forcedSkip;
   const testNameExpression =
     usesE2eRuntime && !e2eForcedSkip
       ? `(e2eGateEnabled ? ${runnableTestName} : ${skippedE2eTestName})`

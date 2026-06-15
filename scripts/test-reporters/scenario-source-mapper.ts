@@ -17,13 +17,9 @@ interface SourceHeaders {
   readonly scenarioId: string | null;
 }
 
-interface MappedFrame {
+interface MappedFrame extends SourceHeaders {
   readonly originalLine: string;
   readonly prefix: string;
-  readonly sourcePath: string | null;
-  readonly sourceLine: number | null;
-  readonly guideId: string | null;
-  readonly scenarioId: string | null;
   readonly sourceFrame: string | null;
   readonly generatedFrame: string;
   readonly warningFrame: string | null;
@@ -193,8 +189,7 @@ const failureMessageForFrame = (
 ): string => {
   const messageLines: string[] = [];
   for (let index = failureLineIndex; index < frameLineIndex; index += 1) {
-    const line = lines[index];
-    if (line === undefined) continue;
+    const line = lines[index] as string;
     if (/^\s+at\s+/.test(line)) break;
     messageLines.push(line);
   }
