@@ -701,9 +701,9 @@ describe("lint:guides", () => {
     const diagnostics = lintGuideTranscripts(sourcePath, content).diagnostics;
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics.some((diagnostic) => diagnostic.code === "guide.transcript.build")).toBe(true);
+    expect(diagnostics.some((diagnostic) => diagnostic.code === "guide.transcript.source-map")).toBe(true);
     expect(diagnostics.map(formatGuideLintDiagnostic)[0]).toContain(
-      "Could not build scenario transcript: Guide core/test/lint/guides/transcript-mixed-runtime.mdx scenario transcript-mixed-runtime:reader-path mixes cli/shell and library <Run> steps; mixed runtime scenarios are not supported.",
+      "Could not generate scenario block: Guide core/test/lint/guides/transcript-mixed-runtime.mdx scenario transcript-mixed-runtime:reader-path mixes cli/shell and library <Run> steps; mixed runtime scenarios are not supported.",
     );
   });
 });

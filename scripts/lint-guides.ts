@@ -1015,8 +1015,8 @@ export const lintGuideTranscripts = (
           sourcePath,
           line: scenario.line,
           column: 1,
-          code: "guide.transcript.build",
-          message: `Could not build scenario transcript: ${formatErrorMessage(error)}`,
+          code: "guide.transcript.source-map",
+          message: `Could not generate scenario block: ${formatErrorMessage(error)}`,
         });
       }
     }
