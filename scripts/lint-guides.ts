@@ -886,16 +886,21 @@ const allowedPublicLines = (scenario: GuideScenarioNode): ReadonlySet<number> =>
   };
   for (const step of scenario.steps) addStep(step);
   for (const item of scenario.body) {
-    if (item.kind === "step") addStep(item.step);
-    else if (item.kind === "tabs") {
-      allowed.add(item.line);
-      for (const tab of item.tabs) {
-        allowed.add(tab.line);
-        for (const step of tab.steps) addStep(step);
-      }
-    } else if (item.kind === "skip") {
-      allowed.add(item.line);
-      for (const step of item.steps) addStep(step);
+    switch (item.kind) {
+      case "step":
+        addStep(item.step);
+        break;
+      case "tabs":
+        allowed.add(item.line);
+        for (const tab of item.tabs) {
+          allowed.add(tab.line);
+          for (const step of tab.steps) addStep(step);
+        }
+        break;
+      case "skip":
+        allowed.add(item.line);
+        for (const step of item.steps) addStep(step);
+        break;
     }
   }
   return allowed;
@@ -949,9 +954,11 @@ export const checkScenarioSourceMap = (
   const lines = generatedSource.split("\n").map((line) => line.trim());
   if (!lines.includes("// @generated"))
     push("Generated scenario block is missing its `// @generated` header.");
-  const sourceHeaders = lines
-    .map(parseSourceHeader)
-    .filter((entry): entry is { readonly path: string; readonly line: number } => entry !== undefined);
+  const sourceHeaders: Array<{ readonly path: string; readonly line: number }> = [];
+  for (const line of lines) {
+    const sourceHeader = parseSourceHeader(line);
+    if (sourceHeader !== undefined) sourceHeaders.push(sourceHeader);
+  }
   if (sourceHeaders.length === 0) {
     push(`Generated scenario block is missing a \`// @source: ${sourcePath}:<line>\` header.`);
   } else {
