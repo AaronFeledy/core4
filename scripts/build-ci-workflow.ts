@@ -328,10 +328,115 @@ ${platform.liveProviderIntegration ? `${contractProviderTestSteps}\n\n${linuxPro
 ${timingNoticeStep(`provider-integration-${platform.id}`, platform.providerTimeoutMinutes)}
 `;
 
+const guideScenarioRunCommand =
+  "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
+
+const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
+${linuxProviderSetupSteps}
+
+      - name: Run e2e smoke guide scenarios
+        env:
+          LANDO_GUIDE_E2E: "1"
+        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --test-name-pattern="@smoke.*\\[e2e\\]"
+
+      - name: Teardown guide e2e provider
+        if: always()
+        run: |
+          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
+          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
+          rm -f /tmp/podman.sock /tmp/podman-service.pid
+
+      - name: Collect guide e2e provider diagnostics
+        if: failure()
+        run: |
+          mkdir -p guide-e2e-provider-diagnostics
+          cp /tmp/podman-service.log guide-e2e-provider-diagnostics/podman-service.log || true
+          journalctl --no-pager --since "-30 minutes" > guide-e2e-provider-diagnostics/journalctl.log 2>&1 || true
+
+      - name: Upload guide scenario transcripts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-scenario-transcripts-\${{ github.run_id }}.zip
+          path: dist/transcripts/guides/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload guide e2e provider diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}.zip
+          path: guide-e2e-provider-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7`;
+
+const renderGuideScenariosJob = (platform: CiPlatform): string => {
+  const isLinuxX64 = platform.id === "linux-x64";
+
+  return `  guide-scenarios-${platform.id}:
+    needs: ${isLinuxX64 ? "[static-checks, build-linux-x64]" : "[static-checks]"}
+    runs-on: ${platform.runsOn}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: \${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: \${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: \${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: ${guideScenarioRunCommand}${
+          isLinuxX64
+            ? `
+
+${linuxGuideScenarioE2eSteps}`
+            : ""
+        }
+
+${timingNoticeStep(`guide-scenarios-${platform.id}`, 30)}
+`;
+};
+
 export const renderCiWorkflow = (): string => {
   const buildJobs = CI_PLATFORMS.map(renderBuildJob).join("\n");
   const perfBudgetJob = renderPerfBudgetJob();
   const providerIntegrationJobs = CI_PLATFORMS.map(renderProviderIntegrationJob).join("\n");
+  const guideScenarioJobs = CI_PLATFORMS.map(renderGuideScenariosJob).join("\n");
 
   return `${GENERATED_HEADER}
 name: ci
@@ -423,96 +528,7 @@ ${setupBunSteps}
 
 ${timingNoticeStep("recipe-tests", 15)}
 
-  guide-scenarios-linux-x64:
-    needs: [static-checks, build-linux-x64]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-${timingStartStep}
-
-${setupBunSteps}
-
-      - name: Regenerate guide scenarios
-        run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Lint guides
-        run: bun run lint:guides
-
-      - name: Check guide coverage
-        run: bun run check:guide-coverage
-
-      - name: Check public transcripts
-        run: bun run check:public-transcripts
-
-      - name: Check guide drift
-        if: \${{ github.event_name == 'pull_request' }}
-        env:
-          GUIDE_DRIFT_BASE_SHA: \${{ github.event.pull_request.base.sha }}
-          GUIDE_DRIFT_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
-          GUIDE_DRIFT_PR_BODY: \${{ github.event.pull_request.body }}
-        run: bun run check:guide-drift
-
-      - name: Run generated guide scenarios
-        run: bun test test/scenarios/generated/guides/**
-
-      - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: lando-linux-x64
-          path: dist
-
-      - name: Restore binary executable bit
-        run: chmod +x dist/lando
-
-${linuxProviderSetupSteps}
-
-      - name: Run e2e smoke guide scenarios
-        env:
-          LANDO_GUIDE_E2E: "1"
-        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
-
-      - name: Teardown guide e2e provider
-        if: always()
-        run: |
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
-
-      - name: Collect guide e2e provider diagnostics
-        if: failure()
-        run: |
-          mkdir -p guide-e2e-provider-diagnostics
-          cp /tmp/podman-service.log guide-e2e-provider-diagnostics/podman-service.log || true
-          journalctl --no-pager --since "-30 minutes" > guide-e2e-provider-diagnostics/journalctl.log 2>&1 || true
-
-      - name: Upload guide scenario transcripts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: guide-scenario-transcripts-\${{ github.run_id }}.zip
-          path: dist/transcripts/guides/**/*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload guide e2e provider diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}.zip
-          path: guide-e2e-provider-diagnostics
-          if-no-files-found: ignore
-          retention-days: 7
-
-${timingNoticeStep("guide-scenarios-linux-x64", 30)}
-
+${guideScenarioJobs}
 ${buildJobs}
 ${perfBudgetJob}
 ${providerIntegrationJobs}`;

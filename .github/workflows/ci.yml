@@ -208,6 +208,159 @@ jobs:
         run: |
           echo "::notice title=ci-timing::recipe-tests completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
+  guide-scenarios-darwin-arm64:
+    needs: [static-checks]
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
+  guide-scenarios-darwin-x64:
+    needs: [static-checks]
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
+  guide-scenarios-linux-arm64:
+    needs: [static-checks]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
   guide-scenarios-linux-x64:
     needs: [static-checks, build-linux-x64]
     runs-on: ubuntu-24.04
@@ -252,7 +405,7 @@ jobs:
         run: bun run check:guide-drift
 
       - name: Run generated guide scenarios
-        run: bun test test/scenarios/generated/guides/**
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
 
       - name: Download Linux x64 binary artifact
         uses: actions/download-artifact@v4
@@ -308,7 +461,7 @@ jobs:
       - name: Run e2e smoke guide scenarios
         env:
           LANDO_GUIDE_E2E: "1"
-        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\[e2e\]"
+        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\[e2e\]"
 
       - name: Teardown guide e2e provider
         if: always()
@@ -347,6 +500,57 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::guide-scenarios-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
+  guide-scenarios-windows-x64:
+    needs: [static-checks]
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check public transcripts
+        run: bun run check:public-transcripts
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-arm64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]

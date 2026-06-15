@@ -464,7 +464,9 @@ describe("ci workflow", () => {
     );
     expect(guideScenarios).toContain("          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}");
     expect(guideScenarios).toContain("        run: bun run check:guide-drift");
-    expect(guideScenarios).toContain("        run: bun test test/scenarios/generated/guides/**");
+    expect(guideScenarios).toContain(
+      "        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+    );
     expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
     expect(guideScenarios).toContain("          name: lando-linux-x64");
     expect(guideScenarios).toContain("        run: chmod +x dist/lando");
@@ -475,7 +477,7 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
     expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(guideScenarios).toContain(
-      '        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"',
+      '        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"',
     );
     expect(guideScenarios).toContain("      - name: Teardown guide e2e provider");
     expect(guideScenarios).toContain("      - name: Upload guide e2e provider diagnostics");
@@ -502,17 +504,52 @@ describe("ci workflow", () => {
       guideScenarios.indexOf("bun run check:guide-drift"),
     );
     expect(guideScenarios.indexOf("bun run check:guide-drift")).toBeLessThan(
-      guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
+      guideScenarios.indexOf(
+        "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+      ),
     );
-    expect(guideScenarios.indexOf("bun test test/scenarios/generated/guides/**")).toBeLessThan(
-      guideScenarios.indexOf("Download Linux x64 binary artifact"),
-    );
+    expect(
+      guideScenarios.indexOf(
+        "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+      ),
+    ).toBeLessThan(guideScenarios.indexOf("Download Linux x64 binary artifact"));
     expect(guideScenarios.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
       guideScenarios.indexOf("Run e2e smoke guide scenarios"),
     );
     expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
       guideScenarios.indexOf("Run e2e smoke guide scenarios"),
     );
+  });
+
+  test("runs generated guide scenarios on non-Linux-x64 platforms without e2e provider setup", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const guideScenarioJobs = [
+      ["guide-scenarios-darwin-arm64", "macos-15"],
+      ["guide-scenarios-darwin-x64", "macos-15-intel"],
+      ["guide-scenarios-linux-arm64", "ubuntu-24.04-arm"],
+      ["guide-scenarios-windows-x64", "windows-2022"],
+    ] as const;
+
+    for (const [jobId, runsOn] of guideScenarioJobs) {
+      const guideScenarios = findIndentedBlock(jobs, jobId, 2);
+
+      expect(guideScenarios).toContain("    needs: [static-checks]");
+      expect(guideScenarios).toContain(`    runs-on: ${runsOn}`);
+      expect(guideScenarios).toContain("          fetch-depth: 0");
+      expect(guideScenarios).toContain("        run: bun run codegen");
+      expect(guideScenarios).toContain("        run: bun run typecheck");
+      expect(guideScenarios).toContain("        run: bun run lint:guides");
+      expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
+      expect(guideScenarios).toContain("        run: bun run check:public-transcripts");
+      expect(guideScenarios).toContain("      - name: Check guide drift");
+      expect(guideScenarios).toContain(
+        "        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+      );
+      expect(guideScenarios).not.toContain("      - name: Run e2e smoke guide scenarios");
+      expect(guideScenarios).not.toContain("      - name: Install Podman");
+      expect(guideScenarios).not.toContain("      - name: Download Linux x64 binary artifact");
+    }
   });
 
   test("runs the tooling hot-path perf budget as a branch-protectable Linux x64 gate", async () => {
