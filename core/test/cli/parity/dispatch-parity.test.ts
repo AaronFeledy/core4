@@ -4,8 +4,8 @@
  * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
  * single-file binary, so source-mode OCLIF `execute()` and the compiled
  * hand-rolled `runCompiledCli` stay as separate dispatch paths. These tests
- * enforce parity across every canonical command id in the compiled registry
- * (`MVP_COMMAND_IDS` plus the deferred-command set).
+ * enforce parity across every command id that is implemented or deliberately
+ * deferred in the compiled registry.
  *
  * Two parts:
  *

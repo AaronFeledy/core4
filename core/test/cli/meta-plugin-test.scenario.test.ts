@@ -74,8 +74,9 @@ describe("meta:plugin:test command", () => {
     expect(result.pluginRoot).toBe(root);
     expect(result.exitCode).toBe(0);
     expect(spawns).toEqual([{ cmd: ["/opt/bun", "test"], cwd: root }]);
-    expect(renderPluginTestResult(result)).toContain("plugin-test: @acme/lando-plugin-test");
-    expect(renderPluginTestResult(result)).toContain("result: passed");
+    const rendered = renderPluginTestResult(result);
+    expect(rendered).toContain("plugin-test: @acme/lando-plugin-test");
+    expect(rendered).toContain("result: passed");
   });
 
   test("skips nested non-plugin package roots while walking to the plugin package", async () => {
