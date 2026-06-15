@@ -830,8 +830,8 @@
         "Lint passes."
       ],
       "priority": 47,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented e2e guide-scenario layer support with @smoke selection, local live-provider skip gating, generated transcript preservation, and linux-x64 CI smoke wiring."
     },
     {
       "id": "US-247",

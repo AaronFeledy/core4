@@ -10,7 +10,11 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 
 import { parseLandofile } from "../core/src/landofile/parser.ts";
-import { decodeGuideFrontmatterEither, decodeVerifyPropsEither } from "../sdk/src/docs/components/index.ts";
+import {
+  decodeGuideFrontmatterEither,
+  decodeScenarioPropsEither,
+  decodeVerifyPropsEither,
+} from "../sdk/src/docs/components/index.ts";
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
@@ -238,6 +242,55 @@ const lintHiddenScenarioReason = (
         "<Scenario render={false}> requires a `reason` of at least 8 characters.",
       ),
     );
+  }
+};
+
+const lintScenarioProps = (
+  sourcePath: string,
+  scenarios: ReadonlyArray<MdxNode>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  for (const scenario of scenarios) {
+    const props = propsOf(scenario);
+    if (!Object.hasOwn(props, "layer")) continue;
+    const decoded = decodeScenarioPropsEither(props);
+    if (Either.isRight(decoded)) continue;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        scenario,
+        "guide.scenario.props",
+        `<Scenario> props are invalid: ${formatErrorMessage(decoded.left)}`,
+      ),
+    );
+  }
+};
+
+const hasCleanup = (node: MdxNode): boolean => {
+  if (node.name === "Cleanup") return true;
+  return (node.children ?? []).some(hasCleanup);
+};
+
+const lintE2eScenarios = (
+  sourcePath: string,
+  scenarios: ReadonlyArray<MdxNode>,
+  frontmatter: Record<string, unknown>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  for (const scenario of scenarios) {
+    const props = propsOf(scenario);
+    const layer = props.layer ?? frontmatter.defaultLayer ?? "scenario";
+    if (layer !== "e2e") continue;
+    if (!hasCleanup(scenario)) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          scenario,
+          "guide.scenario.e2e-cleanup",
+          '<Scenario layer="e2e"> requires at least one <Cleanup> step so provider resources are torn down.',
+        ),
+      );
+    }
   }
 };
 
@@ -565,6 +618,7 @@ export const lintGuideContent = (
   const guide = elementChildren(root).find((child) => child.name === "Guide");
   lintComponents(sourcePath, root, diagnostics);
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
+  lintScenarioProps(sourcePath, scenarios, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
   lintHiddenReason(sourcePath, root, diagnostics);
   lintSkipReason(sourcePath, root, diagnostics);
@@ -573,6 +627,7 @@ export const lintGuideContent = (
   lintFixtures(sourcePath, root, guide, frontmatter, options.fixtures ?? [], diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
+  lintE2eScenarios(sourcePath, scenarios, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
   return { diagnostics };
 };

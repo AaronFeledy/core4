@@ -444,7 +444,7 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
-    expect(guideScenarios).toContain("    needs: [static-checks]");
+    expect(guideScenarios).toContain("    needs: [static-checks, build-linux-x64]");
     expect(guideScenarios).toContain("    runs-on: ubuntu-24.04");
     expect(guideScenarios).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenarios).toContain("          bun-version-file: .bun-version");
@@ -465,6 +465,20 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}");
     expect(guideScenarios).toContain("        run: bun run check:guide-drift");
     expect(guideScenarios).toContain("        run: bun test test/scenarios/generated/guides/**");
+    expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
+    expect(guideScenarios).toContain("          name: lando-linux-x64");
+    expect(guideScenarios).toContain("        run: chmod +x dist/lando");
+    expect(guideScenarios).toContain("      - name: Install Podman");
+    expect(guideScenarios).toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
+    );
+    expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
+    expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
+    expect(guideScenarios).toContain(
+      '        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"',
+    );
+    expect(guideScenarios).toContain("      - name: Teardown guide e2e provider");
+    expect(guideScenarios).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideScenarios).toContain("        if: failure()");
     expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
     expect(guideScenarios).toContain("          name: guide-scenario-transcripts-${{ github.run_id }}.zip");
@@ -490,8 +504,14 @@ describe("ci workflow", () => {
     expect(guideScenarios.indexOf("bun run check:guide-drift")).toBeLessThan(
       guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
     );
+    expect(guideScenarios.indexOf("bun test test/scenarios/generated/guides/**")).toBeLessThan(
+      guideScenarios.indexOf("Download Linux x64 binary artifact"),
+    );
+    expect(guideScenarios.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
+      guideScenarios.indexOf("Run e2e smoke guide scenarios"),
+    );
     expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
-      guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
+      guideScenarios.indexOf("Run e2e smoke guide scenarios"),
     );
   });
 
