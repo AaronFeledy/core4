@@ -4,8 +4,8 @@
  * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
  * single-file binary, so source-mode OCLIF `execute()` and the compiled
  * hand-rolled `runCompiledCli` stay as separate dispatch paths. These tests
- * enforce parity across every canonical command id in the compiled registry
- * (`MVP_COMMAND_IDS` plus the deferred-command set).
+ * enforce parity across every command id that is implemented or deliberately
+ * deferred in the compiled registry.
  *
  * Two parts:
  *
@@ -23,7 +23,7 @@
  *   dispatch — not emit `NotImplementedError`) and for the deferred set.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -156,6 +156,32 @@ const makeIsolatedEnv = (): { readonly env: Record<string, string>; readonly cle
     LANDO_USER_CONF_ROOT: join(root, "conf"),
   } as Record<string, string>;
   return { env, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+};
+
+const makePluginTestFixture = (): { readonly root: string; readonly cleanup: () => void } => {
+  const root = mkdtempSync(join(tmpdir(), "lando-parity-plugin-test-"));
+  mkdirSync(join(root, "src"), { recursive: true });
+  mkdirSync(join(root, "test"), { recursive: true });
+  writeFileSync(
+    join(root, "package.json"),
+    `${JSON.stringify({
+      name: "@acme/lando-plugin-parity",
+      version: "0.0.0",
+      type: "module",
+      landoPlugin: {
+        name: "@acme/lando-plugin-parity",
+        version: "0.0.0",
+        api: 4,
+        entry: "src/index.ts",
+      },
+    })}\n`,
+  );
+  writeFileSync(join(root, "src", "index.ts"), "export const ok = true;\n");
+  writeFileSync(
+    join(root, "test", "plugin.test.ts"),
+    'import { expect, test } from "bun:test"; test("ok", () => expect(true).toBe(true));\n',
+  );
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
 const lastJsonLine = (output: string): unknown => {
@@ -429,6 +455,26 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
       expect(compiled.stderr).toContain("Expected --template=nope to be one of:");
+    }, 30_000);
+
+    test("meta:plugin:test forwards post-dash help flags to Bun on both paths", async () => {
+      const fixture = makePluginTestFixture();
+      try {
+        const source = await runSourceCli(["meta:plugin:test", "--renderer=plain", "--", "--help"], {
+          cwd: fixture.root,
+        });
+        const compiled = await runCompiledCli(["meta:plugin:test", "--renderer=plain", "--", "--help"], {
+          cwd: fixture.root,
+        });
+
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(source.stdout).toContain("plugin-test: @acme/lando-plugin-parity");
+        expect(compiled.stdout).toContain("plugin-test: @acme/lando-plugin-parity");
+        expect(compiled.stdout).not.toContain("USAGE\n  $ lando meta:plugin:test");
+      } finally {
+        fixture.cleanup();
+      }
     }, 30_000);
 
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {

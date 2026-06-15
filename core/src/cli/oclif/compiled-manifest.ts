@@ -2303,7 +2303,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:plugin:test": {
       aliases: [],
       args: {},
-      description: "Run the current plugin's tests (authoring command).",
+      description: "Run the current plugin's Bun test suite (authoring command).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -2312,11 +2312,11 @@ export const COMPILED_OCLIF_MANIFEST = {
       pluginAlias: "@lando/core",
       pluginName: "@lando/core",
       pluginType: "core",
-      strict: true,
+      strict: false,
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:plugin:test",
-        summary: "Run the current plugin's tests (authoring command).",
+        summary: "Run the current plugin's Bun test suite (authoring command).",
         namespace: "meta",
         topLevelAlias: false,
         bootstrap: "minimal",
