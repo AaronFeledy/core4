@@ -674,4 +674,36 @@ describe("lint:guides", () => {
     ].join("\n");
     expect(lintGuideTranscripts(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
   });
+
+  test("reports mixed runtime transcript build failures without throwing", () => {
+    const sourcePath = "core/test/lint/guides/transcript-mixed-runtime.mdx";
+    const content = [
+      "---",
+      "id: transcript-mixed-runtime",
+      "provider: test",
+      "diataxis: tutorial",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="reader-path">',
+      '    <Step name="cli">',
+      '      <Run command="version" />',
+      "    </Step>",
+      '    <Step name="library">',
+      '      <Run runtime="library" code={`expect(1).toBe(1);`} displayCode={`expect(1).toBe(1);`} />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+
+    expect(lintGuideContent(sourcePath, content).diagnostics).toEqual([]);
+    const diagnostics = lintGuideTranscripts(sourcePath, content).diagnostics;
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.some((diagnostic) => diagnostic.code === "guide.transcript.build")).toBe(true);
+    expect(diagnostics.map(formatGuideLintDiagnostic)[0]).toContain(
+      "Could not build scenario transcript: Guide core/test/lint/guides/transcript-mixed-runtime.mdx scenario transcript-mixed-runtime:reader-path mixes cli/shell and library <Run> steps; mixed runtime scenarios are not supported.",
+    );
+  });
 });

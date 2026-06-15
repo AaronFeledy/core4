@@ -21,13 +21,13 @@ import {
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
+import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
   NotImplementedError,
 } from "../sdk/src/errors/index.ts";
 import {
-  type GuidePlatform,
   type GuideScenarioAst,
   type GuideScenarioNode,
   type GuideStepNode,
@@ -1004,10 +1004,10 @@ export const lintGuideTranscripts = (
   const diagnostics: Array<GuideLintDiagnostic> = [];
   for (const scenario of guide.scenarios) {
     for (const variant of variantsOf(guide)) {
-      const transcript = buildPublicTranscript(guide, scenario, variant);
-      if (transcript !== undefined)
-        diagnostics.push(...checkTranscriptFrameDiscipline(scenario, transcript.frames, sourcePath));
       try {
+        const transcript = buildPublicTranscript(guide, scenario, variant);
+        if (transcript !== undefined)
+          diagnostics.push(...checkTranscriptFrameDiscipline(scenario, transcript.frames, sourcePath));
         const generated = renderScenarioTest(guide, scenario, variant, hostPlatform);
         diagnostics.push(...checkScenarioSourceMap(generated, sourcePath, scenario.line));
       } catch (error) {
@@ -1015,8 +1015,8 @@ export const lintGuideTranscripts = (
           sourcePath,
           line: scenario.line,
           column: 1,
-          code: "guide.transcript.source-map",
-          message: `Could not generate scenario block: ${formatErrorMessage(error)}`,
+          code: "guide.transcript.build",
+          message: `Could not build scenario transcript: ${formatErrorMessage(error)}`,
         });
       }
     }
