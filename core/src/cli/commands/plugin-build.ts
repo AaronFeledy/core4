@@ -99,6 +99,17 @@ const distNamesForSource = (source: string): { readonly js: string; readonly dts
   return { js: `./${name}.js`, dts: `./${name}.d.ts` };
 };
 
+const declarationRootDir = (entries: ReadonlyArray<ExportEntry>): string => {
+  const sourceDirs = entries.map((entry) => {
+    const withoutPrefix = entry.source.replace(/^\.\//, "");
+    const slash = withoutPrefix.lastIndexOf("/");
+    return slash === -1 ? "." : `./${withoutPrefix.slice(0, slash)}`;
+  });
+  const [first] = sourceDirs;
+  if (first !== undefined && sourceDirs.every((dir) => dir === first)) return first;
+  return ".";
+};
+
 const entriesFromExports = (pluginRoot: string, exportsField: unknown): ReadonlyArray<ExportEntry> => {
   if (exportsField === undefined) {
     throw commandError(
@@ -297,6 +308,8 @@ export const pluginBuild = (
       "--emitDeclarationOnly",
       "--outDir",
       "./dist",
+      "--rootDir",
+      declarationRootDir(entries),
       "--noEmit",
       "false",
     ];

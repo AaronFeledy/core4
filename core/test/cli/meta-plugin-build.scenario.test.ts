@@ -93,6 +93,8 @@ describe("meta:plugin:build command", () => {
         "--emitDeclarationOnly",
         "--outDir",
         "./dist",
+        "--rootDir",
+        "./src",
         "--noEmit",
         "false",
       ],
