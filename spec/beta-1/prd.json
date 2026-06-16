@@ -902,8 +902,8 @@
         "Lint passes."
       ],
       "priority": 51,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Canonical recipe guide now ships as Shipped in docs/guides/INDEX.md and proves the full acceptance path in one guide: rendered public transcript frames consumed by @lando/core/docs/render, a library-mode <Run runtime=\"library\"> scenario using @lando/core APIs, and an @smoke e2e scenario generated with [e2e] gating for linux-x64 provider CI. Verified with focused build/docs tests, guide lint, guide coverage, public-transcript gate, dev:guides generated scenarios, typecheck, lint, and full bun test."
     },
     {
       "id": "US-251",

@@ -258,6 +258,11 @@
 - Review feedback: rejected (Bugbot "Registry severity ignored on use" triaged as not-a-defect — §18.3 makes DeprecationUse.notice the runtime authority for `use`; register/lookup is a separate doctor/config index and no production `.use()` call sites exist, so the mismatch is unreachable; documented in a PR reply)
 - Merge: merged (squash)
 ---
+## 2026-06-15 23:57 CDT - US-250
+- Shipped the canonical guide acceptance path: one recipe guide now proves docs-rendered public transcripts, a library-mode `@lando/core` scenario, and an `@smoke` e2e provider scenario that is generated with the linux-x64 gate pattern.
+- Verification: red/green focused acceptance test, guide lint, guide coverage, public-transcript gate, generated guide scenario run, docs-render tests, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** A guide `<Verify>` matcher that needs command output must target `stdout`/`stderr` explicitly; a top-level `{ regex: ... }` matcher runs against the whole run object and will never match the command text.
+---
 
 ## 2026-06-11 17:35 CDT - US-217
 - Shipped the typed `deprecation-used` lifecycle event: deprecated runtime use is recorded, published through `EventService`, visible to library subscribers, and consumed by telemetry from the same event stream without aborting the originating behavior on subscriber failure.
