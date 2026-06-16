@@ -14,6 +14,7 @@ import {
   type DeprecationReleaseResult,
   checkDeprecationReleaseGate,
 } from "./check-deprecations.ts";
+import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 
 export type ArtifactTarget = "all" | "binary" | "library";
@@ -59,6 +60,7 @@ export interface ReleaseStageContext {
   readonly localRehearsal: boolean;
   readonly runner: ReleaseRunner;
   readonly logger: (line: string) => void;
+  readonly now: () => number;
 }
 
 export type DeprecationGate = (input: {
@@ -73,6 +75,7 @@ interface ReleaseOptions {
   readonly runner?: ReleaseRunner;
   readonly logger?: (line: string) => void;
   readonly deprecationGate?: DeprecationGate;
+  readonly now?: () => number;
 }
 
 interface ReleaseCliOptions {
@@ -92,6 +95,19 @@ export class ReleaseStageError extends Error {
   ) {
     super(`Release stage ${stageId} failed for ${artifactFamily}: ${commandSummary}`);
     this.name = "ReleaseStageError";
+  }
+}
+
+export class ReleaseCompileBudgetError extends Error {
+  readonly _tag = "ReleaseCompileBudgetError";
+
+  constructor(
+    readonly platformId: string,
+    readonly durationMs: number,
+    readonly budgetMs: number,
+  ) {
+    super(`Release compile for ${platformId} took ${durationMs}ms, exceeding the ${budgetMs}ms budget.`);
+    this.name = "ReleaseCompileBudgetError";
   }
 }
 
@@ -216,6 +232,7 @@ const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
   releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]);
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
+const compileBudgetMs = 10 * 60 * 1000;
 
 const releaseSigningCredentials: CredentialRequirement = {
   anyOf: [
@@ -264,6 +281,54 @@ const manifestSigningScript = (): string =>
     "cosign sign-blob --yes --output-signature dist/SHA256SUMS.sig dist/SHA256SUMS",
     "cosign sign-blob --yes --output-signature dist/SHA512SUMS.sig dist/SHA512SUMS",
   ].join("\n");
+
+const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
+  `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+
+const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
+  "bun",
+  "build",
+  "./core/bin/lando.ts",
+  "--compile",
+  "--bytecode",
+  `--target=${platform.bunTarget}`,
+  `--outfile=${releaseBinaryPath(platform)}`,
+  "--sourcemap=external",
+];
+
+const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
+  "bun",
+  "run",
+  "scripts/sanitize-compiled-binary.ts",
+  releaseBinaryPath(platform),
+];
+
+const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
+  for (const platform of CI_PLATFORMS) {
+    const startedAt = context.now();
+    await context.runner.spawn({
+      stageId: "7-compile",
+      artifactFamily: artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target),
+      summary: "bun build --compile --bytecode ./core/bin/lando.ts",
+      remediation: defaultRemediation,
+      cmd: compileCommand(platform),
+    });
+    const durationMs = context.now() - startedAt;
+    context.logger(
+      `[release] compile ${platform.id} completed in ${durationMs}ms (budget ${compileBudgetMs}ms)`,
+    );
+    if (platform.id === "linux-x64" && durationMs > compileBudgetMs) {
+      throw new ReleaseCompileBudgetError(platform.id, durationMs, compileBudgetMs);
+    }
+    await context.runner.spawn({
+      stageId: "7-compile",
+      artifactFamily: artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target),
+      summary: "sanitize compiled release binary",
+      remediation: defaultRemediation,
+      cmd: sanitizeCommand(platform),
+    });
+  }
+};
 
 const spawnStage =
   (
@@ -449,17 +514,17 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     remediation: defaultRemediation,
     command: libraryBundleCommands(),
   }),
-  defineStage({
+  {
     id: "7-compile",
     label: "Compile",
     description: "bun build --compile --bytecode --target=bun-${T} bin/lando.ts.",
     forBinary: true,
     forLibrary: false,
     kind: "spawn",
-    commandSummary: "bun run --filter=@lando/core build:compile",
+    commandSummary: "bun build --compile --bytecode ./core/bin/lando.ts",
     remediation: defaultRemediation,
-    command: ["bun", "run", "--filter=@lando/core", "build:compile"],
-  }),
+    run: compileReleaseBinaries,
+  },
   defineStage({
     id: "8-strip",
     label: "Strip",
@@ -581,6 +646,7 @@ export const runRelease = async ({
   runner = defaultRunner,
   logger = console.log,
   deprecationGate = defaultDeprecationGate,
+  now = () => Date.now(),
 }: ReleaseOptions = {}): Promise<void> => {
   const stages = stagePrefixLimit(throughStage);
   const localRehearsal = env.LOCAL_REHEARSAL === "1";
@@ -594,7 +660,7 @@ export const runRelease = async ({
     }
 
     logger(`[release] -> ${stage.id}: ${stage.description}`);
-    const context: ReleaseStageContext = { target, env, localRehearsal, runner, logger };
+    const context: ReleaseStageContext = { target, env, localRehearsal, runner, logger, now };
     try {
       await stage.run(context);
     } catch (cause) {
