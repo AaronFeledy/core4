@@ -275,13 +275,10 @@ const appleNotarizationCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
 };
 const manifestSigningCredentials: CredentialRequirement = {
-  allOfAny: [
-    ["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"],
-    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
-  ],
+  allOfAny: [["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"]],
 };
 const provenanceCredentials: CredentialRequirement = {
-  anyOf: [["LANDO_RELEASE_OIDC_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"], ["GITHUB_TOKEN"]],
+  allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
 };
 const libraryPublishCredentials: CredentialRequirement = {
   anyOf: [["LANDO_RELEASE_NPM_TOKEN", "NPM_TOKEN"]],
@@ -299,6 +296,12 @@ const macosReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): Readon
   platforms
     .filter((platform) => platform.id.startsWith("darwin-"))
     .sort((left, right) => (left.id === "darwin-x64" ? -1 : right.id === "darwin-x64" ? 1 : 0))
+    .map(releaseBinaryPath);
+
+const linuxReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  platforms
+    .filter((platform) => platform.id.startsWith("linux-"))
+    .sort((left, right) => left.id.localeCompare(right.id))
     .map(releaseBinaryPath);
 
 const macosCodesignCommands = (
@@ -428,21 +431,61 @@ const spawnCommandsForStage = (
   return commands;
 };
 
-const nonSigningManifestScript = (): string =>
-  [
+const nonSigningManifestScript = (platforms: ReadonlyArray<CiPlatform>): string => {
+  const linuxArtifacts = linuxReleaseArtifactPaths(platforms);
+  return [
     "mkdir -p dist",
+    ...linuxArtifacts.map((artifactPath) => `test -f "${artifactPath}"`),
     ": > dist/SHA256SUMS",
+    ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
     ": > dist/SHA512SUMS",
+    ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
     "printf '%s\\n' '{\"schemaVersion\":1,\"artifacts\":{}}' > dist/update-manifest.json",
   ].join("\n");
+};
 
 const manifestSigningScript = (): string =>
   [
     "gpg --batch --yes --armor --detach-sign dist/SHA256SUMS",
     "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
-    "cosign sign-blob --yes --output-signature dist/SHA256SUMS.sig dist/SHA256SUMS",
-    "cosign sign-blob --yes --output-signature dist/SHA512SUMS.sig dist/SHA512SUMS",
+    "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
+    "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
   ].join("\n");
+
+const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
+const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
+
+const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const certificateIdentityRegexp =
+    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
+    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+
+  return [
+    [
+      "cosign",
+      "sign-blob",
+      "--yes",
+      "--output-signature",
+      CHECKSUM_SIGNATURE,
+      "--output-certificate",
+      CHECKSUM_CERTIFICATE,
+      "dist/SHA256SUMS",
+    ],
+    [
+      "cosign",
+      "verify-blob",
+      "--certificate-identity-regexp",
+      certificateIdentityRegexp,
+      "--certificate-oidc-issuer",
+      COSIGN_OIDC_ISSUER,
+      "--signature",
+      CHECKSUM_SIGNATURE,
+      "--certificate",
+      CHECKSUM_CERTIFICATE,
+      "dist/SHA256SUMS",
+    ],
+  ];
+};
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
   `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
@@ -537,7 +580,7 @@ const shellStage =
         artifactFamily: artifactFamilyForStage(stage, target),
         summary: stage.commandSummary,
         remediation: stage.remediation,
-        script,
+        script: nonSigningManifestScript(target === "library" ? [] : releasePlatformsForContext(context)),
       });
       if (
         !credentialGate(
@@ -659,6 +702,40 @@ const platformSignStage: ReleaseStage = {
   },
 };
 
+const provenanceSbomStage: ReleaseStage = {
+  id: "12-provenance-sbom",
+  label: "Provenance & SBOM",
+  description: "CycloneDX SBOM + SLSA provenance + cosign signatures.",
+  forBinary: true,
+  forLibrary: true,
+  kind: "spawn",
+  commandSummary: "generate provenance and SBOM artifacts",
+  remediation: "Implement supply-chain attestation generation before making this stage required.",
+  run: async (context): Promise<void> => {
+    if (
+      !credentialGate(
+        "12-provenance-sbom",
+        "provenance and cosign credentials",
+        provenanceCredentials,
+        context,
+      )
+    )
+      return;
+
+    await spawnCommands(
+      context.runner,
+      {
+        stageId: "12-provenance-sbom",
+        artifactFamily: artifactFamilyForStage(provenanceSbomStage, context.target),
+        summary: "cosign-sign and verify release checksum manifest",
+        remediation: provenanceSbomStage.remediation,
+      },
+      checksumCosignCommands(context.env),
+    );
+    context.logger("[release] skip 12-provenance-sbom (SBOM and SLSA provenance not yet wired)");
+  },
+};
+
 export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   defineStage({
     id: "1-codegen",
@@ -770,19 +847,9 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     kind: "shell",
     commandSummary: "write release checksum and update manifests",
     remediation: "Implement release manifest generation before making this stage required.",
-    command: nonSigningManifestScript(),
+    command: nonSigningManifestScript(CI_PLATFORMS),
   }),
-  defineStage({
-    id: "12-provenance-sbom",
-    label: "Provenance & SBOM",
-    description: "CycloneDX SBOM + SLSA provenance + cosign signatures.",
-    forBinary: true,
-    forLibrary: true,
-    kind: "skip",
-    commandSummary: "generate provenance and SBOM artifacts",
-    remediation: "Implement supply-chain attestation generation before making this stage required.",
-    command: "[release] skip 12-provenance-sbom (supply-chain attestations not yet wired)",
-  }),
+  provenanceSbomStage,
   defineStage({
     id: "13-publish",
     label: "Publish",

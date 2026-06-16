@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
 - Release compile targets and generated CI platform ids share `CI_PLATFORMS` from `scripts/ci-platforms.ts`; do not duplicate the platform id/target list in release or workflow code.
 - Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
@@ -920,4 +921,12 @@
 - Verified the freshly built compiled binary starts (`./core/dist/lando --version`) and ran a real local release rehearsal through stage 7: the full test gate passed (3883 pass / 39 skip / 0 fail), then all five release binaries compiled with `--bytecode` and duration logs; linux-x64 completed in 10588ms against the 600000ms budget.
 - Setup blocker: sandbox `setup --provider=podman` hit the existing provider-owned socket conflict, and `setup --provider=lando` hit the known placeholder runtime-bundle URL; the local manifest helper requires pre-staged runtime artifacts, so setup could not be completed here without fabricating a bundle. This does not block US-257's release-compile acceptance but is recorded per Verify rules.
 - Adjacent smoke: focused release tests and CI workflow/codegen tests passed during Review; compiled binary version smoke passed during Verify.
+---
+
+## 2026-06-16 17:10 CDT - US-256
+- Shipped Linux release checksum signing: binary releases now write SHA256SUMS/SHA512SUMS entries for linux-x64 and linux-arm64, fail when those binaries are missing, GPG-sign and verify both manifests in Stage 11, then keyless-cosign sign and verify SHA256SUMS in Stage 12 before publish.
+- Kept release targets scoped: library-only releases still write manifest files but do not require Linux binaries, and local rehearsal warning-skips missing cosign credentials without spawning cosign.
+- Verification: focused release tests, typecheck, lint, guide lint, manual Stage 11/12 driver, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Linux authenticity lives at the checksum-manifest layer; keep binary artifact requirements out of library-only releases, and make keyless cosign gates match the actual ACTIONS OIDC request environment the command depends on.
 ---

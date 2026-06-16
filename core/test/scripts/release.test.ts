@@ -30,7 +30,10 @@ describe("release orchestrator", () => {
   const libraryPublishEnv = { LANDO_RELEASE_NPM_TOKEN: "token" };
   const manifestSigningEnv = {
     LANDO_RELEASE_GPG_KEY: "key",
-    LANDO_RELEASE_COSIGN_KEY: "key",
+  };
+  const provenanceSigningEnv = {
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
   };
   const windowsSigningEnv = {
     LANDO_RELEASE_WINDOWS_CERTIFICATE: "certs/windows-release.pfx",
@@ -502,7 +505,7 @@ describe("release orchestrator", () => {
     });
   });
 
-  test("non-local release fails closed for credential-gated placeholder stages", async () => {
+  test("non-local release fails closed when provenance credentials are missing", async () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
@@ -510,8 +513,6 @@ describe("release orchestrator", () => {
         throughStage: "12-provenance-sbom",
         env: {
           ...manifestSigningEnv,
-          GITHUB_TOKEN: "token",
-          LANDO_RELEASE_OIDC_TOKEN: "oidc",
         },
         runner: {
           spawn: async () => {},
@@ -523,6 +524,217 @@ describe("release orchestrator", () => {
       _tag: "ReleaseStageError",
       stageId: "12-provenance-sbom",
       artifactFamily: "library",
+    });
+  });
+
+  test("provenance cosign requires complete GitHub OIDC credentials", async () => {
+    for (const env of [
+      { ...manifestSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64", GITHUB_TOKEN: "token" },
+      {
+        ...manifestSigningEnv,
+        LANDO_RELEASE_PLATFORM: "linux-x64",
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
+      },
+    ]) {
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "12-provenance-sbom",
+          env,
+          runner: {
+            spawn: async () => {},
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "12-provenance-sbom",
+        artifactFamily: "binary",
+      });
+    }
+  });
+
+  describe("Linux checksum manifest signing", () => {
+    test("library-only manifests do not require Linux binary artifacts", async () => {
+      const shellStages: Array<{ stageId: string; script: string }> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "library",
+        throughStage: "11-manifest",
+        env: manifestSigningEnv,
+        runner: {
+          spawn: async () => {},
+          shell: async ({ stageId, script }) => {
+            shellStages.push({ stageId, script });
+          },
+        },
+        logger: () => {},
+      });
+
+      const manifestScript = shellStages.find(
+        ({ stageId, script }) => stageId === "11-manifest" && script.includes("SHA256SUMS"),
+      )?.script;
+      expect(manifestScript).toContain(": > dist/SHA256SUMS");
+      expect(manifestScript).toContain(": > dist/SHA512SUMS");
+      expect(manifestScript).not.toContain("lando-linux-");
+    });
+
+    test("writes Linux checksum manifests and GPG-signs them in the manifest stage", async () => {
+      const shellStages: Array<{ stageId: string; script: string }> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "11-manifest",
+        env: { ...macosSigningEnv, ...windowsSigningEnv, ...manifestSigningEnv },
+        runner: {
+          spawn: async () => {},
+          shell: async ({ stageId, script }) => {
+            shellStages.push({ stageId, script });
+          },
+        },
+        logger: () => {},
+      });
+
+      const manifestScripts = shellStages.filter(({ stageId }) => stageId === "11-manifest");
+      expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-arm64");
+      expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-x64");
+      expect(manifestScripts[0]?.script).toContain('sha256sum "./dist/lando-linux-arm64"');
+      expect(manifestScripts[0]?.script).toContain('sha512sum "./dist/lando-linux-x64"');
+      expect(manifestScripts[0]?.script).toContain("printf '%s\\n' '{\"schemaVersion\":1,\"artifacts\":{}}'");
+      expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
+      expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA512SUMS");
+      expect(manifestScripts[1]?.script).toContain(
+        "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
+      );
+      expect(manifestScripts[1]?.script).toContain(
+        "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
+      );
+      expect(manifestScripts.some(({ script }) => script.includes("cosign"))).toBe(false);
+    });
+
+    test("checksum manifest generation fails when a required Linux binary is missing", async () => {
+      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
+      expect(manifestStage).toBeDefined();
+      if (manifestStage === undefined) throw new Error("missing manifest stage");
+
+      await withReleaseFixtureRoot(async (root) => {
+        await mkdir(join(root, "dist"), { recursive: true });
+        await writeFile(join(root, "dist", "lando-linux-x64"), "linux-x64", "utf8");
+        const previousCwd = process.cwd();
+        process.chdir(root);
+        try {
+          await expect(
+            manifestStage.run({
+              target: "binary",
+              env: {},
+              localRehearsal: false,
+              runner: {
+                spawn: async () => {},
+                shell: async ({ script }) => {
+                  await Bun.$`sh -euc ${script}`.quiet();
+                },
+              },
+              logger: () => {},
+              now: () => 0,
+            }),
+          ).rejects.toThrow();
+        } finally {
+          process.chdir(previousCwd);
+        }
+      });
+    });
+
+    test("cosign-signs and verifies SHA256SUMS in the provenance stage before publish", async () => {
+      const events: Array<string> = [];
+      const provenanceCommands: Array<ReadonlyArray<string>> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "all",
+        throughStage: "13-publish",
+        env: {
+          ...macosSigningEnv,
+          ...windowsSigningEnv,
+          ...manifestSigningEnv,
+          ...provenanceSigningEnv,
+          ...libraryPublishEnv,
+        },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            events.push(`${stageId}:${cmd.join(" ")}`);
+            if (stageId === "12-provenance-sbom") provenanceCommands.push(cmd);
+          },
+          shell: async ({ stageId, script }) => {
+            events.push(`${stageId}:${script.split("\n")[0]}`);
+          },
+        },
+        logger: () => {},
+      });
+
+      expect(provenanceCommands).toEqual([
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/SHA256SUMS.sig",
+          "--output-certificate",
+          "dist/SHA256SUMS.crt",
+          "dist/SHA256SUMS",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/SHA256SUMS.sig",
+          "--certificate",
+          "dist/SHA256SUMS.crt",
+          "dist/SHA256SUMS",
+        ],
+      ]);
+      const verifyIndex = events.findIndex((event) =>
+        event.includes("12-provenance-sbom:cosign verify-blob"),
+      );
+      const publishIndex = events.findIndex((event) => event.startsWith("13-publish:before_latest"));
+      expect(verifyIndex).toBeGreaterThanOrEqual(0);
+      expect(publishIndex).toBeGreaterThan(verifyIndex);
+    });
+
+    test("local rehearsal warning-skips incomplete provenance credentials", async () => {
+      const logs: Array<string> = [];
+      const spawnStages: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "12-provenance-sbom",
+        env: {
+          LOCAL_REHEARSAL: "1",
+          LANDO_RELEASE_PLATFORM: "linux-x64",
+          ...manifestSigningEnv,
+          GITHUB_TOKEN: "token",
+        },
+        runner: {
+          spawn: async ({ stageId }) => {
+            spawnStages.push(stageId);
+          },
+          shell: async () => {},
+        },
+        logger: (line) => logs.push(line),
+      });
+
+      expect(logs).toContain(
+        "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
+      );
+      expect(spawnStages).not.toContain("12-provenance-sbom");
     });
   });
 
@@ -695,6 +907,7 @@ describe("release orchestrator", () => {
           },
         },
         logger: () => {},
+        now: () => 0,
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
@@ -754,7 +967,7 @@ describe("release orchestrator", () => {
     await expect(
       manifestStage.run({
         target: "all",
-        env: { LANDO_RELEASE_GPG_KEY: "key" },
+        env: {},
         localRehearsal: false,
         runner: {
           spawn: async () => {},
@@ -768,7 +981,7 @@ describe("release orchestrator", () => {
 
     await manifestStage.run({
       target: "all",
-      env: { GPG_PRIVATE_KEY: "key", COSIGN_PRIVATE_KEY: "key" },
+      env: { GPG_PRIVATE_KEY: "key" },
       localRehearsal: false,
       runner: {
         spawn: async () => {},
@@ -777,6 +990,7 @@ describe("release orchestrator", () => {
         },
       },
       logger: () => {},
+      now: () => 0,
     });
 
     expect(
@@ -792,6 +1006,7 @@ describe("release orchestrator", () => {
           shell: async () => {},
         },
         logger: () => {},
+        now: () => 0,
       }),
     ).rejects.toThrow("Missing Windows signing credentials");
   });
@@ -814,6 +1029,7 @@ describe("release orchestrator", () => {
         },
       },
       logger: (line) => logs.push(line),
+      now: () => 0,
     });
 
     await publishStage.run({
@@ -827,6 +1043,7 @@ describe("release orchestrator", () => {
         },
       },
       logger: (line) => logs.push(line),
+      now: () => 0,
     });
 
     expect(
