@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 import { Data, Effect } from "effect";
@@ -69,7 +69,6 @@ const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): 
   await mkdir(dirname(path), { recursive: true });
   const tmpPath = `${path}.tmp`;
   await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`);
-  await rm(path, { force: true });
   await rename(tmpPath, path);
 };
 
@@ -119,16 +118,41 @@ const assertInsidePluginsRoot = (pluginsRoot: string, target: string, pluginName
   }
 };
 
-const removeCreatedSymlink = async (path: string): Promise<void> => {
+const removeRegistrySymlink = async (path: string): Promise<void> => {
   const stats = await lstat(path).catch(() => undefined);
   if (stats?.isSymbolicLink() === true) await rm(path, { force: true });
+};
+
+const registrySymlinkTmpPath = (registryEntry: string): string =>
+  `${registryEntry}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const replaceRegistrySymlink = async (registryEntry: string, target: string): Promise<void> => {
+  const tmpPath = registrySymlinkTmpPath(registryEntry);
+  await symlink(target, tmpPath, "dir");
+  try {
+    await rename(tmpPath, registryEntry);
+  } catch (cause) {
+    await removeRegistrySymlink(tmpPath);
+    throw cause;
+  }
+};
+
+const restoreRegistrySymlink = async (
+  registryEntry: string,
+  previousTarget: string | undefined,
+): Promise<void> => {
+  if (previousTarget === undefined) {
+    await removeRegistrySymlink(registryEntry);
+    return;
+  }
+  await replaceRegistrySymlink(registryEntry, previousTarget);
 };
 
 const prepareRegistryEntry = async (
   pluginsRoot: string,
   pluginName: string,
   registryEntry: string,
-): Promise<void> => {
+): Promise<{ readonly previousSymlinkTarget?: string }> => {
   assertInsidePluginsRoot(pluginsRoot, registryEntry, pluginName);
   const registry = await loadRegistryEntry(pluginsRoot, pluginName);
   const linkedState = await readLinkedState(pluginsRoot);
@@ -137,11 +161,11 @@ const prepareRegistryEntry = async (
     const stats = await lstat(registryEntry);
     if (!stats.isSymbolicLink()) throw conflictError(pluginName, registryEntry);
     if (!existingLinked) throw conflictError(pluginName, registryEntry);
-    await rm(registryEntry, { force: true });
-    return;
+    return { previousSymlinkTarget: await readlink(registryEntry) };
   }
   if (registry !== undefined && !existingLinked)
     throw conflictError(pluginName, registry.path ?? registryEntry);
+  return {};
 };
 
 export const pluginLink = (
@@ -200,9 +224,16 @@ export const pluginLink = (
     yield* Effect.tryPromise({
       try: async () => {
         await mkdir(dirname(registryEntry), { recursive: true });
-        await prepareRegistryEntry(pluginsRoot, manifest.name, registryEntry);
-        await symlink(linkedPath, registryEntry, "dir");
+        const prepared = await prepareRegistryEntry(pluginsRoot, manifest.name, registryEntry);
+        const previousState = await readLinkedState(pluginsRoot);
+        let linkedStateWritten = false;
+        await replaceRegistrySymlink(registryEntry, linkedPath);
         try {
+          await writeLinkedState(pluginsRoot, {
+            ...previousState,
+            [manifest.name]: { source: "linked", linkedPath, registryEntry },
+          });
+          linkedStateWritten = true;
           await recordInstalledPlugin(pluginsRoot, {
             name: manifest.name,
             version: manifest.version,
@@ -210,13 +241,9 @@ export const pluginLink = (
             source: "linked",
             linkedPath,
           });
-          const state = await readLinkedState(pluginsRoot);
-          await writeLinkedState(pluginsRoot, {
-            ...state,
-            [manifest.name]: { source: "linked", linkedPath, registryEntry },
-          });
         } catch (cause) {
-          await removeCreatedSymlink(registryEntry);
+          if (linkedStateWritten) await writeLinkedState(pluginsRoot, previousState).catch(() => undefined);
+          await restoreRegistrySymlink(registryEntry, prepared.previousSymlinkTarget).catch(() => undefined);
           throw cause;
         }
       },

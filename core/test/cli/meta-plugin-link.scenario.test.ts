@@ -205,7 +205,22 @@ describe("meta:plugin:link command", () => {
     expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
-  test("removes the registry symlink when metadata recording fails so a retry can relink", async () => {
+  test("rejects a manifest name that targets linked-state metadata", async () => {
+    const pluginRoot = await makePluginRoot(".lando-linked.json", "managed-linked-state");
+
+    const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginManifestError");
+      expect(cause).toContain("reserved plugins root entry .lando-linked.json");
+    }
+    expect(await exists(join(userDataRoot, "plugins", ".lando-linked.json"))).toBe(false);
+    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+  });
+
+  test("rolls back symlink and linked state when registry recording fails so a retry can relink", async () => {
     const pluginRoot = await makePluginRoot("@acme/lando-plugin-retry", "retry");
     const pluginsRoot = join(userDataRoot, "plugins");
     const registryEntry = join(pluginsRoot, "@acme/lando-plugin-retry");
@@ -217,11 +232,37 @@ describe("meta:plugin:link command", () => {
     expect(failed._tag).toBe("Failure");
     expect(await exists(registryEntry)).toBe(false);
     expect(await exists(join(pluginsRoot, "registry.json"))).toBe(false);
+    const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
+    expect(linkedState["@acme/lando-plugin-retry"]).toBeUndefined();
 
     await rm(registryTmpPath, { recursive: true, force: true });
     const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
 
     expect(result.registryEntry).toBe(registryEntry);
     expect((await lstat(registryEntry)).isSymbolicLink()).toBe(true);
+  });
+
+  test("restores the previous symlink and linked state when relink metadata recording fails", async () => {
+    const originalRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-original");
+    const replacementRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-replacement");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryEntry = join(pluginsRoot, "@acme/lando-plugin-relink");
+
+    await runPluginLink({ cwd: originalRoot, cacheRoot });
+    const registryTmpPath = join(pluginsRoot, "registry.json.tmp");
+    await mkdir(registryTmpPath, { recursive: true });
+
+    const failed = await runPluginLinkExit({ cwd: replacementRoot, cacheRoot });
+
+    expect(failed._tag).toBe("Failure");
+    expect(await readlink(registryEntry)).toBe(resolve(originalRoot));
+    const linkedState = await readJson<
+      Record<string, { readonly source: string; readonly linkedPath: string; readonly registryEntry: string }>
+    >(join(pluginsRoot, ".lando-linked.json"));
+    expect(linkedState["@acme/lando-plugin-relink"]).toEqual({
+      source: "linked",
+      linkedPath: resolve(originalRoot),
+      registryEntry,
+    });
   });
 });
