@@ -1,3 +1,5 @@
+import { homedir, hostname, tmpdir, userInfo } from "node:os";
+
 import type { PublicTranscript, PublicTranscriptFrame } from "@lando/sdk/docs/components";
 import { redactString } from "../../cli/redact.ts";
 
@@ -26,6 +28,14 @@ const WELL_KNOWN_PORTS = new Set([80, 443, 3000, 3306, 5432, 8080, 8443, 9000, 9
 const isEphemeralPort = (port: number): boolean => port >= 1024;
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const defaultRedactionEnvironment = (env: RedactionEnvironment): RedactionEnvironment => ({
+  home: env.home ?? homedir(),
+  tmp: env.tmp ?? tmpdir(),
+  user: env.user ?? userInfo().username,
+  host: env.host ?? hostname(),
+  extraRoots: env.extraRoots ?? [],
+});
 
 const toGenericPathPatterns = (): RegExp[] => [
   /\/(?:home|Users|root|var\/folders\/[^/]+\/T)\/[^/\s"'`]+/gi,
@@ -92,11 +102,11 @@ const redactLiterals = (text: string, env: RedactionEnvironment): string => {
 const redactBareSecrets = (text: string): string =>
   text
     .replace(
-      /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s*=\s*([^\s"'`&?]+)/giu,
+      /\b([A-Za-z0-9_]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu,
       (_, key) => `${key}=${PLACEHOLDERS.REDACTED}`,
     )
     .replace(
-      /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s+([^\s"'`&?=]+)/giu,
+      /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu,
       (_, key) => `${key} ${PLACEHOLDERS.REDACTED}`,
     )
     .replace(/\btoken\s+secret\b/gi, `token ${PLACEHOLDERS.REDACTED}`);
@@ -110,12 +120,13 @@ const redactQuerySecrets = (text: string): string =>
 export const redactPublicTranscriptText = (text: string, env: RedactionEnvironment = {}): string => {
   if (!text) return text;
 
+  const resolvedEnv = defaultRedactionEnvironment(env);
   let out = text;
-  out = redactPaths(out, env);
+  out = redactPaths(out, resolvedEnv);
   out = redactPorts(out);
   out = redactContainerIds(out);
   out = redactProviderIds(out);
-  out = redactLiterals(out, env);
+  out = redactLiterals(out, resolvedEnv);
   out = redactBareSecrets(out);
   out = redactQuerySecrets(out);
   out = redactString(out);

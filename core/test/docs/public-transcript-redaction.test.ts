@@ -33,7 +33,7 @@ const windowsEnv: RedactionEnvironment = {
 describe("public transcript redaction (US-249)", () => {
   test("redacts POSIX temp dirs, home, app roots, fixture roots, usernames, hostnames, random ports, container ids, provider ids, and secrets", () => {
     const input =
-      "started in /home/aaron/projects/myapp with tmp /tmp/lando-abc123 fixture /tmp/lando-fixture-abc123 on host devbox user aaron port :54321 container a1b2c3d4e5f6 provider myapp_web_ab12cd34 token=secret123 ?X-Amz-Signature=deadbeef";
+      "started in /home/aaron/projects/myapp with tmp /tmp/lando-abc123 fixture /tmp/lando-fixture-abc123 on host devbox user aaron port :54321 container a1b2c3d4e5f6 provider myapp_web_ab12cd34 token=secret123 ACCESS_TOKEN='quoted-env-token' --token=\"quoted-token\" --password 'quoted-password' --api-key='quoted-api-key' ?X-Amz-Signature=deadbeef";
 
     const out = redactPublicTranscriptText(input, posixEnv);
 
@@ -46,6 +46,10 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).not.toContain("a1b2c3d4e5f6");
     expect(out).not.toContain("myapp_web_ab12cd34");
     expect(out).not.toContain("secret123");
+    expect(out).not.toContain("quoted-env-token");
+    expect(out).not.toContain("quoted-token");
+    expect(out).not.toContain("quoted-password");
+    expect(out).not.toContain("quoted-api-key");
     expect(out).not.toContain("deadbeef");
 
     expect(out).toContain("<HOME>");
