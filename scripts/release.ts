@@ -111,6 +111,30 @@ export class ReleaseCompileBudgetError extends Error {
   }
 }
 
+const resolveReleasePlatform = (platformId: string): CiPlatform => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === platformId);
+  if (platform === undefined) throw new Error(`Unknown release platform: ${platformId}`);
+  return platform;
+};
+
+const hostReleasePlatform = (): CiPlatform => {
+  const platformId = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+  return resolveReleasePlatform(platformId);
+};
+
+const releasePlatformsForContext = (context: ReleaseStageContext): ReadonlyArray<CiPlatform> => {
+  const platformId = envValue(context.env, "LANDO_RELEASE_PLATFORM");
+  if (platformId !== undefined) return [resolveReleasePlatform(platformId)];
+  if (context.localRehearsal) return [hostReleasePlatform()];
+  return CI_PLATFORMS;
+};
+
+const hasMacosPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
+  platforms.some((platform) => platform.id.startsWith("darwin-"));
+
+const hasWindowsPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
+  platforms.some((platform) => platform.id === "windows-x64");
+
 const targetFlags = {
   "--all": "all",
   "--binary": "binary",
@@ -271,13 +295,20 @@ const credentialSkipRequirements: Record<
   "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
 };
 
-const macosReleaseArtifactPaths = ["./dist/lando-darwin-x64", "./dist/lando-darwin-arm64"] as const;
+const macosReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  platforms
+    .filter((platform) => platform.id.startsWith("darwin-"))
+    .sort((left, right) => (left.id === "darwin-x64" ? -1 : right.id === "darwin-x64" ? 1 : 0))
+    .map(releaseBinaryPath);
 
-const macosCodesignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const macosCodesignCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const identity = env.LANDO_RELEASE_SIGNING_IDENTITY;
   if (identity === undefined || identity === "")
     throw new Error("Missing macOS Developer ID signing identity");
-  return macosReleaseArtifactPaths.map((artifactPath) => [
+  return macosReleaseArtifactPaths(platforms).map((artifactPath) => [
     "codesign",
     "--sign",
     identity,
@@ -296,9 +327,12 @@ const macosNotaryAuthArgs = (env: ReleaseEnvironment): ReadonlyArray<string> => 
   throw new Error("Missing Apple notarization credentials");
 };
 
-const macosNotarizationCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const macosNotarizationCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const authArgs = macosNotaryAuthArgs(env);
-  return macosReleaseArtifactPaths.flatMap((artifactPath) => [
+  return macosReleaseArtifactPaths(platforms).flatMap((artifactPath) => [
     ["xcrun", "notarytool", "submit", artifactPath, ...authArgs, "--wait"],
     ["xcrun", "stapler", "staple", artifactPath],
     ["xcrun", "stapler", "validate", artifactPath],
@@ -386,10 +420,10 @@ const spawnCommands = async (
 
 const spawnCommandsForStage = (
   stageId: string,
-  env: ReleaseEnvironment,
+  context: ReleaseStageContext,
   commands: ReadonlyArray<ReadonlyArray<string>>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "10-notarize") return macosNotarizationCommands(env);
+  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, releasePlatformsForContext(context));
   return commands;
 };
 
@@ -431,7 +465,7 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 ];
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
-  for (const platform of CI_PLATFORMS) {
+  for (const platform of releasePlatformsForContext(context)) {
     const startedAt = context.now();
     await context.runner.spawn({
       stageId: "7-compile",
@@ -465,13 +499,19 @@ const spawnStage =
   async (context: ReleaseStageContext): Promise<void> => {
     const { runner, target } = context;
     const requirement = credentialSkipRequirements[stage.id];
+
+    if (stage.id === "10-notarize" && !hasMacosPlatform(releasePlatformsForContext(context))) {
+      context.logger("[release] skip 10-notarize (no macOS release platform selected)");
+      return;
+    }
+
     if (
       requirement !== undefined &&
       !credentialGate(stage.id, requirement.label, requirement.credentials, context)
     )
       return;
 
-    for (const cmd of spawnCommandsForStage(stage.id, context.env, commands)) {
+    for (const cmd of spawnCommandsForStage(stage.id, context, commands)) {
       await runner.spawn({
         stageId: stage.id,
         artifactFamily: artifactFamilyForStage(stage, target),
@@ -594,18 +634,14 @@ const platformSignStage: ReleaseStage = {
   commandSummary: "sign release binaries",
   remediation: "Provision platform signing credentials or run a local rehearsal mode that may skip signing.",
   run: async (context): Promise<void> => {
-    const signMacos = credentialGate(
-      "9-sign",
-      "macOS Developer ID signing identity",
-      macosSigningCredentials,
-      context,
-    );
-    const signWindows = credentialGate(
-      "9-sign",
-      "Windows signing credentials",
-      windowsSigningCredentials,
-      context,
-    );
+    const platforms = releasePlatformsForContext(context);
+    const nativeSigningPlatformSelected = hasMacosPlatform(platforms) || hasWindowsPlatform(platforms);
+    const signMacos =
+      hasMacosPlatform(platforms) &&
+      credentialGate("9-sign", "macOS Developer ID signing identity", macosSigningCredentials, context);
+    const signWindows =
+      hasWindowsPlatform(platforms) &&
+      credentialGate("9-sign", "Windows signing credentials", windowsSigningCredentials, context);
     const command = {
       stageId: "9-sign",
       artifactFamily: artifactFamilyForStage(platformSignStage, context.target),
@@ -613,8 +649,12 @@ const platformSignStage: ReleaseStage = {
       remediation: platformSignStage.remediation,
     };
 
-    if (signMacos) await spawnCommands(context.runner, command, macosCodesignCommands(context.env));
+    if (signMacos)
+      await spawnCommands(context.runner, command, macosCodesignCommands(context.env, platforms));
     if (signWindows) await spawnCommands(context.runner, command, windowsSigningCommands(context.env));
+    if (!nativeSigningPlatformSelected) {
+      context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
+    }
   },
 };
 
