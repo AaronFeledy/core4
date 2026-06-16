@@ -94,6 +94,31 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).toContain("<CONTAINER_ID>");
   });
 
+  test("redacts repo-relative fixture paths from public transcript text", () => {
+    const input =
+      "copy core/test/cli/fixtures/meta-doctor.provider-status.ndjson and docs/guides/mongodb/fixtures/basic/.lando.yml";
+
+    const out = redactPublicTranscriptText(input, posixEnv);
+
+    expect(out).not.toContain("core/test/cli/fixtures/meta-doctor.provider-status.ndjson");
+    expect(out).not.toContain("docs/guides/mongodb/fixtures/basic/.lando.yml");
+    expect(out).toBe("copy <HOME> and <HOME>");
+  });
+
+  test("redacts short secret flag values", () => {
+    const input = "lando auth -t=token-inline -k 'quoted-key' deploy -t `backtick-token` -k spaced-key";
+
+    const out = redactPublicTranscriptText(input, posixEnv);
+
+    expect(out).not.toContain("token-inline");
+    expect(out).not.toContain("quoted-key");
+    expect(out).not.toContain("backtick-token");
+    expect(out).not.toContain("spaced-key");
+    expect(out).toContain("-t=[REDACTED]");
+    expect(out).toContain("-k [REDACTED]");
+    expect(out).toContain("-t [REDACTED]");
+  });
+
   test("redacts library-mode displayText and commandDisplay containing paths/secrets", () => {
     const frame = {
       kind: "inline" as const,

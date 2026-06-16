@@ -48,6 +48,11 @@ const toGenericPathPatterns = (): RegExp[] => [
 const redactPaths = (text: string, env: RedactionEnvironment): string => {
   let out = text;
 
+  out = out.replace(
+    /(^|[\s"'`(=])((?:\.?[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu,
+    (_match, prefix) => `${prefix}${PLACEHOLDERS.HOME}`,
+  );
+
   for (const re of toGenericPathPatterns()) {
     out = out.replace(re, (m) => (/tmp|Temp/i.test(m) ? PLACEHOLDERS.TMP : PLACEHOLDERS.HOME));
   }
@@ -102,6 +107,14 @@ const redactLiterals = (text: string, env: RedactionEnvironment): string => {
 
 const redactBareSecrets = (text: string): string =>
   text
+    .replace(
+      /(^|\s)(-[tk])\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu,
+      (_, prefix, key) => `${prefix}${key}=${PLACEHOLDERS.REDACTED}`,
+    )
+    .replace(
+      /(^|\s)(-[tk])\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu,
+      (_, prefix, key) => `${prefix}${key} ${PLACEHOLDERS.REDACTED}`,
+    )
     .replace(
       /\b([A-Za-z0-9_]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu,
       (_, key) => `${key}=${PLACEHOLDERS.REDACTED}`,
