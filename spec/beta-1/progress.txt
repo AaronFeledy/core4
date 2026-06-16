@@ -790,3 +790,8 @@
 - **Learnings for future iterations:**
   - Release rehearsal skips should be modeled at the credential gate, not by removing stages from the stage table; this keeps artifact-family applicability and canonical ordering testable while allowing local no-secret prefixes.
 ---
+## 2026-06-16 03:04 CDT - US-252 Review
+- Fixed release rehearsal safety blockers: credential-gated placeholder signing/notarization/provenance stages now fail closed outside local rehearsal, publish requires npm credentials and never runs during local rehearsal, and the required release rehearsal guide is shipped.
+- Review notes (deferred/rejected): real signing, notarization, provenance/SBOM, and binary publishing command bodies remain follow-on stories; this review keeps their placeholders non-publishable/non-successful in release mode rather than implementing later-story tooling.
+- Verification: typecheck, lint, full tests, focused release tests, guide lint, and guide coverage passed.
+---

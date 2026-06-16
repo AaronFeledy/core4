@@ -157,16 +157,29 @@ const stagePrefixLimit = (throughStage: number | string | undefined): ReadonlyAr
   return RELEASE_STAGES.slice(0, stageIndex + 1);
 };
 
-const envHasAny = (env: ReleaseEnvironment, names: ReadonlyArray<string>): boolean =>
-  names.some((name) => env[name] !== undefined && env[name] !== "");
+interface CredentialRequirement {
+  readonly allOf?: ReadonlyArray<string>;
+  readonly anyOf?: ReadonlyArray<ReadonlyArray<string>>;
+}
+
+const envHas = (env: ReleaseEnvironment, name: string): boolean =>
+  env[name] !== undefined && env[name] !== "";
+
+const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: CredentialRequirement): boolean => {
+  const required = requirement.allOf ?? [];
+  if (!required.every((name) => envHas(env, name))) return false;
+
+  const alternatives = requirement.anyOf ?? [];
+  return alternatives.every((group) => group.some((name) => envHas(env, name)));
+};
 
 const credentialGate = (
   stageId: string,
   credentialLabel: string,
-  envNames: ReadonlyArray<string>,
+  requirement: CredentialRequirement,
   { env, localRehearsal, logger }: ReleaseStageContext,
 ): boolean => {
-  if (envHasAny(env, envNames)) return true;
+  if (hasRequiredCredentials(env, requirement)) return true;
   if (localRehearsal) {
     logger(`[release] warning LOCAL_REHEARSAL=1: skip ${stageId} (${credentialLabel} absent)`);
     return false;
@@ -190,39 +203,36 @@ const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 
-const releaseSigningCredentialEnv = [
-  "LANDO_RELEASE_SIGNING_IDENTITY",
-  "LANDO_RELEASE_WINDOWS_CERTIFICATE",
-  "LANDO_RELEASE_COSIGN_KEY",
-  "COSIGN_PRIVATE_KEY",
-];
-const appleNotarizationCredentialEnv = [
-  "LANDO_RELEASE_APPLE_ID",
-  "LANDO_RELEASE_APPLE_TEAM_ID",
-  "LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE",
-  "APPLE_ID",
-  "APPLE_TEAM_ID",
-];
-const manifestSigningCredentialEnv = ["LANDO_RELEASE_GPG_KEY", "LANDO_RELEASE_COSIGN_KEY", "GPG_PRIVATE_KEY"];
-const provenanceCredentialEnv = [
-  "LANDO_RELEASE_OIDC_TOKEN",
-  "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-  "GITHUB_TOKEN",
-];
-const publishCredentialEnv = [
-  "LANDO_RELEASE_NPM_TOKEN",
-  "NPM_TOKEN",
-  "LANDO_RELEASE_GITHUB_TOKEN",
-  "GITHUB_TOKEN",
-];
+const releaseSigningCredentials: CredentialRequirement = {
+  anyOf: [
+    ["LANDO_RELEASE_SIGNING_IDENTITY"],
+    ["LANDO_RELEASE_WINDOWS_CERTIFICATE"],
+    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
+  ],
+};
+const appleNotarizationCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"], ["LANDO_RELEASE_APPLE_ID", "APPLE_ID"]],
+};
+const manifestSigningCredentials: CredentialRequirement = {
+  anyOf: [
+    ["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"],
+    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
+  ],
+};
+const provenanceCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_OIDC_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"], ["GITHUB_TOKEN"]],
+};
+const libraryPublishCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_NPM_TOKEN", "NPM_TOKEN"]],
+};
 
 const credentialSkipRequirements: Record<
   string,
-  { readonly label: string; readonly envNames: ReadonlyArray<string> }
+  { readonly label: string; readonly credentials: CredentialRequirement }
 > = {
-  "9-sign": { label: "release signing credentials", envNames: releaseSigningCredentialEnv },
-  "10-notarize": { label: "Apple notarization credentials", envNames: appleNotarizationCredentialEnv },
-  "12-provenance-sbom": { label: "provenance and cosign credentials", envNames: provenanceCredentialEnv },
+  "9-sign": { label: "release signing credentials", credentials: releaseSigningCredentials },
+  "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
+  "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
 };
 
 const nonSigningManifestScript = (): string =>
@@ -278,7 +288,7 @@ const shellStage =
         !credentialGate(
           "11-manifest signing",
           "manifest signing credentials",
-          manifestSigningCredentialEnv,
+          manifestSigningCredentials,
           context,
         )
       ) {
@@ -294,11 +304,19 @@ const shellStage =
       return;
     }
 
-    if (
-      stage.id === "13-publish" &&
-      !credentialGate(stage.id, "publish credentials", publishCredentialEnv, context)
-    ) {
-      return;
+    if (stage.id === "13-publish") {
+      if (!credentialGate(stage.id, "publish credentials", libraryPublishCredentials, context)) return;
+      if (context.localRehearsal) {
+        context.logger(
+          "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
+        );
+        return;
+      }
+      if (target !== "library") {
+        throw new Error(
+          "Binary release publishing is not implemented yet; run --library for npm-only publish.",
+        );
+      }
     }
 
     await runner.shell({
@@ -316,9 +334,12 @@ const skipStage =
     const requirement = credentialSkipRequirements[stage.id];
     if (
       requirement !== undefined &&
-      !credentialGate(stage.id, requirement.label, requirement.envNames, context)
+      !credentialGate(stage.id, requirement.label, requirement.credentials, context)
     )
       return;
+    if (requirement !== undefined && !context.localRehearsal) {
+      throw new Error(`Release stage ${stage.id} is not implemented yet; local rehearsal may skip it.`);
+    }
     const { logger } = context;
     logger(reason);
   };

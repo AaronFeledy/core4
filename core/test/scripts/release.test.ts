@@ -5,6 +5,11 @@ import { RELEASE_STAGES, runRelease } from "../../../scripts/release";
 
 describe("release orchestrator", () => {
   const localRehearsalEnv = { LOCAL_REHEARSAL: "1" };
+  const libraryPublishEnv = { LANDO_RELEASE_NPM_TOKEN: "token" };
+  const manifestSigningEnv = {
+    LANDO_RELEASE_GPG_KEY: "key",
+    LANDO_RELEASE_COSIGN_KEY: "key",
+  };
 
   test("defines and runs all release stages in the required fixed order", async () => {
     const observed: Array<string> = [];
@@ -78,16 +83,15 @@ describe("release orchestrator", () => {
     expect(observed).toEqual(["1-codegen", "2-typecheck", "3-lint-format", "4-test-gates"]);
   });
 
-  test("uses spawn for argv-precise stages and shell for shell-shaped publish work", async () => {
+  test("uses spawn for argv-precise stages and shell for shell-shaped manifest work", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const shellStages: Array<string> = [];
 
     await runRelease({
       target: "library",
+      throughStage: "11-manifest",
       env: {
-        GITHUB_TOKEN: "token",
-        LANDO_RELEASE_GPG_KEY: "key",
-        LANDO_RELEASE_NPM_TOKEN: "token",
+        ...manifestSigningEnv,
       },
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -108,7 +112,8 @@ describe("release orchestrator", () => {
       })),
     );
     expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
-    expect(shellStages.some((entry) => entry.startsWith("13-publish:before_latest="))).toBe(true);
+    expect(shellStages.some((entry) => entry.startsWith("11-manifest:mkdir -p dist"))).toBe(true);
+    expect(shellStages.some((entry) => entry.startsWith("11-manifest:gpg --batch"))).toBe(true);
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });
 
@@ -219,6 +224,111 @@ describe("release orchestrator", () => {
     ).toBe(false);
     expect(shellStages.some(({ stageId }) => stageId === "12-provenance-sbom")).toBe(false);
     expect(shellStages.some(({ stageId }) => stageId === "13-publish")).toBe(false);
+  });
+
+  test("non-local release fails closed for credential-gated placeholder stages", async () => {
+    await expect(
+      runRelease({
+        target: "binary",
+        throughStage: "9-sign",
+        env: {
+          LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
+          LANDO_RELEASE_WINDOWS_CERTIFICATE: "cert",
+          LANDO_RELEASE_COSIGN_KEY: "key",
+        },
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "9-sign",
+      artifactFamily: "binary",
+    });
+
+    await expect(
+      runRelease({
+        target: "library",
+        throughStage: "12-provenance-sbom",
+        env: {
+          ...manifestSigningEnv,
+          GITHUB_TOKEN: "token",
+          LANDO_RELEASE_OIDC_TOKEN: "oidc",
+        },
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "12-provenance-sbom",
+      artifactFamily: "library",
+    });
+  });
+
+  test("publish and manifest signing require complete credentials", async () => {
+    const shellStages: Array<{ stageId: string; script: string }> = [];
+    const logs: Array<string> = [];
+
+    await expect(
+      runRelease({
+        target: "library",
+        throughStage: "13-publish",
+        env: { GITHUB_TOKEN: "token" },
+        runner: {
+          spawn: async () => {},
+          shell: async ({ stageId, script }) => {
+            shellStages.push({ stageId, script });
+          },
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "11-manifest",
+    });
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
+    ).toBe(false);
+
+    await runRelease({
+      target: "library",
+      throughStage: "13-publish",
+      env: { LOCAL_REHEARSAL: "1", GITHUB_TOKEN: "token" },
+      runner: {
+        spawn: async () => {},
+        shell: async ({ stageId, script }) => {
+          shellStages.push({ stageId, script });
+        },
+      },
+      logger: (line) => logs.push(line),
+    });
+    expect(logs).toContain(
+      "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (publish credentials absent)",
+    );
+
+    await runRelease({
+      target: "library",
+      throughStage: "13-publish",
+      env: { LOCAL_REHEARSAL: "1", ...manifestSigningEnv, ...libraryPublishEnv },
+      runner: {
+        spawn: async () => {},
+        shell: async ({ stageId, script }) => {
+          shellStages.push({ stageId, script });
+        },
+      },
+      logger: (line) => logs.push(line),
+    });
+    expect(logs).toContain(
+      "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
+    );
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+    ).toBe(false);
   });
 
   test("local rehearsal can run the compile prefix for the current platform without signing secrets", async () => {
