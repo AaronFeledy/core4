@@ -73,6 +73,7 @@ import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginBuild, renderPluginBuildResult } from "./commands/plugin-build.ts";
 import { pluginLink, renderPluginLinkResult } from "./commands/plugin-link.ts";
 import { pluginNew, renderPluginNewResult } from "./commands/plugin-new.ts";
+import { pluginPublish, renderPluginPublishResult } from "./commands/plugin-publish.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import { pluginTest, renderPluginTestResult } from "./commands/plugin-test.ts";
 import {
@@ -1353,6 +1354,30 @@ const runMetaPluginBuild = async (): Promise<void> => {
   );
 };
 
+const runMetaPluginPublish = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:plugin:publish", argv)) return;
+  const input = compiledCommandInputFromArgv("meta:plugin:publish", argv);
+  const tag = typeof input.flags.tag === "string" ? input.flags.tag : undefined;
+  const registry = typeof input.flags.registry === "string" ? input.flags.registry : undefined;
+  await runCompiledCommand(
+    pluginPublish({
+      ...(tag === undefined ? {} : { tag }),
+      ...(registry === undefined ? {} : { registry }),
+      dryRun: input.flags["dry-run"] === true,
+      noTest: input.flags["no-test"] === true,
+      nonInteractive: input.flags["no-interactive"] === true || process.stdin.isTTY !== true,
+    }).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.exitCode !== 0) process.exitCode = result.exitCode;
+        }),
+      ),
+    ),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginPublishResult,
+  );
+};
+
 const runMetaPluginLink = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:plugin:link", argv)) return;
   const input = compiledCommandInputFromArgv("meta:plugin:link", argv);
@@ -1832,6 +1857,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "meta:plugin:build") {
     await runMetaPluginBuild();
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:publish") {
+    await runMetaPluginPublish(argv.slice(1));
     return;
   }
 

@@ -32,7 +32,7 @@ const looksLikePluginPackage = (pkg: Readonly<Record<string, unknown>>): boolean
 
 export const findNearestPluginPackageRoot = async (
   cwd: string,
-  commandId: "meta:plugin:build" | "meta:plugin:test",
+  commandId: "meta:plugin:build" | "meta:plugin:test" | "meta:plugin:publish",
 ): Promise<string> => {
   let current = resolve(cwd);
   while (true) {

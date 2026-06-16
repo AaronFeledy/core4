@@ -121,6 +121,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:plugin:link",
   "meta:plugin:unlink",
   "meta:plugin:new",
+  "meta:plugin:publish",
   "meta:plugin:remove",
   "meta:plugin:test",
   "meta:plugin:trust",
