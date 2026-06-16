@@ -73,6 +73,11 @@ import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginBuild, renderPluginBuildResult } from "./commands/plugin-build.ts";
 import { pluginLink, renderPluginLinkResult } from "./commands/plugin-link.ts";
 import { pluginNew, renderPluginNewResult } from "./commands/plugin-new.ts";
+import {
+  type PluginPublishOptions,
+  pluginPublish,
+  renderPluginPublishResult,
+} from "./commands/plugin-publish.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import { pluginTest, renderPluginTestResult } from "./commands/plugin-test.ts";
 import {
@@ -1353,6 +1358,34 @@ const runMetaPluginBuild = async (): Promise<void> => {
   );
 };
 
+const metaPluginPublishCommandId = "meta:plugin:publish";
+
+const parsePluginPublish = (argv: ReadonlyArray<string>): PluginPublishOptions => {
+  const { flags } = compiledCommandInputFromArgv(metaPluginPublishCommandId, argv);
+  return {
+    ...(typeof flags.tag === "string" ? { tag: flags.tag } : {}),
+    ...(typeof flags.registry === "string" ? { registry: flags.registry } : {}),
+    dryRun: flags["dry-run"] === true,
+    noTest: flags["no-test"] === true,
+    nonInteractive: flags["no-interactive"] === true || process.stdin.isTTY !== true,
+  };
+};
+
+const runMetaPluginPublish = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation(metaPluginPublishCommandId, argv)) return;
+  await runCompiledCommand(
+    pluginPublish(parsePluginPublish(argv)).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.exitCode !== 0) process.exitCode = result.exitCode;
+        }),
+      ),
+    ),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginPublishResult,
+  );
+};
+
 const runMetaPluginLink = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:plugin:link", argv)) return;
   const input = compiledCommandInputFromArgv("meta:plugin:link", argv);
@@ -1832,6 +1865,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "meta:plugin:build") {
     await runMetaPluginBuild();
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:publish") {
+    await runMetaPluginPublish(argv.slice(1));
     return;
   }
 

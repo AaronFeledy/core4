@@ -18,12 +18,6 @@ const META_GLOBAL_PLAN: DeferredCommandPlan = {
   remediation: "The global app and `meta:global:*` commands are not available yet.",
 };
 
-const META_PLUGIN_AUTHORING_PLAN: DeferredCommandPlan = {
-  summary: "The plugin authoring toolkit (`unlink`/`publish`) is not available yet.",
-  remediation:
-    "Plugin authoring commands (`meta:plugin:{unlink,publish}`) are not available yet. Author plugins by hand against `@lando/sdk` for now.",
-};
-
 const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
   summary: "Plugin registry login/logout are not available yet.",
   remediation: "Plugin registry login/logout are not available yet.",
@@ -50,7 +44,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:global:restart", META_GLOBAL_PLAN],
-  ["meta:plugin:publish", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
   ["meta:recipes:list", META_RECIPES_LIST_PLAN],

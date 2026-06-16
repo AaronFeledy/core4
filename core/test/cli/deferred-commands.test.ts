@@ -106,7 +106,7 @@ describe("deferred command remediation contract", () => {
   test("fixture covers every required command surface", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
     const requiredPrefixes = ["meta:global:"];
-    const requiredExactIds = ["meta:plugin:publish"];
+    const requiredExactIds = ["meta:plugin:login"];
     for (const prefix of requiredPrefixes) {
       const matches = [...ids].filter((id) => id.startsWith(prefix));
       expect(matches.length, `requires at least one fixture entry for ${prefix}*`).toBeGreaterThan(0);
@@ -177,7 +177,7 @@ describe("deferred command remediation contract", () => {
     const parityProbes: ReadonlyArray<FixtureEntry> = [
       fixture.commands.find((entry) => entry.id === "meta:global:list") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:global:info") as FixtureEntry,
-      fixture.commands.find((entry) => entry.id === "meta:plugin:publish") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:plugin:login") as FixtureEntry,
     ];
 
     for (const entry of parityProbes) {
