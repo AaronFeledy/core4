@@ -857,3 +857,9 @@
 - Review notes (deferred to US-242): the `deprecation-used` `id` is scrubbed as a free string, so a dot-separated surface id (e.g. `services.database.type`) collapses to `[host]`. Not a US-239 defect — no shipped code records `deprecation-used` yet and conservative over-redaction satisfies the PRD; the actual deprecation→telemetry wiring (US-242) should decide whether that id needs an allowlist/identifier exemption to preserve fidelity.
 - Verification: typecheck, lint (+ deprecation check), `check:telemetry-inventory`, and full `bun test` (3871 pass / 39 skip / 0 fail) all green.
 ---
+## 2026-06-16 09:53 CDT - US-254
+- Shipped macOS release signing and notarization in the release orchestrator: stage 9 now signs both Darwin binaries with the configured Developer ID identity, and stage 10 submits each artifact to notarytool, staples it, and validates the stapled ticket.
+- Missing macOS signing or notarization credentials fail closed in release mode and warning-skip only under local rehearsal, preserving the existing rehearsal safety model.
+- Verification: RED focused release tests failed on the placeholder sign/notarize stages, then passed after implementation; typecheck, lint, focused release tests, injected release-runner surface QA, isolated rerun of transient full-suite failures, and full tests passed.
+- **Learnings for future iterations:** Keep per-platform release tooling as argv-precise spawn commands; credential gates should skip only under `LOCAL_REHEARSAL=1`, while an injected release runner is the safe surface for proving signing command construction without live platform credentials.
+---

@@ -161,6 +161,7 @@ interface CredentialRequirement {
   readonly allOf?: ReadonlyArray<string>;
   readonly allOfAny?: ReadonlyArray<ReadonlyArray<string>>;
   readonly anyOf?: ReadonlyArray<ReadonlyArray<string>>;
+  readonly anyCompleteOf?: ReadonlyArray<ReadonlyArray<string>>;
 }
 
 const envHas = (env: ReleaseEnvironment, name: string): boolean =>
@@ -174,7 +175,14 @@ const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: Credential
   if (!requiredAlternatives.every((group) => group.some((name) => envHas(env, name)))) return false;
 
   const alternatives = requirement.anyOf ?? [];
-  return alternatives.length === 0 || alternatives.some((group) => group.some((name) => envHas(env, name)));
+  if (alternatives.length > 0 && !alternatives.some((group) => group.some((name) => envHas(env, name))))
+    return false;
+
+  const completeAlternatives = requirement.anyCompleteOf ?? [];
+  return (
+    completeAlternatives.length === 0 ||
+    completeAlternatives.some((group) => group.every((name) => envHas(env, name)))
+  );
 };
 
 const credentialGate = (
@@ -207,15 +215,15 @@ const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 
-const releaseSigningCredentials: CredentialRequirement = {
-  anyOf: [
-    ["LANDO_RELEASE_SIGNING_IDENTITY"],
-    ["LANDO_RELEASE_WINDOWS_CERTIFICATE"],
-    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
-  ],
+const macosSigningCredentials: CredentialRequirement = {
+  allOf: ["LANDO_RELEASE_SIGNING_IDENTITY"],
 };
 const appleNotarizationCredentials: CredentialRequirement = {
-  anyOf: [["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"], ["LANDO_RELEASE_APPLE_ID", "APPLE_ID"]],
+  anyCompleteOf: [
+    ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
+    ["LANDO_RELEASE_APPLE_ID", "LANDO_RELEASE_APPLE_PASSWORD", "LANDO_RELEASE_APPLE_TEAM_ID"],
+    ["APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"],
+  ],
 };
 const manifestSigningCredentials: CredentialRequirement = {
   allOfAny: [
@@ -234,9 +242,80 @@ const credentialSkipRequirements: Record<
   string,
   { readonly label: string; readonly credentials: CredentialRequirement }
 > = {
-  "9-sign": { label: "release signing credentials", credentials: releaseSigningCredentials },
+  "9-sign": { label: "macOS Developer ID signing identity", credentials: macosSigningCredentials },
   "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
   "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
+};
+
+const macosReleaseArtifactPaths = ["./dist/lando-darwin-x64", "./dist/lando-darwin-arm64"] as const;
+
+const macosCodesignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const identity = env.LANDO_RELEASE_SIGNING_IDENTITY;
+  if (identity === undefined || identity === "")
+    throw new Error("Missing macOS Developer ID signing identity");
+  return macosReleaseArtifactPaths.map((artifactPath) => [
+    "codesign",
+    "--sign",
+    identity,
+    "--options",
+    "runtime",
+    "--timestamp",
+    "--entitlements",
+    "scripts/lando.entitlements",
+    artifactPath,
+  ]);
+};
+
+const macosNotaryAuthArgs = (env: ReleaseEnvironment): ReadonlyArray<string> => {
+  const keychainProfile = env.LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE;
+  if (keychainProfile !== undefined && keychainProfile !== "") return ["--keychain-profile", keychainProfile];
+
+  const landoAppleId = env.LANDO_RELEASE_APPLE_ID;
+  const landoPassword = env.LANDO_RELEASE_APPLE_PASSWORD;
+  const landoTeamId = env.LANDO_RELEASE_APPLE_TEAM_ID;
+  if (
+    landoAppleId !== undefined &&
+    landoAppleId !== "" &&
+    landoPassword !== undefined &&
+    landoPassword !== "" &&
+    landoTeamId !== undefined &&
+    landoTeamId !== ""
+  )
+    return ["--apple-id", landoAppleId, "--password", landoPassword, "--team-id", landoTeamId];
+
+  const appleId = env.APPLE_ID;
+  const applePassword = env.APPLE_PASSWORD;
+  const appleTeamId = env.APPLE_TEAM_ID;
+  if (
+    appleId !== undefined &&
+    appleId !== "" &&
+    applePassword !== undefined &&
+    applePassword !== "" &&
+    appleTeamId !== undefined &&
+    appleTeamId !== ""
+  )
+    return ["--apple-id", appleId, "--password", applePassword, "--team-id", appleTeamId];
+
+  throw new Error("Missing Apple notarization credentials");
+};
+
+const macosNotarizationCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const authArgs = macosNotaryAuthArgs(env);
+  return macosReleaseArtifactPaths.flatMap((artifactPath) => [
+    ["xcrun", "notarytool", "submit", artifactPath, ...authArgs, "--wait"],
+    ["xcrun", "stapler", "staple", artifactPath],
+    ["xcrun", "stapler", "validate", artifactPath],
+  ]);
+};
+
+const spawnCommandsForStage = (
+  stageId: string,
+  env: ReleaseEnvironment,
+  commands: ReadonlyArray<ReadonlyArray<string>>,
+): ReadonlyArray<ReadonlyArray<string>> => {
+  if (stageId === "9-sign") return macosCodesignCommands(env);
+  if (stageId === "10-notarize") return macosNotarizationCommands(env);
+  return commands;
 };
 
 const nonSigningManifestScript = (): string =>
@@ -260,8 +339,16 @@ const spawnStage =
     stage: Pick<ReleaseStage, "id" | "forBinary" | "forLibrary" | "commandSummary" | "remediation">,
     commands: ReadonlyArray<ReadonlyArray<string>>,
   ) =>
-  async ({ runner, target }: ReleaseStageContext): Promise<void> => {
-    for (const cmd of commands) {
+  async (context: ReleaseStageContext): Promise<void> => {
+    const { runner, target } = context;
+    const requirement = credentialSkipRequirements[stage.id];
+    if (
+      requirement !== undefined &&
+      !credentialGate(stage.id, requirement.label, requirement.credentials, context)
+    )
+      return;
+
+    for (const cmd of spawnCommandsForStage(stage.id, context.env, commands)) {
       await runner.spawn({
         stageId: stage.id,
         artifactFamily: artifactFamilyForStage(stage, target),
@@ -467,10 +554,10 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     description: "macOS codesign / Windows signtool. Linux is signed at the manifest layer.",
     forBinary: true,
     forLibrary: false,
-    kind: "skip",
+    kind: "spawn",
     commandSummary: "sign release binaries",
     remediation: "Provision signing credentials or run a local rehearsal mode that may skip signing.",
-    command: "[release] skip 9-sign (signing infrastructure not yet provisioned)",
+    command: [],
   }),
   defineStage({
     id: "10-notarize",
@@ -478,11 +565,11 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     description: "macOS only: notarytool submit + stapler staple.",
     forBinary: true,
     forLibrary: false,
-    kind: "skip",
+    kind: "spawn",
     commandSummary: "notarize macOS release binaries",
     remediation:
       "Provision Apple notarization credentials or run a local rehearsal mode that may skip notarization.",
-    command: "[release] skip 10-notarize (notarization infrastructure not yet provisioned)",
+    command: [],
   }),
   defineStage({
     id: "11-manifest",

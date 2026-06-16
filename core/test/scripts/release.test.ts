@@ -10,6 +10,10 @@ describe("release orchestrator", () => {
     LANDO_RELEASE_GPG_KEY: "key",
     LANDO_RELEASE_COSIGN_KEY: "key",
   };
+  const macosSigningEnv = {
+    LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
+    LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE: "lando-release",
+  };
 
   test("defines and runs all release stages in the required fixed order", async () => {
     const observed: Array<string> = [];
@@ -198,7 +202,7 @@ describe("release orchestrator", () => {
     });
 
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 9-sign (release signing credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 9-sign (macOS Developer ID signing identity absent)",
     );
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 10-notarize (Apple notarization credentials absent)",
@@ -226,16 +230,12 @@ describe("release orchestrator", () => {
     expect(shellStages.some(({ stageId }) => stageId === "13-publish")).toBe(false);
   });
 
-  test("non-local release fails closed for credential-gated placeholder stages", async () => {
+  test("non-local release fails closed for missing credential-gated stages", async () => {
     await expect(
       runRelease({
         target: "binary",
         throughStage: "9-sign",
-        env: {
-          LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
-          LANDO_RELEASE_WINDOWS_CERTIFICATE: "cert",
-          LANDO_RELEASE_COSIGN_KEY: "key",
-        },
+        env: {},
         runner: {
           spawn: async () => {},
           shell: async () => {},
@@ -267,6 +267,146 @@ describe("release orchestrator", () => {
       _tag: "ReleaseStageError",
       stageId: "12-provenance-sbom",
       artifactFamily: "library",
+    });
+  });
+
+  test("constructs macOS Developer ID signing commands for both Darwin binaries", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await runRelease({
+      target: "binary",
+      throughStage: "9-sign",
+      env: macosSigningEnv,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    expect(spawnStages.filter(({ stageId }) => stageId === "9-sign")).toEqual([
+      {
+        stageId: "9-sign",
+        cmd: [
+          "codesign",
+          "--sign",
+          "Developer ID Application: Example",
+          "--options",
+          "runtime",
+          "--timestamp",
+          "--entitlements",
+          "scripts/lando.entitlements",
+          "./dist/lando-darwin-x64",
+        ],
+      },
+      {
+        stageId: "9-sign",
+        cmd: [
+          "codesign",
+          "--sign",
+          "Developer ID Application: Example",
+          "--options",
+          "runtime",
+          "--timestamp",
+          "--entitlements",
+          "scripts/lando.entitlements",
+          "./dist/lando-darwin-arm64",
+        ],
+      },
+    ]);
+  });
+
+  test("submits, staples, and verifies signed macOS artifacts", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await runRelease({
+      target: "binary",
+      throughStage: "10-notarize",
+      env: macosSigningEnv,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    expect(spawnStages.filter(({ stageId }) => stageId === "10-notarize")).toEqual([
+      {
+        stageId: "10-notarize",
+        cmd: [
+          "xcrun",
+          "notarytool",
+          "submit",
+          "./dist/lando-darwin-x64",
+          "--keychain-profile",
+          "lando-release",
+          "--wait",
+        ],
+      },
+      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-x64"] },
+      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-x64"] },
+      {
+        stageId: "10-notarize",
+        cmd: [
+          "xcrun",
+          "notarytool",
+          "submit",
+          "./dist/lando-darwin-arm64",
+          "--keychain-profile",
+          "lando-release",
+          "--wait",
+        ],
+      },
+      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-arm64"] },
+      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-arm64"] },
+    ]);
+  });
+
+  test("local rehearsal warning-skips partial Apple notarization credentials", async () => {
+    const logs: Array<string> = [];
+
+    await runRelease({
+      target: "binary",
+      throughStage: "10-notarize",
+      env: {
+        LOCAL_REHEARSAL: "1",
+        LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
+        LANDO_RELEASE_APPLE_ID: "maintainer@example.com",
+      },
+      runner: {
+        spawn: async () => {},
+        shell: async () => {},
+      },
+      logger: (line) => logs.push(line),
+    });
+
+    expect(logs).toContain(
+      "[release] warning LOCAL_REHEARSAL=1: skip 10-notarize (Apple notarization credentials absent)",
+    );
+  });
+
+  test("wraps macOS signing command failures in tagged release errors", async () => {
+    await expect(
+      runRelease({
+        target: "binary",
+        throughStage: "9-sign",
+        env: macosSigningEnv,
+        runner: {
+          spawn: async ({ stageId }) => {
+            if (stageId === "9-sign") throw new Error("codesign failed");
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "9-sign",
+      artifactFamily: "binary",
     });
   });
 
@@ -370,22 +510,22 @@ describe("release orchestrator", () => {
     expect(
       shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
     ).toBe(true);
-    try {
-      await signingStage.run({
-        target: "binary",
-        env: { LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example" },
-        localRehearsal: false,
-        runner: {
-          spawn: async () => {},
-          shell: async () => {},
+    await signingStage.run({
+      target: "binary",
+      env: { LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example" },
+      localRehearsal: false,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          shellStages.push({ stageId, script: cmd.join(" ") });
         },
-        logger: () => {},
-      });
-      throw new Error("expected 9-sign to fail after accepting credentials");
-    } catch (error) {
-      expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toContain("Release stage 9-sign is not implemented yet");
-    }
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "9-sign" && script.includes("codesign")),
+    ).toBe(true);
   });
 
   test("publish runs for the all target but skips binary-only releases", async () => {
