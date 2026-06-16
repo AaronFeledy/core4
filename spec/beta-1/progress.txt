@@ -904,3 +904,9 @@
 - Setup blocker: sandbox `setup --provider=podman` hit the existing provider-owned socket conflict, and `setup --provider=lando` hit the known placeholder runtime-bundle URL; the local manifest helper requires pre-staged runtime artifacts, so setup could not be completed here without fabricating a bundle. This does not block US-257's release-compile acceptance but is recorded per Verify rules.
 - Adjacent smoke: focused release tests and CI workflow/codegen tests passed during Review; compiled binary version smoke passed during Verify.
 ---
+
+## 2026-06-16 16:14 CDT - US-273
+- Verified the full §16.2 library contract suite was already complete and marked US-273 passed. `@lando/core/docs/redactions` is present in `core/package.json#exports`, resolves to `core/src/docs/render/redaction.ts`, is listed in `docs/embedding.md`, and exports `redactPublicTranscript`/`redactPublicTranscriptText`; no production code or test changes were required.
+- Verification: focused contract tests passed (`entry-points-export`, `core-testing-export`, `cli-operations-export`, `make-runtime-app`: 19 pass / 0 fail; `import-boundary`: 23 pass / 0 fail). Manual package-resolution QA imported `@lando/core/docs/redactions` and printed the redaction function type. Typecheck and lint passed; full `bun test` passed.
+- **Learnings for future iterations:** A late PRD story can be satisfied by earlier enabling work; before adding new compatibility tests, first verify the exact acceptance files and package exports already named by the PRD.
+---

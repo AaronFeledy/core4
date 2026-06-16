@@ -1315,8 +1315,8 @@
         "Lint passes."
       ],
       "priority": 74,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified complete: @lando/core/docs/redactions is exported and documented, entry-point/import-boundary/core-testing/cli-operations/make-runtime-app library contract tests all pass. No production code change was required."
     },
     {
       "id": "US-274",
