@@ -3,6 +3,8 @@ import { Effect } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import type { Telemetry } from "@lando/sdk/services";
 
+import { TELEMETRY_EVENT_FIELD_NAMES } from "./inventory.ts";
+
 export const UPDATE_OUTCOMES = [
   "success",
   "signature_failure",
@@ -12,10 +14,8 @@ export const UPDATE_OUTCOMES = [
 ] as const;
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 
-export const TELEMETRY_EVENT_INVENTORY = {
-  "update-outcome": ["version", "targetVersion", "channel", "platform", "outcome"],
-  "deprecation-used": ["kind", "id", "since", "severity"],
-} as const;
+// Re-export the inventory object so callers share the same source of truth.
+export const TELEMETRY_EVENT_INVENTORY = TELEMETRY_EVENT_FIELD_NAMES;
 
 export interface UpdateOutcomeTelemetryInput {
   readonly version: string;

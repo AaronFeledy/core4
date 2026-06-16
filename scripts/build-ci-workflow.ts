@@ -107,6 +107,9 @@ ${setupBunSteps}
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
+      - name: Telemetry inventory lint
+        run: bun run check:telemetry-inventory
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |
@@ -257,6 +260,11 @@ const linuxProviderSetupSteps = `      - name: Install Podman
           podman pull valkey/valkey:8
           docker pull node:22-alpine`;
 
+const podmanTeardownCommands = `          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
+          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
+          rm -f /tmp/podman.sock /tmp/podman-service.pid`;
+
 const liveProviderTestSteps = (platform: CiPlatform): string => `      - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
@@ -269,10 +277,7 @@ const liveProviderTestSteps = (platform: CiPlatform): string => `      - name: R
       - name: Teardown Podman
         if: always()
         run: |
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
+${podmanTeardownCommands}
 
       - name: Collect provider diagnostics
         if: failure()
@@ -350,10 +355,7 @@ ${linuxProviderSetupSteps}
       - name: Teardown guide e2e provider
         if: always()
         run: |
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
+${podmanTeardownCommands}
 
       - name: Collect guide e2e provider diagnostics
         if: failure()
