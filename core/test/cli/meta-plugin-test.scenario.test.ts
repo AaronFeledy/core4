@@ -8,6 +8,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { pluginTest, renderPluginTestResult } from "../../src/cli/commands/plugin-test.ts";
+import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;
 
@@ -52,6 +53,24 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:test command", () => {
+  test("runs against the plugin root and never mutates global state under userDataRoot", async () => {
+    await writePlugin(root);
+    const dataRoot = join(root, "data");
+    const previous = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    try {
+      const result = await Effect.runPromise(
+        pluginTest({ cwd: root, spawner: { spawn: async () => ({ exitCode: 0 }) } }),
+      );
+      expect(result.exitCode).toBe(0);
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previous;
+    }
+
+    expect(listTree(dataRoot)).toEqual([]);
+  });
+
   test("detects the plugin root from a subdirectory and runs bun test through BunSelfRunner", async () => {
     await writePlugin(root);
     await mkdir(join(root, "src", "nested"), { recursive: true });

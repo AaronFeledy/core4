@@ -8,6 +8,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { pluginPublish, renderPluginPublishResult } from "../../src/cli/commands/plugin-publish.ts";
+import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;
 
@@ -87,6 +88,42 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:publish command", () => {
+  test("dry-run never writes under userDataRoot (writes only the authoring dist tree)", async () => {
+    await writePlugin(root);
+    await writeFreshDist(root);
+    const dataRoot = join(root, "isolated-data");
+
+    await Effect.runPromise(
+      pluginPublish({
+        cwd: root,
+        dryRun: true,
+        noTest: true,
+        userDataRoot: dataRoot,
+        spawner: makeBuildingSpawner([]),
+      }),
+    );
+
+    expect(listTree(dataRoot)).toEqual([]);
+  });
+
+  test("missing auth reads plugin-auth.json but writes nothing under userDataRoot", async () => {
+    await writePlugin(root);
+    await writeFreshDist(root);
+    const dataRoot = join(root, "isolated-data");
+
+    const exit = await Effect.runPromiseExit(
+      pluginPublish({
+        cwd: root,
+        noTest: true,
+        userDataRoot: dataRoot,
+        spawner: makeBuildingSpawner([]),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(listTree(dataRoot)).toEqual([]);
+  });
+
   test("dry-run prints package contents, registry, tag, validation and skips network publish", async () => {
     await writePlugin(root);
     await writeFreshDist(root);

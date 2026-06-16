@@ -23,13 +23,14 @@
  *   dispatch — not emit `NotImplementedError`) and for the deferred set.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { DEFERRED_COMMAND_PLANS, deferredCommandPlan } from "../../../src/cli/deferred-commands.ts";
 import { isCanonicalLandoCommandId, isMvpCommandId } from "../../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../../src/cli/oclif/compiled-commands.ts";
+import { listTree, pathsOutsidePrefixes } from "../_util/fs-tree.ts";
 import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./normalize.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../../..");
@@ -207,6 +208,45 @@ const makePluginBuildMixedTreeFixture = (): { readonly root: string; readonly cl
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
+const makePluginPackageFixture = (
+  name: string,
+  prefix: string,
+): { readonly root: string; readonly cleanup: () => void } => {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(
+    join(root, "package.json"),
+    `${JSON.stringify({
+      name,
+      version: "1.2.3",
+      type: "module",
+      exports: { ".": "./src/index.ts" },
+      landoPlugin: { name, version: "1.2.3", api: 4, entry: "src/index.ts" },
+    })}\n`,
+  );
+  writeFileSync(join(root, "src", "index.ts"), "export const ok = true;\n");
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+};
+
+/** A plugin with a fresh dist/ so publish dry-run skips the rebuild (no Bun spawn). */
+const makePluginPublishFreshFixture = (): { readonly root: string; readonly cleanup: () => void } => {
+  const fixture = makePluginPackageFixture(
+    "@acme/lando-plugin-publish-parity",
+    "lando-parity-plugin-publish-",
+  );
+  mkdirSync(join(fixture.root, "dist"), { recursive: true });
+  writeFileSync(join(fixture.root, "dist", "index.js"), "export const ok = true;\n");
+  writeFileSync(join(fixture.root, "dist", "index.d.ts"), "export declare const ok = true;\n");
+  writeFileSync(
+    join(fixture.root, "dist", "package.json"),
+    `${JSON.stringify({ name: "@acme/lando-plugin-publish-parity", version: "1.2.3" })}\n`,
+  );
+  const future = new Date(Date.now() + 60_000);
+  for (const file of ["index.js", "index.d.ts", "package.json"])
+    utimesSync(join(fixture.root, "dist", file), future, future);
+  return fixture;
+};
+
 const lastJsonLine = (output: string): unknown => {
   const lines = output
     .split("\n")
@@ -215,6 +255,42 @@ const lastJsonLine = (output: string): unknown => {
   const line = lines.at(-1);
   if (line === undefined) throw new Error(`no JSON envelope found in output: ${output.slice(0, 200)}`);
   return JSON.parse(line);
+};
+
+const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string): Promise<void> => {
+  const source = await runSourceCli(argv);
+  const compiled = await runCompiledCli(argv);
+  expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(2);
+  expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+  expect(compiled.stdout).toBe("");
+  expect(source.stderr).toContain(`Nonexistent flag: ${flag}`);
+  expect(compiled.stderr).toContain(`Nonexistent flag: ${flag}`);
+};
+
+const expectHelpParity = async (commandId: string, mustContain: ReadonlyArray<string>): Promise<void> => {
+  const source = await runSourceCli([commandId, "--help"]);
+  const compiled = await runCompiledCli([commandId, "--help"]);
+  expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+  expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+  for (const text of mustContain) {
+    expect(source.stdout, `source help missing ${text}`).toContain(text);
+    expect(compiled.stdout, `compiled help missing ${text}`).toContain(text);
+  }
+};
+
+const expectJsonEnvelopeParity = async (
+  argv: ReadonlyArray<string>,
+  expectedCode: string,
+  opts: { readonly cwd?: string; readonly env?: Record<string, string>; readonly exitCode?: number } = {},
+): Promise<void> => {
+  const source = await runSourceCli([...argv, "--renderer=json"], opts);
+  const compiled = await runCompiledCli([...argv, "--renderer=json"], opts);
+  expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(opts.exitCode ?? 1);
+  expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+  const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+  const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+  expect(compiledEnvelope).toEqual(sourceEnvelope);
+  expect(sourceEnvelope.code).toBe(expectedCode);
 };
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
@@ -559,6 +635,292 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(errorCodeFromStderr(source.stderr)).toBe("NotImplementedError");
       expect(errorCodeFromStderr(compiled.stderr)).toBe("NotImplementedError");
     }, 30_000);
+  });
+
+  describe("plugin authoring commands dispatch at full parity", () => {
+    test("new: scaffolds identically and writes nothing under userDataRoot", async () => {
+      const isolated = makeIsolatedEnv();
+      const sourceDest = mkdtempSync(join(tmpdir(), "lando-parity-new-src-"));
+      const compiledDest = mkdtempSync(join(tmpdir(), "lando-parity-new-cmp-"));
+      const newArgs = (dest: string): ReadonlyArray<string> => [
+        "meta:plugin:new",
+        "@acme/lando-plugin-parity-new",
+        join(dest, "p"),
+        "--template=bare",
+        "--cspace=acme",
+        "--description=Demo",
+        "--no-interactive",
+      ];
+      try {
+        const source = await runSourceCli(newArgs(sourceDest), { env: isolated.env });
+        const compiled = await runCompiledCli(newArgs(compiledDest), { env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+      } finally {
+        rmSync(sourceDest, { recursive: true, force: true });
+        rmSync(compiledDest, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("new: rejects an unknown flag on both paths", async () => {
+      await expectUnknownFlagParity(
+        ["meta:plugin:new", "@acme/lando-plugin-x", "./x", "--bogus", "--no-interactive"],
+        "--bogus",
+      );
+    }, 30_000);
+
+    test("new: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:new", ["Scaffold a new plugin", "USAGE"]);
+    }, 30_000);
+
+    test("new: invalid --template value is rejected with exit 2 on both paths", async () => {
+      const args = [
+        "meta:plugin:new",
+        "@acme/lando-plugin-x",
+        "./x",
+        "--template=nope",
+        "--cspace=acme",
+        "--description=Demo",
+        "--no-interactive",
+      ];
+      const source = await runSourceCli(args);
+      const compiled = await runCompiledCli(args);
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(source.stderr).toContain("Expected --template=nope to be one of:");
+      expect(compiled.stderr).toContain("Expected --template=nope to be one of:");
+    }, 30_000);
+
+    test("new: non-interactive missing input fails identically under renderer=json", async () => {
+      await expectJsonEnvelopeParity(["meta:plugin:new", "--no-interactive"], "NotImplementedError");
+    }, 30_000);
+
+    test("test: rejects an unknown flag before `--` on both paths", async () => {
+      await expectUnknownFlagParity(["meta:plugin:test", "--bogus"], "--bogus");
+    }, 30_000);
+
+    test("test: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:test", ["Run the current plugin", "USAGE"]);
+    }, 30_000);
+
+    test("test: no plugin root fails identically under renderer=json", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "lando-parity-test-noroot-"));
+      try {
+        await expectJsonEnvelopeParity(["meta:plugin:test"], "PluginManifestError", { cwd });
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }, 30_000);
+
+    test("test: runs the plugin suite identically (positional target)", async () => {
+      const fixture = makePluginTestFixture();
+      try {
+        const args = ["meta:plugin:test", "test/plugin.test.ts", "--renderer=plain"];
+        const source = await runSourceCli(args, { cwd: fixture.root });
+        const compiled = await runCompiledCli(args, { cwd: fixture.root });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(source.stdout).toContain("plugin-test: @acme/lando-plugin-parity");
+        expect(compiled.stdout).toContain("plugin-test: @acme/lando-plugin-parity");
+      } finally {
+        fixture.cleanup();
+      }
+    }, 60_000);
+
+    test("build: rejects an unknown flag on both paths", async () => {
+      await expectUnknownFlagParity(["meta:plugin:build", "--bogus"], "--bogus");
+    }, 30_000);
+
+    test("build: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:build", ["Build the current plugin", "USAGE"]);
+    }, 30_000);
+
+    test("build: no plugin root fails identically under renderer=json", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "lando-parity-build-noroot-"));
+      try {
+        await expectJsonEnvelopeParity(["meta:plugin:build"], "PluginManifestError", { cwd });
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }, 30_000);
+
+    test("build: builds a valid plugin identically and writes nothing under userDataRoot", async () => {
+      const fixture = makePluginPackageFixture(
+        "@acme/lando-plugin-build-parity",
+        "lando-parity-plugin-build-ok-",
+      );
+      const isolated = makeIsolatedEnv();
+      try {
+        const source = await runSourceCli(["meta:plugin:build", "--renderer=plain"], {
+          cwd: fixture.root,
+          env: isolated.env,
+        });
+        rmSync(join(fixture.root, "dist"), { recursive: true, force: true });
+        const compiled = await runCompiledCli(["meta:plugin:build", "--renderer=plain"], {
+          cwd: fixture.root,
+          env: isolated.env,
+        });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+      } finally {
+        fixture.cleanup();
+        isolated.cleanup();
+      }
+    }, 120_000);
+
+    test("link: links a plugin identically and writes only under the plugins root", async () => {
+      const sourceFixture = makePluginPackageFixture(
+        "@acme/lando-plugin-link-parity",
+        "lando-parity-plugin-link-src-",
+      );
+      const compiledFixture = makePluginPackageFixture(
+        "@acme/lando-plugin-link-parity",
+        "lando-parity-plugin-link-cmp-",
+      );
+      const sourceEnv = makeIsolatedEnv();
+      const compiledEnv = makeIsolatedEnv();
+      try {
+        const source = await runSourceCli(["meta:plugin:link"], {
+          cwd: sourceFixture.root,
+          env: sourceEnv.env,
+        });
+        const compiled = await runCompiledCli(["meta:plugin:link"], {
+          cwd: compiledFixture.root,
+          env: compiledEnv.env,
+        });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        const created = listTree(compiledEnv.env.LANDO_USER_DATA_ROOT);
+        expect(created.length).toBeGreaterThan(0);
+        expect(pathsOutsidePrefixes(created, ["plugins"])).toEqual([]);
+      } finally {
+        sourceFixture.cleanup();
+        compiledFixture.cleanup();
+        sourceEnv.cleanup();
+        compiledEnv.cleanup();
+      }
+    }, 30_000);
+
+    test("link: rejects an unknown flag on both paths", async () => {
+      await expectUnknownFlagParity(["meta:plugin:link", "--bogus"], "--bogus");
+    }, 30_000);
+
+    test("link: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:link", ["Symlink the current plugin", "USAGE"]);
+    }, 30_000);
+
+    test("unlink: links then unlinks identically and writes only under the plugins root", async () => {
+      const sourceFixture = makePluginPackageFixture(
+        "@acme/lando-plugin-unlink-parity",
+        "lando-parity-plugin-unlink-src-",
+      );
+      const compiledFixture = makePluginPackageFixture(
+        "@acme/lando-plugin-unlink-parity",
+        "lando-parity-plugin-unlink-cmp-",
+      );
+      const sourceEnv = makeIsolatedEnv();
+      const compiledEnv = makeIsolatedEnv();
+      try {
+        await runSourceCli(["meta:plugin:link"], { cwd: sourceFixture.root, env: sourceEnv.env });
+        await runCompiledCli(["meta:plugin:link"], { cwd: compiledFixture.root, env: compiledEnv.env });
+        const source = await runSourceCli(["meta:plugin:unlink", "@acme/lando-plugin-unlink-parity"], {
+          cwd: sourceFixture.root,
+          env: sourceEnv.env,
+        });
+        const compiled = await runCompiledCli(["meta:plugin:unlink", "@acme/lando-plugin-unlink-parity"], {
+          cwd: compiledFixture.root,
+          env: compiledEnv.env,
+        });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(pathsOutsidePrefixes(listTree(compiledEnv.env.LANDO_USER_DATA_ROOT), ["plugins"])).toEqual([]);
+      } finally {
+        sourceFixture.cleanup();
+        compiledFixture.cleanup();
+        sourceEnv.cleanup();
+        compiledEnv.cleanup();
+      }
+    }, 30_000);
+
+    test("unlink: rejects an unknown flag on both paths", async () => {
+      await expectUnknownFlagParity(["meta:plugin:unlink", "somename", "--bogus"], "--bogus");
+    }, 30_000);
+
+    test("unlink: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:unlink", ["Remove a previously linked plugin", "USAGE"]);
+    }, 30_000);
+
+    test("unlink: missing required name fails with exit 2 on both paths", async () => {
+      const source = await runSourceCli(["meta:plugin:unlink"]);
+      const compiled = await runCompiledCli(["meta:plugin:unlink"]);
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(source.stderr).toContain("Missing 1 required arg");
+      expect(compiled.stderr).toContain("Missing 1 required arg");
+    }, 30_000);
+
+    test("unlink: not-linked failure matches identically under renderer=json", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        await expectJsonEnvelopeParity(
+          ["meta:plugin:unlink", "@acme/lando-plugin-not-linked"],
+          "PluginUnlinkNotLinkedError",
+          { env: isolated.env },
+        );
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("publish: dry-run renders identically and writes nothing under userDataRoot", async () => {
+      const fixture = makePluginPublishFreshFixture();
+      const isolated = makeIsolatedEnv();
+      try {
+        const args = ["meta:plugin:publish", "--dry-run", "--no-test", "--renderer=plain"];
+        const source = await runSourceCli(args, { cwd: fixture.root, env: isolated.env });
+        const compiled = await runCompiledCli(args, { cwd: fixture.root, env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(source.stdout).toContain("dry-run");
+        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+      } finally {
+        fixture.cleanup();
+        isolated.cleanup();
+      }
+    }, 60_000);
+
+    test("publish: rejects an unknown flag on both paths", async () => {
+      await expectUnknownFlagParity(["meta:plugin:publish", "--bogus"], "--bogus");
+    }, 30_000);
+
+    test("publish: prints command help on both paths", async () => {
+      await expectHelpParity("meta:plugin:publish", ["Publish the current plugin", "USAGE"]);
+    }, 30_000);
+
+    test("publish: missing auth fails identically under renderer=json (non-interactive)", async () => {
+      const fixture = makePluginPublishFreshFixture();
+      const isolated = makeIsolatedEnv();
+      try {
+        await expectJsonEnvelopeParity(
+          ["meta:plugin:publish", "--no-test", "--no-interactive"],
+          "PluginPublishAuthError",
+          { cwd: fixture.root, env: isolated.env },
+        );
+      } finally {
+        fixture.cleanup();
+        isolated.cleanup();
+      }
+    }, 60_000);
   });
 });
 
