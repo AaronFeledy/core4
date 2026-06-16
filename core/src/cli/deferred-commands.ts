@@ -19,9 +19,9 @@ const META_GLOBAL_PLAN: DeferredCommandPlan = {
 };
 
 const META_PLUGIN_AUTHORING_PLAN: DeferredCommandPlan = {
-  summary: "The plugin authoring toolkit (`link`/`unlink`/`publish`) is not available yet.",
+  summary: "The plugin authoring toolkit (`unlink`/`publish`) is not available yet.",
   remediation:
-    "Plugin authoring commands (`meta:plugin:{link,unlink,publish}`) are not available yet. Author plugins by hand against `@lando/sdk` for now.",
+    "Plugin authoring commands (`meta:plugin:{unlink,publish}`) are not available yet. Author plugins by hand against `@lando/sdk` for now.",
 };
 
 const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
@@ -50,7 +50,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:global:restart", META_GLOBAL_PLAN],
-  ["meta:plugin:link", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:unlink", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:publish", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],

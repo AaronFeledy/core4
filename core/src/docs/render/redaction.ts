@@ -81,6 +81,7 @@ const redactPorts = (text: string): string =>
 const redactContainerIds = (text: string): string =>
   text
     .replace(/\b([0-9a-f]{12})\b/gi, PLACEHOLDERS.CONTAINER_ID)
+    .replace(/\b([0-9a-f]{16,63})\b/gi, PLACEHOLDERS.CONTAINER_ID)
     .replace(/\bsha256:([0-9a-f]{64})\b/gi, `sha256:${PLACEHOLDERS.DIGEST}`);
 
 const redactProviderIds = (text: string): string =>

@@ -597,8 +597,8 @@
         "Lint passes."
       ],
       "priority": 34,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented meta:plugin:link with cwd/default path resolution, manifest validation, symlinked user plugin registry entries, linked registry metadata, .lando-linked.json tracking, plugin command cache invalidation, conflict refusal for non-linked entries, source/compiled dispatch wiring, and required guide coverage."
     },
     {
       "id": "US-234",

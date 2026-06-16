@@ -37,7 +37,7 @@ import {
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
 
-import { redactPublicTranscript } from "../core/src/docs/render/index.ts";
+import { redactPublicTranscript, redactPublicTranscriptText } from "../core/src/docs/render/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
@@ -1058,6 +1058,18 @@ const inspectDisplay = (props: InspectProps, variables: ReadonlyMap<string, Vari
   return "inspect output";
 };
 
+const redactPublicText = (text: string | undefined): string | undefined => {
+  if (text === undefined) return undefined;
+  return redactPublicTranscriptText(text);
+};
+
+const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => ({
+  ...frame,
+  displayText: redactPublicText(frame.displayText),
+  commandDisplay: redactPublicText(frame.commandDisplay),
+  resultSummary: redactPublicText(frame.resultSummary),
+});
+
 const publicFrameForComponent = (
   component: GuideStepComponent,
   sourceFile: string,
@@ -1151,13 +1163,14 @@ export const buildPublicTranscript = (
       if (frame !== undefined) frames.push(frame);
     }
   }
+  const redactedFrames = frames.map(redactFrame);
   return {
     guideId: guide.frontmatter.id,
     scenarioId: scenario.id,
     variant: variantStringOf(variant),
     runtime: effectiveScenarioLayer(guide, scenario) === "e2e" ? "e2e" : runMode,
     render: true,
-    frames,
+    frames: redactedFrames,
   };
 };
 

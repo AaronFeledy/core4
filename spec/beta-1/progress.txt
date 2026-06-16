@@ -726,21 +726,32 @@
 - Review feedback: none
 - Merge: deferred (closed as duplicate of #366; US-232 already on main)
 ---
+## 2026-06-15 16:58 CDT - US-233
+- Shipped local plugin linking: `meta:plugin:link` now validates a plugin manifest, resolves cwd or an explicit path to an absolute authoring checkout, creates the managed symlink under the user plugin registry, records linked metadata in the installed registry and `.lando-linked.json`, invalidates plugin command cache state, and refuses unsafe replacement of non-linked entries.
+- Promoted the command from deferred to MVP source/compiled dispatch metadata and added the required local-link guide coverage.
+- Verification: focused RED→GREEN plugin-link tests, deferred cutover, plugin/command registry tests, dispatch parity and OCLIF manifest tests, guide lint/coverage/dev guide, source CLI manual QA, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Linked plugin state rides both `registry.json` (for existing plugin discovery) and `.lando-linked.json` (for future unlink/restore bookkeeping); keep all link/unlink mutations confined to `<userDataRoot>/plugins/` and invalidate `plugin-command-cache.bin` only after the linked state is durable.
+---
+## 2026-06-15 17:25 CDT - US-233 Review
+- Fixed pre-mutation containment gap: `pluginLink` was running `mkdir(dirname(registryEntry), …)` before `assertInsidePluginsRoot`, so a hostile `package.json` with a `..`-escaping name could create directories outside `<userDataRoot>/plugins/` before the conflict check fired (`PluginName` is an unvalidated branded string). Hoisted the containment assertion ahead of any filesystem mutation and added a scenario regression that links a `../escape/...` name and verifies zero FS writes.
+- Verification: typecheck, lint, focused `meta-plugin-link.scenario.test.ts` (4 pass) green. Full `bun test` showed one pre-existing flake unrelated to this story (`core/test/scripts/dev-guides.test.ts` SIGINT exit on the dev:guides watcher; the dev-guides files are byte-identical to `origin/main` on this branch).
+- **Learnings for future iterations:** `@lando/sdk`'s `PluginName` is a bare branded `Schema.String` with no format validation, so any core path that maps `manifest.name` to a filesystem location must enforce containment BEFORE the first `mkdir`/`writeFile` (mirror `plugin-add.ts`'s `assertSafeInstallSegment` ordering).
+---
 
-## 2026-06-15 18:41 CDT - US-249
-- Shipped public transcript redaction and determinism (second-half of the executable guides PRD): new `core/src/docs/render/redaction.ts` with `redactPublicTranscriptText` / `redactPublicTranscript` (and `RedactionEnvironment`) that composes the existing `core/src/cli/redact.ts: redactionString` for secrets/URLs/Bearer/query params, plus longest-root env-specific path redaction (home/tmp/extraRoots for POSIX/Windows), ephemeral port redaction (exclude well-known), 12-hex container IDs + sha256 digests, provider id patterns (e.g. *_web_*), bare `token secret` / `token=...` literals, and generic cross-platform path/secret fallbacks.
-- Dual-point redaction (before write + before consumption): `scripts/build-guide-scenarios.ts` now calls `redactPublicTranscript(transcript)` immediately after `buildPublicTranscript` and before `Schema.encodeSync` + `Bun.write` (satisfies "before public transcript artifacts are written"); `core/src/docs/render/index.ts` calls it inside `toPublicTranscriptView` (and re-exports the redaction API + `RedactionEnvironment` so docs-site consumption via `loadPublicTranscript` / `renderPublicTranscriptHtml` is also clean and idempotent).
-- TDD (RED first): `core/test/docs/public-transcript-redaction.test.ts` (ultrabrain) with 8 scenarios exercising POSIX env, Windows env, provider+sha256, library-mode, byte-identical determinism, idempotence, structural-field preservation, and conservative non-redaction of innocent content. Initial run failed on missing module (RED). Then implemented the redactor (GREEN, 8/8 + 59 expects).
-- Additional real-surface tests: extended `core/test/docs/render-public-transcript.test.ts` (leaking PublicTranscript fixture -> placeholders in view + HTML output, sourceFile/sourceLine/kind untouched); extended `core/test/codegen/public-transcript.test.ts` (leaking MDX with Variable path + token in CLI Run + library Run -> emitted artifacts have redacted text, no raw leaks, source attribution preserved; split into two scenarios to satisfy mixed-runtime rule).
-- 3 binary-observable real-surface scenarios captured: (1) unit contract, (2) render consumption (toPublicTranscriptView + HTML), (3) actual emit path (ran `us249-real-surface-evidence.ts` which exercised the exact `buildGuideScenarioAst` + `emitPublicTranscripts` used by codegen/dev:guides; produced `dist/transcripts/public/guides/.../cli-leak.json` and `lib-leak.json` containing `<HOME>/... --token [REDACTED]`, `Lando.from("<TMP>", "bearer [REDACTED]")`, zero raw machine data/secrets, sourceFile/sourceLine intact).
-- Host-safe verification gates: `@lando/core` typecheck clean; biome lint clean on all delta + new files (after --write); 24/24 affected tests pass (redactor contract + render-public-transcript* + codegen/public-transcript); `bun run lint:guides` pass; `bun run check:guide-coverage` pass (pre-existing `check:public-transcripts` misses are unrelated shipped guides without artifacts in this tree).
-- Story tracking: set `US-249.passes: true` in `spec/beta-1/prd.json` with implementation notes; wrote `.local/looper/.last-branch`; durable NOTE updated with all RED/GREEN evidence + real-surface JSON + binary observables.
-- **Learnings for future iterations:** Always compose rather than fork the CLI redactor; redact *only* the three reader-visible PublicTranscriptFrame text fields (displayText/commandDisplay/resultSummary) — never touch kind/sourceFile/sourceLine/guideId/etc. or the SDK schema (avoids four-place snapshot lockstep); injectable `RedactionEnvironment` + longest-first root sort + generic patterns (before env-specific) gives true cross-platform determinism (same input under mock env -> byte-identical output) for POSIX/Windows/provider/library fixtures; the two redaction call sites (emit + toPublicTranscriptView) together satisfy both "before written" and "before docs-site consumption"; public render must stay exclusively through `@lando/core/docs/render` and `publicTranscriptRelativePath` must be shared between emitter and the missing-artifact gate.
-- Stop (per build.md / story constraints): no push, no review, no CI babysit, no scope creep.
+## 2026-06-15T17:05:26-05:00 - Push
+- PR: none — push skipped: uncommitted product changes on `us-233-plugin-link-tracking` (`core/src/cli/deferred-commands.ts`, `core/src/cli/run.ts`, untracked `docs/guides/dev-guides-red.mdx`). US-233 `passes: true`; commit and re-run Push.
+---
 
+## [2026-06-15 17:06 CDT] - Babysit
+- PR: none (no PR found for branch us-233-plugin-link-tracking)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR — push step should create/refresh)
+---
 
-## 2026-06-15 21:00 CDT - US-249 Review
-- Fixed review blockers in the public transcript redaction path: quoted secret CLI/env values now redact, default host/user/path environment redaction applies when emitting artifacts, loaded public transcript artifacts sanitize again before docs consumption, and the docs redaction helper is exposed through the documented package subpath.
-- Review notes (fixed): goal/security/code-quality lanes found quoted-secret and host/user redaction coverage gaps; context mining found the missing `@lando/core/docs/redactions` export contract; full-suite export identity failure was made robust to Bun workspace symlink module identity while preserving contract equivalence.
-- Verification: typecheck, lint, focused redaction/render/export tests, and full `bun test` passed (3763 pass / 38 skip / 0 fail).
+## 2026-06-15 17:58 CDT - US-233 Build
+- Finished the paused plugin-link branch by preserving the already-shipped link implementation and committing the remaining dispatch cleanup so `meta:plugin:link` is no longer described as deferred while `unlink`/`publish` remain deferred.
+- Verified the real source and compiled CLI link paths against isolated config/data/cache roots; both created a managed symlink and recorded linked registry metadata.
+- Verification: typecheck, lint, focused plugin-link/deferred tests, full tests, and source+compiled CLI QA passed.
+- **Learnings for future iterations:** Manual CLI QA for commands that read config must isolate all three roots (`LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT`); setting only data/cache can accidentally parse the developer config path and produce unrelated config errors.
 ---
