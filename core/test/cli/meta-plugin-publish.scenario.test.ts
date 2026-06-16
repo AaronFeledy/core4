@@ -43,8 +43,6 @@ const writePlugin = async (dir: string, name = "@acme/lando-plugin-publish") => 
   await writeFile(join(dir, "src", "index.ts"), "export const ok = true;\n");
 };
 
-// Write a fresh dist tree whose mtimes are newer than every source file so the
-// artifact is considered up-to-date (no rebuild required).
 const writeFreshDist = async (dir: string) => {
   await mkdir(join(dir, "dist"), { recursive: true });
   await writeFile(join(dir, "dist", "index.js"), "export const ok = true;\n");
@@ -76,7 +74,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  if (root !== undefined) await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
 });
 
 describe("meta:plugin:publish command", () => {
@@ -105,7 +103,6 @@ describe("meta:plugin:publish command", () => {
     expect(result.registry).toBe("https://registry.npmjs.org/");
     expect(result.packageContents).toEqual(["dist/index.d.ts", "dist/index.js", "dist/package.json"]);
     expect(result.exitCode).toBe(0);
-    // No network publish spawn at all on a fresh, --no-test dry run.
     expect(spawns).toEqual([]);
     expect(events.map((event) => event._tag)).toEqual([
       "cli-meta:plugin:publish-start",
@@ -141,14 +138,8 @@ describe("meta:plugin:publish command", () => {
   test("rebuilds stale artifacts and retests before publishing", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
-    // Make the source newer than the dist artifact so it is considered stale.
     const future = new Date(Date.now() + 120_000);
     await utimes(join(root, "src", "index.ts"), future, future);
-    await mkdir(join(root, ".lando"), { recursive: true });
-    await writeFile(
-      join(root, "auth.json"),
-      `${JSON.stringify({ registries: { "https://registry.npmjs.org/": { token: "secret-token" } } }, null, 2)}\n`,
-    );
     const events: LandoEvent[] = [];
     const spawns: Spawn[] = [];
 

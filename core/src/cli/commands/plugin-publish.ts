@@ -188,6 +188,10 @@ export const pluginPublish = (
               issues: [String(cause)],
             }),
     });
+    const bunOptions = {
+      ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+      ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+    };
 
     const registry = options.registry ?? publishConfigRegistry(pkg) ?? DEFAULT_PLUGIN_REGISTRY;
     yield* publishPluginPublishEvent({
@@ -223,8 +227,7 @@ export const pluginPublish = (
     if (stale) {
       const build = yield* pluginBuild({
         cwd: pluginRoot,
-        ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-        ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+        ...bunOptions,
       });
       rebuilt = true;
       if (build.exitCode !== 0) {
@@ -241,8 +244,7 @@ export const pluginPublish = (
     if (options.noTest !== true) {
       const test = yield* pluginTest({
         cwd: pluginRoot,
-        ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-        ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+        ...bunOptions,
       });
       tested = true;
       if (test.exitCode !== 0) {
@@ -279,8 +281,7 @@ export const pluginPublish = (
         cwd: join(pluginRoot, "dist"),
         verb: "publish",
         callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
-        ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-        ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+        ...bunOptions,
       });
       exitCode = publish.exitCode;
       published = exitCode === 0;

@@ -2,20 +2,20 @@ import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
 import {
+  type PluginPublishOptions,
   type PluginPublishResult,
   pluginPublish,
   renderPluginPublishResult,
 } from "../../../../commands/plugin-publish.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const extractInput = (input: unknown) => {
-  const parsed =
-    typeof input === "object" && input !== null ? (input as { flags?: Record<string, unknown> }) : {};
-  const flags = parsed.flags ?? {};
-  const stringFlag = (name: string): string | undefined =>
-    typeof flags[name] === "string" ? flags[name] : undefined;
-  const tag = stringFlag("tag");
-  const registry = stringFlag("registry");
+const extractInput = (input: unknown): PluginPublishOptions => {
+  const flags =
+    typeof input === "object" && input !== null
+      ? ((input as { flags?: Record<string, unknown> }).flags ?? {})
+      : {};
+  const tag = typeof flags.tag === "string" ? flags.tag : undefined;
+  const registry = typeof flags.registry === "string" ? flags.registry : undefined;
   return {
     ...(tag === undefined ? {} : { tag }),
     ...(registry === undefined ? {} : { registry }),

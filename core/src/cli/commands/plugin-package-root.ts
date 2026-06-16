@@ -13,14 +13,14 @@ const parsePackageJson = async (
   packagePath: string,
 ): Promise<Readonly<Record<string, unknown>> | undefined> => {
   const raw = await readFile(packagePath, "utf8");
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    return parsed as Readonly<Record<string, unknown>>;
+  } catch (cause) {
+    if (cause instanceof SyntaxError) return undefined;
+    throw cause;
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
-  return parsed as Readonly<Record<string, unknown>>;
 };
 
 const looksLikePluginPackage = (pkg: Readonly<Record<string, unknown>>): boolean => {
