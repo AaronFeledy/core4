@@ -1331,6 +1331,17 @@ const runMetaPluginNew = async (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const dashIndex = argv.indexOf("--");
+  const preDash = dashIndex === -1 ? argv : argv.slice(0, dashIndex);
+  const unknownFlag = preDash.find((arg) => arg.startsWith("-") && arg !== "-");
+  if (unknownFlag !== undefined) {
+    const equalsIndex = unknownFlag.indexOf("=");
+    emitDiagnosticLine(
+      `Nonexistent flag: ${equalsIndex === -1 ? unknownFlag : unknownFlag.slice(0, equalsIndex)}`,
+    );
+    process.exitCode = 2;
+    return;
+  }
   await runCompiledCommand(
     pluginTest({ argv }).pipe(
       Effect.tap((result) =>
@@ -1344,7 +1355,8 @@ const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<void> => 
   );
 };
 
-const runMetaPluginBuild = async (): Promise<void> => {
+const runMetaPluginBuild = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:plugin:build", argv)) return;
   await runCompiledCommand(
     pluginBuild().pipe(
       Effect.tap((result) =>
@@ -1404,16 +1416,8 @@ const runMetaPluginUnlink = async (argv: ReadonlyArray<string>): Promise<void> =
   const input = compiledCommandInputFromArgv(metaPluginUnlinkCommandId, argv);
   const name = typeof input.args.name === "string" ? input.args.name : undefined;
   if (name === undefined) {
-    emitDiagnosticLine(
-      commandErrorMessage(
-        new NotImplementedError({
-          message: "meta:plugin:unlink requires a plugin name argument.",
-          commandId: metaPluginUnlinkCommandId,
-          remediation: "Pass the plugin name, e.g. `lando plugin:unlink @lando/plugin-php`.",
-        }),
-      ),
-    );
-    process.exitCode = 1;
+    emitDiagnosticLine("Missing 1 required arg:\nname  Plugin name.");
+    process.exitCode = 2;
     return;
   }
   await runCompiledCommand(
@@ -1864,7 +1868,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "meta:plugin:build") {
-    await runMetaPluginBuild();
+    await runMetaPluginBuild(argv.slice(1));
     return;
   }
 

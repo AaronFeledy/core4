@@ -8,6 +8,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { pluginBuild, renderPluginBuildResult } from "../../src/cli/commands/plugin-build.ts";
+import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;
 
@@ -58,6 +59,36 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:build command", () => {
+  test("builds into the authoring dist dir and never mutates global state under userDataRoot", async () => {
+    await writePlugin(root);
+    const dataRoot = join(root, "data");
+    const previous = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    try {
+      const result = await Effect.runPromise(
+        pluginBuild({
+          cwd: root,
+          execPath: "/opt/bun",
+          spawner: {
+            spawn: async ({ cmd }) => {
+              if (cmd.includes("build"))
+                await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
+              if (cmd.includes("tsc"))
+                await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
+              return { exitCode: 0 };
+            },
+          },
+        }),
+      );
+      expect(result.outputs).toContain("dist/index.js");
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previous;
+    }
+
+    expect(listTree(dataRoot)).toEqual([]);
+  });
+
   test("builds package exports into deterministic dist artifacts with declarations", async () => {
     await writePlugin(root, "@acme/lando-plugin-build-events");
     const events: LandoEvent[] = [];

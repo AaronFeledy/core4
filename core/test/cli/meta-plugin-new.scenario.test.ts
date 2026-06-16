@@ -11,6 +11,7 @@ import {
   renderPluginNewResult,
 } from "../../src/cli/commands/plugin-new.ts";
 import { createBufferedPromptIO } from "../../src/recipes/prompts/io.ts";
+import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;
 
@@ -29,6 +30,31 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:new command", () => {
+  test("scaffolds only into the destination and never mutates global state under userDataRoot", async () => {
+    const destination = join(root, "demo-plugin");
+    const dataRoot = join(root, "data");
+    const previous = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    try {
+      await Effect.runPromise(
+        pluginNew({
+          name: "@acme/lando-plugin-contained",
+          destination,
+          template: "bare",
+          cspace: "acme",
+          description: "Contained plugin",
+          nonInteractive: true,
+        }),
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previous;
+    }
+
+    expect(await exists(join(destination, "package.json"))).toBe(true);
+    expect(listTree(dataRoot)).toEqual([]);
+  });
+
   test("scaffolds a non-interactive bare plugin with manifest, config schema, tests, tsconfig, and README", async () => {
     const destination = join(root, "demo-plugin");
 
