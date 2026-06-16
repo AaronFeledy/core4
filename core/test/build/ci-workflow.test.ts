@@ -209,6 +209,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:renderer-boundary");
+    expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable-only platforms");
     expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform != 'linux-x64' }}");
     expect(staticChecksPlatform).toContain(

@@ -107,6 +107,9 @@ ${setupBunSteps}
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
+      - name: Telemetry inventory lint
+        run: bun run check:telemetry-inventory
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |
