@@ -5,8 +5,15 @@
  * The orchestrator owns stage ordering. Artifact families may skip stages, but
  * flags/config cannot reorder the canonical sequence.
  */
+import { relative } from "node:path";
+
 import { $ } from "bun";
 
+import {
+  type DeprecationReleaseOffender,
+  type DeprecationReleaseResult,
+  checkDeprecationReleaseGate,
+} from "./check-deprecations.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 
 export type ArtifactTarget = "all" | "binary" | "library";
@@ -54,12 +61,18 @@ export interface ReleaseStageContext {
   readonly logger: (line: string) => void;
 }
 
+export type DeprecationGate = (input: {
+  readonly env: ReleaseEnvironment;
+  readonly target: ArtifactTarget;
+}) => Promise<DeprecationReleaseResult>;
+
 interface ReleaseOptions {
   readonly target?: ArtifactTarget;
   readonly throughStage?: number | string;
   readonly env?: ReleaseEnvironment;
   readonly runner?: ReleaseRunner;
   readonly logger?: (line: string) => void;
+  readonly deprecationGate?: DeprecationGate;
 }
 
 interface ReleaseCliOptions {
@@ -127,9 +140,6 @@ export const parseReleaseOptions = (args: ReadonlyArray<string>): ReleaseCliOpti
 
   return { target: target ?? "all", throughStage };
 };
-
-export const parseReleaseTarget = (args: ReadonlyArray<string>): ArtifactTarget =>
-  parseReleaseOptions(args).target;
 
 const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolean => {
   if (target === "all") return true;
@@ -582,12 +592,46 @@ const defaultRunner: ReleaseRunner = {
   },
 };
 
+const defaultDeprecationGate: DeprecationGate = ({ env }) => checkDeprecationReleaseGate({ env });
+
+const deprecationGateRemediation =
+  "Remove every surface whose removeIn has arrived (or fix the flagged deprecation metadata) before releasing.";
+
+const formatDeprecationOffender = (offender: DeprecationReleaseOffender): string => {
+  const location = relative(process.cwd(), offender.file) || offender.file;
+  const removeIn = offender.removeIn === undefined ? "" : ` removeIn=${offender.removeIn}`;
+  const action = offender.expectedAction ?? offender.reason;
+  return `  - ${offender.exportName} (${location}:${offender.line})${removeIn}: ${action}`;
+};
+
+const runDeprecationGate = async (
+  gate: DeprecationGate,
+  { env, target, logger }: ReleaseStageContext,
+): Promise<void> => {
+  const result = await gate({ env, target });
+  if (result.ok) {
+    logger("[release] deprecation gate passed (no surfaces past removeIn).");
+    return;
+  }
+  const detail = result.offenders.map(formatDeprecationOffender).join("\n");
+  throw new ReleaseStageError(
+    "deprecation-gate",
+    artifactFamilyForStage({ forBinary: true, forLibrary: true }, target),
+    "bun run scripts/check-deprecations.ts",
+    deprecationGateRemediation,
+    new Error(
+      `Deprecation gate blocked release; ${result.offenders.length} surface(s) must be removed or fixed:\n${detail}`,
+    ),
+  );
+};
+
 export const runRelease = async ({
   target = "all",
   throughStage,
   env = process.env,
   runner = defaultRunner,
   logger = console.log,
+  deprecationGate = defaultDeprecationGate,
 }: ReleaseOptions = {}): Promise<void> => {
   const stages = stagePrefixLimit(throughStage);
   const localRehearsal = env.LOCAL_REHEARSAL === "1";
@@ -601,8 +645,9 @@ export const runRelease = async ({
     }
 
     logger(`[release] -> ${stage.id}: ${stage.description}`);
+    const context: ReleaseStageContext = { target, env, localRehearsal, runner, logger };
     try {
-      await stage.run({ target, env, localRehearsal, runner, logger });
+      await stage.run(context);
     } catch (cause) {
       throw new ReleaseStageError(
         stage.id,
@@ -611,6 +656,10 @@ export const runRelease = async ({
         stage.remediation,
         cause,
       );
+    }
+
+    if (stage.id === "1-codegen") {
+      await runDeprecationGate(deprecationGate, context);
     }
   }
 

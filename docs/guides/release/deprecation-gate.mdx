@@ -1,0 +1,35 @@
+---
+id: release-deprecation-gate
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release]
+---
+
+<Guide>
+  <Scenario id="gate-position" render={false} reason="Release-orchestrator deprecation-gate behavior is asserted by core/test/scripts/release.test.ts and core/test/scripts/check-deprecations.test.ts with stubbed runners so this guide stays host-safe">
+    <Step name="release-gate-order">
+      <Variable name="afterCodegen" value="after 1-codegen" display="The deprecation gate runs immediately after the codegen stage" />
+      <Variable name="beforeTypecheck" value="before 2-typecheck" display="The deprecation gate runs before type-checking starts" />
+      <Variable name="notStageFourteen" value="13-stage table" display="The gate is not a numbered 14th stage; the canonical release table stays 13 stages" />
+      <Variable name="targets" value="binary, library, CI, local rehearsal" display="The gate runs for binary and library releases in CI and local rehearsal" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failure-condition" render={false} reason="Deprecation cutoff behavior is asserted by core/test/scripts/check-deprecations.test.ts with fixture declarations so this guide stays host-safe">
+    <Step name="stale-deprecation-cutoff">
+      <Variable name="equalRemoveIn" value="removeIn == release version" display="A matching removeIn version is stale and blocks the release" />
+      <Variable name="earlierRemoveIn" value="removeIn < release version" display="An earlier removeIn version is overdue and blocks the release" />
+      <Variable name="releaseVersionSource" value="LANDO_RELEASE_VERSION, LANDO_NPM_VERSION, package.json, 4.0.0" display="The release version resolves from env, package metadata, then the 4.0.0 default" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failure-report" render={false} reason="Failure-report details are asserted by core/test/scripts/check-deprecations.test.ts without running the release pipeline so this guide stays host-safe">
+    <Step name="reported-fields">
+      <Variable name="surface" value="export name" display="Each failure lists the offending public surface" />
+      <Variable name="declarationFile" value="declaration file with line" display="Each failure lists the declaration file and line" />
+      <Variable name="removeIn" value="removeIn" display="Each failure lists the declared removeIn value" />
+      <Variable name="action" value="remove the surface before releasing" display="Each failure states the expected removal action" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -1,7 +1,28 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
+import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, runRelease } from "../../../scripts/release";
+
+const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
+
+const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-release-deprecations-"));
+  try {
+    await run(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+const writeFixtureFile = async (root: string, path: string, content: string): Promise<void> => {
+  await mkdir(dirname(join(root, path)), { recursive: true });
+  await writeFile(join(root, path), content, "utf8");
+};
 
 describe("release orchestrator", () => {
   const localRehearsalEnv = { LOCAL_REHEARSAL: "1" };
@@ -22,6 +43,7 @@ describe("release orchestrator", () => {
     };
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "all",
       env: localRehearsalEnv,
       runner: {
@@ -63,6 +85,7 @@ describe("release orchestrator", () => {
 
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "all",
         env: localRehearsalEnv,
         runner: {
@@ -92,6 +115,7 @@ describe("release orchestrator", () => {
     const shellStages: Array<string> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "library",
       throughStage: "11-manifest",
       env: {
@@ -125,6 +149,7 @@ describe("release orchestrator", () => {
     const logs: Array<string> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "binary",
       env: localRehearsalEnv,
       runner: {
@@ -190,6 +215,7 @@ describe("release orchestrator", () => {
     const logs: Array<string> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "all",
       env: localRehearsalEnv,
       runner: {
@@ -233,6 +259,7 @@ describe("release orchestrator", () => {
   test("non-local release fails closed for missing credential-gated stages", async () => {
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "binary",
         throughStage: "9-sign",
         env: {},
@@ -250,6 +277,7 @@ describe("release orchestrator", () => {
 
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "12-provenance-sbom",
         env: {
@@ -448,6 +476,7 @@ describe("release orchestrator", () => {
 
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "13-publish",
         env: { GITHUB_TOKEN: "token" },
@@ -468,6 +497,7 @@ describe("release orchestrator", () => {
     ).toBe(false);
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "library",
       throughStage: "13-publish",
       env: { LOCAL_REHEARSAL: "1", GITHUB_TOKEN: "token" },
@@ -484,6 +514,7 @@ describe("release orchestrator", () => {
     );
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "library",
       throughStage: "13-publish",
       env: { LOCAL_REHEARSAL: "1", ...manifestSigningEnv, ...libraryPublishEnv },
@@ -604,6 +635,7 @@ describe("release orchestrator", () => {
     const logs: Array<string> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "7-compile",
       env: localRehearsalEnv,
@@ -625,5 +657,147 @@ describe("release orchestrator", () => {
     ]);
     expect(spawnStages.at(-1)?.cmd).toEqual(["bun", "run", "--filter=@lando/core", "build:compile"]);
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
+  });
+
+  describe("deprecation gate", () => {
+    test("runs the deprecation gate after codegen and before type-check", async () => {
+      const events: Array<string> = [];
+
+      await runRelease({
+        target: "all",
+        env: localRehearsalEnv,
+        deprecationGate: async () => {
+          events.push("deprecation-gate");
+          return { ok: true, offenders: [] };
+        },
+        runner: {
+          spawn: async ({ stageId }) => {
+            events.push(stageId);
+          },
+          shell: async ({ stageId }) => {
+            events.push(stageId);
+          },
+        },
+        logger: () => {},
+      });
+
+      const codegenIndex = events.indexOf("1-codegen");
+      const gateIndex = events.indexOf("deprecation-gate");
+      const typecheckIndex = events.indexOf("2-typecheck");
+      expect(codegenIndex).toBeGreaterThanOrEqual(0);
+      expect(gateIndex).toBe(codegenIndex + 1);
+      expect(typecheckIndex).toBe(gateIndex + 1);
+    });
+
+    test("blocks the release when a deprecation removeIn has arrived (synthetic fixture)", async () => {
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(
+          root,
+          "sdk/src/public.ts",
+          `
+            import { Effect } from "effect";
+            import { markDeprecated } from "@lando/sdk/services";
+            const staleNotice = { since: "4.1.0", removeIn: "5.0.0", note: "Use newApi instead." };
+            /** @deprecated Deprecated since 4.1.0; remove in 5.0.0. Use newApi instead. */
+            export const staleApi = markDeprecated(staleNotice, "staleApi", () => Effect.succeed("ok"));
+          `,
+        );
+
+        const failure = await runRelease({
+          target: "all",
+          throughStage: "2-typecheck",
+          env: {},
+          deprecationGate: ({ env }) =>
+            checkDeprecationReleaseGate({
+              root,
+              targetRelease: "5.0.0",
+              releasedOrPending: ["4.1.0", "4.2.0", "5.0.0", "5.1.0"],
+              env,
+            }),
+          runner: {
+            spawn: async () => {},
+            shell: async () => {},
+          },
+          logger: () => {},
+        }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+
+        expect(failure).toMatchObject({ _tag: "ReleaseStageError", stageId: "deprecation-gate" });
+        const cause = (failure as { cause: Error }).cause;
+        expect(cause).toBeInstanceOf(Error);
+        const message = cause.message;
+        expect(message).toContain("staleApi");
+        expect(message).toContain("sdk/src/public.ts");
+        expect(message).toContain("removeIn=5.0.0");
+        expect(message).toContain("Remove staleApi before releasing 5.0.0");
+      });
+    });
+
+    test("formats each blocked surface with file, removeIn, and the removal action", async () => {
+      const failure = await runRelease({
+        target: "all",
+        throughStage: "2-typecheck",
+        env: {},
+        deprecationGate: async () => ({
+          ok: false,
+          offenders: [
+            {
+              file: "/tmp/example/sdk/src/public.ts",
+              line: 7,
+              exportName: "staleApi",
+              reason: "DeprecationStaleError: surface is still present at removeIn 5.0.0",
+              removeIn: "5.0.0",
+              expectedAction: "Remove staleApi before releasing 5.0.0; its removeIn (5.0.0) has arrived.",
+            },
+          ],
+        }),
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
+        },
+        logger: () => {},
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(failure).toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "deprecation-gate",
+        artifactFamily: "binary+library",
+        commandSummary: "bun run scripts/check-deprecations.ts",
+      });
+      const message = (failure as { cause: Error }).cause.message;
+      expect(message).toContain("staleApi");
+      expect(message).toContain("public.ts:7");
+      expect(message).toContain("removeIn=5.0.0");
+      expect(message).toContain("Remove staleApi before releasing 5.0.0; its removeIn (5.0.0) has arrived.");
+    });
+
+    test("runs the same deprecation gate in local rehearsal and CI release mode", async () => {
+      const calls: Array<boolean> = [];
+      const recordingGate = (localRehearsal: boolean) => async () => {
+        calls.push(localRehearsal);
+        return { ok: true as const, offenders: [] };
+      };
+
+      for (const local of [true, false]) {
+        await runRelease({
+          target: "all",
+          throughStage: "2-typecheck",
+          env: local ? { LOCAL_REHEARSAL: "1" } : {},
+          deprecationGate: recordingGate(local),
+          runner: {
+            spawn: async () => {},
+            shell: async () => {},
+          },
+          logger: () => {},
+        });
+      }
+
+      expect(calls).toEqual([true, false]);
+    });
   });
 });
