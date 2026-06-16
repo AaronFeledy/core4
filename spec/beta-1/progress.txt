@@ -863,3 +863,10 @@
 - Verification: RED focused release tests failed on the placeholder sign/notarize stages, then passed after implementation; typecheck, lint, focused release tests, injected release-runner surface QA, isolated rerun of transient full-suite failures, and full tests passed.
 - **Learnings for future iterations:** Keep per-platform release tooling as argv-precise spawn commands; credential gates should skip only under `LOCAL_REHEARSAL=1`, while an injected release runner is the safe surface for proving signing command construction without live platform credentials.
 ---
+
+## 2026-06-16 11:42 CDT - US-254 Review
+- Fixed review blockers in the macOS signing release path: checked in the minimal entitlements plist required by the codesign command, restricted notarization authentication to keychain-profile credentials so Apple passwords never enter process argv or wrapped command errors, and added the PRD-owned signing guide/index row.
+- Review notes (deferred/rejected): broader Windows signing is intentionally left to the Windows artifact-signing story; release workflow/runbook credential prose is deferred to the remaining signing/release-documentation stories rather than expanding this macOS-only fix.
+- Verification: lsp diagnostics clean; release test passed (16 pass); typecheck, lint, guide lint, and guide coverage passed; full bun test had one unrelated dev:guides SIGINT flake, and the failing test plus full dev-guides file passed in isolation.
+- **Learnings for future iterations:** Release signing commands should prefer preconfigured keychain/profile credentials over argv password forms; otherwise failure wrapping and process listings can expose secrets even when commands avoid shell interpolation.
+---
