@@ -50,5 +50,7 @@ export const lintViolation = true;
     } finally {
       await rm(violationPath, { force: true });
     }
-  });
+    // Runs the full root lint script twice, so CI needs headroom beyond Bun's
+    // default per-test timeout when the unit layer is already saturated.
+  }, 30_000);
 });
