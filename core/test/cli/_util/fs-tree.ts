@@ -1,18 +1,12 @@
 /**
  * Filesystem-tree snapshot helpers for plugin-command containment assertions.
- *
- * Test-runner agnostic (no `bun:test` import) so both in-process scenario tests
- * and the spawn-based dispatch-parity suite can prove a command's writes stay
- * within an allowed root (e.g. `<userDataRoot>/plugins/`).
+ * No `bun:test` import so in-process scenario tests and spawn-based parity
+ * suites can share the same helpers.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
-/**
- * List every entry under `root` as paths relative to `root`. Directories carry
- * a trailing `/`; symlinks are recorded as leaves (never traversed) so a linked
- * plugin's target tree does not leak into the snapshot.
- */
+/** Relative tree listing; symlinks are leaves (not followed) so link targets stay out of the snapshot. */
 export const listTree = (root: string): ReadonlyArray<string> => {
   if (!existsSync(root)) return [];
   const out: string[] = [];
@@ -32,7 +26,6 @@ export const listTree = (root: string): ReadonlyArray<string> => {
   return out.sort();
 };
 
-/** Relative paths present in `after` but not in `before`. */
 export const treeCreatedSince = (
   before: ReadonlyArray<string>,
   after: ReadonlyArray<string>,
@@ -41,10 +34,6 @@ export const treeCreatedSince = (
   return after.filter((path) => !seen.has(path));
 };
 
-/**
- * Relative paths that fall outside every allowed prefix. A prefix matches its
- * own entry (`plugins`/`plugins/`) and any descendant (`plugins/...`).
- */
 export const pathsOutsidePrefixes = (
   paths: ReadonlyArray<string>,
   allowedPrefixes: ReadonlyArray<string>,

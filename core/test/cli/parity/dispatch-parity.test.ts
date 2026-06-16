@@ -208,7 +208,6 @@ const makePluginBuildMixedTreeFixture = (): { readonly root: string; readonly cl
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
-/** A minimal, valid plugin package usable by build/link/unlink/publish probes. */
 const makePluginPackageFixture = (
   name: string,
   prefix: string,
@@ -258,7 +257,6 @@ const lastJsonLine = (output: string): unknown => {
   return JSON.parse(line);
 };
 
-/** Assert both dispatch paths reject an unknown flag with exit 2 and an empty stdout. */
 const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string): Promise<void> => {
   const source = await runSourceCli(argv);
   const compiled = await runCompiledCli(argv);
@@ -269,7 +267,6 @@ const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string
   expect(compiled.stderr).toContain(`Nonexistent flag: ${flag}`);
 };
 
-/** Assert both dispatch paths print command help (exit 0) containing the same key fragments. */
 const expectHelpParity = async (commandId: string, mustContain: ReadonlyArray<string>): Promise<void> => {
   const source = await runSourceCli([commandId, "--help"]);
   const compiled = await runCompiledCli([commandId, "--help"]);
@@ -281,7 +278,6 @@ const expectHelpParity = async (commandId: string, mustContain: ReadonlyArray<st
   }
 };
 
-/** Assert both paths fail with the same tagged JSON envelope (renderer=json parity). */
 const expectJsonEnvelopeParity = async (
   argv: ReadonlyArray<string>,
   expectedCode: string,
@@ -641,8 +637,6 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }, 30_000);
   });
 
-  // Full parity matrix for the six plugin authoring commands: success,
-  // unknown-flag, help, non-interactive/natural failure, and renderer output.
   describe("plugin authoring commands dispatch at full parity", () => {
     test("new: scaffolds identically and writes nothing under userDataRoot", async () => {
       const isolated = makeIsolatedEnv();
