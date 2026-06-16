@@ -44,8 +44,11 @@ const defaultRedactionEnvironment = (env: RedactionEnvironment): RedactionEnviro
 });
 
 const toGenericPathPatterns = (): RegExp[] => [
-  /\/(?:home|Users|root|var\/folders\/[^/]+\/T)\/[^/\s"'`]+/gi,
-  /\/tmp\/(?:lando-)?[^/\s"'`]+/gi,
+  /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
+  /\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
+  /\/root(?:\/[^\s"'`]*)?/gi,
+  /\/var\/folders\/[^/]+\/T(?:\/[^\s"'`]*)?/gi,
+  /\/tmp\/(?:lando-)?[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
   /[A-Za-z]:\\(?:Users|AppData\\Local\\Temp)[^"\s'`]*/gi,
   /%USERPROFILE%[^"\s'`]*/gi,
   /%TEMP%[^"\s'`]*/gi,

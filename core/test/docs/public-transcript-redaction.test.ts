@@ -105,6 +105,17 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).toBe("copy <HOME> and <HOME>");
   });
 
+  test("redacts full POSIX home paths without leaking nested directories", () => {
+    const input = "read /home/user/project/.config/lando/config.yml and /Users/user/project/.lando.yml";
+
+    const out = redactPublicTranscriptText(input, posixEnv);
+
+    expect(out).not.toContain("/home/user/project/.config");
+    expect(out).not.toContain("/Users/user/project");
+    expect(out).not.toContain("project/.config");
+    expect(out).toBe("read <HOME> and <HOME>");
+  });
+
   test("redacts repo-relative fixture paths from public transcript JSON fields", () => {
     const tx = {
       guideId: "fixture-demo",
