@@ -37,7 +37,11 @@ import {
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
 
-import { redactPublicTranscript, redactPublicTranscriptText } from "../core/src/docs/render/index.ts";
+import {
+  type RedactionEnvironment,
+  redactPublicTranscript,
+  redactPublicTranscriptText,
+} from "../core/src/docs/render/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
@@ -49,6 +53,13 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
 const GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
 const PUBLIC_TRANSCRIPT_ROOT = "dist/transcripts/public/guides";
+const PUBLIC_TRANSCRIPT_REDACTION_ENV: RedactionEnvironment = {
+  home: "",
+  tmp: "",
+  user: "",
+  host: "",
+  extraRoots: [],
+};
 
 const isNotFound = (cause: unknown): boolean =>
   cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
@@ -1060,7 +1071,7 @@ const inspectDisplay = (props: InspectProps, variables: ReadonlyMap<string, Vari
 
 const redactPublicText = (text: string | undefined): string | undefined => {
   if (text === undefined) return undefined;
-  return redactPublicTranscriptText(text);
+  return redactPublicTranscriptText(text, PUBLIC_TRANSCRIPT_REDACTION_ENV);
 };
 
 const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => ({
@@ -1207,7 +1218,7 @@ export const emitPublicTranscripts = async (
       for (const variant of variants) {
         const transcript = buildPublicTranscript(guide, scenario, variant);
         if (transcript === undefined) continue;
-        const redacted = redactPublicTranscript(transcript);
+        const redacted = redactPublicTranscript(transcript, PUBLIC_TRANSCRIPT_REDACTION_ENV);
         const relativePath = publicTranscriptRelativePath(guideId, scenario.id, variant, outputRoot);
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });

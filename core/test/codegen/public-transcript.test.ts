@@ -347,6 +347,45 @@ describe("build-guide-scenarios public transcript emission", () => {
     }
   });
 
+  test("emits public transcripts without depending on the build machine username or hostname", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-stable-redact-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/stable-redact.mdx"),
+        [
+          "---",
+          "id: stable-redact",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path" render>',
+          '    <Step name="machine-prose">',
+          '      <Inline lang="text" code="run this as aaron on devbox" justification="exercise stable redaction" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      await emitPublicTranscripts(asts, root);
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/stable-redact/reader-path.json",
+      );
+
+      const inlineFrame = transcript.frames.find((frame) => frame.kind === "inline");
+      expect(inlineFrame?.commandDisplay).toBe("run this as aaron on devbox");
+      expect(JSON.stringify(transcript)).not.toContain("<USER>");
+      expect(JSON.stringify(transcript)).not.toContain("<HOST>");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("emits library runtime public transcripts for all-library scenarios", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-public-tx-library-"));
     try {
