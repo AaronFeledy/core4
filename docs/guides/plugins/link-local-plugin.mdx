@@ -21,5 +21,11 @@ tags: [beta, docs, plugins, authoring]
       <Variable name="cache" value="plugin-command-cache.bin invalidated" display="Plugin command cache state is invalidated after the link is durable so the next invocation rediscovers linked plugin commands" />
       <Variable name="conflict" value="PluginLinkConflictError" display="Existing non-linked registry entries are refused instead of being overwritten automatically" />
     </Step>
+    <Step name="unlink-command">
+      <Variable name="default" value="lando meta:plugin:unlink &lt;plugin-name&gt;" display="Unlink locates the linked registry entry under the managed plugins root by plugin name" />
+      <Variable name="removed" value="result: removed" display="With no prior registry copy recorded, unlink removes the symlink and registry metadata without touching the source authoring path" />
+      <Variable name="restored" value="result: restored" display="When the linked-state lockfile recorded a prior registry copy, unlink restores that copy atomically instead of removing the entry" />
+      <Variable name="not-linked" value="PluginUnlinkNotLinkedError" display="Unlinking a plugin that is not locally linked is refused so installed copies are never deleted" />
+    </Step>
   </Scenario>
 </Guide>

@@ -6,7 +6,6 @@
     { "id": "meta:global:logs" },
     { "id": "meta:global:rebuild" },
     { "id": "meta:global:restart" },
-    { "id": "meta:plugin:publish" },
-    { "id": "meta:plugin:unlink" }
+    { "id": "meta:plugin:publish" }
   ]
 }

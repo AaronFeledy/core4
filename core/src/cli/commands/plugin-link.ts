@@ -45,19 +45,19 @@ export interface PluginLinkResult {
   readonly registryEntry: string;
 }
 
-type LinkedPluginState = Record<
-  string,
-  {
-    readonly source: "linked";
-    readonly linkedPath: string;
-    readonly registryEntry: string;
-  }
->;
+export interface LinkedPluginEntry {
+  readonly source: "linked";
+  readonly linkedPath: string;
+  readonly registryEntry: string;
+  readonly previousRegistry?: InstalledPluginRegistryEntry;
+}
+
+export type LinkedPluginState = Record<string, LinkedPluginEntry>;
 
 const linkedStatePath = (pluginsRoot: string): string => join(pluginsRoot, ".lando-linked.json");
 const installedRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
 
-const readLinkedState = async (pluginsRoot: string): Promise<LinkedPluginState> => {
+export const readLinkedState = async (pluginsRoot: string): Promise<LinkedPluginState> => {
   const path = linkedStatePath(pluginsRoot);
   if (!existsSync(path)) return {};
   let parsed: unknown;
@@ -70,7 +70,7 @@ const readLinkedState = async (pluginsRoot: string): Promise<LinkedPluginState> 
   return parsed as LinkedPluginState;
 };
 
-const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): Promise<void> => {
+export const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): Promise<void> => {
   const path = linkedStatePath(pluginsRoot);
   await mkdir(dirname(path), { recursive: true });
   const tmpPath = `${path}.tmp`;
@@ -159,7 +159,7 @@ const conflictError = (pluginName: string, existingPath: string): PluginLinkConf
       "Remove or unlink the existing plugin entry before linking this local authoring checkout. Automatic replacement is deferred to unlink/restore support.",
   });
 
-const assertInsidePluginsRoot = (pluginsRoot: string, target: string, pluginName: string): void => {
+export const assertInsidePluginsRoot = (pluginsRoot: string, target: string, pluginName: string): void => {
   const rel = relative(pluginsRoot, target);
   if (rel === "" || rel.startsWith("..") || resolve(pluginsRoot, rel) !== target) {
     throw new PluginManifestError({

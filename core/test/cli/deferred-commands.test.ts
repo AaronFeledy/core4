@@ -106,7 +106,7 @@ describe("deferred command remediation contract", () => {
   test("fixture covers every required command surface", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
     const requiredPrefixes = ["meta:global:"];
-    const requiredExactIds = ["meta:plugin:unlink", "meta:plugin:publish"];
+    const requiredExactIds = ["meta:plugin:publish"];
     for (const prefix of requiredPrefixes) {
       const matches = [...ids].filter((id) => id.startsWith(prefix));
       expect(matches.length, `requires at least one fixture entry for ${prefix}*`).toBeGreaterThan(0);
