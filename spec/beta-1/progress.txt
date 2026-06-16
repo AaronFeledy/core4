@@ -878,3 +878,11 @@
   - Keep Windows binary cosign keyless: require GitHub OIDC request env for Stage 9 and do not treat `LANDO_RELEASE_COSIGN_KEY`/`COSIGN_PRIVATE_KEY` as satisfying Windows signing.
   - Host full-suite `dev:guides` watch tests can fail with `ENOSPC` when external processes consume nearly all inotify watches; confirm with `/proc/*/fdinfo` before diagnosing guide code.
 ---
+
+## 2026-06-16 13:10 CDT - US-255 Review
+- Reviewed Windows Stage-9 signing against PRD-08 US-255. All eight ACs hold: signtool Authenticode sign with configured cert material, cosign sign-blob over the signed bytes, allOf credential gate (cert + GitHub OIDC env) that warn-skips only in local rehearsal and fails closed otherwise, and signtool/cosign verification before the Manifest stage; tests cover argv construction, cosign invocation, and failure mapping.
+- Fixed a real credential-leak introduced by routing the optional PFX password through `signtool /p <password>` argv: the default runner embeds `cmd.join(" ")` in its non-zero-exit error, which propagates as the `ReleaseStageError` cause into CI logs. Added `redactReleaseCommand` (scrubs values after secret flags like `/p`) and used it in the failure message, locked by a focused redaction test.
+- Review notes (rejected/deferred): spawnStage-duplication and `requiredEnv` defensive-throw findings rejected — the hand-built stage is justified by the credential gate + env-derived argv, and the throw is an acceptable boundary guard. Cosign identity-regexp dot-escaping deferred — the default is tightly anchored and OIDC-issuer-pinned (security oracle concurred), so unescaped dots carry negligible risk and the change is not worth churning a security-verification fixture. Process-table exposure of the `/p` password is inherent to signtool and would require a cert-store-import redesign that is out of scope and would break the tested `/p` contract.
+- Verification: typecheck, lint (+ deprecation check), release tests (20 pass), and guide lint/coverage all green.
+- **Learnings for future iterations:** the shared `defaultRunner` echoes full argv in its failure error, so any stage routing a secret through `runner.spawn` argv must redact it (via `redactReleaseCommand`) or the secret lands in release logs on failure.
+---

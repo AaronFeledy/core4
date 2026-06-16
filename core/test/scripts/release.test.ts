@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
-import { RELEASE_STAGES, runRelease } from "../../../scripts/release";
+import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 
 const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
 
@@ -429,6 +429,28 @@ describe("release orchestrator", () => {
         artifactFamily: "binary",
         commandSummary: "sign Windows release binary",
       });
+    });
+
+    test("redacts the certificate password from command failure messages", () => {
+      const failureMessage = redactReleaseCommand([
+        "signtool",
+        "sign",
+        "/tr",
+        "http://timestamp.digicert.com",
+        "/td",
+        "sha256",
+        "/fd",
+        "sha256",
+        "/f",
+        "certs/windows-release.pfx",
+        "/p",
+        "super-secret-password",
+        "dist/lando-windows-x64.exe",
+      ]);
+
+      expect(failureMessage).not.toContain("super-secret-password");
+      expect(failureMessage).toContain("/p ***");
+      expect(failureMessage).toContain("certs/windows-release.pfx");
     });
   });
 

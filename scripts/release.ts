@@ -630,11 +630,16 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   }),
 ];
 
+const SECRET_ARGV_FLAGS: ReadonlySet<string> = new Set(["/p"]);
+
+export const redactReleaseCommand = (cmd: ReadonlyArray<string>): string =>
+  cmd.map((arg, index) => (index > 0 && SECRET_ARGV_FLAGS.has(cmd[index - 1]) ? "***" : arg)).join(" ");
+
 const defaultRunner: ReleaseRunner = {
   spawn: async ({ cmd }) => {
     const proc = Bun.spawn([...cmd], { stdout: "inherit", stderr: "inherit" });
     const exitCode = await proc.exited;
-    if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${cmd.join(" ")}`);
+    if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${redactReleaseCommand(cmd)}`);
   },
   shell: async ({ stageId, script }) => {
     if (stageId === "13-publish") await prepareNpmAlphaPackages();
