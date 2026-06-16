@@ -111,6 +111,30 @@ export class ReleaseCompileBudgetError extends Error {
   }
 }
 
+const resolveReleasePlatform = (platformId: string): CiPlatform => {
+  const platform = CI_PLATFORMS.find((candidate) => candidate.id === platformId);
+  if (platform === undefined) throw new Error(`Unknown release platform: ${platformId}`);
+  return platform;
+};
+
+const hostReleasePlatform = (): CiPlatform => {
+  const platformId = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+  return resolveReleasePlatform(platformId);
+};
+
+const releasePlatformsForContext = (context: ReleaseStageContext): ReadonlyArray<CiPlatform> => {
+  const platformId = envValue(context.env, "LANDO_RELEASE_PLATFORM");
+  if (platformId !== undefined) return [resolveReleasePlatform(platformId)];
+  if (context.localRehearsal) return [hostReleasePlatform()];
+  return CI_PLATFORMS;
+};
+
+const hasMacosPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
+  platforms.some((platform) => platform.id.startsWith("darwin-"));
+
+const hasWindowsPlatform = (platforms: ReadonlyArray<CiPlatform>): boolean =>
+  platforms.some((platform) => platform.id === "windows-x64");
+
 const targetFlags = {
   "--all": "all",
   "--binary": "binary",
@@ -240,6 +264,13 @@ const compileBudgetMs = 10 * 60 * 1000;
 const macosSigningCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_SIGNING_IDENTITY"],
 };
+const windowsSigningCredentials: CredentialRequirement = {
+  allOf: [
+    "LANDO_RELEASE_WINDOWS_CERTIFICATE",
+    "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "ACTIONS_ID_TOKEN_REQUEST_URL",
+  ],
+};
 const appleNotarizationCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
 };
@@ -260,18 +291,24 @@ const credentialSkipRequirements: Record<
   string,
   { readonly label: string; readonly credentials: CredentialRequirement }
 > = {
-  "9-sign": { label: "macOS Developer ID signing identity", credentials: macosSigningCredentials },
   "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
   "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
 };
 
-const macosReleaseArtifactPaths = ["./dist/lando-darwin-x64", "./dist/lando-darwin-arm64"] as const;
+const macosReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  platforms
+    .filter((platform) => platform.id.startsWith("darwin-"))
+    .sort((left, right) => (left.id === "darwin-x64" ? -1 : right.id === "darwin-x64" ? 1 : 0))
+    .map(releaseBinaryPath);
 
-const macosCodesignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const macosCodesignCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const identity = env.LANDO_RELEASE_SIGNING_IDENTITY;
   if (identity === undefined || identity === "")
     throw new Error("Missing macOS Developer ID signing identity");
-  return macosReleaseArtifactPaths.map((artifactPath) => [
+  return macosReleaseArtifactPaths(platforms).map((artifactPath) => [
     "codesign",
     "--sign",
     identity,
@@ -290,22 +327,104 @@ const macosNotaryAuthArgs = (env: ReleaseEnvironment): ReadonlyArray<string> => 
   throw new Error("Missing Apple notarization credentials");
 };
 
-const macosNotarizationCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const macosNotarizationCommands = (
+  env: ReleaseEnvironment,
+  platforms: ReadonlyArray<CiPlatform>,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const authArgs = macosNotaryAuthArgs(env);
-  return macosReleaseArtifactPaths.flatMap((artifactPath) => [
+  return macosReleaseArtifactPaths(platforms).flatMap((artifactPath) => [
     ["xcrun", "notarytool", "submit", artifactPath, ...authArgs, "--wait"],
     ["xcrun", "stapler", "staple", artifactPath],
     ["xcrun", "stapler", "validate", artifactPath],
   ]);
 };
 
+const WINDOWS_RELEASE_BINARY = "dist/lando-windows-x64.exe";
+const WINDOWS_SIGNATURE = `${WINDOWS_RELEASE_BINARY}.sig`;
+const WINDOWS_CERTIFICATE = `${WINDOWS_RELEASE_BINARY}.crt`;
+const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
+const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
+  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+const COSIGN_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
+
+const envValue = (env: ReleaseEnvironment, name: string): string | undefined => {
+  const value = env[name];
+  return value === undefined || value === "" ? undefined : value;
+};
+
+const requiredEnv = (env: ReleaseEnvironment, name: string): string => {
+  const value = envValue(env, name);
+  if (value === undefined) throw new Error(`Missing ${name} for Windows release signing.`);
+  return value;
+};
+
+const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
+  const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
+  const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
+  const certificateIdentityRegexp =
+    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
+    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+
+  return [
+    [
+      "signtool",
+      "sign",
+      "/tr",
+      timestampUrl,
+      "/td",
+      "sha256",
+      "/fd",
+      "sha256",
+      "/f",
+      certificate,
+      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
+      WINDOWS_RELEASE_BINARY,
+    ],
+    [
+      "cosign",
+      "sign-blob",
+      "--yes",
+      "--output-signature",
+      WINDOWS_SIGNATURE,
+      "--output-certificate",
+      WINDOWS_CERTIFICATE,
+      WINDOWS_RELEASE_BINARY,
+    ],
+    ["signtool", "verify", "/pa", "/v", WINDOWS_RELEASE_BINARY],
+    [
+      "cosign",
+      "verify-blob",
+      "--certificate-identity-regexp",
+      certificateIdentityRegexp,
+      "--certificate-oidc-issuer",
+      COSIGN_OIDC_ISSUER,
+      "--signature",
+      WINDOWS_SIGNATURE,
+      "--certificate",
+      WINDOWS_CERTIFICATE,
+      WINDOWS_RELEASE_BINARY,
+    ],
+  ];
+};
+
+const spawnCommands = async (
+  runner: ReleaseRunner,
+  command: Omit<ReleaseSpawnCommand, "cmd">,
+  commands: ReadonlyArray<ReadonlyArray<string>>,
+): Promise<void> => {
+  for (const cmd of commands) {
+    await runner.spawn({ ...command, cmd });
+  }
+};
+
 const spawnCommandsForStage = (
   stageId: string,
-  env: ReleaseEnvironment,
+  context: ReleaseStageContext,
   commands: ReadonlyArray<ReadonlyArray<string>>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "9-sign") return macosCodesignCommands(env);
-  if (stageId === "10-notarize") return macosNotarizationCommands(env);
+  if (stageId === "10-notarize")
+    return macosNotarizationCommands(context.env, releasePlatformsForContext(context));
   return commands;
 };
 
@@ -347,7 +466,7 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 ];
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
-  for (const platform of CI_PLATFORMS) {
+  for (const platform of releasePlatformsForContext(context)) {
     const startedAt = context.now();
     await context.runner.spawn({
       stageId: "7-compile",
@@ -381,13 +500,19 @@ const spawnStage =
   async (context: ReleaseStageContext): Promise<void> => {
     const { runner, target } = context;
     const requirement = credentialSkipRequirements[stage.id];
+
+    if (stage.id === "10-notarize" && !hasMacosPlatform(releasePlatformsForContext(context))) {
+      context.logger("[release] skip 10-notarize (no macOS release platform selected)");
+      return;
+    }
+
     if (
       requirement !== undefined &&
       !credentialGate(stage.id, requirement.label, requirement.credentials, context)
     )
       return;
 
-    for (const cmd of spawnCommandsForStage(stage.id, context.env, commands)) {
+    for (const cmd of spawnCommandsForStage(stage.id, context, commands)) {
       await runner.spawn({
         stageId: stage.id,
         artifactFamily: artifactFamilyForStage(stage, target),
@@ -485,17 +610,53 @@ const defineStage = (
     commandSummary: stage.commandSummary,
     remediation: stage.remediation,
   };
-  const spawnCommands = Array.isArray(stage.command[0])
-    ? (stage.command as ReadonlyArray<ReadonlyArray<string>>)
-    : [stage.command as ReadonlyArray<string>];
-  const run =
-    stage.kind === "spawn"
-      ? spawnStage(base, spawnCommands)
-      : stage.kind === "shell"
-        ? shellStage(base, stage.command as string)
-        : skipStage(base, stage.command as string);
 
-  return { ...stage, run };
+  if (stage.kind === "spawn") {
+    const commands = Array.isArray(stage.command[0])
+      ? (stage.command as ReadonlyArray<ReadonlyArray<string>>)
+      : [stage.command as ReadonlyArray<string>];
+    return { ...stage, run: spawnStage(base, commands) };
+  }
+
+  if (stage.kind === "shell") {
+    return { ...stage, run: shellStage(base, stage.command as string) };
+  }
+
+  return { ...stage, run: skipStage(base, stage.command as string) };
+};
+
+const platformSignStage: ReleaseStage = {
+  id: "9-sign",
+  label: "Sign",
+  description: "macOS codesign, Windows Authenticode/keyless cosign, and manifest-layer Linux signing.",
+  forBinary: true,
+  forLibrary: false,
+  kind: "spawn",
+  commandSummary: "sign release binaries",
+  remediation: "Provision platform signing credentials or run a local rehearsal mode that may skip signing.",
+  run: async (context): Promise<void> => {
+    const platforms = releasePlatformsForContext(context);
+    const nativeSigningPlatformSelected = hasMacosPlatform(platforms) || hasWindowsPlatform(platforms);
+    const signMacos =
+      hasMacosPlatform(platforms) &&
+      credentialGate("9-sign", "macOS Developer ID signing identity", macosSigningCredentials, context);
+    const signWindows =
+      hasWindowsPlatform(platforms) &&
+      credentialGate("9-sign", "Windows signing credentials", windowsSigningCredentials, context);
+    const command = {
+      stageId: "9-sign",
+      artifactFamily: artifactFamilyForStage(platformSignStage, context.target),
+      summary: platformSignStage.commandSummary,
+      remediation: platformSignStage.remediation,
+    };
+
+    if (signMacos)
+      await spawnCommands(context.runner, command, macosCodesignCommands(context.env, platforms));
+    if (signWindows) await spawnCommands(context.runner, command, windowsSigningCommands(context.env));
+    if (!nativeSigningPlatformSelected) {
+      context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
+    }
+  },
 };
 
 export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
@@ -587,17 +748,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     remediation: "Wire platform-specific strip commands before making this stage required.",
     command: "[release] skip 8-strip (platform-specific stripping not yet wired)",
   }),
-  defineStage({
-    id: "9-sign",
-    label: "Sign",
-    description: "macOS codesign / Windows signtool. Linux is signed at the manifest layer.",
-    forBinary: true,
-    forLibrary: false,
-    kind: "spawn",
-    commandSummary: "sign release binaries",
-    remediation: "Provision signing credentials or run a local rehearsal mode that may skip signing.",
-    command: [],
-  }),
+  platformSignStage,
   defineStage({
     id: "10-notarize",
     label: "Notarize",
@@ -645,11 +796,16 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   }),
 ];
 
+const SECRET_ARGV_FLAGS: ReadonlySet<string> = new Set(["/p"]);
+
+export const redactReleaseCommand = (cmd: ReadonlyArray<string>): string =>
+  cmd.map((arg, index) => (index > 0 && SECRET_ARGV_FLAGS.has(cmd[index - 1]) ? "***" : arg)).join(" ");
+
 const defaultRunner: ReleaseRunner = {
   spawn: async ({ cmd }) => {
     const proc = Bun.spawn([...cmd], { stdout: "inherit", stderr: "inherit" });
     const exitCode = await proc.exited;
-    if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${cmd.join(" ")}`);
+    if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${redactReleaseCommand(cmd)}`);
   },
   shell: async ({ stageId, script }) => {
     if (stageId === "13-publish") await prepareNpmAlphaPackages();

@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
 - Release compile targets and generated CI platform ids share `CI_PLATFORMS` from `scripts/ci-platforms.ts`; do not duplicate the platform id/target list in release or workflow code.
 - Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
 - The release deprecation gate is woven into `runRelease` AFTER the `1-codegen` stage and OUTSIDE its try/catch (so its failure is not re-wrapped as a `1-codegen` error) — it is NOT a `RELEASE_STAGES` entry and never routes through `runner.spawn/shell`, because `release.test.ts` asserts `RELEASE_STAGES` ids and the observed-stage order equal the exact 13-id list. It throws `ReleaseStageError("deprecation-gate", …)` on failure and runs in CI and local rehearsal identically (not credential-gated). The gate is an injectable `deprecationGate` option (default = `checkDeprecationReleaseGate({env})`); existing orchestration tests inject a passing stub so they stay fast and decoupled from real repo deprecation state.
@@ -883,6 +884,22 @@
 - Verification: lsp diagnostics clean; release test passed (16 pass); typecheck, lint, guide lint, and guide coverage passed; full bun test had one unrelated dev:guides SIGINT flake, and the failing test plus full dev-guides file passed in isolation.
 - **Learnings for future iterations:** Release signing commands should prefer preconfigured keychain/profile credentials over argv password forms; otherwise failure wrapping and process listings can expose secrets even when commands avoid shell interpolation.
 ---
+
+## 2026-06-16 12:30 CDT - US-255
+- Shipped Windows release signing in Stage 9: `signtool` embeds the Authenticode signature, keyless `cosign sign-blob` emits the `.sig`/`.crt`, and both Authenticode and cosign verification run before the Manifest stage. Missing Windows certificate/OIDC credentials now warning-skip only in local rehearsal and fail closed otherwise.
+- Published the shared platform signing overview guide with the Windows signing contract and marked the PRD-08 guide row shipped.
+- Verification: typecheck, lint, focused release tests, guide lint/coverage, guide one-shot generation, and release-surface smoke passed. Full `bun --no-orphans test` also passed inside the real local-rehearsal release run before Stage 9; a later standalone full-suite rerun hit host inotify ENOSPC in the dev-guides watch test due external Syncthing/OpenCode watch consumption, not this story.
+- **Learnings for future iterations:**
+  - Keep Windows binary cosign keyless: require GitHub OIDC request env for Stage 9 and do not treat `LANDO_RELEASE_COSIGN_KEY`/`COSIGN_PRIVATE_KEY` as satisfying Windows signing.
+  - Host full-suite `dev:guides` watch tests can fail with `ENOSPC` when external processes consume nearly all inotify watches; confirm with `/proc/*/fdinfo` before diagnosing guide code.
+---
+
+## 2026-06-16 13:10 CDT - US-255 Review
+- Reviewed Windows Stage-9 signing against PRD-08 US-255. All eight ACs hold: signtool Authenticode sign with configured cert material, cosign sign-blob over the signed bytes, allOf credential gate (cert + GitHub OIDC env) that warn-skips only in local rehearsal and fails closed otherwise, and signtool/cosign verification before the Manifest stage; tests cover argv construction, cosign invocation, and failure mapping.
+- Fixed a real credential-leak introduced by routing the optional PFX password through `signtool /p <password>` argv: the default runner embeds `cmd.join(" ")` in its non-zero-exit error, which propagates as the `ReleaseStageError` cause into CI logs. Added `redactReleaseCommand` (scrubs values after secret flags like `/p`) and used it in the failure message, locked by a focused redaction test.
+- Review notes (rejected/deferred): spawnStage-duplication and `requiredEnv` defensive-throw findings rejected — the hand-built stage is justified by the credential gate + env-derived argv, and the throw is an acceptable boundary guard. Cosign identity-regexp dot-escaping deferred — the default is tightly anchored and OIDC-issuer-pinned (security oracle concurred), so unescaped dots carry negligible risk and the change is not worth churning a security-verification fixture. Process-table exposure of the `/p` password is inherent to signtool and would require a cert-store-import redesign that is out of scope and would break the tested `/p` contract.
+- Verification: typecheck, lint (+ deprecation check), release tests (20 pass), and guide lint/coverage all green.
+- **Learnings for future iterations:** the shared `defaultRunner` echoes full argv in its failure error, so any stage routing a secret through `runner.spawn` argv must redact it (via `redactReleaseCommand`) or the secret lands in release logs on failure.
 
 ## 2026-06-16 13:13 CDT - US-257
 - Shipped the bytecode compile-budget release path: stage 7 now compiles every shared Beta 1 CI platform id from the canonical CLI entry with `bun build --compile --bytecode`, emits platform-named release binaries, sanitizes each output, and records per-platform compile duration.

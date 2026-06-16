@@ -7,7 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
-import { RELEASE_STAGES, runRelease } from "../../../scripts/release";
+import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 
 const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
 
@@ -31,6 +31,11 @@ describe("release orchestrator", () => {
   const manifestSigningEnv = {
     LANDO_RELEASE_GPG_KEY: "key",
     LANDO_RELEASE_COSIGN_KEY: "key",
+  };
+  const windowsSigningEnv = {
+    LANDO_RELEASE_WINDOWS_CERTIFICATE: "certs/windows-release.pfx",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
   };
   const macosSigningEnv = {
     LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
@@ -99,6 +104,7 @@ describe("release orchestrator", () => {
           },
         },
         logger: () => {},
+        now: () => 0,
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
@@ -131,6 +137,7 @@ describe("release orchestrator", () => {
         },
       },
       logger: () => {},
+      now: () => 0,
     });
 
     expect(spawnStages).toContainEqual({ stageId: "1-codegen", cmd: ["bun", "run", "scripts/codegen.ts"] });
@@ -229,11 +236,9 @@ describe("release orchestrator", () => {
     });
 
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 9-sign (macOS Developer ID signing identity absent)",
+      "[release] skip 9-sign (selected release platforms are signed at the manifest layer)",
     );
-    expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 10-notarize (Apple notarization credentials absent)",
-    );
+    expect(logs).toContain("[release] skip 10-notarize (no macOS release platform selected)");
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (manifest signing credentials absent)",
     );
@@ -257,55 +262,74 @@ describe("release orchestrator", () => {
     expect(shellStages.some(({ stageId }) => stageId === "13-publish")).toBe(false);
   });
 
-  test("non-local release fails closed for missing credential-gated stages", async () => {
+  test("non-local release fails closed for missing platform signing credentials", async () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
         target: "binary",
         throughStage: "9-sign",
-        env: {},
+        env: {
+          LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
+          LANDO_RELEASE_COSIGN_KEY: "key",
+        },
         runner: {
           spawn: async () => {},
           shell: async () => {},
         },
         logger: () => {},
+        now: () => 0,
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
       stageId: "9-sign",
       artifactFamily: "binary",
     });
+  });
 
-    await expect(
-      runRelease({
-        deprecationGate: passingDeprecationGate,
-        target: "library",
-        throughStage: "12-provenance-sbom",
-        env: {
-          ...manifestSigningEnv,
-          GITHUB_TOKEN: "token",
-          LANDO_RELEASE_OIDC_TOKEN: "oidc",
+  test("per-platform signing does not require unrelated platform credentials", async () => {
+    const macosCommands: Array<ReadonlyArray<string>> = [];
+    const windowsCommands: Array<ReadonlyArray<string>> = [];
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "9-sign",
+      env: { ...macosSigningEnv, LANDO_RELEASE_PLATFORM: "darwin-x64" },
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          if (stageId === "9-sign") macosCommands.push(cmd);
         },
-        runner: {
-          spawn: async () => {},
-          shell: async () => {},
-        },
-        logger: () => {},
-      }),
-    ).rejects.toMatchObject({
-      _tag: "ReleaseStageError",
-      stageId: "12-provenance-sbom",
-      artifactFamily: "library",
+        shell: async () => {},
+      },
+      logger: () => {},
     });
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "9-sign",
+      env: { ...windowsSigningEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          if (stageId === "9-sign") windowsCommands.push(cmd);
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    expect(macosCommands.map((cmd) => cmd[0])).toEqual(["codesign"]);
+    expect(windowsCommands.map((cmd) => cmd[0])).toEqual(["signtool", "cosign", "signtool", "cosign"]);
   });
 
   test("constructs macOS Developer ID signing commands for both Darwin binaries", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "9-sign",
-      env: macosSigningEnv,
+      env: { ...macosSigningEnv, ...windowsSigningEnv },
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -315,7 +339,7 @@ describe("release orchestrator", () => {
       logger: () => {},
     });
 
-    expect(spawnStages.filter(({ stageId }) => stageId === "9-sign")).toEqual([
+    expect(spawnStages.filter(({ stageId, cmd }) => stageId === "9-sign" && cmd[0] === "codesign")).toEqual([
       {
         stageId: "9-sign",
         cmd: [
@@ -351,9 +375,10 @@ describe("release orchestrator", () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "10-notarize",
-      env: macosSigningEnv,
+      env: { ...macosSigningEnv, ...windowsSigningEnv },
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -399,10 +424,12 @@ describe("release orchestrator", () => {
     const logs: Array<string> = [];
 
     await runRelease({
+      deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "10-notarize",
       env: {
         LOCAL_REHEARSAL: "1",
+        LANDO_RELEASE_PLATFORM: "darwin-x64",
         LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
         LANDO_RELEASE_APPLE_ID: "maintainer@example.com",
         LANDO_RELEASE_APPLE_PASSWORD: "app-specific-password",
@@ -413,6 +440,7 @@ describe("release orchestrator", () => {
         shell: async () => {},
       },
       logger: (line) => logs.push(line),
+      now: () => 0,
     });
 
     expect(logs).toContain(
@@ -425,9 +453,11 @@ describe("release orchestrator", () => {
 
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "binary",
         throughStage: "10-notarize",
         env: {
+          ...windowsSigningEnv,
           LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
           LANDO_RELEASE_APPLE_ID: "maintainer@example.com",
           LANDO_RELEASE_APPLE_PASSWORD: "app-specific-password",
@@ -453,12 +483,13 @@ describe("release orchestrator", () => {
   test("wraps macOS signing command failures in tagged release errors", async () => {
     await expect(
       runRelease({
+        deprecationGate: passingDeprecationGate,
         target: "binary",
         throughStage: "9-sign",
-        env: macosSigningEnv,
+        env: { ...macosSigningEnv, ...windowsSigningEnv },
         runner: {
-          spawn: async ({ stageId }) => {
-            if (stageId === "9-sign") throw new Error("codesign failed");
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign" && cmd[0] === "codesign") throw new Error("codesign failed");
           },
           shell: async () => {},
         },
@@ -468,6 +499,182 @@ describe("release orchestrator", () => {
       _tag: "ReleaseStageError",
       stageId: "9-sign",
       artifactFamily: "binary",
+    });
+  });
+
+  test("non-local release fails closed for credential-gated placeholder stages", async () => {
+    await expect(
+      runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "library",
+        throughStage: "12-provenance-sbom",
+        env: {
+          ...manifestSigningEnv,
+          GITHUB_TOKEN: "token",
+          LANDO_RELEASE_OIDC_TOKEN: "oidc",
+        },
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "12-provenance-sbom",
+      artifactFamily: "library",
+    });
+  });
+
+  describe("Windows release signing", () => {
+    test("signs with signtool, cosign-signs the signed bytes, then verifies before manifest generation", async () => {
+      const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+      const logs: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "11-manifest",
+        env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            spawnStages.push({ stageId, cmd });
+          },
+          shell: async () => {},
+        },
+        logger: (line) => logs.push(line),
+      });
+
+      const signingCommands = spawnStages.filter(({ stageId }) => stageId === "9-sign").map(({ cmd }) => cmd);
+      expect(signingCommands).toEqual([
+        [
+          "signtool",
+          "sign",
+          "/tr",
+          "http://timestamp.digicert.com",
+          "/td",
+          "sha256",
+          "/fd",
+          "sha256",
+          "/f",
+          "certs/windows-release.pfx",
+          "dist/lando-windows-x64.exe",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-windows-x64.exe.sig",
+          "--output-certificate",
+          "dist/lando-windows-x64.exe.crt",
+          "dist/lando-windows-x64.exe",
+        ],
+        ["signtool", "verify", "/pa", "/v", "dist/lando-windows-x64.exe"],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-windows-x64.exe.sig",
+          "--certificate",
+          "dist/lando-windows-x64.exe.crt",
+          "dist/lando-windows-x64.exe",
+        ],
+      ]);
+      expect(spawnStages.findIndex(({ stageId }) => stageId === "9-sign")).toBeLessThan(
+        logs.findIndex((line) => line.startsWith("[release] -> 11-manifest")),
+      );
+    });
+
+    test("supports configured timestamp URL, certificate password, and certificate identity verification", async () => {
+      const signingCommands: Array<ReadonlyArray<string>> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "9-sign",
+        env: {
+          ...windowsSigningEnv,
+          LOCAL_REHEARSAL: "1",
+          LANDO_RELEASE_PLATFORM: "windows-x64",
+          LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD: "secret",
+          LANDO_RELEASE_WINDOWS_TIMESTAMP_URL: "http://timestamp.example.test",
+          LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP: "^https://github.com/example/repo/.+$",
+        },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            if (stageId === "9-sign") signingCommands.push(cmd);
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+
+      expect(signingCommands[0]).toEqual([
+        "signtool",
+        "sign",
+        "/tr",
+        "http://timestamp.example.test",
+        "/td",
+        "sha256",
+        "/fd",
+        "sha256",
+        "/f",
+        "certs/windows-release.pfx",
+        "/p",
+        "secret",
+        "dist/lando-windows-x64.exe",
+      ]);
+      expect(signingCommands[3]).toContain("^https://github.com/example/repo/.+$");
+    });
+
+    test("maps signtool and cosign failures to the signing stage", async () => {
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "9-sign",
+          env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
+          runner: {
+            spawn: async ({ stageId, cmd }) => {
+              if (stageId === "9-sign" && cmd[0] === "cosign") throw new Error("cosign unavailable");
+            },
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "9-sign",
+        artifactFamily: "binary",
+        commandSummary: "sign release binaries",
+      });
+    });
+
+    test("redacts the certificate password from command failure messages", () => {
+      const failureMessage = redactReleaseCommand([
+        "signtool",
+        "sign",
+        "/tr",
+        "http://timestamp.digicert.com",
+        "/td",
+        "sha256",
+        "/fd",
+        "sha256",
+        "/f",
+        "certs/windows-release.pfx",
+        "/p",
+        "super-secret-password",
+        "dist/lando-windows-x64.exe",
+      ]);
+
+      expect(failureMessage).not.toContain("super-secret-password");
+      expect(failureMessage).toContain("/p ***");
+      expect(failureMessage).toContain("certs/windows-release.pfx");
     });
   });
 
@@ -509,6 +716,7 @@ describe("release orchestrator", () => {
         },
       },
       logger: (line) => logs.push(line),
+      now: () => 0,
     });
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (publish credentials absent)",
@@ -535,7 +743,7 @@ describe("release orchestrator", () => {
     ).toBe(false);
   });
 
-  test("credential gates accept any declared credential alternative", async () => {
+  test("credential gates accept manifest alternatives but keep Windows signing scoped", async () => {
     const shellStages: Array<{ stageId: string; script: string }> = [];
     const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
     const signingStage = RELEASE_STAGES.find((stage) => stage.id === "9-sign");
@@ -574,22 +782,18 @@ describe("release orchestrator", () => {
     expect(
       shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
     ).toBe(true);
-    await signingStage.run({
-      target: "binary",
-      env: { LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example" },
-      localRehearsal: false,
-      runner: {
-        spawn: async ({ stageId, cmd }) => {
-          shellStages.push({ stageId, script: cmd.join(" ") });
+    await expect(
+      signingStage.run({
+        target: "binary",
+        env: { LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example" },
+        localRehearsal: false,
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
         },
-        shell: async () => {},
-      },
-      logger: () => {},
-    });
-
-    expect(
-      shellStages.some(({ stageId, script }) => stageId === "9-sign" && script.includes("codesign")),
-    ).toBe(true);
+        logger: () => {},
+      }),
+    ).rejects.toThrow("Missing Windows signing credentials");
   });
 
   test("publish runs for the all target but skips binary-only releases", async () => {
@@ -631,7 +835,7 @@ describe("release orchestrator", () => {
     expect(logs).toContain("[release] skip 13-publish (binary release target)");
   });
 
-  test("local rehearsal can run the compile prefix for the current platform without signing secrets", async () => {
+  test("local rehearsal compiles the Windows release artifact before signing", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const logs: Array<string> = [];
 
@@ -639,7 +843,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "7-compile",
-      env: localRehearsalEnv,
+      env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
@@ -656,7 +860,23 @@ describe("release orchestrator", () => {
       "4-test-gates",
       "7-compile",
     ]);
-    expect(spawnStages.some(({ cmd }) => cmd.includes("--target=bun-linux-x64"))).toBe(true);
+    expect(spawnStages.at(-2)?.cmd).toEqual([
+      "bun",
+      "build",
+      "./core/bin/lando.ts",
+      "--compile",
+      "--bytecode",
+      "--target=bun-windows-x64",
+      "--outfile=./dist/lando-windows-x64.exe",
+      "--sourcemap=external",
+    ]);
+    expect(spawnStages.at(-1)?.cmd).toEqual([
+      "bun",
+      "run",
+      "scripts/sanitize-compiled-binary.ts",
+      "./dist/lando-windows-x64.exe",
+    ]);
+    expect(spawnStages.some(({ cmd }) => cmd.includes("--target=bun-linux-x64"))).toBe(false);
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
   });
 
@@ -668,7 +888,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "7-compile",
-      env: localRehearsalEnv,
+      env: {},
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -714,7 +934,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "7-compile",
-      env: localRehearsalEnv,
+      env: {},
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -750,7 +970,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       target: "binary",
       throughStage: "10-notarize",
-      env: localRehearsalEnv,
+      env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
