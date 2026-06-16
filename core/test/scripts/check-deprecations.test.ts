@@ -711,4 +711,42 @@ describe("deprecation release gate", () => {
       ]);
     });
   });
+
+  test("annotates stale and overdue offenders with removeIn and an expected removal action", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const staleNotice = { since: "4.1.0", removeIn: "5.0.0", note: "Use newApi instead." };
+          const overdueNotice = { since: "4.1.0", removeIn: "4.2.0", note: "Use newerApi instead." };
+          /** @deprecated Deprecated since 4.1.0; remove in 5.0.0. Use newApi instead. */
+          export const staleApi = markDeprecated(staleNotice, "staleApi", () => Effect.succeed("ok"));
+          /** @deprecated Deprecated since 4.1.0; remove in 4.2.0. Use newerApi instead. */
+          export const overdueApi = markDeprecated(overdueNotice, "overdueApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.1.0", "4.2.0", "5.0.0", "5.1.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      const stale = result.offenders.find((offender) => offender.exportName === "staleApi");
+      const overdue = result.offenders.find((offender) => offender.exportName === "overdueApi");
+
+      expect(stale?.removeIn).toBe("5.0.0");
+      expect(stale?.expectedAction).toBe(
+        "Remove staleApi before releasing 5.0.0; its removeIn (5.0.0) has arrived.",
+      );
+      expect(overdue?.removeIn).toBe("4.2.0");
+      expect(overdue?.expectedAction).toBe(
+        "Remove overdueApi before releasing 5.0.0; its removeIn (4.2.0) has passed.",
+      );
+    });
+  });
 });
