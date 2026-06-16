@@ -217,11 +217,11 @@ const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 
-const releaseSigningCredentials: CredentialRequirement = {
-  anyOf: [
-    ["LANDO_RELEASE_SIGNING_IDENTITY"],
-    ["LANDO_RELEASE_WINDOWS_CERTIFICATE"],
-    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
+const windowsSigningCredentials: CredentialRequirement = {
+  allOf: [
+    "LANDO_RELEASE_WINDOWS_CERTIFICATE",
+    "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "ACTIONS_ID_TOKEN_REQUEST_URL",
   ],
 };
 const appleNotarizationCredentials: CredentialRequirement = {
@@ -244,7 +244,6 @@ const credentialSkipRequirements: Record<
   string,
   { readonly label: string; readonly credentials: CredentialRequirement }
 > = {
-  "9-sign": { label: "release signing credentials", credentials: releaseSigningCredentials },
   "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
   "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
 };
@@ -264,6 +263,95 @@ const manifestSigningScript = (): string =>
     "cosign sign-blob --yes --output-signature dist/SHA256SUMS.sig dist/SHA256SUMS",
     "cosign sign-blob --yes --output-signature dist/SHA512SUMS.sig dist/SHA512SUMS",
   ].join("\n");
+
+const WINDOWS_RELEASE_BINARY = "dist/lando-windows-x64.exe";
+const WINDOWS_SIGNATURE = `${WINDOWS_RELEASE_BINARY}.sig`;
+const WINDOWS_CERTIFICATE = `${WINDOWS_RELEASE_BINARY}.crt`;
+const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
+const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
+  "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
+const COSIGN_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
+
+const envValue = (env: ReleaseEnvironment, name: string): string | undefined => {
+  const value = env[name];
+  return value === undefined || value === "" ? undefined : value;
+};
+
+const requiredEnv = (env: ReleaseEnvironment, name: string): string => {
+  const value = envValue(env, name);
+  if (value === undefined) throw new Error(`Missing ${name} for Windows release signing.`);
+  return value;
+};
+
+const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
+  const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
+  const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
+  const certificateIdentityRegexp =
+    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
+    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+
+  return [
+    [
+      "signtool",
+      "sign",
+      "/tr",
+      timestampUrl,
+      "/td",
+      "sha256",
+      "/fd",
+      "sha256",
+      "/f",
+      certificate,
+      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
+      WINDOWS_RELEASE_BINARY,
+    ],
+    [
+      "cosign",
+      "sign-blob",
+      "--yes",
+      "--output-signature",
+      WINDOWS_SIGNATURE,
+      "--output-certificate",
+      WINDOWS_CERTIFICATE,
+      WINDOWS_RELEASE_BINARY,
+    ],
+    ["signtool", "verify", "/pa", "/v", WINDOWS_RELEASE_BINARY],
+    [
+      "cosign",
+      "verify-blob",
+      "--certificate-identity-regexp",
+      certificateIdentityRegexp,
+      "--certificate-oidc-issuer",
+      COSIGN_OIDC_ISSUER,
+      "--signature",
+      WINDOWS_SIGNATURE,
+      "--certificate",
+      WINDOWS_CERTIFICATE,
+      WINDOWS_RELEASE_BINARY,
+    ],
+  ];
+};
+
+const signWindowsReleaseArtifact = async ({
+  env,
+  runner,
+  stageId,
+  artifactFamily,
+  summary,
+  remediation,
+}: {
+  readonly env: ReleaseEnvironment;
+  readonly runner: ReleaseRunner;
+  readonly stageId: string;
+  readonly artifactFamily: ReleaseArtifactFamily;
+  readonly summary: string;
+  readonly remediation: string;
+}): Promise<void> => {
+  for (const cmd of windowsSigningCommands(env)) {
+    await runner.spawn({ stageId, artifactFamily, summary, remediation, cmd });
+  }
+};
 
 const spawnStage =
   (
@@ -382,6 +470,29 @@ const defineStage = (
   return { ...stage, run };
 };
 
+const windowsSignStage: ReleaseStage = {
+  id: "9-sign",
+  label: "Sign",
+  description: "Windows signtool Authenticode signing and keyless cosign signing.",
+  forBinary: true,
+  forLibrary: false,
+  kind: "spawn",
+  commandSummary: "sign Windows release binary",
+  remediation:
+    "Provision Windows signing credentials and GitHub OIDC, or run local rehearsal to skip signing.",
+  run: async (context): Promise<void> => {
+    if (!credentialGate("9-sign", "Windows signing credentials", windowsSigningCredentials, context)) return;
+    await signWindowsReleaseArtifact({
+      env: context.env,
+      runner: context.runner,
+      stageId: "9-sign",
+      artifactFamily: artifactFamilyForStage(windowsSignStage, context.target),
+      summary: windowsSignStage.commandSummary,
+      remediation: windowsSignStage.remediation,
+    });
+  },
+};
+
 export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   defineStage({
     id: "1-codegen",
@@ -471,17 +582,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     remediation: "Wire platform-specific strip commands before making this stage required.",
     command: "[release] skip 8-strip (platform-specific stripping not yet wired)",
   }),
-  defineStage({
-    id: "9-sign",
-    label: "Sign",
-    description: "macOS codesign / Windows signtool. Linux is signed at the manifest layer.",
-    forBinary: true,
-    forLibrary: false,
-    kind: "skip",
-    commandSummary: "sign release binaries",
-    remediation: "Provision signing credentials or run a local rehearsal mode that may skip signing.",
-    command: "[release] skip 9-sign (signing infrastructure not yet provisioned)",
-  }),
+  windowsSignStage,
   defineStage({
     id: "10-notarize",
     label: "Notarize",

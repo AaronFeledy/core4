@@ -1,0 +1,33 @@
+---
+id: release-signing-artifacts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release, signing]
+---
+
+<Guide>
+  <Scenario id="platform-signing-contract" render={false} reason="Platform signing is asserted by release-orchestrator unit tests with stubbed runners so this guide never touches real signing credentials">
+    <Step name="platform-responsibilities">
+      <Variable name="macos" value="Developer ID + notarytool + stapler" display="macOS artifacts are signed and notarized by the platform signing contract" />
+      <Variable name="windows" value="Authenticode signtool + keyless cosign" display="Windows artifacts are Authenticode-signed, cosign-signed, and verified before manifest generation" />
+      <Variable name="linux" value="GPG/cosign checksum manifests" display="Linux artifact authenticity is carried by signed checksum manifests rather than native binary signing" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="windows-signing-stage" render={false} reason="The exact signtool and cosign argv are covered by core/test/scripts/release.test.ts without requiring live Windows signing tools">
+    <Step name="signing-order">
+      <Variable name="authenticode" value="signtool sign /tr <timestamp> /td sha256 /fd sha256 /f <certificate> dist/lando-windows-x64.exe" display="Stage 9 embeds the Authenticode signature first" />
+      <Variable name="cosign" value="cosign sign-blob --output-signature dist/lando-windows-x64.exe.sig --output-certificate dist/lando-windows-x64.exe.crt dist/lando-windows-x64.exe" display="The cosign signature covers the final Authenticode-signed bytes" />
+      <Variable name="verify" value="signtool verify + cosign verify-blob" display="Both verification commands run before Stage 11 writes release manifests" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="credential-gating" render={false} reason="Credential skip/fail behavior is covered by release-orchestrator tests with injected env and stubbed runners">
+    <Step name="windows-credentials">
+      <Variable name="certificate" value="LANDO_RELEASE_WINDOWS_CERTIFICATE" display="Configured Windows certificate material is required outside local rehearsal" />
+      <Variable name="oidc" value="ACTIONS_ID_TOKEN_REQUEST_TOKEN + ACTIONS_ID_TOKEN_REQUEST_URL" display="GitHub OIDC availability is required for keyless cosign signing" />
+      <Variable name="localRehearsal" value="LOCAL_REHEARSAL=1" display="A missing Windows signing credential warning-skips only in local rehearsal; CI release mode fails closed" />
+    </Step>
+  </Scenario>
+</Guide>
