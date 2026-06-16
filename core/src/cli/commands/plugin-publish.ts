@@ -84,11 +84,14 @@ const fileMtime = async (path: string): Promise<number | undefined> =>
 
 /**
  * An artifact is stale when `dist/package.json` (written last by the build) is
- * missing, or when any source entrypoint is newer than that marker.
+ * missing, or when package metadata or any source entrypoint is newer than that
+ * marker.
  */
 const isArtifactStale = async (pluginRoot: string, sources: ReadonlyArray<string>): Promise<boolean> => {
   const distMarker = await fileMtime(join(pluginRoot, "dist", "package.json"));
   if (distMarker === undefined) return true;
+  const packageJsonMtime = await fileMtime(join(pluginRoot, "package.json"));
+  if (packageJsonMtime !== undefined && packageJsonMtime > distMarker) return true;
   for (const source of sources) {
     const sourceMtime = await fileMtime(resolve(pluginRoot, source));
     if (sourceMtime !== undefined && sourceMtime > distMarker) return true;

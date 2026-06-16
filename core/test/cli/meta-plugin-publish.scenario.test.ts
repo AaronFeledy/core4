@@ -186,6 +186,30 @@ describe("meta:plugin:publish command", () => {
     expect(events.map((event) => event._tag)).toContain("cli-meta:plugin:publish-complete");
   });
 
+  test("rebuilds when package.json is newer than the built package marker", async () => {
+    await writePlugin(root);
+    await writeFreshDist(root);
+    const future = new Date(Date.now() + 120_000);
+    await utimes(join(root, "package.json"), future, future);
+    const spawns: Spawn[] = [];
+
+    const result = await Effect.runPromise(
+      pluginPublish({
+        cwd: root,
+        execPath: "/opt/bun",
+        noTest: true,
+        spawner: makeBuildingSpawner(spawns),
+        authReader: async () => ({
+          registries: { "https://registry.npmjs.org/": { token: "secret-token" } },
+        }),
+      }),
+    );
+
+    expect(result.rebuilt).toBe(true);
+    expect(spawns.map((spawn) => spawn.cmd[1])).toContain("build");
+    expect(spawns.map((spawn) => spawn.cmd[1])).toContain("publish");
+  });
+
   test("--no-test skips the retest spawn", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
