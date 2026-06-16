@@ -849,7 +849,9 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-        expect(pathsOutsidePrefixes(listTree(envPath(compiledEnv.env, "LANDO_USER_DATA_ROOT")), ["plugins"])).toEqual([]);
+        expect(
+          pathsOutsidePrefixes(listTree(envPath(compiledEnv.env, "LANDO_USER_DATA_ROOT")), ["plugins"]),
+        ).toEqual([]);
       } finally {
         sourceFixture.cleanup();
         compiledFixture.cleanup();
