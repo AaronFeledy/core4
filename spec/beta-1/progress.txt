@@ -755,3 +755,10 @@
 - Verification: typecheck, lint, focused plugin-link/deferred tests, full tests, and source+compiled CLI QA passed.
 - **Learnings for future iterations:** Manual CLI QA for commands that read config must isolate all three roots (`LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT`); setting only data/cache can accidentally parse the developer config path and produce unrelated config errors.
 ---
+
+## 2026-06-15 22:15 CDT - Babysit
+- PR: #370 https://github.com/AaronFeledy/core4/pull/370
+- CI outcome: pass (all required static/platform, guide-scenarios, provider-integration/perf-budget jobs, and Cursor Bugbot green)
+- Review feedback: fixed (Bugbot redaction findings addressed: fixture paths, short `-t=`/`-k=` flags, full POSIX home paths, and deterministic public transcript emission independent of local user/host)
+- Merge: merged (squash) as 0aaac4c Add public transcript redaction (#370)
+---
