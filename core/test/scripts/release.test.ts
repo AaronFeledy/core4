@@ -610,7 +610,7 @@ describe("release orchestrator", () => {
     expect(logs).toContain("[release] skip 13-publish (binary release target)");
   });
 
-  test("local rehearsal can run the compile prefix for the current platform without signing secrets", async () => {
+  test("local rehearsal compiles the Windows release artifact before signing", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const logs: Array<string> = [];
 
@@ -634,8 +634,25 @@ describe("release orchestrator", () => {
       "3-lint-format",
       "4-test-gates",
       "7-compile",
+      "7-compile",
     ]);
-    expect(spawnStages.at(-1)?.cmd).toEqual(["bun", "run", "--filter=@lando/core", "build:compile"]);
+    expect(spawnStages.at(-2)?.cmd).toEqual([
+      "bun",
+      "build",
+      "./core/bin/lando.ts",
+      "--compile",
+      "--bytecode",
+      "--target=bun-windows-x64",
+      "--outfile",
+      "./dist/lando-windows-x64.exe",
+      "--sourcemap=external",
+    ]);
+    expect(spawnStages.at(-1)?.cmd).toEqual([
+      "bun",
+      "run",
+      "scripts/sanitize-compiled-binary.ts",
+      "dist/lando-windows-x64.exe",
+    ]);
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
   });
 
