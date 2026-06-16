@@ -99,12 +99,46 @@ describe("Telemetry transport service", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const telemetry = yield* Telemetry;
-        yield* telemetry.record("", { a: "1" });
-        yield* telemetry.record("update-outcome", { a: "2" });
+        yield* telemetry.record("", { outcome: "success" });
+        yield* telemetry.record("update-outcome", { outcome: "success" });
         yield* Effect.sleep("50 millis");
       }).pipe(Effect.provide(withSinks(true, [sink])), Effect.scoped),
     );
-    expect(records).toEqual([{ event: "update-outcome", data: { a: "2" } }]);
+    expect(records).toEqual([{ event: "update-outcome", data: { outcome: "success" } }]);
+  });
+
+  test("records are redacted before they reach any sink", async () => {
+    const { sink, records } = capturingSink();
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const telemetry = yield* Telemetry;
+        // Disallowed fields (install dir, raw error) and out-of-set enum values
+        // must never reach a sink; allowed enum/string fields survive.
+        yield* telemetry.record("update-outcome", {
+          version: "4.0.0",
+          targetVersion: "4.1.0",
+          channel: "stable",
+          platform: "linux-x64",
+          outcome: "success",
+          installDir: "/home/alice/.lando/bin",
+          rawError: "failed at /home/alice/project",
+        });
+        yield* Effect.sleep("50 millis");
+      }).pipe(Effect.provide(withSinks(true, [sink])), Effect.scoped),
+    );
+    expect(records).toEqual([
+      {
+        event: "update-outcome",
+        data: {
+          version: "4.0.0",
+          targetVersion: "4.1.0",
+          channel: "stable",
+          platform: "linux-x64",
+          outcome: "success",
+        },
+      },
+    ]);
+    expect(JSON.stringify(records)).not.toContain("/home/alice");
   });
 
   test("disabled telemetry never calls sinks even when sinks are registered", async () => {

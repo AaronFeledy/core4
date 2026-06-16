@@ -12,7 +12,7 @@ Related reference schemas: [telemetry config](../reference/schemas/telemetry-con
 
 Telemetry is fire-and-forget: recording never blocks command completion, never changes the exit code, and is dropped rather than delaying shutdown. CLI mode defaults telemetry on; library mode defaults it off unless the embedding host opts in. Disable it with `LANDO_CONFIG__TELEMETRY__ENABLED=0`, the `telemetry.enabled` config key, or the documented opt-out command.
 
-The retention policy (what is retained, where, who can access it, and when raw and aggregated data are deleted) is published alongside this inventory and anchored here for cross-linking; see the telemetry retention section of the specification.
+Every payload is redacted before it is buffered or dispatched: fields are allowlisted to the inventory below and free-string values are scrubbed of paths, hostnames, URLs, credentials, email addresses, UUID-like identifiers, and tokens. The full redaction rules and the retention policy (what is retained, where, who can access it, and when raw and aggregated data are deleted) live in the canonical [telemetry redaction and retention policy](./retention.md).
 
 ## Always-on runtime health events
 
