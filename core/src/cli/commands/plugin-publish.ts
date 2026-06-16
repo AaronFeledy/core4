@@ -128,16 +128,18 @@ const defaultAuthReader: PluginAuthReader = async (authPath) => {
   }
 };
 
-const hasRegistryToken = (auth: PluginRegistryAuth | undefined, registry: string): boolean => {
+const registryToken = (auth: PluginRegistryAuth | undefined, registry: string): string | undefined => {
   const registries = auth?.registries;
-  if (typeof registries !== "object" || registries === null) return false;
+  if (typeof registries !== "object" || registries === null) return undefined;
   const target = normalizeRegistry(registry);
   for (const [key, value] of Object.entries(registries)) {
     if (normalizeRegistry(key) !== target) continue;
     const token = value?.token;
-    if (typeof token === "string" && token.trim() !== "") return true;
+    if (typeof token !== "string") continue;
+    const trimmed = token.trim();
+    if (trimmed !== "") return trimmed;
   }
-  return false;
+  return undefined;
 };
 
 export const pluginPublish = (
@@ -267,7 +269,8 @@ export const pluginPublish = (
       const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
       const authPath = join(userDataRoot, "plugin-auth.json");
       const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
-      if (!hasRegistryToken(auth, registry)) {
+      const token = registryToken(auth, registry);
+      if (token === undefined) {
         return yield* Effect.fail(
           new PluginPublishAuthError({
             message: `No registry auth for ${registry} in ${authPath}.`,
@@ -277,8 +280,9 @@ export const pluginPublish = (
         );
       }
       const publish = yield* bunSelfRun({
-        argv: ["publish", "--tag", tag],
+        argv: ["publish", "--tag", tag, "--registry", registry],
         cwd: join(pluginRoot, "dist"),
+        env: { BUN_AUTH_TOKEN: token },
         verb: "publish",
         callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
         ...bunOptions,

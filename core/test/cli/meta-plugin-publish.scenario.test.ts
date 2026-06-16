@@ -22,6 +22,7 @@ const recordingEventLayer = (events: LandoEvent[]) =>
 interface Spawn {
   readonly cmd: ReadonlyArray<string>;
   readonly cwd: string;
+  readonly env: Readonly<Record<string, string>>;
 }
 
 const writePlugin = async (dir: string, name = "@acme/lando-plugin-publish") => {
@@ -57,8 +58,16 @@ const writeFreshDist = async (dir: string) => {
 };
 
 const makeBuildingSpawner = (spawns: Spawn[]) => ({
-  spawn: async ({ cmd, cwd }: { readonly cmd: ReadonlyArray<string>; readonly cwd: string }) => {
-    spawns.push({ cmd, cwd });
+  spawn: async ({
+    cmd,
+    cwd,
+    env,
+  }: {
+    readonly cmd: ReadonlyArray<string>;
+    readonly cwd: string;
+    readonly env: Readonly<Record<string, string>>;
+  }) => {
+    spawns.push({ cmd, cwd, env });
     if (cmd.includes("build")) {
       await mkdir(join(root, "dist"), { recursive: true });
       await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
@@ -163,8 +172,16 @@ describe("meta:plugin:publish command", () => {
     expect(verbs).toContain("test");
     expect(verbs).toContain("publish");
     const publishSpawn = spawns.find((spawn) => spawn.cmd[1] === "publish");
-    expect(publishSpawn?.cmd).toEqual(["/opt/bun", "publish", "--tag", "latest"]);
+    expect(publishSpawn?.cmd).toEqual([
+      "/opt/bun",
+      "publish",
+      "--tag",
+      "latest",
+      "--registry",
+      "https://registry.npmjs.org/",
+    ]);
     expect(publishSpawn?.cwd).toBe(join(root, "dist"));
+    expect(publishSpawn?.env.BUN_AUTH_TOKEN).toBe("secret-token");
     expect(events.map((event) => event._tag)).toContain("cli-meta:plugin:publish-start");
     expect(events.map((event) => event._tag)).toContain("cli-meta:plugin:publish-complete");
   });
@@ -188,6 +205,54 @@ describe("meta:plugin:publish command", () => {
     expect(spawns.map((spawn) => spawn.cmd[1])).not.toContain("test");
     expect(spawns.map((spawn) => spawn.cmd[1])).toContain("publish");
     expect(result.published).toBe(true);
+  });
+
+  test("forwards the resolved publishConfig registry and matching auth token to bun publish", async () => {
+    await writePlugin(root);
+    await writeFreshDist(root);
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@acme/lando-plugin-publish",
+          version: "1.2.3",
+          type: "module",
+          exports: { ".": "./src/index.ts" },
+          publishConfig: { registry: "https://npm.acme.test/" },
+          landoPlugin: {
+            name: "@acme/lando-plugin-publish",
+            version: "1.2.3",
+            api: 4,
+            entry: "src/index.ts",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const spawns: Spawn[] = [];
+
+    const result = await Effect.runPromise(
+      pluginPublish({
+        cwd: root,
+        execPath: "/opt/bun",
+        noTest: true,
+        spawner: makeBuildingSpawner(spawns),
+        authReader: async () => ({ registries: { "https://npm.acme.test": { token: "acme-token" } } }),
+      }),
+    );
+
+    const publishSpawn = spawns.find((spawn) => spawn.cmd[1] === "publish");
+    expect(result.registry).toBe("https://npm.acme.test/");
+    expect(publishSpawn?.cmd).toEqual([
+      "/opt/bun",
+      "publish",
+      "--tag",
+      "latest",
+      "--registry",
+      "https://npm.acme.test/",
+    ]);
+    expect(publishSpawn?.env.BUN_AUTH_TOKEN).toBe("acme-token");
   });
 
   test("missing auth produces a tagged remediation and never publishes", async () => {
