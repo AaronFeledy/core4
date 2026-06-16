@@ -1,0 +1,35 @@
+---
+id: release-local-rehearsal
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release]
+---
+
+<Guide>
+  <Scenario id="stage-prefix-rehearsal" render={false} reason="Focused release-orchestrator tests run the stage table with stubbed runners so this guide stays host-safe">
+    <Step name="choose-prefix">
+      <Variable name="compilePrefix" value="LOCAL_REHEARSAL=1 bun run scripts/release.ts --binary --through-stage=7-compile" display="Run the binary pipeline through the current-platform compile stage without signing credentials" />
+      <Variable name="manifestPrefix" value="LOCAL_REHEARSAL=1 bun run scripts/release.ts --library --through-stage=11-manifest" display="Run the library pipeline through manifest writing; signing is skipped with a local-rehearsal warning when credentials are absent" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="artifact-family-split" render={false} reason="Stage applicability is asserted by core/test/scripts/release.test.ts without running the full release pipeline">
+    <Step name="binary-family">
+      <Variable name="binaryStages" value="1,2,3,4,5,7,8,9,10,11,12,13" display="Compiled-binary releases skip only the library bundle stage" />
+    </Step>
+    <Step name="library-family">
+      <Variable name="libraryStages" value="1,2,3,4,5,6,11,12,13" display="Library releases skip compile, strip, sign, and notarize while keeping shared manifest, provenance, and publish stages" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="credential-gated-work" render={false} reason="Credential failures are covered by the release-orchestrator unit tests to avoid touching real signing or publishing tools">
+    <Step name="local-rehearsal-warning-skips">
+      <Variable name="sign" value="9-sign" display="Missing signing credentials warning-skip in local rehearsal" />
+      <Variable name="notarize" value="10-notarize" display="Missing Apple notarization credentials warning-skip in local rehearsal" />
+      <Variable name="manifestSigning" value="11-manifest signing" display="Checksum files and update manifest are still written before manifest signing warning-skips" />
+      <Variable name="provenance" value="12-provenance-sbom" display="Missing provenance and cosign credentials warning-skip in local rehearsal" />
+      <Variable name="publish" value="13-publish" display="Missing publish credentials warning-skip in local rehearsal" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -12,6 +12,7 @@ import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-
 export type ArtifactTarget = "all" | "binary" | "library";
 export type ReleaseArtifactFamily = "binary" | "library" | "binary+library";
 export type ReleaseRunnerKind = "spawn" | "shell" | "skip";
+export type ReleaseEnvironment = Record<string, string | undefined>;
 
 export interface ReleaseCommand {
   readonly stageId: string;
@@ -47,14 +48,23 @@ export interface ReleaseStage {
 
 export interface ReleaseStageContext {
   readonly target: ArtifactTarget;
+  readonly env: ReleaseEnvironment;
+  readonly localRehearsal: boolean;
   readonly runner: ReleaseRunner;
   readonly logger: (line: string) => void;
 }
 
 interface ReleaseOptions {
   readonly target?: ArtifactTarget;
+  readonly throughStage?: number | string;
+  readonly env?: ReleaseEnvironment;
   readonly runner?: ReleaseRunner;
   readonly logger?: (line: string) => void;
+}
+
+interface ReleaseCliOptions {
+  readonly target: ArtifactTarget;
+  readonly throughStage?: number | string;
 }
 
 export class ReleaseStageError extends Error {
@@ -82,10 +92,27 @@ const targetFlags = {
 
 const isTargetFlag = (arg: string): arg is keyof typeof targetFlags => arg in targetFlags;
 
-export const parseReleaseTarget = (args: ReadonlyArray<string>): ArtifactTarget => {
+export const parseReleaseOptions = (args: ReadonlyArray<string>): ReleaseCliOptions => {
   let target: ArtifactTarget | undefined;
-  for (const arg of args) {
+  let throughStage: number | string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
     if (arg === "--") continue;
+
+    if (arg.startsWith("--through-stage=")) {
+      throughStage = arg.slice("--through-stage=".length);
+      continue;
+    }
+
+    if (arg === "--through-stage") {
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith("--"))
+        throw new Error("--through-stage expects a stage id or number");
+      throughStage = value;
+      index += 1;
+      continue;
+    }
 
     if (!isTargetFlag(arg)) {
       throw new Error(`Unknown release argument: ${arg}`);
@@ -98,8 +125,11 @@ export const parseReleaseTarget = (args: ReadonlyArray<string>): ArtifactTarget 
     target = nextTarget;
   }
 
-  return target ?? "all";
+  return { target: target ?? "all", throughStage };
 };
+
+export const parseReleaseTarget = (args: ReadonlyArray<string>): ArtifactTarget =>
+  parseReleaseOptions(args).target;
 
 const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolean => {
   if (target === "all") return true;
@@ -117,6 +147,50 @@ const artifactFamilyForStage = (
   return "library";
 };
 
+const stagePrefixLimit = (throughStage: number | string | undefined): ReadonlyArray<ReleaseStage> => {
+  if (throughStage === undefined) return RELEASE_STAGES;
+  const value = String(throughStage);
+  const stageIndex = RELEASE_STAGES.findIndex(
+    (stage) => stage.id === value || stage.id.startsWith(`${value}-`),
+  );
+  if (stageIndex === -1) throw new Error(`Unknown release stage prefix: ${value}`);
+  return RELEASE_STAGES.slice(0, stageIndex + 1);
+};
+
+interface CredentialRequirement {
+  readonly allOf?: ReadonlyArray<string>;
+  readonly allOfAny?: ReadonlyArray<ReadonlyArray<string>>;
+  readonly anyOf?: ReadonlyArray<ReadonlyArray<string>>;
+}
+
+const envHas = (env: ReleaseEnvironment, name: string): boolean =>
+  env[name] !== undefined && env[name] !== "";
+
+const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: CredentialRequirement): boolean => {
+  const required = requirement.allOf ?? [];
+  if (!required.every((name) => envHas(env, name))) return false;
+
+  const requiredAlternatives = requirement.allOfAny ?? [];
+  if (!requiredAlternatives.every((group) => group.some((name) => envHas(env, name)))) return false;
+
+  const alternatives = requirement.anyOf ?? [];
+  return alternatives.length === 0 || alternatives.some((group) => group.some((name) => envHas(env, name)));
+};
+
+const credentialGate = (
+  stageId: string,
+  credentialLabel: string,
+  requirement: CredentialRequirement,
+  { env, localRehearsal, logger }: ReleaseStageContext,
+): boolean => {
+  if (hasRequiredCredentials(env, requirement)) return true;
+  if (localRehearsal) {
+    logger(`[release] warning LOCAL_REHEARSAL=1: skip ${stageId} (${credentialLabel} absent)`);
+    return false;
+  }
+  throw new Error(`Missing ${credentialLabel}; set LOCAL_REHEARSAL=1 to rehearse without credentials.`);
+};
+
 const npmAlphaPublishScript = (): string =>
   [
     'before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
@@ -132,6 +206,54 @@ const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
   releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]);
 
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
+
+const releaseSigningCredentials: CredentialRequirement = {
+  anyOf: [
+    ["LANDO_RELEASE_SIGNING_IDENTITY"],
+    ["LANDO_RELEASE_WINDOWS_CERTIFICATE"],
+    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
+  ],
+};
+const appleNotarizationCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"], ["LANDO_RELEASE_APPLE_ID", "APPLE_ID"]],
+};
+const manifestSigningCredentials: CredentialRequirement = {
+  allOfAny: [
+    ["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"],
+    ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
+  ],
+};
+const provenanceCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_OIDC_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"], ["GITHUB_TOKEN"]],
+};
+const libraryPublishCredentials: CredentialRequirement = {
+  anyOf: [["LANDO_RELEASE_NPM_TOKEN", "NPM_TOKEN"]],
+};
+
+const credentialSkipRequirements: Record<
+  string,
+  { readonly label: string; readonly credentials: CredentialRequirement }
+> = {
+  "9-sign": { label: "release signing credentials", credentials: releaseSigningCredentials },
+  "10-notarize": { label: "Apple notarization credentials", credentials: appleNotarizationCredentials },
+  "12-provenance-sbom": { label: "provenance and cosign credentials", credentials: provenanceCredentials },
+};
+
+const nonSigningManifestScript = (): string =>
+  [
+    "mkdir -p dist",
+    ": > dist/SHA256SUMS",
+    ": > dist/SHA512SUMS",
+    "printf '%s\\n' '{\"schemaVersion\":1,\"artifacts\":{}}' > dist/update-manifest.json",
+  ].join("\n");
+
+const manifestSigningScript = (): string =>
+  [
+    "gpg --batch --yes --armor --detach-sign dist/SHA256SUMS",
+    "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
+    "cosign sign-blob --yes --output-signature dist/SHA256SUMS.sig dist/SHA256SUMS",
+    "cosign sign-blob --yes --output-signature dist/SHA512SUMS.sig dist/SHA512SUMS",
+  ].join("\n");
 
 const spawnStage =
   (
@@ -155,10 +277,49 @@ const shellStage =
     stage: Pick<ReleaseStage, "id" | "forBinary" | "forLibrary" | "commandSummary" | "remediation">,
     script: string,
   ) =>
-  async ({ logger, runner, target }: ReleaseStageContext): Promise<void> => {
-    if (stage.id === "13-publish" && target === "binary") {
-      logger("[release] skip 13-publish (binary artifact publishing not yet wired)");
+  async (context: ReleaseStageContext): Promise<void> => {
+    const { runner, target } = context;
+
+    if (stage.id === "11-manifest") {
+      await runner.shell({
+        stageId: stage.id,
+        artifactFamily: artifactFamilyForStage(stage, target),
+        summary: stage.commandSummary,
+        remediation: stage.remediation,
+        script,
+      });
+      if (
+        !credentialGate(
+          "11-manifest signing",
+          "manifest signing credentials",
+          manifestSigningCredentials,
+          context,
+        )
+      ) {
+        return;
+      }
+      await runner.shell({
+        stageId: stage.id,
+        artifactFamily: artifactFamilyForStage(stage, target),
+        summary: "sign release checksum manifests",
+        remediation: stage.remediation,
+        script: manifestSigningScript(),
+      });
       return;
+    }
+
+    if (stage.id === "13-publish") {
+      if (!credentialGate(stage.id, "publish credentials", libraryPublishCredentials, context)) return;
+      if (context.localRehearsal) {
+        context.logger(
+          "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
+        );
+        return;
+      }
+      if (target === "binary") {
+        context.logger("[release] skip 13-publish (binary release target)");
+        return;
+      }
     }
 
     await runner.shell({
@@ -171,8 +332,18 @@ const shellStage =
   };
 
 const skipStage =
-  (reason: string) =>
-  async ({ logger }: ReleaseStageContext): Promise<void> => {
+  (stage: Pick<ReleaseStage, "id">, reason: string) =>
+  async (context: ReleaseStageContext): Promise<void> => {
+    const requirement = credentialSkipRequirements[stage.id];
+    if (
+      requirement !== undefined &&
+      !credentialGate(stage.id, requirement.label, requirement.credentials, context)
+    )
+      return;
+    if (requirement !== undefined && !context.localRehearsal) {
+      throw new Error(`Release stage ${stage.id} is not implemented yet; local rehearsal may skip it.`);
+    }
+    const { logger } = context;
     logger(reason);
   };
 
@@ -196,7 +367,7 @@ const defineStage = (
       ? spawnStage(base, spawnCommands)
       : stage.kind === "shell"
         ? shellStage(base, stage.command as string)
-        : skipStage(stage.command as string);
+        : skipStage(base, stage.command as string);
 
   return { ...stage, run };
 };
@@ -319,10 +490,10 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     description: "Write SHA256SUMS, SHA512SUMS, GPG-sign, write update-manifest.json.",
     forBinary: true,
     forLibrary: true,
-    kind: "skip",
+    kind: "shell",
     commandSummary: "write release checksum and update manifests",
     remediation: "Implement release manifest generation before making this stage required.",
-    command: "[release] skip 11-manifest (manifest signing not yet wired)",
+    command: nonSigningManifestScript(),
   }),
   defineStage({
     id: "12-provenance-sbom",
@@ -362,13 +533,17 @@ const defaultRunner: ReleaseRunner = {
 
 export const runRelease = async ({
   target = "all",
+  throughStage,
+  env = process.env,
   runner = defaultRunner,
   logger = console.log,
 }: ReleaseOptions = {}): Promise<void> => {
-  const matchingCount = RELEASE_STAGES.filter((stage) => stageMatchesTarget(stage, target)).length;
+  const stages = stagePrefixLimit(throughStage);
+  const localRehearsal = env.LOCAL_REHEARSAL === "1";
+  const matchingCount = stages.filter((stage) => stageMatchesTarget(stage, target)).length;
   logger(`[release] running ${matchingCount}/${RELEASE_STAGES.length} stages for ${target}`);
 
-  for (const stage of RELEASE_STAGES) {
+  for (const stage of stages) {
     if (!stageMatchesTarget(stage, target)) {
       logger(`[release] skip ${stage.id} (${target} release target)`);
       continue;
@@ -376,7 +551,7 @@ export const runRelease = async ({
 
     logger(`[release] -> ${stage.id}: ${stage.description}`);
     try {
-      await stage.run({ target, runner, logger });
+      await stage.run({ target, env, localRehearsal, runner, logger });
     } catch (cause) {
       throw new ReleaseStageError(
         stage.id,
@@ -392,7 +567,7 @@ export const runRelease = async ({
 };
 
 const main = async (): Promise<void> => {
-  await runRelease({ target: parseReleaseTarget(process.argv.slice(2)) });
+  await runRelease(parseReleaseOptions(process.argv.slice(2)));
 };
 
 if (import.meta.main) await main();

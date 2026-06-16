@@ -159,6 +159,14 @@ const makeIsolatedEnv = (): { readonly env: Record<string, string>; readonly cle
   return { env, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
+const envPath = (env: Record<string, string>, key: string): string => {
+  const value = env[key];
+  if (value === undefined) {
+    throw new Error(`Missing isolated env path: ${key}`);
+  }
+  return value;
+};
+
 const makePluginTestFixture = (): { readonly root: string; readonly cleanup: () => void } => {
   const root = mkdtempSync(join(tmpdir(), "lando-parity-plugin-test-"));
   mkdirSync(join(root, "src"), { recursive: true });
@@ -657,7 +665,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+        expect(listTree(join(envPath(isolated.env, "LANDO_USER_DATA_ROOT"), "plugins"))).toEqual([]);
       } finally {
         rmSync(sourceDest, { recursive: true, force: true });
         rmSync(compiledDest, { recursive: true, force: true });
@@ -767,7 +775,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+        expect(listTree(join(envPath(isolated.env, "LANDO_USER_DATA_ROOT"), "plugins"))).toEqual([]);
       } finally {
         fixture.cleanup();
         isolated.cleanup();
@@ -797,7 +805,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-        const created = listTree(compiledEnv.env.LANDO_USER_DATA_ROOT);
+        const created = listTree(envPath(compiledEnv.env, "LANDO_USER_DATA_ROOT"));
         expect(created.length).toBeGreaterThan(0);
         expect(pathsOutsidePrefixes(created, ["plugins"])).toEqual([]);
       } finally {
@@ -841,7 +849,9 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-        expect(pathsOutsidePrefixes(listTree(compiledEnv.env.LANDO_USER_DATA_ROOT), ["plugins"])).toEqual([]);
+        expect(
+          pathsOutsidePrefixes(listTree(envPath(compiledEnv.env, "LANDO_USER_DATA_ROOT")), ["plugins"]),
+        ).toEqual([]);
       } finally {
         sourceFixture.cleanup();
         compiledFixture.cleanup();
@@ -892,7 +902,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
         expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
         expect(source.stdout).toContain("dry-run");
-        expect(listTree(join(isolated.env.LANDO_USER_DATA_ROOT, "plugins"))).toEqual([]);
+        expect(listTree(join(envPath(isolated.env, "LANDO_USER_DATA_ROOT"), "plugins"))).toEqual([]);
       } finally {
         fixture.cleanup();
         isolated.cleanup();
