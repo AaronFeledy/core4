@@ -17,6 +17,7 @@ import { Context, Duration, Effect, Layer, Option, Queue, type Scope, Stream } f
 import { Telemetry } from "@lando/sdk/services";
 
 import { makeLibraryTelemetry } from "../runtime/bootstrap-layer-support.ts";
+import { redactTelemetryData } from "./redaction.ts";
 
 /** A buffered telemetry record awaiting sink dispatch. */
 export interface TelemetryRecord {
@@ -101,7 +102,9 @@ const makeTransport = (
     return {
       enabled: true,
       record: (event, data) =>
-        event.length === 0 ? Effect.void : Queue.offer(queue, { event, data }).pipe(Effect.asVoid),
+        event.length === 0
+          ? Effect.void
+          : Queue.offer(queue, { event, data: redactTelemetryData(event, data) }).pipe(Effect.asVoid),
     };
   });
 

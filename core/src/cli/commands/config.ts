@@ -12,6 +12,7 @@ import { resolveUserConfRoot } from "../../config/roots.ts";
 import { parseMinimalYaml } from "../../config/yaml-min.ts";
 import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../../runtime/cli-options.ts";
+import { TELEMETRY_RETENTION_POLICY_DOC } from "../../telemetry/policy.ts";
 
 export interface ConfigOptions {
   readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";
@@ -106,6 +107,7 @@ export const renderConfigResult = (result: ConfigResult): string => {
           telemetry: result.telemetry,
           ...(result.changed === undefined ? {} : { changed: result.changed }),
           ...(result.configPath === undefined ? {} : { configPath: result.configPath }),
+          policy: TELEMETRY_RETENTION_POLICY_DOC,
         }
       : result.value !== undefined
         ? result.value

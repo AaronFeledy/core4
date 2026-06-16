@@ -92,6 +92,7 @@ describe("meta:config command", () => {
       expect(JSON.parse(renderConfigResult(result))).toMatchObject({
         telemetry: { enabled: false, source: "config" },
         changed: true,
+        policy: "docs/telemetry/retention.md",
       });
       expect(await readFile(join(dir, "config.yml"), "utf8")).toContain("enabled: false");
     });
