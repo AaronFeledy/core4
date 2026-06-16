@@ -14,7 +14,7 @@ export const UPDATE_OUTCOMES = [
 ] as const;
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 
-// Re-export (do not re-inline): the canonical inventory in `inventory.ts` is the single source of truth.
+// Re-export the inventory object so callers share the same source of truth.
 export const TELEMETRY_EVENT_INVENTORY = TELEMETRY_EVENT_FIELD_NAMES;
 
 export interface UpdateOutcomeTelemetryInput {

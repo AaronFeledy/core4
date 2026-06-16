@@ -1,17 +1,13 @@
 /**
- * Canonical, machine-readable telemetry event inventory.
+ * Machine-readable telemetry event inventory.
  *
- * This module is the single source of truth for every telemetry event Lando
- * is allowed to record. The published human inventory
- * (`docs/telemetry/events.md`), the `check:telemetry-inventory` gate, the
- * doc-consistency test, and the typed data builders in `events.ts` all derive
- * from the constants here. Recording an event whose name is absent from
- * `TELEMETRY_EVENTS` fails the gate; adding an event therefore requires
- * editing this file (and the published doc) in the same change.
+ * Keep this file as the source of truth for recordable telemetry events. The
+ * published event doc, inventory gate, consistency tests, and typed builders
+ * all derive from these constants, so adding an event means updating this file
+ * and `docs/telemetry/events.md` together.
  *
- * Data-only and dependency-free on purpose: it is imported by `events.ts`
- * (which is off the cold-start hot path), the gate script, and tests, never
- * by the first-byte CLI path in `core/src/cli/index.ts`.
+ * This module stays data-only and dependency-free because it is imported by
+ * `events.ts`, the gate script, and tests, but not by the first-byte CLI path.
  */
 
 /** Every telemetry field is a redaction-safe string today. */
@@ -53,10 +49,9 @@ export interface TelemetryEventSpec {
 }
 
 /**
- * Allowed field names per event, in recorded order. The `as const` literal
- * tuples are the primitive the typed data builders in `events.ts` depend on
- * (`(typeof TELEMETRY_EVENT_FIELD_NAMES)[event][number]`); the rich
- * `TELEMETRY_EVENTS` metadata below must match this order (asserted by test).
+ * Allowed field names per event, in recorded order. The typed data builders in
+ * `events.ts` depend on these tuples, and tests assert that `TELEMETRY_EVENTS`
+ * keeps the same order.
  */
 export const TELEMETRY_EVENT_FIELD_NAMES = {
   "update-outcome": ["version", "targetVersion", "channel", "platform", "outcome"],
@@ -67,9 +62,8 @@ export const TELEMETRY_EVENT_FIELD_NAMES = {
 export type TelemetryEventName = keyof typeof TELEMETRY_EVENT_FIELD_NAMES;
 
 /**
- * The canonical telemetry event inventory. Beta 1 records two events and no
- * always-on runtime health event: the fire-and-forget transport drains a
- * bounded queue into sinks and emits no heartbeat of its own.
+ * The canonical telemetry event inventory. The transport emits no heartbeat;
+ * only listed product events may be recorded.
  */
 export const TELEMETRY_EVENTS = {
   "update-outcome": {
