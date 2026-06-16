@@ -1028,8 +1028,8 @@
         "Lint passes"
       ],
       "priority": 58,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 7 now compiles every Beta 1 CI platform id through `bun build --compile --bytecode ./core/bin/lando.ts`, sanitizes each emitted release binary, records per-platform compile duration, and fails the release with a tagged `ReleaseCompileBudgetError` when linux-x64 exceeds the 10 minute cold-build budget. Local rehearsal logs compile durations before later signing/notarization warning-skips."
     },
     {
       "id": "US-258",

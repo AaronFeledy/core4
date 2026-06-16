@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/nightly.yml");
 const GENERATED_HEADER =
@@ -88,6 +90,22 @@ ${bunSetupStep}
           if-no-files-found: ignore
           retention-days: 7`;
 
+const distributionBundlePath = (platform: CiPlatform): string =>
+  `./dist/bundle/lando-${platform.id}${platform.binaryName.endsWith(".exe") ? ".exe" : ""}`;
+
+const distributionCompileLines = CI_PLATFORMS.map(
+  (platform) =>
+    `          bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ${distributionBundlePath(platform)} --sourcemap=external`,
+).join("\n");
+
+const distributionSanitizeLines = CI_PLATFORMS.map(
+  (platform) => `          bun run scripts/sanitize-compiled-binary.ts ${distributionBundlePath(platform)}`,
+).join("\n");
+
+const distributionLinuxSmokePath = distributionBundlePath(
+  CI_PLATFORMS.find((platform) => platform.id === "linux-x64") ?? CI_PLATFORMS[0],
+);
+
 const distributionRehearsalJob = `
   distribution-rehearsal-linux-x64:
     runs-on: ubuntu-24.04
@@ -102,17 +120,9 @@ ${bunSetupStep}
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --sourcemap=external
-          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-x64
-          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-arm64
-          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-x64
-          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-arm64
-          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-windows-x64.exe
-          ./dist/bundle/lando-linux-x64 --version
+${distributionCompileLines}
+${distributionSanitizeLines}
+          ${distributionLinuxSmokePath} --version
 
       - name: Package distribution bundle
         run: bun run scripts/dist-bundle.ts dist/bundle
