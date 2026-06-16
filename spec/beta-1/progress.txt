@@ -877,3 +877,10 @@
 - Verification: RED release tests failed on the old `build:compile` placeholder command, then passed after implementation; focused release/CI tests, guide lint/coverage/dev guide, typecheck, lint, real `@lando/core` bytecode compile, injected release-runner surface QA, and full `bun test` passed.
 - **Learnings for future iterations:** Keep CI/release platform ids in `scripts/ci-platforms.ts` and consume them from both workflow generation and release orchestration so platform drift is impossible to hide behind duplicated arrays.
 ---
+
+## 2026-06-16 13:38 CDT - US-257 Review
+- review-work passed goal, code-quality, security, and hands-on QA lanes for US-257's bytecode release compile path; fixed the one real context-mining gap by deriving nightly distribution rehearsal compile/sanitize commands from the shared CI platform list and regenerating nightly.yml so platform drift cannot hide there.
+- Review notes (rejected): broader runbook/branch-protection edits were not needed because platform ids/job ids did not change; the context miner's claim that `scripts/ci-platforms.ts` was missing was a stale-worktree false positive.
+- Verification: typecheck, lint, release tests, CI workflow/codegen tests passed; LSP diagnostics unavailable because the TypeScript LSP server is not installed in this environment.
+- **Learnings for future iterations:** When centralizing release platform metadata, include nightly distribution rehearsal command generation in the same shared source; otherwise nightly can silently drift even when PR CI and release share one list.
+---
