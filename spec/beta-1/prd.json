@@ -650,8 +650,8 @@
         "Lint passes."
       ],
       "priority": 37,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "AC1/AC2/AC3 already shipped by US-230..235 (six explicit runCompiledCli branches; thin OCLIF wrappers + run.ts share core/src/cli/commands/plugin-*.ts; test/build/publish route child work through bunSelfRun). This story closed AC5 (full success/unknown-flag/help/non-interactive/renderer parity matrix for all six in dispatch-parity.test.ts) and AC4 (containment proofs via fs-tree snapshots). Fixed 3 real source/compiled divergences found while writing parity probes: meta:plugin:build now rejects unknown flags (exit 2), meta:plugin:unlink missing-name now exits 2 (Missing 1 required arg) instead of NotImplementedError exit 1, and meta:plugin:test now rejects pre-dash unknown flags (exit 2) while still forwarding positional targets and post-dash args."
     },
     {
       "id": "US-237",
