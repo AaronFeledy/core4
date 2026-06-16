@@ -15,6 +15,20 @@ tags: [beta, docs, release, signing]
     </Step>
   </Scenario>
 
+  <Scenario id="macos-signing" render={false} reason="Release signing uses stubbed runners in core/test/scripts/release.test.ts so docs never invoke live Apple tooling">
+    <Step name="developer-id">
+      <Variable name="identity" value="LANDO_RELEASE_SIGNING_IDENTITY" display="Stage 9 signs both darwin-x64 and darwin-arm64 binaries with the configured Developer ID Application identity" />
+      <Variable name="entitlements" value="scripts/lando.entitlements" display="The checked-in entitlements file is passed to codesign with hardened runtime enabled" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="macos-notarization" render={false} reason="Notarization command construction is asserted with an injected release runner instead of live Apple credentials">
+    <Step name="notarytool">
+      <Variable name="profile" value="LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="Stage 10 authenticates notarytool through a keychain profile so passwords are not placed in process argv" />
+      <Variable name="sequence" value="submit,staple,validate" display="Each signed Darwin artifact is submitted, stapled, and validated before the release can proceed" />
+    </Step>
+  </Scenario>
+
   <Scenario id="windows-signing-stage" render={false} reason="The exact signtool and cosign argv are covered by core/test/scripts/release.test.ts without requiring live Windows signing tools">
     <Step name="signing-order">
       <Variable name="authenticode" value="signtool sign /tr <timestamp> /td sha256 /fd sha256 /f <certificate> dist/lando-windows-x64.exe" display="Stage 9 embeds the Authenticode signature first" />
@@ -24,10 +38,10 @@ tags: [beta, docs, release, signing]
   </Scenario>
 
   <Scenario id="credential-gating" render={false} reason="Credential skip/fail behavior is covered by release-orchestrator tests with injected env and stubbed runners">
-    <Step name="windows-credentials">
-      <Variable name="certificate" value="LANDO_RELEASE_WINDOWS_CERTIFICATE" display="Configured Windows certificate material is required outside local rehearsal" />
-      <Variable name="oidc" value="ACTIONS_ID_TOKEN_REQUEST_TOKEN + ACTIONS_ID_TOKEN_REQUEST_URL" display="GitHub OIDC availability is required for keyless cosign signing" />
-      <Variable name="localRehearsal" value="LOCAL_REHEARSAL=1" display="A missing Windows signing credential warning-skips only in local rehearsal; CI release mode fails closed" />
+    <Step name="platform-credentials">
+      <Variable name="macos" value="LANDO_RELEASE_SIGNING_IDENTITY + LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="macOS signing and notarization require Developer ID and keychain-profile credentials outside local rehearsal" />
+      <Variable name="windows" value="LANDO_RELEASE_WINDOWS_CERTIFICATE + ACTIONS_ID_TOKEN_REQUEST_TOKEN + ACTIONS_ID_TOKEN_REQUEST_URL" display="Windows signing requires configured certificate material plus GitHub OIDC availability for keyless cosign" />
+      <Variable name="localRehearsal" value="LOCAL_REHEARSAL=1" display="Missing platform signing credentials warning-skip only in local rehearsal; CI release mode fails closed" />
     </Step>
   </Scenario>
 </Guide>
