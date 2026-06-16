@@ -20,6 +20,8 @@ export interface DeprecationReleaseOffender {
   readonly line: number;
   readonly exportName: string;
   readonly reason: string;
+  readonly removeIn?: string;
+  readonly expectedAction?: string;
 }
 
 export interface DeprecationReleaseResult {
@@ -702,11 +704,18 @@ const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArra
   );
 };
 
-const releaseOffender = (use: ReleaseNoticeUse, reason: string): DeprecationReleaseOffender => ({
+const releaseOffender = (
+  use: ReleaseNoticeUse,
+  reason: string,
+  annotations?: { readonly removeIn: string; readonly expectedAction: string },
+): DeprecationReleaseOffender => ({
   file: use.file,
   line: use.line,
   exportName: use.exportName,
   reason,
+  ...(annotations === undefined
+    ? {}
+    : { removeIn: annotations.removeIn, expectedAction: annotations.expectedAction }),
 });
 
 export const checkDeprecationReleaseGate = async (
@@ -750,9 +759,19 @@ export const checkDeprecationReleaseGate = async (
       }
       const releaseComparison = semverCompare(notice.removeIn, targetRelease);
       if (releaseComparison === 0) {
-        offenders.push(releaseOffender(use, new DeprecationStaleError(notice.removeIn).message));
+        offenders.push(
+          releaseOffender(use, new DeprecationStaleError(notice.removeIn).message, {
+            removeIn: notice.removeIn,
+            expectedAction: `Remove ${use.exportName} before releasing ${targetRelease}; its removeIn (${notice.removeIn}) has arrived.`,
+          }),
+        );
       } else if (releaseComparison < 0) {
-        offenders.push(releaseOffender(use, new DeprecationOverdueError(notice.removeIn).message));
+        offenders.push(
+          releaseOffender(use, new DeprecationOverdueError(notice.removeIn).message, {
+            removeIn: notice.removeIn,
+            expectedAction: `Remove ${use.exportName} before releasing ${targetRelease}; its removeIn (${notice.removeIn}) has passed.`,
+          }),
+        );
       }
     }
   }
