@@ -210,6 +210,13 @@ interface ReleaseNoticeUse {
   readonly notice: ReleaseNotice;
 }
 
+type LocalRuntimeDeclaration = ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration;
+
+interface LocalDeclarations {
+  readonly runtime: ReadonlyMap<string, LocalRuntimeDeclaration>;
+  readonly types: ReadonlyMap<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>;
+}
+
 export class DeprecationStaleError extends Error {
   constructor(readonly removeIn: string) {
     super(`DeprecationStaleError: surface is still present at removeIn ${removeIn}`);
@@ -364,6 +371,31 @@ const deprecationMetadata = (node: ts.ClassDeclaration): ts.PropertyDeclaration 
 const hasTaggedErrorDeprecationMetadata = (node: ts.ClassDeclaration): boolean =>
   isTaggedErrorClass(node) && deprecationMetadata(node) !== undefined;
 
+const localDeclarationsFromSource = (source: ts.SourceFile): LocalDeclarations => {
+  const runtime = new Map<string, LocalRuntimeDeclaration>();
+  const types = new Map<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>();
+
+  for (const statement of source.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const name = propertyNameText(declaration.name);
+        if (name !== undefined) runtime.set(name, declaration);
+      }
+    }
+    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
+      runtime.set(statement.name.text, statement);
+    }
+    if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
+      runtime.set(statement.name.text, statement);
+    }
+    if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
+      types.set(statement.name.text, statement);
+    }
+  }
+
+  return { runtime, types };
+};
+
 // JSDoc for `const x = ...` attaches to the enclosing VariableStatement, not the
 // VariableDeclaration, so resolve the statement to detect a `@deprecated` local export.
 const localDeclarationTagNode = (
@@ -393,29 +425,7 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
   const offenders: DeprecationTsdocOffender[] = [];
   const notices = localNoticeBindings(source);
   const markDeprecatedBindings = markDeprecatedImportBindings(source);
-  const localDeclarations = new Map<
-    string,
-    ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
-  >();
-  const localTypeDeclarations = new Map<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>();
-
-  for (const statement of source.statements) {
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        const name = propertyNameText(declaration.name);
-        if (name !== undefined) localDeclarations.set(name, declaration);
-      }
-    }
-    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
-      localDeclarations.set(statement.name.text, statement);
-    }
-    if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
-      localDeclarations.set(statement.name.text, statement);
-    }
-    if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-      localTypeDeclarations.set(statement.name.text, statement);
-    }
-  }
+  const localDeclarations = localDeclarationsFromSource(source);
 
   for (const statement of source.statements) {
     if (ts.isVariableStatement(statement) && hasExportModifier(statement) && hasDeprecatedTag(statement)) {
@@ -482,8 +492,8 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
 
         const exportedName = element.name.text;
         const localName = element.propertyName?.text ?? exportedName;
-        const declaration = localDeclarations.get(localName);
-        if (declaration === undefined && localTypeDeclarations.has(localName)) continue;
+        const declaration = localDeclarations.runtime.get(localName);
+        if (declaration === undefined && localDeclarations.types.has(localName)) continue;
 
         const localTagNode = declaration === undefined ? undefined : localDeclarationTagNode(declaration);
         const localTagged = localTagNode !== undefined && hasDeprecatedTag(localTagNode);
@@ -604,25 +614,7 @@ const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArra
   const uses: ReleaseNoticeUse[] = [];
   const notices = localNoticeBindings(source);
   const markDeprecatedBindings = markDeprecatedImportBindings(source);
-  const localDeclarations = new Map<
-    string,
-    ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
-  >();
-
-  for (const statement of source.statements) {
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        const name = propertyNameText(declaration.name);
-        if (name !== undefined) localDeclarations.set(name, declaration);
-      }
-    }
-    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
-      localDeclarations.set(statement.name.text, statement);
-    }
-    if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
-      localDeclarations.set(statement.name.text, statement);
-    }
-  }
+  const localDeclarations = localDeclarationsFromSource(source).runtime;
 
   const noticeFromMarkDeprecated = (expression: ts.Expression | undefined): ReleaseNotice | undefined => {
     if (expression === undefined || !ts.isCallExpression(expression)) return undefined;

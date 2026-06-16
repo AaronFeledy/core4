@@ -141,9 +141,6 @@ export const parseReleaseOptions = (args: ReadonlyArray<string>): ReleaseCliOpti
   return { target: target ?? "all", throughStage };
 };
 
-export const parseReleaseTarget = (args: ReadonlyArray<string>): ArtifactTarget =>
-  parseReleaseOptions(args).target;
-
 const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolean => {
   if (target === "all") return true;
   if (target === "binary") return stage.forBinary;
