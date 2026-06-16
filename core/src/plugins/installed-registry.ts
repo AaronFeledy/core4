@@ -8,6 +8,8 @@ export interface InstalledPluginRegistryEntry {
   readonly name: string;
   readonly version: string;
   readonly path: string;
+  readonly source?: "installed" | "linked" | undefined;
+  readonly linkedPath?: string | undefined;
 }
 
 export type InstalledPluginRegistry = Readonly<Record<string, InstalledPluginRegistryEntry>>;
@@ -18,6 +20,8 @@ const InstalledPluginRegistryEntryShape = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
   path: Schema.String,
+  source: Schema.optional(Schema.Literal("installed", "linked")),
+  linkedPath: Schema.optional(Schema.String),
 });
 
 const installedPluginRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");

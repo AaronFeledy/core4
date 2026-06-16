@@ -118,6 +118,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:doctor",
   "meta:plugin:add",
   "meta:plugin:build",
+  "meta:plugin:link",
   "meta:plugin:new",
   "meta:plugin:remove",
   "meta:plugin:test",

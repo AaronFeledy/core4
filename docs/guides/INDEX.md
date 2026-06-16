@@ -36,6 +36,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-227 | Generated schema reference pages | `docs/guides/schemas/generated-reference-docs.mdx` | Shipped |
 | PRD-05 | US-230 | Scaffold a plugin from a bundled template | `docs/guides/plugins/authoring-new-plugin.mdx` | Shipped |
 | PRD-05 | US-231, US-232 | Test and build an authored plugin | `docs/guides/plugins/test-and-build-plugin.mdx` | Shipped |
+| PRD-05 | US-233, US-234 | Link and unlink a local plugin | `docs/guides/plugins/link-local-plugin.mdx` | Shipped |
 | PRD-07 | US-243 | Public reader-scenario transcripts | `docs/guides/authoring/public-transcripts.mdx` | Shipped |
 | PRD-07 | US-245 | Library-mode guides | `docs/guides/embedding/library-mode-guide-scenarios.mdx` | Shipped |
 | PRD-07 | US-246 | E2e guide-scenario smoke layer | `docs/guides/authoring/e2e-smoke-scenarios.mdx` | Shipped |

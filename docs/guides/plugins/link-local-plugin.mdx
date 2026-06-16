@@ -1,0 +1,25 @@
+---
+id: link-local-plugin
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, authoring]
+---
+
+<Guide>
+  <Scenario id="link-local-plugin" render={false} reason="Core command tests exercise meta:plugin:link against isolated plugin fixtures, including symlink creation, linked registry metadata, conflict refusal, and plugin command cache invalidation">
+    <Step name="link-command">
+      <Variable name="default" value="lando meta:plugin:link" display="Link defaults to the current plugin authoring directory" />
+      <Variable name="explicit-path" value="lando meta:plugin:link ../lando-plugin-demo" display="An explicit path is resolved to an absolute source directory before tracking" />
+    </Step>
+    <Step name="linked-state">
+      <Variable name="symlink" value="&lt;userDataRoot&gt;/plugins/&lt;plugin-name&gt;" display="The user plugin registry entry is a symlink to the local authoring checkout" />
+      <Variable name="registry" value="registry.json source=linked linkedPath=&lt;absolute-path&gt;" display="The installed plugin registry records linked source metadata for discovery and future unlink restore work" />
+      <Variable name="linked-state" value=".lando-linked.json" display="The link command records linked plugin state under the managed plugins root" />
+    </Step>
+    <Step name="cache-refresh">
+      <Variable name="cache" value="plugin-command-cache.bin invalidated" display="Plugin command cache state is invalidated after the link is durable so the next invocation rediscovers linked plugin commands" />
+      <Variable name="conflict" value="PluginLinkConflictError" display="Existing non-linked registry entries are refused instead of being overwritten automatically" />
+    </Step>
+  </Scenario>
+</Guide>
