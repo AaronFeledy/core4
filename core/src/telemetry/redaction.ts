@@ -95,7 +95,7 @@ const scrubDeep = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(scrubDeep);
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, raw] of Object.entries(value)) {
       out[key] = scrubDeep(raw);
     }
     return out;
@@ -131,7 +131,6 @@ export const redactTelemetryData = (
       if (typeof raw === "string" && field.allowedValues.includes(raw)) {
         out[field.name] = raw;
       }
-      // Values outside the inventory allow set are rejected (removed).
       continue;
     }
 

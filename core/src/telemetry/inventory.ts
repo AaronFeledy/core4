@@ -8,9 +8,6 @@
  *
  * This module stays data-only and dependency-free because it is imported by
  * `events.ts`, the gate script, and tests, but not by the first-byte CLI path.
- *
- * Redaction rules and the retention policy for the events below are published
- * in `docs/telemetry/retention.md` (linked from `docs/telemetry/events.md`).
  */
 
 /** Every telemetry field is a redaction-safe string today. */
