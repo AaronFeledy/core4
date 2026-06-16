@@ -16,6 +16,13 @@ import { invalidatePluginCommandCache } from "../../cache/command-index-writer.t
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
 
+const RESERVED_PLUGIN_ROOT_ENTRIES = new Set([
+  ".lando-linked.json",
+  "node_modules",
+  "package.json",
+  "registry.json",
+]);
+
 export class PluginLinkConflictError extends Data.TaggedError("PluginLinkConflictError")<{
   readonly message: string;
   readonly commandId: "meta:plugin:link";
@@ -102,6 +109,19 @@ const assertInsidePluginsRoot = (pluginsRoot: string, target: string, pluginName
       issues: [`refusing to write ${target}`],
     });
   }
+  const [firstSegment] = rel.split(/[\\/]/u);
+  if (firstSegment !== undefined && RESERVED_PLUGIN_ROOT_ENTRIES.has(firstSegment)) {
+    throw new PluginManifestError({
+      message: `Plugin ${pluginName} link target uses reserved plugins root entry ${firstSegment}.`,
+      pluginName,
+      issues: [`refusing to write ${target}`],
+    });
+  }
+};
+
+const removeCreatedSymlink = async (path: string): Promise<void> => {
+  const stats = await lstat(path).catch(() => undefined);
+  if (stats?.isSymbolicLink() === true) await rm(path, { force: true });
 };
 
 const prepareRegistryEntry = async (
@@ -182,18 +202,23 @@ export const pluginLink = (
         await mkdir(dirname(registryEntry), { recursive: true });
         await prepareRegistryEntry(pluginsRoot, manifest.name, registryEntry);
         await symlink(linkedPath, registryEntry, "dir");
-        await recordInstalledPlugin(pluginsRoot, {
-          name: manifest.name,
-          version: manifest.version,
-          path: registryEntry,
-          source: "linked",
-          linkedPath,
-        });
-        const state = await readLinkedState(pluginsRoot);
-        await writeLinkedState(pluginsRoot, {
-          ...state,
-          [manifest.name]: { source: "linked", linkedPath, registryEntry },
-        });
+        try {
+          await recordInstalledPlugin(pluginsRoot, {
+            name: manifest.name,
+            version: manifest.version,
+            path: registryEntry,
+            source: "linked",
+            linkedPath,
+          });
+          const state = await readLinkedState(pluginsRoot);
+          await writeLinkedState(pluginsRoot, {
+            ...state,
+            [manifest.name]: { source: "linked", linkedPath, registryEntry },
+          });
+        } catch (cause) {
+          await removeCreatedSymlink(registryEntry);
+          throw cause;
+        }
       },
       catch: (cause) =>
         cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError

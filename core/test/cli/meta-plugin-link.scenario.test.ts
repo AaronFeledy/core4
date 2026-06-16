@@ -186,4 +186,42 @@ describe("meta:plugin:link command", () => {
     expect(await exists(join(userDataRoot, "escape"))).toBe(false);
     expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
+
+  test("rejects a manifest name that targets a managed plugins-root file", async () => {
+    const pluginRoot = await makePluginRoot("registry.json", "managed-name");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(join(pluginsRoot, "registry.json"), "{}\n");
+
+    const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(exit._tag).toBe("Failure");
+    expect(await readFile(join(pluginsRoot, "registry.json"), "utf8")).toBe("{}\n");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginManifestError");
+      expect(cause).toContain("reserved plugins root entry registry.json");
+    }
+    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
+  });
+
+  test("removes the registry symlink when metadata recording fails so a retry can relink", async () => {
+    const pluginRoot = await makePluginRoot("@acme/lando-plugin-retry", "retry");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryEntry = join(pluginsRoot, "@acme/lando-plugin-retry");
+    const registryTmpPath = join(pluginsRoot, "registry.json.tmp");
+    await mkdir(registryTmpPath, { recursive: true });
+
+    const failed = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(failed._tag).toBe("Failure");
+    expect(await exists(registryEntry)).toBe(false);
+    expect(await exists(join(pluginsRoot, "registry.json"))).toBe(false);
+
+    await rm(registryTmpPath, { recursive: true, force: true });
+    const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
+
+    expect(result.registryEntry).toBe(registryEntry);
+    expect((await lstat(registryEntry)).isSymbolicLink()).toBe(true);
+  });
 });
