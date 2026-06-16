@@ -1,0 +1,30 @@
+---
+id: release-signing-artifacts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release, signing]
+---
+
+<Guide>
+  <Scenario id="macos-signing" render={false} reason="Release signing uses stubbed runners in core/test/scripts/release.test.ts so docs never invoke live Apple tooling">
+    <Step name="developer-id">
+      <Variable name="identity" value="LANDO_RELEASE_SIGNING_IDENTITY" display="Stage 9 signs both darwin-x64 and darwin-arm64 binaries with the configured Developer ID Application identity" />
+      <Variable name="entitlements" value="scripts/lando.entitlements" display="The checked-in entitlements file is passed to codesign with hardened runtime enabled" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="macos-notarization" render={false} reason="Notarization command construction is asserted with an injected release runner instead of live Apple credentials">
+    <Step name="notarytool">
+      <Variable name="profile" value="LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="Stage 10 authenticates notarytool through a keychain profile so passwords are not placed in process argv" />
+      <Variable name="sequence" value="submit,staple,validate" display="Each signed Darwin artifact is submitted, stapled, and validated before the release can proceed" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="future-platforms" render={false} reason="Windows and Linux signing are owned by follow-up signing stories and remain covered by their focused release tests">
+    <Step name="platform-boundaries">
+      <Variable name="windows" value="authenticode-cosign" display="Windows artifacts are signed with Authenticode and receive an additional cosign signature" />
+      <Variable name="linux" value="signed-checksum-manifests" display="Linux authenticity is handled at the checksum-manifest layer" />
+    </Step>
+  </Scenario>
+</Guide>

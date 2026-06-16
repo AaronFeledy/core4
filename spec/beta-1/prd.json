@@ -974,8 +974,8 @@
         "Lint passes"
       ],
       "priority": 55,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Release stage 9 now signs both darwin-x64 and darwin-arm64 binaries with the configured Developer ID identity, and stage 10 submits each signed artifact through notarytool, staples it, and validates the stapled ticket. Missing macOS signing/notarization credentials fail closed in release mode and warning-skip only under LOCAL_REHEARSAL=1; tests cover command construction, credential gating, and tagged release errors without live Apple credentials."
     },
     {
       "id": "US-255",
