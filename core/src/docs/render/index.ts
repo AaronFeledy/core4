@@ -130,5 +130,5 @@ export const loadPublicTranscript = async (args: {
     throw new Error(`Failed to decode public transcript at ${transcriptPath}`);
   }
 
-  return decoded.right;
+  return redactPublicTranscript(decoded.right);
 };

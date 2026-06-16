@@ -1,8 +1,13 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
 import {
   decodePublicTranscriptEither,
+  loadPublicTranscript,
   renderPublicTranscriptHtml,
   toPublicTranscriptView,
 } from "../../src/docs/render/index.ts";
@@ -107,6 +112,47 @@ describe("public transcript rendering", () => {
   test("decodes public transcript inputs", () => {
     expect(Either.isLeft(decodePublicTranscriptEither({}))).toBe(true);
     expect(Either.isRight(decodePublicTranscriptEither(phpTranscriptObject))).toBe(true);
+  });
+
+  test("sanitizes decoded public transcript artifacts at load time", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-transcript-load-"));
+    try {
+      const transcriptDir = join(root, "dist", "transcripts", "public", "guides", "redact-demo");
+      await mkdir(transcriptDir, { recursive: true });
+      await writeFile(
+        join(transcriptDir, "leak.json"),
+        JSON.stringify({
+          guideId: "redact-demo",
+          scenarioId: "leak",
+          variant: "",
+          runtime: "cli",
+          render: true,
+          frames: [
+            {
+              kind: "run",
+              sourceFile: "docs/guides/redact-demo.mdx",
+              sourceLine: 12,
+              commandDisplay: `lando start --root ${tmpdir()}/lando-load-test --token=\"quoted-token\"`,
+            },
+          ],
+        }),
+      );
+
+      const loaded = await loadPublicTranscript({
+        root,
+        guideId: "redact-demo",
+        scenarioId: "leak",
+        variant: "",
+      });
+
+      const command = loaded.frames[0]?.commandDisplay ?? "";
+      expect(command).toContain("<TMP>");
+      expect(command).toContain("[REDACTED]");
+      expect(command).not.toContain(tmpdir());
+      expect(command).not.toContain("quoted-token");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("maps view frames with source hrefs", () => {
