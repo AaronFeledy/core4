@@ -206,115 +206,120 @@ export const pluginPublish = (
       timestamp: new Date().toISOString(),
     });
 
-    if (tag.trim() === "" || /\s/.test(tag)) {
-      return yield* Effect.fail(
-        new PluginPublishValidationError({
-          message: `Invalid publish tag ${JSON.stringify(tag)} for ${manifest.name}.`,
-          remediation: "Pass a non-empty `--tag` value without whitespace, e.g. `--tag=latest`.",
-        }),
-      );
-    }
-    if (!isHttpUrl(registry)) {
-      return yield* Effect.fail(
-        new PluginPublishValidationError({
-          message: `Invalid publish registry ${JSON.stringify(registry)} for ${manifest.name}.`,
-          remediation: "Pass an http(s) registry via `--registry` or package.json#publishConfig.registry.",
-        }),
-      );
-    }
-
-    const sources = entries.map((entry) => entry.source);
-    const stale = yield* Effect.promise(() => isArtifactStale(pluginRoot, sources));
-    let rebuilt = false;
-    if (stale) {
-      const build = yield* pluginBuild({
-        cwd: pluginRoot,
-        ...bunOptions,
+    const publishCompleteEvent = (published: boolean, exitCode: number) =>
+      publishPluginPublishEvent({
+        _tag: "cli-meta:plugin:publish-complete",
+        pluginName: manifest.name,
+        pluginRoot,
+        registry,
+        tag,
+        dryRun,
+        published,
+        exitCode,
+        timestamp: new Date().toISOString(),
       });
-      rebuilt = true;
-      if (build.exitCode !== 0) {
+
+    return yield* Effect.gen(function* () {
+      if (tag.trim() === "" || /\s/.test(tag)) {
         return yield* Effect.fail(
           new PluginPublishValidationError({
-            message: `Plugin build failed for ${manifest.name} (exit ${build.exitCode}).`,
-            remediation: "Fix the build errors reported above and re-run `lando plugin:publish`.",
+            message: `Invalid publish tag ${JSON.stringify(tag)} for ${manifest.name}.`,
+            remediation: "Pass a non-empty `--tag` value without whitespace, e.g. `--tag=latest`.",
           }),
         );
       }
-    }
-
-    let tested = false;
-    if (options.noTest !== true) {
-      const test = yield* pluginTest({
-        cwd: pluginRoot,
-        ...bunOptions,
-      });
-      tested = true;
-      if (test.exitCode !== 0) {
+      if (!isHttpUrl(registry)) {
         return yield* Effect.fail(
           new PluginPublishValidationError({
-            message: `Plugin tests failed for ${manifest.name} (exit ${test.exitCode}).`,
-            remediation: "Fix the failing tests or pass `--no-test` to publish without retesting.",
+            message: `Invalid publish registry ${JSON.stringify(registry)} for ${manifest.name}.`,
+            remediation: "Pass an http(s) registry via `--registry` or package.json#publishConfig.registry.",
           }),
         );
       }
-    }
 
-    const packageContents = (yield* Effect.promise(() => outputDirectoryExists(pluginRoot)))
-      ? yield* Effect.promise(() => listOutputs(pluginRoot))
-      : [];
-
-    let published = false;
-    let exitCode = 0;
-    if (!dryRun) {
-      const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-      const authPath = join(userDataRoot, "plugin-auth.json");
-      const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
-      const token = registryToken(auth, registry);
-      if (token === undefined) {
-        return yield* Effect.fail(
-          new PluginPublishAuthError({
-            message: `No registry auth for ${registry} in ${authPath}.`,
-            remediation: `Run \`lando plugin:login --registry ${registry}\` to store a publish token, then retry.`,
-            registry,
-          }),
-        );
+      const sources = entries.map((entry) => entry.source);
+      const stale = yield* Effect.promise(() => isArtifactStale(pluginRoot, sources));
+      let rebuilt = false;
+      if (stale) {
+        const build = yield* pluginBuild({
+          cwd: pluginRoot,
+          ...bunOptions,
+        });
+        rebuilt = true;
+        if (build.exitCode !== 0) {
+          return yield* Effect.fail(
+            new PluginPublishValidationError({
+              message: `Plugin build failed for ${manifest.name} (exit ${build.exitCode}).`,
+              remediation: "Fix the build errors reported above and re-run `lando plugin:publish`.",
+            }),
+          );
+        }
       }
-      const publish = yield* bunSelfRun({
-        argv: ["publish", "--tag", tag, "--registry", registry],
-        cwd: join(pluginRoot, "dist"),
-        env: { BUN_AUTH_TOKEN: token },
-        verb: "publish",
-        callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
-        ...bunOptions,
-      });
-      exitCode = publish.exitCode;
-      published = exitCode === 0;
-    }
 
-    yield* publishPluginPublishEvent({
-      _tag: "cli-meta:plugin:publish-complete",
-      pluginName: manifest.name,
-      pluginRoot,
-      registry,
-      tag,
-      dryRun,
-      published,
-      exitCode,
-      timestamp: new Date().toISOString(),
-    });
+      let tested = false;
+      if (options.noTest !== true) {
+        const test = yield* pluginTest({
+          cwd: pluginRoot,
+          ...bunOptions,
+        });
+        tested = true;
+        if (test.exitCode !== 0) {
+          return yield* Effect.fail(
+            new PluginPublishValidationError({
+              message: `Plugin tests failed for ${manifest.name} (exit ${test.exitCode}).`,
+              remediation: "Fix the failing tests or pass `--no-test` to publish without retesting.",
+            }),
+          );
+        }
+      }
 
-    return {
-      pluginName: manifest.name,
-      pluginRoot,
-      registry,
-      tag,
-      packageContents,
-      dryRun,
-      rebuilt,
-      tested,
-      published,
-      exitCode,
-    };
+      const packageContents = (yield* Effect.promise(() => outputDirectoryExists(pluginRoot)))
+        ? yield* Effect.promise(() => listOutputs(pluginRoot))
+        : [];
+
+      let published = false;
+      let exitCode = 0;
+      if (!dryRun) {
+        const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
+        const authPath = join(userDataRoot, "plugin-auth.json");
+        const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
+        const token = registryToken(auth, registry);
+        if (token === undefined) {
+          return yield* Effect.fail(
+            new PluginPublishAuthError({
+              message: `No registry auth for ${registry} in ${authPath}.`,
+              remediation: `Run \`lando plugin:login --registry ${registry}\` to store a publish token, then retry.`,
+              registry,
+            }),
+          );
+        }
+        const publish = yield* bunSelfRun({
+          argv: ["publish", "--tag", tag, "--registry", registry],
+          cwd: join(pluginRoot, "dist"),
+          env: { BUN_AUTH_TOKEN: token },
+          verb: "publish",
+          callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
+          ...bunOptions,
+        });
+        exitCode = publish.exitCode;
+        published = exitCode === 0;
+      }
+
+      yield* publishCompleteEvent(published, exitCode);
+
+      return {
+        pluginName: manifest.name,
+        pluginRoot,
+        registry,
+        tag,
+        packageContents,
+        dryRun,
+        rebuilt,
+        tested,
+        published,
+        exitCode,
+      };
+    }).pipe(Effect.tapError(() => publishCompleteEvent(false, 1)));
   });
 
 export const renderPluginPublishResult = (result: PluginPublishResult): string => {

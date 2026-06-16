@@ -258,6 +258,7 @@ describe("meta:plugin:publish command", () => {
   test("missing auth produces a tagged remediation and never publishes", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
+    const events: LandoEvent[] = [];
     const spawns: Spawn[] = [];
 
     const exit = await Effect.runPromiseExit(
@@ -266,7 +267,7 @@ describe("meta:plugin:publish command", () => {
         noTest: true,
         userDataRoot: join(root, "empty-data-root"),
         spawner: makeBuildingSpawner(spawns),
-      }),
+      }).pipe(Effect.provide(recordingEventLayer(events))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -274,11 +275,17 @@ describe("meta:plugin:publish command", () => {
     expect(JSON.stringify(exit.cause)).toContain("PluginPublishAuthError");
     expect(JSON.stringify(exit.cause)).toContain("plugin:login");
     expect(spawns.map((spawn) => spawn.cmd[1])).not.toContain("publish");
+    expect(events.map((event) => event._tag)).toEqual([
+      "cli-meta:plugin:publish-start",
+      "cli-meta:plugin:publish-complete",
+    ]);
+    expect(events.at(-1)).toMatchObject({ published: false, exitCode: 1 });
   });
 
   test("rejects an invalid registry before publishing", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
+    const events: LandoEvent[] = [];
     const spawns: Spawn[] = [];
 
     const exit = await Effect.runPromiseExit(
@@ -288,13 +295,18 @@ describe("meta:plugin:publish command", () => {
         registry: "not-a-url",
         spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({ registries: { "not-a-url": { token: "t" } } }),
-      }),
+      }).pipe(Effect.provide(recordingEventLayer(events))),
     );
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Success") throw new Error("Expected pluginPublish to fail on invalid registry");
     expect(JSON.stringify(exit.cause)).toContain("PluginPublishValidationError");
     expect(spawns.map((spawn) => spawn.cmd[1])).not.toContain("publish");
+    expect(events.map((event) => event._tag)).toEqual([
+      "cli-meta:plugin:publish-start",
+      "cli-meta:plugin:publish-complete",
+    ]);
+    expect(events.at(-1)).toMatchObject({ published: false, exitCode: 1 });
   });
 
   test("rejects an empty tag before publishing", async () => {
