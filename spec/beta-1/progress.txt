@@ -884,3 +884,9 @@
 - Verification: typecheck, lint, release tests, CI workflow/codegen tests passed; LSP diagnostics unavailable because the TypeScript LSP server is not installed in this environment.
 - **Learnings for future iterations:** When centralizing release platform metadata, include nightly distribution rehearsal command generation in the same shared source; otherwise nightly can silently drift even when PR CI and release share one list.
 ---
+
+## 2026-06-16 13:52 CDT - US-257 Verify
+- Verified the freshly built compiled binary starts (`./core/dist/lando --version`) and ran a real local release rehearsal through stage 7: the full test gate passed (3883 pass / 39 skip / 0 fail), then all five release binaries compiled with `--bytecode` and duration logs; linux-x64 completed in 10588ms against the 600000ms budget.
+- Setup blocker: sandbox `setup --provider=podman` hit the existing provider-owned socket conflict, and `setup --provider=lando` hit the known placeholder runtime-bundle URL; the local manifest helper requires pre-staged runtime artifacts, so setup could not be completed here without fabricating a bundle. This does not block US-257's release-compile acceptance but is recorded per Verify rules.
+- Adjacent smoke: focused release tests and CI workflow/codegen tests passed during Review; compiled binary version smoke passed during Verify.
+---
