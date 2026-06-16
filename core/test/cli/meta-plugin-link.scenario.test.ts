@@ -242,6 +242,66 @@ describe("meta:plugin:link command", () => {
     expect((await lstat(registryEntry)).isSymbolicLink()).toBe(true);
   });
 
+  test("restores the previous registry when registry recording fails", async () => {
+    const pluginRoot = await makePluginRoot("@acme/lando-plugin-registry-rollback", "registry-rollback");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryPath = join(pluginsRoot, "registry.json");
+    const registryTmpPath = join(pluginsRoot, "registry.json.tmp");
+    const previousRegistry = `${JSON.stringify(
+      {
+        "lando-plugin-existing": {
+          name: "lando-plugin-existing",
+          version: "1.0.0",
+          path: join(pluginsRoot, "lando-plugin-existing"),
+          source: "installed",
+        },
+      },
+      null,
+      2,
+    )}\n`;
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(registryPath, previousRegistry);
+    await mkdir(registryTmpPath, { recursive: true });
+
+    const failed = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(failed._tag).toBe("Failure");
+    expect(await readFile(registryPath, "utf8")).toBe(previousRegistry);
+    expect(await exists(join(pluginsRoot, "@acme/lando-plugin-registry-rollback"))).toBe(false);
+  });
+
+  test("treats corrupt linked state as empty when linking a fresh plugin", async () => {
+    const pluginRoot = await makePluginRoot("lando-plugin-corrupt-linked-state", "corrupt-linked-state");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(join(pluginsRoot, ".lando-linked.json"), "not-json");
+
+    const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
+
+    expect(result.registryEntry).toBe(join(pluginsRoot, "lando-plugin-corrupt-linked-state"));
+    expect(await readlink(result.registryEntry)).toBe(resolve(pluginRoot));
+    const linkedState = await readJson<Record<string, { readonly linkedPath: string }>>(
+      join(pluginsRoot, ".lando-linked.json"),
+    );
+    expect(linkedState["lando-plugin-corrupt-linked-state"].linkedPath).toBe(resolve(pluginRoot));
+  });
+
+  test("treats a corrupt registry as empty when linking a fresh plugin", async () => {
+    const pluginRoot = await makePluginRoot("lando-plugin-corrupt-registry", "corrupt-registry");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(join(pluginsRoot, "registry.json"), "not-json");
+
+    const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
+
+    expect(result.registryEntry).toBe(join(pluginsRoot, "lando-plugin-corrupt-registry"));
+    expect(await readlink(result.registryEntry)).toBe(resolve(pluginRoot));
+    const registry = await readJson<Record<string, { readonly linkedPath: string }>>(
+      join(pluginsRoot, "registry.json"),
+    );
+    expect(registry["lando-plugin-corrupt-registry"].linkedPath).toBe(resolve(pluginRoot));
+  });
+
   test("restores the previous symlink and linked state when relink metadata recording fails", async () => {
     const originalRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-original");
     const replacementRoot = await makePluginRoot("@acme/lando-plugin-relink", "relink-replacement");

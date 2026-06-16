@@ -13,7 +13,7 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
+import type { InstalledPluginRegistryEntry } from "../../plugins/installed-registry.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
 
 const RESERVED_PLUGIN_ROOT_ENTRIES = new Set([
@@ -55,11 +55,17 @@ type LinkedPluginState = Record<
 >;
 
 const linkedStatePath = (pluginsRoot: string): string => join(pluginsRoot, ".lando-linked.json");
+const installedRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
 
 const readLinkedState = async (pluginsRoot: string): Promise<LinkedPluginState> => {
   const path = linkedStatePath(pluginsRoot);
   if (!existsSync(path)) return {};
-  const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return {};
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
   return parsed as LinkedPluginState;
 };
@@ -72,15 +78,69 @@ const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): 
   await rename(tmpPath, path);
 };
 
+const readInstalledRegistrySnapshot = async (pluginsRoot: string): Promise<string | undefined> => {
+  const path = installedRegistryPath(pluginsRoot);
+  if (!existsSync(path)) return undefined;
+  return readFile(path, "utf8");
+};
+
+const writeInstalledRegistrySnapshot = async (pluginsRoot: string, snapshot: string): Promise<void> => {
+  const path = installedRegistryPath(pluginsRoot);
+  await mkdir(dirname(path), { recursive: true });
+  const tmpPath = `${path}.tmp`;
+  await writeFile(tmpPath, snapshot);
+  await rename(tmpPath, path);
+};
+
+const restoreInstalledRegistrySnapshot = async (
+  pluginsRoot: string,
+  snapshot: string | undefined,
+): Promise<void> => {
+  const path = installedRegistryPath(pluginsRoot);
+  if (snapshot === undefined) {
+    await rm(path, { force: true });
+    return;
+  }
+  await writeInstalledRegistrySnapshot(pluginsRoot, snapshot);
+};
+
+const readInstalledRegistryForLink = async (pluginsRoot: string): Promise<Record<string, unknown>> => {
+  const snapshot = await readInstalledRegistrySnapshot(pluginsRoot);
+  if (snapshot === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(snapshot);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+  return parsed as Record<string, unknown>;
+};
+
+const recordLinkedPlugin = async (
+  pluginsRoot: string,
+  entry: InstalledPluginRegistryEntry,
+): Promise<void> => {
+  const registry = await readInstalledRegistryForLink(pluginsRoot);
+  await writeInstalledRegistrySnapshot(
+    pluginsRoot,
+    `${JSON.stringify(
+      {
+        ...registry,
+        [entry.name]: entry,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+};
+
 const loadRegistryEntry = async (
   pluginsRoot: string,
   pluginName: string,
 ): Promise<{ readonly source?: string; readonly path?: string } | undefined> => {
-  const registryPath = join(pluginsRoot, "registry.json");
-  if (!existsSync(registryPath)) return undefined;
-  const parsed = JSON.parse(await readFile(registryPath, "utf8")) as unknown;
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
-  const entry = (parsed as Record<string, unknown>)[pluginName];
+  const registry = await readInstalledRegistryForLink(pluginsRoot);
+  const entry = registry[pluginName];
   if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return undefined;
   const record = entry as Record<string, unknown>;
   return {
@@ -226,6 +286,7 @@ export const pluginLink = (
         await mkdir(dirname(registryEntry), { recursive: true });
         const prepared = await prepareRegistryEntry(pluginsRoot, manifest.name, registryEntry);
         const previousState = await readLinkedState(pluginsRoot);
+        const previousRegistry = await readInstalledRegistrySnapshot(pluginsRoot);
         let linkedStateWritten = false;
         await replaceRegistrySymlink(registryEntry, linkedPath);
         try {
@@ -234,7 +295,7 @@ export const pluginLink = (
             [manifest.name]: { source: "linked", linkedPath, registryEntry },
           });
           linkedStateWritten = true;
-          await recordInstalledPlugin(pluginsRoot, {
+          await recordLinkedPlugin(pluginsRoot, {
             name: manifest.name,
             version: manifest.version,
             path: registryEntry,
@@ -242,6 +303,7 @@ export const pluginLink = (
             linkedPath,
           });
         } catch (cause) {
+          await restoreInstalledRegistrySnapshot(pluginsRoot, previousRegistry).catch(() => undefined);
           if (linkedStateWritten) await writeLinkedState(pluginsRoot, previousState).catch(() => undefined);
           await restoreRegistrySymlink(registryEntry, prepared.previousSymlinkTarget).catch(() => undefined);
           throw cause;
