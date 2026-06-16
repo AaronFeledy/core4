@@ -331,6 +331,87 @@ describe("release orchestrator", () => {
     ).toBe(false);
   });
 
+  test("credential gates accept any declared credential alternative", async () => {
+    const shellStages: Array<{ stageId: string; script: string }> = [];
+    const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
+    const signingStage = RELEASE_STAGES.find((stage) => stage.id === "9-sign");
+    expect(manifestStage).toBeDefined();
+    expect(signingStage).toBeDefined();
+    if (manifestStage === undefined || signingStage === undefined) throw new Error("missing release stage");
+
+    await manifestStage.run({
+      target: "all",
+      env: { LANDO_RELEASE_GPG_KEY: "key" },
+      localRehearsal: false,
+      runner: {
+        spawn: async () => {},
+        shell: async ({ stageId, script }) => {
+          shellStages.push({ stageId, script });
+        },
+      },
+      logger: () => {},
+    });
+
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
+    ).toBe(true);
+    try {
+      await signingStage.run({
+        target: "binary",
+        env: { LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example" },
+        localRehearsal: false,
+        runner: {
+          spawn: async () => {},
+          shell: async () => {},
+        },
+        logger: () => {},
+      });
+      throw new Error("expected 9-sign to fail after accepting credentials");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Release stage 9-sign is not implemented yet");
+    }
+  });
+
+  test("publish runs for the all target but skips binary-only releases", async () => {
+    const publishStage = RELEASE_STAGES.find((stage) => stage.id === "13-publish");
+    const shellStages: Array<{ stageId: string; script: string }> = [];
+    const logs: Array<string> = [];
+    expect(publishStage).toBeDefined();
+    if (publishStage === undefined) throw new Error("missing publish stage");
+
+    await publishStage.run({
+      target: "all",
+      env: libraryPublishEnv,
+      localRehearsal: false,
+      runner: {
+        spawn: async () => {},
+        shell: async ({ stageId, script }) => {
+          shellStages.push({ stageId, script });
+        },
+      },
+      logger: (line) => logs.push(line),
+    });
+
+    await publishStage.run({
+      target: "binary",
+      env: libraryPublishEnv,
+      localRehearsal: false,
+      runner: {
+        spawn: async () => {},
+        shell: async ({ stageId, script }) => {
+          shellStages.push({ stageId, script });
+        },
+      },
+      logger: (line) => logs.push(line),
+    });
+
+    expect(
+      shellStages.filter(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+    ).toHaveLength(1);
+    expect(logs).toContain("[release] skip 13-publish (binary release target)");
+  });
+
   test("local rehearsal can run the compile prefix for the current platform without signing secrets", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const logs: Array<string> = [];

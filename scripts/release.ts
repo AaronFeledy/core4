@@ -170,7 +170,7 @@ const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: Credential
   if (!required.every((name) => envHas(env, name))) return false;
 
   const alternatives = requirement.anyOf ?? [];
-  return alternatives.every((group) => group.some((name) => envHas(env, name)));
+  return alternatives.length === 0 || alternatives.some((group) => group.some((name) => envHas(env, name)));
 };
 
 const credentialGate = (
@@ -312,10 +312,9 @@ const shellStage =
         );
         return;
       }
-      if (target !== "library") {
-        throw new Error(
-          "Binary release publishing is not implemented yet; run --library for npm-only publish.",
-        );
+      if (target === "binary") {
+        context.logger("[release] skip 13-publish (binary release target)");
+        return;
       }
     }
 
