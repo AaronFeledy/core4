@@ -910,3 +910,9 @@
 - Verification: focused contract tests passed (`entry-points-export`, `core-testing-export`, `cli-operations-export`, `make-runtime-app`: 19 pass / 0 fail; `import-boundary`: 23 pass / 0 fail). Manual package-resolution QA imported `@lando/core/docs/redactions` and printed the redaction function type. Typecheck and lint passed; full `bun test` passed.
 - **Learnings for future iterations:** A late PRD story can be satisfied by earlier enabling work; before adding new compatibility tests, first verify the exact acceptance files and package exports already named by the PRD.
 ---
+
+## 2026-06-16 16:58 CDT - US-273 Verify
+- Verified the freshly built compiled binary starts in `lando4-dev`; default `setup` still fails on the known placeholder Lando runtime-bundle URL, while `setup --skip-provider --no-interactive` completes and preserves the compiled install path.
+- Exercised the story's user-facing library surface by importing `@lando/core/docs/redactions` and confirming `redactPublicTranscript`/`redactPublicTranscriptText` resolve as functions; adjacent compiled `--help` smoke passed.
+- **Learnings for future iterations:** For library-contract stories, the real user scenario is package import resolution; default provider setup can remain blocked by the placeholder runtime bundle even when the story's acceptance surface is fully verifiable.
+---
