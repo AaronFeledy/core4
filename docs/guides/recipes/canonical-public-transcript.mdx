@@ -1,0 +1,70 @@
+---
+id: canonical-public-transcript
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 300000
+tags: [beta, docs, recipes, transcripts]
+---
+
+<Guide>
+  <Scenario id="public-transcript-docs-render" render>
+    <Step name="scaffold-recipe">
+      <Variable name="appName" value="canonical-guide" display="Canonical guide recipe app" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="validate-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup-generated-app">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="library-runtime-api">
+    <Step name="read-through-core-api">
+      <Run
+        runtime="library"
+        code={`context.runtime.files.set("/app/.lando.yml", "name: canonical-library\nservices:\n  appserver:\n    type: node\n");
+const fileSystem = yield* LandoCore.FileSystem.pipe(Effect.provide(context.runtime.layer));
+const landofile = yield* fileSystem.readText("/app/.lando.yml");
+expect(landofile).toContain("name: canonical-library");
+expect(landofile).toContain("type: node");`}
+        displayCode={`import { Effect } from "effect";
+import { FileSystem } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({
+  files: {
+    "/app/.lando.yml": "name: canonical-library\nservices:\n  appserver:\n    type: node\n",
+  },
+});
+
+const landofile = await Effect.runPromise(
+  Effect.gen(function* () {
+    const files = yield* FileSystem;
+    return yield* files.readText("/app/.lando.yml");
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(landofile);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
+    <Step name="scaffold-real-provider-app">
+      <Variable name="appName" value="canonical-guide-e2e" display="Canonical guide e2e app" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="start-real-provider-app">
+      <Run command="lando start" />
+    </Step>
+    <Step name="inspect-real-provider-app">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup-real-provider-app">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
