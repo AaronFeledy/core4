@@ -851,3 +851,9 @@
   - The redaction allowlist (not just value scrubbing) is what enforces "update telemetry fields are constrained" — a caller passing `installDir`/`rawError`/`args` to `update-outcome` has them dropped at the transport, so privacy holds even if a future builder regresses.
   - `TELEMETRY_EVENTS` is `as const`, so `spec.fields` has a narrow per-field literal union where fields without `allowedValues` lack the key entirely. Iterate as `ReadonlyArray<TelemetryFieldSpec>` before reading `field.allowedValues`, or `tsc -b` fails (bun:test does not catch it).
 ---
+
+## 2026-06-16 08:05 CDT - US-239 Review
+- Reviewed the telemetry redaction layer + retention policy against PRD-06 US-239. All five ACs hold: allowlist-then-scrub redaction wired into the transport's `record` before enqueue, the required redaction test matrix (POSIX/Windows/UNC/`~`/credentialed URLs/UUID/FQDN/nested payloads), update fields constrained to version/target/channel/platform/outcome, and a what/where/who/when retention policy linked from `events.md`, the opt-out command output (`policy` field in json/yaml/table), and the inventory module. No code changes needed.
+- Review notes (deferred to US-242): the `deprecation-used` `id` is scrubbed as a free string, so a dot-separated surface id (e.g. `services.database.type`) collapses to `[host]`. Not a US-239 defect — no shipped code records `deprecation-used` yet and conservative over-redaction satisfies the PRD; the actual deprecation→telemetry wiring (US-242) should decide whether that id needs an allowlist/identifier exemption to preserve fidelity.
+- Verification: typecheck, lint (+ deprecation check), `check:telemetry-inventory`, and full `bun test` (3871 pass / 39 skip / 0 fail) all green.
+---
