@@ -366,7 +366,7 @@ describe("release orchestrator", () => {
     ]);
   });
 
-  test("local rehearsal warning-skips partial Apple notarization credentials", async () => {
+  test("local rehearsal warning-skips Apple notarization credentials without a keychain profile", async () => {
     const logs: Array<string> = [];
 
     await runRelease({
@@ -376,6 +376,8 @@ describe("release orchestrator", () => {
         LOCAL_REHEARSAL: "1",
         LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
         LANDO_RELEASE_APPLE_ID: "maintainer@example.com",
+        LANDO_RELEASE_APPLE_PASSWORD: "app-specific-password",
+        LANDO_RELEASE_APPLE_TEAM_ID: "TEAMID123",
       },
       runner: {
         spawn: async () => {},
@@ -387,6 +389,36 @@ describe("release orchestrator", () => {
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 10-notarize (Apple notarization credentials absent)",
     );
+  });
+
+  test("rejects password-shaped Apple notarization credentials before secrets enter argv", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await expect(
+      runRelease({
+        target: "binary",
+        throughStage: "10-notarize",
+        env: {
+          LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
+          LANDO_RELEASE_APPLE_ID: "maintainer@example.com",
+          LANDO_RELEASE_APPLE_PASSWORD: "app-specific-password",
+          LANDO_RELEASE_APPLE_TEAM_ID: "TEAMID123",
+        },
+        runner: {
+          spawn: async ({ stageId, cmd }) => {
+            spawnStages.push({ stageId, cmd });
+          },
+          shell: async () => {},
+        },
+        logger: () => {},
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "10-notarize",
+      artifactFamily: "binary",
+    });
+
+    expect(spawnStages.some(({ cmd }) => cmd.includes("app-specific-password"))).toBe(false);
   });
 
   test("wraps macOS signing command failures in tagged release errors", async () => {

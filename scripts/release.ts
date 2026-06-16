@@ -161,7 +161,6 @@ interface CredentialRequirement {
   readonly allOf?: ReadonlyArray<string>;
   readonly allOfAny?: ReadonlyArray<ReadonlyArray<string>>;
   readonly anyOf?: ReadonlyArray<ReadonlyArray<string>>;
-  readonly anyCompleteOf?: ReadonlyArray<ReadonlyArray<string>>;
 }
 
 const envHas = (env: ReleaseEnvironment, name: string): boolean =>
@@ -178,11 +177,7 @@ const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: Credential
   if (alternatives.length > 0 && !alternatives.some((group) => group.some((name) => envHas(env, name))))
     return false;
 
-  const completeAlternatives = requirement.anyCompleteOf ?? [];
-  return (
-    completeAlternatives.length === 0 ||
-    completeAlternatives.some((group) => group.every((name) => envHas(env, name)))
-  );
+  return true;
 };
 
 const credentialGate = (
@@ -219,11 +214,7 @@ const macosSigningCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_SIGNING_IDENTITY"],
 };
 const appleNotarizationCredentials: CredentialRequirement = {
-  anyCompleteOf: [
-    ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
-    ["LANDO_RELEASE_APPLE_ID", "LANDO_RELEASE_APPLE_PASSWORD", "LANDO_RELEASE_APPLE_TEAM_ID"],
-    ["APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"],
-  ],
+  allOf: ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
 };
 const manifestSigningCredentials: CredentialRequirement = {
   allOfAny: [
@@ -269,33 +260,6 @@ const macosCodesignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyA
 const macosNotaryAuthArgs = (env: ReleaseEnvironment): ReadonlyArray<string> => {
   const keychainProfile = env.LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE;
   if (keychainProfile !== undefined && keychainProfile !== "") return ["--keychain-profile", keychainProfile];
-
-  const landoAppleId = env.LANDO_RELEASE_APPLE_ID;
-  const landoPassword = env.LANDO_RELEASE_APPLE_PASSWORD;
-  const landoTeamId = env.LANDO_RELEASE_APPLE_TEAM_ID;
-  if (
-    landoAppleId !== undefined &&
-    landoAppleId !== "" &&
-    landoPassword !== undefined &&
-    landoPassword !== "" &&
-    landoTeamId !== undefined &&
-    landoTeamId !== ""
-  )
-    return ["--apple-id", landoAppleId, "--password", landoPassword, "--team-id", landoTeamId];
-
-  const appleId = env.APPLE_ID;
-  const applePassword = env.APPLE_PASSWORD;
-  const appleTeamId = env.APPLE_TEAM_ID;
-  if (
-    appleId !== undefined &&
-    appleId !== "" &&
-    applePassword !== undefined &&
-    applePassword !== "" &&
-    appleTeamId !== undefined &&
-    appleTeamId !== ""
-  )
-    return ["--apple-id", appleId, "--password", applePassword, "--team-id", appleTeamId];
-
   throw new Error("Missing Apple notarization credentials");
 };
 
