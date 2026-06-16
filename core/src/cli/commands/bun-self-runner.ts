@@ -16,6 +16,7 @@ export interface BunSelfSpawner {
 export interface BunSelfRunOptions {
   readonly argv: ReadonlyArray<string>;
   readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
   readonly spawner?: BunSelfSpawner;
   readonly execPath?: string;
   readonly callerSubsystem?: string;
@@ -108,7 +109,7 @@ export const bunSelfRun = (
     const { exitCode } = yield* Effect.promise(() =>
       spawner.spawn({
         cmd: [execPath, ...options.argv],
-        env: childEnv(process.env),
+        env: { ...childEnv(process.env), ...(options.env ?? {}) },
         cwd,
       }),
     );

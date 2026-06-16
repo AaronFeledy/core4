@@ -783,6 +783,23 @@
   - Unlink removes only the registry SYMLINK (`lstat` isSymbolicLink guard + `rm` on the link path, never the target) and refuses a real (non-symlink) directory at the registry path, so an installed plugin copy can never be deleted through unlink.
   - Promoting a deferred plugin command to MVP that changes its OCLIF `bootstrap` level requires regenerating `compiled-manifest.ts` (`bun run scripts/build-oclif-manifest.ts`); `oclif.manifest.json` does not track per-command bootstrap, so only the generated `.ts` changes.
 ---
+## 2026-06-16 CDT - US-235
+- Shipped `meta:plugin:publish` as a real MVP command (promoted from the deferred registry): a built-artifact publisher that rebuilds when `dist/` is stale, retests unless `--no-test`, validates manifest shape / `api: 4` / module containment / package contents / `tag` / `registry`, reads registry auth from `<userDataRoot>/plugin-auth.json` (missing auth → tagged `PluginPublishAuthError` remediation pointing at `lando plugin:login --registry …`, never prompts), and supports `--dry-run` (prints package contents, planned registry, tag, validation, exits 0 with no network publish). Build/test/publish child work all routes through `BunSelfRunner` and emits `cli-meta:plugin:publish-start`/`-complete` plus the child build/test lifecycle events.
+- Wired source-mode OCLIF (`publish.ts` with `--tag`/`--registry`/`--dry-run`/`--no-test`/`--no-interactive`) and the compiled `run.ts` dispatch branch in lockstep; regenerated `compiled-manifest.ts` so compiled-path flag parsing matches. Removed publish from `DEFERRED_COMMAND_PLANS` (dropping the now-unused authoring plan) and added it to `MVP_COMMAND_IDS`; re-pointed every hard-coded publish-as-deferred test reference to the still-deferred `meta:plugin:login`.
+- Verification: typecheck, lint, full `bun test` (3793 pass / 38 skip / 0 fail) passed. CLI QA in both source and compiled binaries: dry-run with default and custom `--tag`/`--registry`, missing-auth remediation, and confirmed `meta:plugin:login` still defers identically on both paths.
+- **Learnings for future iterations:**
+  - Tagged publish errors are core-local `Data.TaggedError` types (`PluginPublishValidationError`/`PluginPublishAuthError`), not SDK errors — the SDK error barrel is compat-frozen, so command-specific failure modes belong in the core command module (same pattern as `PluginBuildMixedTreeError`).
+  - Promoting a deferred command with flags requires regenerating `compiled-manifest.ts` AFTER the OCLIF command module typechecks clean, then grep the regenerated `compiled-manifest.ts` to confirm the flags actually landed — the compiled dispatch path silently ignores flags that never made it into the manifest.
+  - Artifact staleness keys off `dist/package.json` mtime (written last by the build) vs source entrypoint mtimes; a fresh dist whose files post-date every source entrypoint counts as up-to-date and skips the rebuild.
+---
+
+## 2026-06-16 00:59 CDT - US-235 Review
+- Verified the `meta:plugin:publish` implementation against PRD-05 §US-235: artifact staleness rebuild, retest/`--no-test`, manifest/`api: 4`/module-containment/registry/tag validation, `<userDataRoot>/plugin-auth.json` auth with non-prompting `PluginPublishAuthError`, `--dry-run` package listing with exit 0 and no network publish, and `BunSelfRunner`-routed build/test/publish lifecycle events all check out; both OCLIF and compiled `run.ts` dispatch paths are wired in lockstep with the regenerated compiled manifest carrying the flags.
+- Fixed the one PRD gap the build step left: US-235's required guide `docs/guides/plugins/publish-plugin.mdx` (PRD-05 Guide Coverage, "Required at story acceptance") was missing while every sibling authoring story shipped its guide. Added it as a `render={false}` `provider: test` documentation scenario mirroring the link/test-build guides, plus its `Shipped` INDEX.md row.
+- Verification: typecheck, lint, lint:guides, check:guide-coverage, the touched CLI/parity/deferred test files, the publish scenario suite, and the generated publish-plugin guide scenario all pass. Pre-existing `check:public-transcripts` failures (27 guides) are environmental — the gitignored `dist/transcripts/` artifacts aren't built locally; the new render=false guide correctly emits no transcript and is absent from that list.
+- **Learnings for future iterations:** beta-1 PRD guide coverage is NOT machine-enforced — `check:guide-coverage` and `check:guide-drift` both scan `spec/alpha-3`, so a missing beta-1 "Required at story acceptance" guide passes CI silently. Treat the PRD's `## Guide Coverage` table as the authoritative per-story deliverable list during review even when no gate fails.
+---
+
 ## 2026-06-16 02:08 CDT - US-252
 - Made release artifact-family behavior explicit: binary targets run stages 1-5 and 7-13, library targets run stages 1-6 and 11-13, and `--through-stage` lets maintainers rehearse ordered prefixes without changing the canonical stage order.
 - Local rehearsal now warning-skips credential-gated signing/notarization/provenance/publish work when secrets are absent while still running the non-signing manifest write path for `SHA256SUMS`, `SHA512SUMS`, and `update-manifest.json`.
@@ -794,4 +811,10 @@
 - Fixed release rehearsal safety blockers: credential-gated placeholder signing/notarization/provenance stages now fail closed outside local rehearsal, publish requires npm credentials and never runs during local rehearsal, and the required release rehearsal guide is shipped.
 - Review notes (deferred/rejected): real signing, notarization, provenance/SBOM, and binary publishing command bodies remain follow-on stories; this review keeps their placeholders non-publishable/non-successful in release mode rather than implementing later-story tooling.
 - Verification: typecheck, lint, full tests, focused release tests, guide lint, and guide coverage passed.
+---
+## 2026-06-16 03:25 CDT - Babysit
+- PR: #373 https://github.com/AaronFeledy/core4/pull/373
+- CI outcome: pass (all static/platform, guide-scenarios, provider-integration, perf-budget, and Cursor Bugbot green)
+- Review feedback: fixed (Bugbot findings on plugin-publish.ts resolved — publish now injects BUN_AUTH_TOKEN and forwards --registry, publish-complete fires on failure via tapError, and stale check compares package.json mtime)
+- Merge: merged (squash) as c8aa9292 Implement meta:plugin:publish with rebuild, retest, validate, and auth (#373)
 ---

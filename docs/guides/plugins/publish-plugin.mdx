@@ -1,0 +1,28 @@
+---
+id: publish-plugin
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, authoring]
+---
+
+<Guide>
+  <Scenario id="publish-plugin" render={false} reason="Core command tests exercise meta:plugin:publish against isolated authored plugin fixtures, including stale-artifact rebuild, retest, manifest/registry/tag validation, auth lookup, dry-run package listing, and BunSelfRunner-routed publish with lifecycle events">
+    <Step name="dry-run-command">
+      <Variable name="command" value="lando meta:plugin:publish --dry-run" display="Validate the built artifact and list its package contents without performing a network publish" />
+      <Variable name="contents" value="contents: dist/index.d.ts, dist/index.js, dist/package.json" display="Dry-run prints the dist package contents, the planned registry and tag, the validation result, then exits 0" />
+    </Step>
+    <Step name="rebuild-retest">
+      <Variable name="rebuild" value="rebuilt: true" display="A stale artifact (any source entrypoint newer than dist/package.json) is rebuilt through BunSelfRunner before publishing" />
+      <Variable name="retest" value="tested: true (skip with --no-test)" display="The plugin test suite is re-run before publish unless --no-test is set" />
+    </Step>
+    <Step name="validation">
+      <Variable name="manifest" value="manifest api: 4 + module containment" display="Manifest shape, api: 4, package exports, and module containment are validated before any publish attempt" />
+      <Variable name="registry-tag" value="--registry &lt;url&gt; --tag &lt;dist-tag&gt;" display="The registry (flag, package.json#publishConfig.registry, or the npm default) must be an http(s) URL and the dist-tag must be non-empty whitespace-free" />
+    </Step>
+    <Step name="auth-and-events">
+      <Variable name="auth" value="&lt;userDataRoot&gt;/plugin-auth.json" display="Publish auth is read from the user data root; missing credentials fail with PluginPublishAuthError pointing at lando plugin:login and never prompt in non-interactive mode" />
+      <Variable name="events" value="cli-meta:plugin:publish-start pre-bun-self-exec post-bun-self-exec cli-meta:plugin:publish-complete" display="Publish and its build/test child operations route through BunSelfRunner and publish plugin-publish lifecycle events" />
+    </Step>
+  </Scenario>
+</Guide>
