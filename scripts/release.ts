@@ -423,7 +423,8 @@ const spawnCommandsForStage = (
   context: ReleaseStageContext,
   commands: ReadonlyArray<ReadonlyArray<string>>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, releasePlatformsForContext(context));
+  if (stageId === "10-notarize")
+    return macosNotarizationCommands(context.env, releasePlatformsForContext(context));
   return commands;
 };
 
