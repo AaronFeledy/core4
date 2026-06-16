@@ -457,17 +457,19 @@ const defineStage = (
     commandSummary: stage.commandSummary,
     remediation: stage.remediation,
   };
-  const spawnCommands = Array.isArray(stage.command[0])
-    ? (stage.command as ReadonlyArray<ReadonlyArray<string>>)
-    : [stage.command as ReadonlyArray<string>];
-  const run =
-    stage.kind === "spawn"
-      ? spawnStage(base, spawnCommands)
-      : stage.kind === "shell"
-        ? shellStage(base, stage.command as string)
-        : skipStage(base, stage.command as string);
 
-  return { ...stage, run };
+  if (stage.kind === "spawn") {
+    const commands = Array.isArray(stage.command[0])
+      ? (stage.command as ReadonlyArray<ReadonlyArray<string>>)
+      : [stage.command as ReadonlyArray<string>];
+    return { ...stage, run: spawnStage(base, commands) };
+  }
+
+  if (stage.kind === "shell") {
+    return { ...stage, run: shellStage(base, stage.command as string) };
+  }
+
+  return { ...stage, run: skipStage(base, stage.command as string) };
 };
 
 const windowsSignStage: ReleaseStage = {
