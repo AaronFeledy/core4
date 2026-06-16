@@ -799,3 +799,10 @@
 - Verification: typecheck, lint, lint:guides, check:guide-coverage, the touched CLI/parity/deferred test files, the publish scenario suite, and the generated publish-plugin guide scenario all pass. Pre-existing `check:public-transcripts` failures (27 guides) are environmental — the gitignored `dist/transcripts/` artifacts aren't built locally; the new render=false guide correctly emits no transcript and is absent from that list.
 - **Learnings for future iterations:** beta-1 PRD guide coverage is NOT machine-enforced — `check:guide-coverage` and `check:guide-drift` both scan `spec/alpha-3`, so a missing beta-1 "Required at story acceptance" guide passes CI silently. Treat the PRD's `## Guide Coverage` table as the authoritative per-story deliverable list during review even when no gate fails.
 ---
+
+## 2026-06-16 03:25 CDT - Babysit
+- PR: #373 https://github.com/AaronFeledy/core4/pull/373
+- CI outcome: pass (all static/platform, guide-scenarios, provider-integration, perf-budget, and Cursor Bugbot green)
+- Review feedback: fixed (Bugbot findings on plugin-publish.ts resolved — publish now injects BUN_AUTH_TOKEN and forwards --registry, publish-complete fires on failure via tapError, and stale check compares package.json mtime)
+- Merge: merged (squash) as c8aa9292 Implement meta:plugin:publish with rebuild, retest, validate, and auth (#373)
+---
