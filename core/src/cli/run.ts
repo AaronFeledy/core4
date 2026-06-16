@@ -1364,16 +1364,18 @@ const runMetaPluginLink = async (argv: ReadonlyArray<string>): Promise<void> => 
   );
 };
 
+const metaPluginUnlinkCommandId = "meta:plugin:unlink";
+
 const runMetaPluginUnlink = async (argv: ReadonlyArray<string>): Promise<void> => {
-  if (rejectInvalidInvocation("meta:plugin:unlink", argv)) return;
-  const input = compiledCommandInputFromArgv("meta:plugin:unlink", argv);
+  if (rejectInvalidInvocation(metaPluginUnlinkCommandId, argv)) return;
+  const input = compiledCommandInputFromArgv(metaPluginUnlinkCommandId, argv);
   const name = typeof input.args.name === "string" ? input.args.name : undefined;
   if (name === undefined) {
     emitDiagnosticLine(
       commandErrorMessage(
         new NotImplementedError({
           message: "meta:plugin:unlink requires a plugin name argument.",
-          commandId: "meta:plugin:unlink",
+          commandId: metaPluginUnlinkCommandId,
           remediation: "Pass the plugin name, e.g. `lando plugin:unlink @lando/plugin-php`.",
         }),
       ),

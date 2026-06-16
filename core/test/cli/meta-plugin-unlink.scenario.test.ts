@@ -107,7 +107,6 @@ describe("meta:plugin:unlink command", () => {
     const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
     expect(linkedState["@acme/lando-plugin-unlink"]).toBeUndefined();
     expect(await exists(cachePath)).toBe(false);
-    // Source authoring tree is never touched.
     expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
     expect(await readFile(join(pluginRoot, "package.json"), "utf8")).toContain("@acme/lando-plugin-unlink");
   });
@@ -174,7 +173,6 @@ describe("meta:plugin:unlink command", () => {
     expect(registry["@acme/lando-plugin-restore"]).toEqual(previousRegistry);
     const linkedState = await readJson<Record<string, unknown>>(join(pluginsRoot, ".lando-linked.json"));
     expect(linkedState["@acme/lando-plugin-restore"]).toBeUndefined();
-    // Source authoring tree is never touched.
     expect(await readFile(join(pluginRoot, "package.json"), "utf8")).toContain("@acme/lando-plugin-restore");
   });
 

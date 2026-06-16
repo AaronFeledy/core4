@@ -54,7 +54,7 @@ export interface LinkedPluginEntry {
 
 export type LinkedPluginState = Record<string, LinkedPluginEntry>;
 
-export const linkedStatePath = (pluginsRoot: string): string => join(pluginsRoot, ".lando-linked.json");
+const linkedStatePath = (pluginsRoot: string): string => join(pluginsRoot, ".lando-linked.json");
 const installedRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
 
 export const readLinkedState = async (pluginsRoot: string): Promise<LinkedPluginState> => {
