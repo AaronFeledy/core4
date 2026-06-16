@@ -762,3 +762,13 @@
 - Review feedback: fixed (Bugbot redaction findings addressed: fixture paths, short `-t=`/`-k=` flags, full POSIX home paths, and deterministic public transcript emission independent of local user/host)
 - Merge: merged (squash) as 0aaac4c Add public transcript redaction (#370)
 ---
+
+## 2026-06-15 23:20 CDT - US-234
+- Shipped `meta:plugin:unlink`: it validates the plugin name (containment-checked against the managed plugins root), locates the linked registry entry, and either restores a prior registry copy atomically when the linked-state lockfile recorded one (`previousRegistry`) or removes the linked symlink plus registry metadata when none exists. The source authoring checkout is never touched, and the same plugin command cache is invalidated as link.
+- Promoted the command from deferred to MVP across both dispatch paths: removed the deferred plan/fixture entry, added it to `MVP_COMMAND_IDS`, added the compiled `runCompiledCli` branch (missing-name diagnostic + minimal-bootstrap runtime), switched the OCLIF spec to `minimal` bootstrap, and regenerated the compiled OCLIF manifest. Extended the link guide to document unlink remove/restore/not-linked behavior.
+- Verification: RED→GREEN unit scenarios (remove, restore, not-linked, escape-name containment, real-dir refusal), full `bun test` (3785 pass / 38 skip / 0 fail), typecheck, lint, deprecation check, and guide lint all passed. Source CLI QA against isolated conf/data/cache roots: link→unlink removed (symlink + registry cleared, source sentinel intact), not-linked exits 1 with `PluginUnlinkNotLinkedError` remediation, missing-arg exits 2, and a crafted `previousRegistry` lockfile restored the prior installed entry into `registry.json` with the symlink removed.
+- **Learnings for future iterations:**
+  - The `.lando-linked.json` entry now carries an optional `previousRegistry: InstalledPluginRegistryEntry` that unlink restores; today only unlink reads/restores it (link never records a prior copy because it refuses to replace non-linked entries), so the restore branch is reachable via lockfile state but not yet produced by link — a future `link --yes` replacement flow is the seam that would populate it.
+  - Unlink removes only the registry SYMLINK (`lstat` isSymbolicLink guard + `rm` on the link path, never the target) and refuses a real (non-symlink) directory at the registry path, so an installed plugin copy can never be deleted through unlink.
+  - Promoting a deferred plugin command to MVP that changes its OCLIF `bootstrap` level requires regenerating `compiled-manifest.ts` (`bun run scripts/build-oclif-manifest.ts`); `oclif.manifest.json` does not track per-command bootstrap, so only the generated `.ts` changes.
+---

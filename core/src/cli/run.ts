@@ -85,6 +85,7 @@ import {
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
 } from "./commands/plugin-trust.ts";
+import { pluginUnlink, renderPluginUnlinkResult } from "./commands/plugin-unlink.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
@@ -1363,6 +1364,30 @@ const runMetaPluginLink = async (argv: ReadonlyArray<string>): Promise<void> => 
   );
 };
 
+const runMetaPluginUnlink = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:plugin:unlink", argv)) return;
+  const input = compiledCommandInputFromArgv("meta:plugin:unlink", argv);
+  const name = typeof input.args.name === "string" ? input.args.name : undefined;
+  if (name === undefined) {
+    emitDiagnosticLine(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:unlink requires a plugin name argument.",
+          commandId: "meta:plugin:unlink",
+          remediation: "Pass the plugin name, e.g. `lando plugin:unlink @lando/plugin-php`.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  await runCompiledCommand(
+    pluginUnlink({ name }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginUnlinkResult,
+  );
+};
+
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
@@ -1810,6 +1835,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "meta:plugin:link") {
     await runMetaPluginLink(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:unlink") {
+    await runMetaPluginUnlink(argv.slice(1));
     return;
   }
 
