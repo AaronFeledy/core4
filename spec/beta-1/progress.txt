@@ -738,3 +738,9 @@
 - **Learnings for future iterations:** Always compose rather than fork the CLI redactor; redact *only* the three reader-visible PublicTranscriptFrame text fields (displayText/commandDisplay/resultSummary) — never touch kind/sourceFile/sourceLine/guideId/etc. or the SDK schema (avoids four-place snapshot lockstep); injectable `RedactionEnvironment` + longest-first root sort + generic patterns (before env-specific) gives true cross-platform determinism (same input under mock env -> byte-identical output) for POSIX/Windows/provider/library fixtures; the two redaction call sites (emit + toPublicTranscriptView) together satisfy both "before written" and "before docs-site consumption"; public render must stay exclusively through `@lando/core/docs/render` and `publicTranscriptRelativePath` must be shared between emitter and the missing-artifact gate.
 - Stop (per build.md / story constraints): no push, no review, no CI babysit, no scope creep.
 
+
+## 2026-06-15 21:00 CDT - US-249 Review
+- Fixed review blockers in the public transcript redaction path: quoted secret CLI/env values now redact, default host/user/path environment redaction applies when emitting artifacts, loaded public transcript artifacts sanitize again before docs consumption, and the docs redaction helper is exposed through the documented package subpath.
+- Review notes (fixed): goal/security/code-quality lanes found quoted-secret and host/user redaction coverage gaps; context mining found the missing `@lando/core/docs/redactions` export contract; full-suite export identity failure was made robust to Bun workspace symlink module identity while preserving contract equivalence.
+- Verification: typecheck, lint, focused redaction/render/export tests, and full `bun test` passed (3763 pass / 38 skip / 0 fail).
+---
