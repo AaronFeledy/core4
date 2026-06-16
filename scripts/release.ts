@@ -159,6 +159,7 @@ const stagePrefixLimit = (throughStage: number | string | undefined): ReadonlyAr
 
 interface CredentialRequirement {
   readonly allOf?: ReadonlyArray<string>;
+  readonly allOfAny?: ReadonlyArray<ReadonlyArray<string>>;
   readonly anyOf?: ReadonlyArray<ReadonlyArray<string>>;
 }
 
@@ -168,6 +169,9 @@ const envHas = (env: ReleaseEnvironment, name: string): boolean =>
 const hasRequiredCredentials = (env: ReleaseEnvironment, requirement: CredentialRequirement): boolean => {
   const required = requirement.allOf ?? [];
   if (!required.every((name) => envHas(env, name))) return false;
+
+  const requiredAlternatives = requirement.allOfAny ?? [];
+  if (!requiredAlternatives.every((group) => group.some((name) => envHas(env, name)))) return false;
 
   const alternatives = requirement.anyOf ?? [];
   return alternatives.length === 0 || alternatives.some((group) => group.some((name) => envHas(env, name)));
@@ -214,7 +218,7 @@ const appleNotarizationCredentials: CredentialRequirement = {
   anyOf: [["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"], ["LANDO_RELEASE_APPLE_ID", "APPLE_ID"]],
 };
 const manifestSigningCredentials: CredentialRequirement = {
-  anyOf: [
+  allOfAny: [
     ["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"],
     ["LANDO_RELEASE_COSIGN_KEY", "COSIGN_PRIVATE_KEY"],
   ],

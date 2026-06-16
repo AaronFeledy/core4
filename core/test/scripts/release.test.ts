@@ -339,9 +339,24 @@ describe("release orchestrator", () => {
     expect(signingStage).toBeDefined();
     if (manifestStage === undefined || signingStage === undefined) throw new Error("missing release stage");
 
+    await expect(
+      manifestStage.run({
+        target: "all",
+        env: { LANDO_RELEASE_GPG_KEY: "key" },
+        localRehearsal: false,
+        runner: {
+          spawn: async () => {},
+          shell: async ({ stageId, script }) => {
+            shellStages.push({ stageId, script });
+          },
+        },
+        logger: () => {},
+      }),
+    ).rejects.toThrow("Missing manifest signing credentials");
+
     await manifestStage.run({
       target: "all",
-      env: { LANDO_RELEASE_GPG_KEY: "key" },
+      env: { GPG_PRIVATE_KEY: "key", COSIGN_PRIVATE_KEY: "key" },
       localRehearsal: false,
       runner: {
         spawn: async () => {},
