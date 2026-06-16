@@ -220,6 +220,53 @@ describe("meta:plugin:link command", () => {
     expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
+  test("refuses stale linked state when registry records a non-linked plugin", async () => {
+    const pluginRoot = await makePluginRoot("@acme/lando-plugin-stale-linked-state", "stale-linked-state");
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryEntry = join(pluginsRoot, "@acme/lando-plugin-stale-linked-state");
+    const installedEntry = join(pluginsRoot, "@acme", "lando-plugin-stale-linked-state", "1.0.0");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify(
+        {
+          "@acme/lando-plugin-stale-linked-state": {
+            name: "@acme/lando-plugin-stale-linked-state",
+            version: "1.0.0",
+            path: installedEntry,
+            source: "installed",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(
+      join(pluginsRoot, ".lando-linked.json"),
+      `${JSON.stringify(
+        {
+          "@acme/lando-plugin-stale-linked-state": {
+            source: "linked",
+            linkedPath: resolve(pluginRoot),
+            registryEntry,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const exit = await runPluginLinkExit({ cwd: pluginRoot, cacheRoot });
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(registryEntry)).toBe(false);
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginLinkConflictError");
+      expect(cause).toContain("already exists");
+    }
+  });
+
   test("rolls back symlink and linked state when registry recording fails so a retry can relink", async () => {
     const pluginRoot = await makePluginRoot("@acme/lando-plugin-retry", "retry");
     const pluginsRoot = join(userDataRoot, "plugins");

@@ -208,6 +208,14 @@ const restoreRegistrySymlink = async (
   await replaceRegistrySymlink(registryEntry, previousTarget);
 };
 
+const safeRollback = async (label: string, op: () => Promise<void>): Promise<void> => {
+  try {
+    await op();
+  } catch (rollbackCause) {
+    process.emitWarning(`plugin-link: rollback step "${label}" failed: ${String(rollbackCause)}`);
+  }
+};
+
 const prepareRegistryEntry = async (
   pluginsRoot: string,
   pluginName: string,
@@ -216,14 +224,16 @@ const prepareRegistryEntry = async (
   assertInsidePluginsRoot(pluginsRoot, registryEntry, pluginName);
   const registry = await loadRegistryEntry(pluginsRoot, pluginName);
   const linkedState = await readLinkedState(pluginsRoot);
-  const existingLinked = registry?.source === "linked" || linkedState[pluginName]?.source === "linked";
+  const registryIsLinked = registry?.source === "linked";
+  const linkedStateMarksLinked = linkedState[pluginName]?.source === "linked";
+  const existingLinked = registryIsLinked || linkedStateMarksLinked;
   if (existsSync(registryEntry)) {
     const stats = await lstat(registryEntry);
     if (!stats.isSymbolicLink()) throw conflictError(pluginName, registryEntry);
     if (!existingLinked) throw conflictError(pluginName, registryEntry);
     return { previousSymlinkTarget: await readlink(registryEntry) };
   }
-  if (registry !== undefined && !existingLinked)
+  if (registry !== undefined && !registryIsLinked)
     throw conflictError(pluginName, registry.path ?? registryEntry);
   return {};
 };
@@ -303,9 +313,14 @@ export const pluginLink = (
             linkedPath,
           });
         } catch (cause) {
-          await restoreInstalledRegistrySnapshot(pluginsRoot, previousRegistry).catch(() => undefined);
-          if (linkedStateWritten) await writeLinkedState(pluginsRoot, previousState).catch(() => undefined);
-          await restoreRegistrySymlink(registryEntry, prepared.previousSymlinkTarget).catch(() => undefined);
+          await safeRollback("registry", () =>
+            restoreInstalledRegistrySnapshot(pluginsRoot, previousRegistry),
+          );
+          if (linkedStateWritten)
+            await safeRollback("linked-state", () => writeLinkedState(pluginsRoot, previousState));
+          await safeRollback("symlink", () =>
+            restoreRegistrySymlink(registryEntry, prepared.previousSymlinkTarget),
+          );
           throw cause;
         }
       },
