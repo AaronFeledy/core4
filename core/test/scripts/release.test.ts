@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
+import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 
@@ -814,12 +815,11 @@ describe("release orchestrator", () => {
       logger: (line) => logs.push(line),
     });
 
-    expect(spawnStages.map(({ stageId }) => stageId)).toEqual([
+    expect([...new Set(spawnStages.map(({ stageId }) => stageId))]).toEqual([
       "1-codegen",
       "2-typecheck",
       "3-lint-format",
       "4-test-gates",
-      "7-compile",
       "7-compile",
     ]);
     expect(spawnStages.at(-2)?.cmd).toEqual([
@@ -829,17 +829,128 @@ describe("release orchestrator", () => {
       "--compile",
       "--bytecode",
       "--target=bun-windows-x64",
-      "--outfile",
-      "./dist/lando-windows-x64.exe",
+      "--outfile=./dist/lando-windows-x64.exe",
       "--sourcemap=external",
     ]);
     expect(spawnStages.at(-1)?.cmd).toEqual([
       "bun",
       "run",
       "scripts/sanitize-compiled-binary.ts",
-      "dist/lando-windows-x64.exe",
+      "./dist/lando-windows-x64.exe",
     ]);
+    expect(spawnStages.some(({ cmd }) => cmd.includes("--target=bun-linux-x64"))).toBe(true);
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
+  });
+
+  test("compile stage builds every CI platform binary with bytecode", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+    let now = 0;
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "7-compile",
+      env: localRehearsalEnv,
+      now: () => now,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+          if (stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build") now += 42_000;
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    const compileCommands = spawnStages.filter(({ stageId }) => stageId === "7-compile");
+    expect(compileCommands.map(({ cmd }) => cmd)).toEqual(
+      CI_PLATFORMS.flatMap((platform) => {
+        const outfile = `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+        return [
+          [
+            "bun",
+            "build",
+            "./core/bin/lando.ts",
+            "--compile",
+            "--bytecode",
+            `--target=${platform.bunTarget}`,
+            `--outfile=${outfile}`,
+            "--sourcemap=external",
+          ],
+          ["bun", "run", "scripts/sanitize-compiled-binary.ts", outfile],
+        ];
+      }),
+    );
+    expect(CI_PLATFORMS.map((platform) => platform.id)).toEqual([
+      "darwin-arm64",
+      "darwin-x64",
+      "linux-arm64",
+      "linux-x64",
+      "windows-x64",
+    ]);
+  });
+
+  test("compile stage reports duration and fails the linux-x64 cold-build budget", async () => {
+    let now = 0;
+    const failure = await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "7-compile",
+      env: localRehearsalEnv,
+      now: () => now,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          if (stageId !== "7-compile" || cmd[0] !== "bun" || cmd[1] !== "build") return;
+          now += cmd.includes("--target=bun-linux-x64") ? 600_001 : 10_000;
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "7-compile",
+      artifactFamily: "binary",
+      cause: {
+        _tag: "ReleaseCompileBudgetError",
+        platformId: "linux-x64",
+        durationMs: 600_001,
+        budgetMs: 600_000,
+      },
+    });
+  });
+
+  test("local rehearsal reports compile duration before later credential skips", async () => {
+    const logs: Array<string> = [];
+    let now = 0;
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "10-notarize",
+      env: localRehearsalEnv,
+      now: () => now,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          if (stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build") now += 25_000;
+        },
+        shell: async () => {},
+      },
+      logger: (line) => logs.push(line),
+    });
+
+    const compileDurationIndex = logs.findIndex((line) =>
+      line.includes("[release] compile linux-x64 completed in 25000ms (budget 600000ms)"),
+    );
+    const signingSkipIndex = logs.findIndex((line) => line.includes("skip 9-sign"));
+    const notarizeSkipIndex = logs.findIndex((line) => line.includes("skip 10-notarize"));
+    expect(compileDurationIndex).toBeGreaterThanOrEqual(0);
+    expect(signingSkipIndex).toBeGreaterThan(compileDurationIndex);
+    expect(notarizeSkipIndex).toBeGreaterThan(compileDurationIndex);
   });
 
   describe("deprecation gate", () => {

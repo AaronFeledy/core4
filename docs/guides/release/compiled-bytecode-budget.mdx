@@ -1,0 +1,24 @@
+---
+id: release-compiled-bytecode-budget
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release]
+---
+
+<Guide>
+  <Scenario id="bytecode-compile-budget" render={false} reason="The release-orchestrator tests inject the runner and clock so this guide stays host-safe and does not compile every platform binary during docs tests">
+    <Step name="compile-command">
+      <Variable name="entry" value="./core/bin/lando.ts" display="Stage 7 compiles the canonical CLI entry" />
+      <Variable name="flags" value="--compile --bytecode" display="Every release binary is compiled with Bun bytecode enabled" />
+      <Variable name="platforms" value="darwin-arm64,darwin-x64,linux-arm64,linux-x64,windows-x64" display="Compile targets match the Beta 1 CI platform ids" />
+    </Step>
+    <Step name="budget-guard">
+      <Variable name="reference" value="linux-x64" display="The reference cold-build budget is enforced on linux-x64" />
+      <Variable name="budget" value="600000ms" display="A linux-x64 compile over 10 minutes fails the release with a tagged budget error" />
+    </Step>
+    <Step name="rehearsal-output">
+      <Variable name="duration" value="[release] compile linux-x64 completed in <duration>ms (budget 600000ms)" display="Local rehearsal prints compile duration before later credential-gated signing stages warning-skip" />
+    </Step>
+  </Scenario>
+</Guide>

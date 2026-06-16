@@ -45,6 +45,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-251, US-252 | Release orchestrator rehearsal | `docs/guides/release/local-rehearsal.mdx` | Shipped |
 | PRD-08 | US-253 | Deprecation gate in release | `docs/guides/release/deprecation-gate.mdx` | Shipped |
 | PRD-08 | US-254, US-255, US-256 | Platform signing overview | `docs/guides/release/signing-artifacts.mdx` | Shipped |
+| PRD-08 | US-257 | Bytecode compile and budget | `docs/guides/release/compiled-bytecode-budget.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |
