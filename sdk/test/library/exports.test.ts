@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
+import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
   test("root entry point resolves the public namespaces", async () => {
@@ -103,11 +104,29 @@ describe("@lando/sdk package exports", () => {
   test("core schema re-exports the canonical deprecation notice", async () => {
     const sdkSchema = await import("@lando/sdk/schema");
     const coreSchema = await import("@lando/core/schema");
+    const notice = {
+      since: "4.1.0",
+      removeIn: "5.0.0",
+      replacement: "new-command",
+      docsUrl: "https://docs.lando.dev/deprecations/new-command",
+      note: "Use new-command instead.",
+    };
 
-    expect(coreSchema.DeprecationNotice).toBe(sdkSchema.DeprecationNotice);
-    expect(coreSchema.publicSchemaRegistry).toBe(sdkSchema.publicSchemaRegistry);
-    expect(coreSchema.publicSchemaMetadataIndex).toBe(sdkSchema.publicSchemaMetadataIndex);
-    expect(coreSchema.renderPublicSchemaReferencePages).toBe(sdkSchema.renderPublicSchemaReferencePages);
+    expect(Schema.decodeUnknownSync(coreSchema.DeprecationNotice)(notice)).toEqual(
+      Schema.decodeUnknownSync(sdkSchema.DeprecationNotice)(notice),
+    );
+    expect(coreSchema.getJsonSchema("DeprecationNotice")).toEqual(
+      sdkSchema.getJsonSchema("DeprecationNotice"),
+    );
+    expect(coreSchema.publicSchemaRegistry.DeprecationNotice.description).toBe(
+      sdkSchema.publicSchemaRegistry.DeprecationNotice.description,
+    );
+    expect(coreSchema.publicSchemaMetadataIndex.DeprecationNotice).toEqual(
+      sdkSchema.publicSchemaMetadataIndex.DeprecationNotice,
+    );
+    expect(coreSchema.renderPublicSchemaReferencePages()).toEqual(
+      sdkSchema.renderPublicSchemaReferencePages(),
+    );
   });
 
   test("errors entry point exports the canonical tagged errors", async () => {

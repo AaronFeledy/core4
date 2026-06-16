@@ -884,8 +884,8 @@
         "Lint passes."
       ],
       "priority": 50,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented redaction.ts (compose redactString + generic + env-specific patterns for POSIX/Windows/provider/library), wired before emit (build-guide-scenarios) and before consumption (toPublicTranscriptView + render). 3 real-surface scenarios (contract unit, render consumption, emit artifact) + full gates (typecheck 0, biome clean, 24/24 affected tests, lint:guides, check:guide-coverage). Real-surface artifacts captured (redacted JSON with <HOME>/<TMP>/[REDACTED], no leaks, sourceFile/sourceLine preserved). Deterministic via injectable RedactionEnvironment + longest-root ordering."
     },
     {
       "id": "US-250",

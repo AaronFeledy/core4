@@ -28,6 +28,10 @@
       "types": "./src/docs/render/index.ts",
       "import": "./src/docs/render/index.ts"
     },
+    "./docs/redactions": {
+      "types": "./src/docs/render/redaction.ts",
+      "import": "./src/docs/render/redaction.ts"
+    },
     "./errors": { "types": "./src/errors/index.ts", "import": "./src/errors/index.ts" },
     "./events": { "types": "./src/lifecycle/index.ts", "import": "./src/lifecycle/index.ts" },
     "./services": { "types": "./src/services/index.ts", "import": "./src/services/index.ts" },

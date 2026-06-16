@@ -1,8 +1,13 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
 import {
   decodePublicTranscriptEither,
+  loadPublicTranscript,
   renderPublicTranscriptHtml,
   toPublicTranscriptView,
 } from "../../src/docs/render/index.ts";
@@ -109,10 +114,100 @@ describe("public transcript rendering", () => {
     expect(Either.isRight(decodePublicTranscriptEither(phpTranscriptObject))).toBe(true);
   });
 
+  test("sanitizes decoded public transcript artifacts at load time", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-transcript-load-"));
+    try {
+      const transcriptDir = join(root, "dist", "transcripts", "public", "guides", "redact-demo");
+      await mkdir(transcriptDir, { recursive: true });
+      await writeFile(
+        join(transcriptDir, "leak.json"),
+        JSON.stringify({
+          guideId: "redact-demo",
+          scenarioId: "leak",
+          variant: "",
+          runtime: "cli",
+          render: true,
+          frames: [
+            {
+              kind: "run",
+              sourceFile: "docs/guides/redact-demo.mdx",
+              sourceLine: 12,
+              commandDisplay: `lando start --root ${tmpdir()}/lando-load-test --token=\"quoted-token\"`,
+            },
+          ],
+        }),
+      );
+
+      const loaded = await loadPublicTranscript({
+        root,
+        guideId: "redact-demo",
+        scenarioId: "leak",
+        variant: "",
+      });
+
+      const command = loaded.frames[0]?.commandDisplay ?? "";
+      expect(command).toContain("<TMP>");
+      expect(command).toContain("[REDACTED]");
+      expect(command).not.toContain(tmpdir());
+      expect(command).not.toContain("quoted-token");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("maps view frames with source hrefs", () => {
     const view = toPublicTranscriptView(phpTranscript);
 
     expect(view.frames[2]?.sourceHref).toBe("docs/guides/services/php.mdx#L19");
     expect(view.frames[2]?.kind).toBe("run");
+  });
+
+  test("redacts machine-specific data in toPublicTranscriptView and rendered HTML (US-249)", () => {
+    const leaking = Schema.decodeUnknownSync(PublicTranscript)({
+      guideId: "redact-demo",
+      scenarioId: "leak",
+      variant: "",
+      runtime: "cli",
+      render: true,
+      frames: [
+        {
+          kind: "run",
+          sourceFile: "docs/guides/redact-demo.mdx",
+          sourceLine: 12,
+          commandDisplay: "lando start --root /home/aaron/lando --token s3cr3t123",
+          resultSummary: "container aabbccddeeff on host devbox port :54321",
+        },
+        {
+          kind: "inline",
+          sourceFile: "docs/guides/redact-demo.mdx",
+          sourceLine: 15,
+          displayText: "code with secret bearer token and C:\\Users\\aaron\\AppData\\Local\\Temp\\lando-xyz",
+        },
+      ],
+    });
+
+    const view = toPublicTranscriptView(leaking, { redactionEnv: { host: "devbox" } });
+    const html = renderPublicTranscriptHtml(leaking, { redactionEnv: { host: "devbox" } });
+
+    expect(view.frames[0]?.commandDisplay).toContain("<HOME>");
+    expect(view.frames[0]?.commandDisplay).toContain("[REDACTED]");
+    expect(view.frames[0]?.resultSummary).toContain("<CONTAINER_ID>");
+    expect(view.frames[0]?.resultSummary).toContain("<HOST>");
+    expect(view.frames[0]?.resultSummary).toContain("<PORT>");
+    expect(view.frames[1]?.displayText).toContain("[REDACTED]");
+    expect(view.frames[1]?.displayText).toContain("<TMP>");
+
+    expect(html).not.toContain("/home/aaron");
+    expect(html).not.toContain("s3cr3t123");
+    expect(html).not.toContain("aabbccddeeff");
+    expect(html).not.toContain("devbox");
+    expect(html).not.toContain(":54321");
+    expect(html).not.toContain("C:\\Users\\aaron");
+
+    expect(view.frames[0]?.sourceFile).toBe("docs/guides/redact-demo.mdx");
+    expect(view.frames[0]?.sourceLine).toBe(12);
+    expect(view.frames[0]?.kind).toBe("run");
+    expect(html).toContain('data-source-file="docs/guides/redact-demo.mdx"');
+    expect(html).toContain("#L12");
   });
 });

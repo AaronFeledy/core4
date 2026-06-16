@@ -9,7 +9,6 @@ import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
-import { redactString } from "../core/src/cli/redact.ts";
 import { parseLandofile } from "../core/src/landofile/parser.ts";
 import {
   type CleanupProps,
@@ -37,6 +36,12 @@ import {
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
+
+import {
+  type RedactionEnvironment,
+  redactPublicTranscript,
+  redactPublicTranscriptText,
+} from "../core/src/docs/render/index.ts";
 import type { GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
 import {
   GuideFrontmatterValidationError,
@@ -48,6 +53,13 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
 const GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
 const PUBLIC_TRANSCRIPT_ROOT = "dist/transcripts/public/guides";
+const PUBLIC_TRANSCRIPT_REDACTION_ENV: RedactionEnvironment = {
+  home: "",
+  tmp: "",
+  user: "",
+  host: "",
+  extraRoots: [],
+};
 
 const isNotFound = (cause: unknown): boolean =>
   cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
@@ -1057,29 +1069,9 @@ const inspectDisplay = (props: InspectProps, variables: ReadonlyMap<string, Vari
   return "inspect output";
 };
 
-const POSIX_TEMP_PATTERN = /\/tmp\/[^\s"'`)]+/g;
-const POSIX_HOME_PATTERN = /\/home\/[^\s"'`)]+/g;
-const WIN_TEMP_PATTERN = /C:\\Users\\[^\\]+\\AppData\\Local\\Temp\\[^\s"'`)]+/gi;
-const WIN_HOME_PATTERN = /C:\\Users\\[^\\]+/gi;
-const FIXTURE_PATTERN = /(?:^|[\\/])fixtures[\\/][^\s"'`)]+/gi;
-const LONG_HEX_ID_PATTERN = /\b[a-f0-9]{16,}\b/gi;
-const HIGH_PORT_PATTERN = /:([5-9]\d{4}|[1-9]\d{5,})/g;
-const TOKEN_FLAG_PATTERN = /--(?:token|secret|password|key|auth|bearer|credential)=[^\s"'`)]+/gi;
-const SHORT_TOKEN_FLAG_PATTERN = /-(?:t|k)=[^\s"'`)]+/gi;
-
 const redactPublicText = (text: string | undefined): string | undefined => {
   if (text === undefined) return undefined;
-  let out = redactString(text);
-  out = out.replace(POSIX_TEMP_PATTERN, "<tmp>");
-  out = out.replace(POSIX_HOME_PATTERN, "<home>");
-  out = out.replace(WIN_TEMP_PATTERN, "<tmp>");
-  out = out.replace(WIN_HOME_PATTERN, "<home>");
-  out = out.replace(FIXTURE_PATTERN, "<fixture>");
-  out = out.replace(LONG_HEX_ID_PATTERN, "<id>");
-  out = out.replace(HIGH_PORT_PATTERN, ":<port>");
-  out = out.replace(TOKEN_FLAG_PATTERN, "--token=[REDACTED]");
-  out = out.replace(SHORT_TOKEN_FLAG_PATTERN, "-t=[REDACTED]");
-  return out;
+  return redactPublicTranscriptText(text, PUBLIC_TRANSCRIPT_REDACTION_ENV);
 };
 
 const redactFrame = (frame: PublicTranscriptFrameInput): PublicTranscriptFrameInput => ({
@@ -1226,10 +1218,11 @@ export const emitPublicTranscripts = async (
       for (const variant of variants) {
         const transcript = buildPublicTranscript(guide, scenario, variant);
         if (transcript === undefined) continue;
+        const redacted = redactPublicTranscript(transcript, PUBLIC_TRANSCRIPT_REDACTION_ENV);
         const relativePath = publicTranscriptRelativePath(guideId, scenario.id, variant, outputRoot);
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });
-        const encoded = Schema.encodeSync(PublicTranscript)(transcript);
+        const encoded = Schema.encodeSync(PublicTranscript)(redacted);
         await Bun.write(absolutePath, `${JSON.stringify(encoded, null, 2)}\n`);
         written.push(relativePath);
       }

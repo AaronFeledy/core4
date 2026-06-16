@@ -3,6 +3,14 @@ import { join } from "node:path";
 import { PublicTranscript, type PublicTranscriptFrame } from "@lando/core/schema";
 import { Either, type ParseResult, Schema } from "effect";
 
+import { type RedactionEnvironment, redactPublicTranscript } from "./redaction.ts";
+
+export {
+  redactPublicTranscript,
+  redactPublicTranscriptText,
+  type RedactionEnvironment,
+} from "./redaction.ts";
+
 export const decodePublicTranscriptEither = (
   input: unknown,
 ): Either.Either<PublicTranscript, ParseResult.ParseError> =>
@@ -12,7 +20,9 @@ export interface SourceLinkOptions {
   readonly sourceLinkBase?: string;
 }
 
-export interface RenderOptions extends SourceLinkOptions {}
+export interface RenderOptions extends SourceLinkOptions {
+  readonly redactionEnv?: RedactionEnvironment;
+}
 
 const transcriptPathFor = (args: {
   readonly guideId: string;
@@ -59,21 +69,24 @@ export interface PublicTranscriptView {
 export const toPublicTranscriptView = (
   transcript: PublicTranscript,
   options?: RenderOptions,
-): PublicTranscriptView => ({
-  guideId: transcript.guideId,
-  scenarioId: transcript.scenarioId,
-  variant: transcript.variant,
-  runtime: transcript.runtime,
-  frames: transcript.frames.map((frame) => ({
-    kind: frame.kind,
-    ...(frame.displayText === undefined ? {} : { displayText: frame.displayText }),
-    ...(frame.commandDisplay === undefined ? {} : { commandDisplay: frame.commandDisplay }),
-    ...(frame.resultSummary === undefined ? {} : { resultSummary: frame.resultSummary }),
-    sourceFile: frame.sourceFile,
-    sourceLine: frame.sourceLine,
-    sourceHref: frameSourceHref(frame, options),
-  })),
-});
+): PublicTranscriptView => {
+  const redacted = redactPublicTranscript(transcript, options?.redactionEnv);
+  return {
+    guideId: redacted.guideId,
+    scenarioId: redacted.scenarioId,
+    variant: redacted.variant,
+    runtime: redacted.runtime,
+    frames: redacted.frames.map((frame) => ({
+      kind: frame.kind,
+      ...(frame.displayText === undefined ? {} : { displayText: frame.displayText }),
+      ...(frame.commandDisplay === undefined ? {} : { commandDisplay: frame.commandDisplay }),
+      ...(frame.resultSummary === undefined ? {} : { resultSummary: frame.resultSummary }),
+      sourceFile: frame.sourceFile,
+      sourceLine: frame.sourceLine,
+      sourceHref: frameSourceHref(frame, options),
+    })),
+  };
+};
 
 const escapeHtml = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -117,5 +130,5 @@ export const loadPublicTranscript = async (args: {
     throw new Error(`Failed to decode public transcript at ${transcriptPath}`);
   }
 
-  return decoded.right;
+  return redactPublicTranscript(decoded.right);
 };
