@@ -938,8 +938,8 @@
         "Lint passes"
       ],
       "priority": 53,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Release orchestrator now exposes binary/library stage applicability, supports local prefix rehearsal via --through-stage, warning-skips credential-gated work under LOCAL_REHEARSAL=1, preserves non-signing manifest writes, and compiles the host platform through stage 7."
     },
     {
       "id": "US-253",

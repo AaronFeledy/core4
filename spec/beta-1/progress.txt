@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
 - Generated e2e guide scenarios stay host-safe by default: author them with `defaultLayer: e2e` or `<Scenario layer="e2e">`, tag the selected per-PR subset with `"@smoke"`, include a cleanup step, and let the generated test self-skip unless `LANDO_GUIDE_E2E=1`, `LANDO_SCENARIO_E2E_BINARY`, and `LANDO_TEST_PODMAN_SOCKET` are present.
 - Schema snapshot/codegen drift gates must diff every generated schema output together: `sdk/test/fixtures/schema-snapshot.json`, `dist/schemas`, and `docs/reference/schemas`; otherwise generated docs can drift while CI stays green.
 - Public SDK JSON Schema artifacts are generated from `JSON_SCHEMA_NAMES` via `scripts/build-schema-snapshot.ts`; keep the registry, snapshot scope, and `dist/schemas/<kebab-name>.json` artifact loop in lockstep.
@@ -781,4 +782,11 @@
   - The `.lando-linked.json` entry now carries an optional `previousRegistry: InstalledPluginRegistryEntry` that unlink restores; today only unlink reads/restores it (link never records a prior copy because it refuses to replace non-linked entries), so the restore branch is reachable via lockfile state but not yet produced by link — a future `link --yes` replacement flow is the seam that would populate it.
   - Unlink removes only the registry SYMLINK (`lstat` isSymbolicLink guard + `rm` on the link path, never the target) and refuses a real (non-symlink) directory at the registry path, so an installed plugin copy can never be deleted through unlink.
   - Promoting a deferred plugin command to MVP that changes its OCLIF `bootstrap` level requires regenerating `compiled-manifest.ts` (`bun run scripts/build-oclif-manifest.ts`); `oclif.manifest.json` does not track per-command bootstrap, so only the generated `.ts` changes.
+---
+## 2026-06-16 02:08 CDT - US-252
+- Made release artifact-family behavior explicit: binary targets run stages 1-5 and 7-13, library targets run stages 1-6 and 11-13, and `--through-stage` lets maintainers rehearse ordered prefixes without changing the canonical stage order.
+- Local rehearsal now warning-skips credential-gated signing/notarization/provenance/publish work when secrets are absent while still running the non-signing manifest write path for `SHA256SUMS`, `SHA512SUMS`, and `update-manifest.json`.
+- Verification: focused release RED→GREEN, typecheck, lint, full tests passed; manual release CLI prefix QA and real current-platform compile smoke passed.
+- **Learnings for future iterations:**
+  - Release rehearsal skips should be modeled at the credential gate, not by removing stages from the stage table; this keeps artifact-family applicability and canonical ordering testable while allowing local no-secret prefixes.
 ---
