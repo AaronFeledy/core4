@@ -299,7 +299,7 @@ describe("build-guide-scenarios public transcript emission", () => {
           '  <Scenario id="cli-leak" render>',
           '    <Step name="start">',
           '      <Variable name="root" value="/home/aaron/lando" display="root" />',
-          "      <Run command=\"lando start --root {{root}} --fixture core/test/cli/fixtures/deferred-commands.json -t=shorttoken -k 'short-key' --token s3cr3t\" />",
+          "      <Run command=\"lando start --root {{root}} --fixture core/test/cli/fixtures/some-secret-root/file.yml -t=supersecret -k=supersecret -t 'supersecret' -k &quot;supersecret&quot; --token s3cr3t\" />",
           "    </Step>",
           "  </Scenario>",
           '  <Scenario id="lib-leak" render>',
@@ -321,14 +321,14 @@ describe("build-guide-scenarios public transcript emission", () => {
       const cliTx = await readTranscript(root, "dist/transcripts/public/guides/redact-emit/cli-leak.json");
       const jsonCli = JSON.stringify(cliTx);
       expect(jsonCli).not.toContain("/home/aaron");
-      expect(jsonCli).not.toContain("core/test/cli/fixtures/deferred-commands.json");
-      expect(jsonCli).not.toContain("shorttoken");
-      expect(jsonCli).not.toContain("short-key");
+      expect(jsonCli).not.toContain("core/test/cli/fixtures/some-secret-root/file.yml");
+      expect(jsonCli).not.toContain("supersecret");
       expect(jsonCli).not.toContain("s3cr3t");
       const cliRun = cliTx.frames.find((f) => f.kind === "run");
       expect(cliRun?.commandDisplay).toContain("<HOME>");
       expect(cliRun?.commandDisplay).toContain("[REDACTED]");
       expect(cliRun?.commandDisplay).toContain("-t=[REDACTED]");
+      expect(cliRun?.commandDisplay).toContain("-k=[REDACTED]");
       expect(cliRun?.commandDisplay).toContain("-k [REDACTED]");
       expect(cliTx.frames.every((f) => f.sourceFile === "docs/guides/redact-emit.mdx")).toBe(true);
       expect(cliTx.frames.every((f) => typeof f.sourceLine === "number" && f.sourceLine > 0)).toBe(true);

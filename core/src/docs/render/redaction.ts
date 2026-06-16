@@ -24,6 +24,10 @@ const PLACEHOLDERS = {
 } as const;
 
 const WELL_KNOWN_PORTS = new Set([80, 443, 3000, 3306, 5432, 8080, 8443, 9000, 9229]);
+const REPO_RELATIVE_FIXTURE_PATH_PATTERN =
+  /(^|[\s"'`(=])((?:\.{1,2}[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu;
+const SHORT_SECRET_FLAG_PATTERN =
+  /(^|[\s"'`(])(-[tk])(?:\s*=\s*|\s+)(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
 
 const isEphemeralPort = (port: number): boolean => port >= 1024;
 
@@ -48,10 +52,7 @@ const toGenericPathPatterns = (): RegExp[] => [
 const redactPaths = (text: string, env: RedactionEnvironment): string => {
   let out = text;
 
-  out = out.replace(
-    /(^|[\s"'`(=])((?:\.?[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu,
-    (_match, prefix) => `${prefix}${PLACEHOLDERS.HOME}`,
-  );
+  out = out.replace(REPO_RELATIVE_FIXTURE_PATH_PATTERN, (_match, prefix) => `${prefix}${PLACEHOLDERS.HOME}`);
 
   for (const re of toGenericPathPatterns()) {
     out = out.replace(re, (m) => (/tmp|Temp/i.test(m) ? PLACEHOLDERS.TMP : PLACEHOLDERS.HOME));
@@ -107,14 +108,10 @@ const redactLiterals = (text: string, env: RedactionEnvironment): string => {
 
 const redactBareSecrets = (text: string): string =>
   text
-    .replace(
-      /(^|\s)(-[tk])\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu,
-      (_, prefix, key) => `${prefix}${key}=${PLACEHOLDERS.REDACTED}`,
-    )
-    .replace(
-      /(^|\s)(-[tk])\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu,
-      (_, prefix, key) => `${prefix}${key} ${PLACEHOLDERS.REDACTED}`,
-    )
+    .replace(SHORT_SECRET_FLAG_PATTERN, (match, prefix, key) => {
+      const separator = match.includes("=") ? "=" : " ";
+      return `${prefix}${key}${separator}${PLACEHOLDERS.REDACTED}`;
+    })
     .replace(
       /\b([A-Za-z0-9_]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu,
       (_, key) => `${key}=${PLACEHOLDERS.REDACTED}`,
@@ -153,6 +150,7 @@ export const redactPublicTranscriptText = (text: string, env: RedactionEnvironme
 
 const redactFrame = (frame: PublicTranscriptFrame, env: RedactionEnvironment): PublicTranscriptFrame => ({
   ...frame,
+  sourceFile: redactPublicTranscriptText(frame.sourceFile, env),
   displayText: frame.displayText ? redactPublicTranscriptText(frame.displayText, env) : frame.displayText,
   commandDisplay: frame.commandDisplay
     ? redactPublicTranscriptText(frame.commandDisplay, env)

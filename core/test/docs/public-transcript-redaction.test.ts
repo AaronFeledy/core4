@@ -96,25 +96,49 @@ describe("public transcript redaction (US-249)", () => {
 
   test("redacts repo-relative fixture paths from public transcript text", () => {
     const input =
-      "copy core/test/cli/fixtures/meta-doctor.provider-status.ndjson and docs/guides/mongodb/fixtures/basic/.lando.yml";
+      "copy core/test/cli/fixtures/some-secret-root/file.yml and docs/guides/mongodb/fixtures/basic/.lando.yml";
 
     const out = redactPublicTranscriptText(input, posixEnv);
 
-    expect(out).not.toContain("core/test/cli/fixtures/meta-doctor.provider-status.ndjson");
+    expect(out).not.toContain("core/test/cli/fixtures/some-secret-root/file.yml");
     expect(out).not.toContain("docs/guides/mongodb/fixtures/basic/.lando.yml");
     expect(out).toBe("copy <HOME> and <HOME>");
   });
 
+  test("redacts repo-relative fixture paths from public transcript JSON fields", () => {
+    const tx = {
+      guideId: "fixture-demo",
+      scenarioId: "leak",
+      variant: "",
+      runtime: "cli",
+      render: true,
+      frames: [
+        {
+          kind: "run" as const,
+          sourceFile: "core/test/cli/fixtures/some-secret-root/file.yml",
+          sourceLine: 1,
+          commandDisplay: "cat core/test/cli/fixtures/some-secret-root/file.yml",
+        },
+      ],
+    } as unknown as PublicTranscript;
+
+    const redacted = redactPublicTranscript(tx, posixEnv);
+    const json = JSON.stringify(redacted);
+
+    expect(json).not.toContain("core/test/cli/fixtures/some-secret-root/file.yml");
+    expect(redacted.frames[0]?.sourceFile).toBe("<HOME>");
+    expect(redacted.frames[0]?.commandDisplay).toBe("cat <HOME>");
+  });
+
   test("redacts short secret flag values", () => {
-    const input = "lando auth -t=token-inline -k 'quoted-key' deploy -t `backtick-token` -k spaced-key";
+    const input =
+      "lando auth -t=supersecret -k=supersecret -t \"supersecret\" -k 'supersecret' deploy -t \\\"supersecret\\\" -k \\'supersecret\\'";
 
     const out = redactPublicTranscriptText(input, posixEnv);
 
-    expect(out).not.toContain("token-inline");
-    expect(out).not.toContain("quoted-key");
-    expect(out).not.toContain("backtick-token");
-    expect(out).not.toContain("spaced-key");
+    expect(out).not.toContain("supersecret");
     expect(out).toContain("-t=[REDACTED]");
+    expect(out).toContain("-k=[REDACTED]");
     expect(out).toContain("-k [REDACTED]");
     expect(out).toContain("-t [REDACTED]");
   });
