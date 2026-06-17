@@ -35,8 +35,8 @@ const writeBaseline = async (dir: string, warmBudgetMs: number): Promise<string>
           description: "test baseline",
           platform: "linux-x64",
           command: ["bench-tool"],
-          targetWarmP50Ms: 150,
-          baselineWarmP50Ms: warmBudgetMs,
+          targetWarmP95Ms: 150,
+          baselineWarmP95Ms: warmBudgetMs,
           allowedRegressionPercent: 25,
           coldRuns: 1,
           warmRuns: 3,
@@ -83,7 +83,7 @@ describe("bench-tooling-hot-path", () => {
     ).toBe(true);
   });
 
-  test("passes when warm p50 stays within the tracked regression budget", async () => {
+  test("passes when warm p95 stays within the tracked regression budget", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-bench-pass-"));
     try {
       const binary = await writeFakeBinary(dir);
@@ -96,14 +96,14 @@ describe("bench-tooling-hot-path", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain("tooling hot path benchmark passed");
-      expect(result.stdout).toContain("warm p50");
+      expect(result.stdout).toContain("warm p95");
       expect(result.stdout).toContain("target 150ms");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("fails when warm p50 regresses more than 25% over the tracked baseline", async () => {
+  test("fails when warm p95 regresses more than 25% over the tracked baseline", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-bench-fail-"));
     try {
       const binary = await writeFakeBinary(dir);

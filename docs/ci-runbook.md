@@ -66,7 +66,7 @@ All platform binary builds use `bun build --compile --bytecode` against `core/bi
 
 ## Tooling hot-path perf budget
 
-CI runs the Linux x64 benchmark gate against the built binary artifact. The tracked warm p50 baseline and regression budget live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code.
+CI runs the Linux x64 benchmark gate against the built binary artifact. The tracked warm p95 baseline and regression budget live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code.
 
 ```bash
 bun run build

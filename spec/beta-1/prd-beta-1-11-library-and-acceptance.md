@@ -184,7 +184,11 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 - `core/package.json`
 - `core/src/library/**`
 - `core/src/cli/operations/**`
+- `core/src/cli/commands/start.ts`
 - `core/src/testing/**`
+- `core/test/cli/start.scenario.test.ts`
+- `core/test/cli/fast-path*.ts`
+- `core/test/runtime/generated-bootstrap-layers.test.ts`
 - `core/test/library/**`
 - `core/test/plugins/**`
 - `scripts/check-acceptance*`

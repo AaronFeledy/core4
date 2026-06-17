@@ -1,10 +1,10 @@
 {
   "toolingHotPath": {
-    "description": "Linux x64 hot-path benchmark gate for lando <tooling-alias>. The target is 150 ms warm p50; the tracked 900 ms current baseline documents the present compiled-binary host-tooling warm path and must be reviewed when changed.",
+    "description": "Linux x64 hot-path benchmark gate for lando <tooling-alias>. The target is 150 ms warm p95; the tracked 900 ms current baseline documents the present compiled-binary host-tooling warm path and must be reviewed when changed.",
     "platform": "linux-x64",
     "command": ["bench"],
-    "targetWarmP50Ms": 150,
-    "baselineWarmP50Ms": 900,
+    "targetWarmP95Ms": 150,
+    "baselineWarmP95Ms": 900,
     "allowedRegressionPercent": 25,
     "coldRuns": 1,
     "warmRuns": 30

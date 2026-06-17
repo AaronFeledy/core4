@@ -11,8 +11,8 @@ interface Baseline {
   readonly description: string;
   readonly platform: string;
   readonly command: ReadonlyArray<string>;
-  readonly targetWarmP50Ms: number;
-  readonly baselineWarmP50Ms: number;
+  readonly targetWarmP95Ms: number;
+  readonly baselineWarmP95Ms: number;
   readonly allowedRegressionPercent: number;
   readonly coldRuns: number;
   readonly warmRuns: number;
@@ -31,11 +31,11 @@ interface Options {
 interface TimingSummary {
   readonly coldMs: ReadonlyArray<number>;
   readonly warmMs: ReadonlyArray<number>;
-  readonly coldP50Ms: number;
-  readonly warmP50Ms: number;
-  readonly maxAllowedWarmP50Ms: number;
-  readonly targetWarmP50Ms: number;
-  readonly baselineWarmP50Ms: number;
+  readonly coldP95Ms: number;
+  readonly warmP95Ms: number;
+  readonly maxAllowedWarmP95Ms: number;
+  readonly targetWarmP95Ms: number;
+  readonly baselineWarmP95Ms: number;
   readonly allowedRegressionPercent: number;
   readonly command: ReadonlyArray<string>;
 }
@@ -153,8 +153,8 @@ export const readBaseline = async (path: string): Promise<Baseline> => {
     description: stringField(record, "description"),
     platform: stringField(record, "platform"),
     command: command as ReadonlyArray<string>,
-    targetWarmP50Ms: numberField(record, "targetWarmP50Ms"),
-    baselineWarmP50Ms: numberField(record, "baselineWarmP50Ms"),
+    targetWarmP95Ms: numberField(record, "targetWarmP95Ms"),
+    baselineWarmP95Ms: numberField(record, "baselineWarmP95Ms"),
     allowedRegressionPercent: numberField(record, "allowedRegressionPercent"),
     coldRuns: parsePositiveInteger(String(numberField(record, "coldRuns")), "coldRuns"),
     warmRuns: parsePositiveInteger(String(numberField(record, "warmRuns")), "warmRuns"),
@@ -208,16 +208,16 @@ export const runBenchmark = async (options: Options, baseline: Baseline): Promis
   const input = { binary: options.binary, command, cwd: options.cwd };
   const coldMs = await runMany(coldRuns, input);
   const warmMs = await runMany(warmRuns, input);
-  const maxAllowedWarmP50Ms = baseline.baselineWarmP50Ms * (1 + baseline.allowedRegressionPercent / 100);
+  const maxAllowedWarmP95Ms = baseline.baselineWarmP95Ms * (1 + baseline.allowedRegressionPercent / 100);
 
   return {
     coldMs,
     warmMs,
-    coldP50Ms: percentile(coldMs, 0.5),
-    warmP50Ms: percentile(warmMs, 0.5),
-    maxAllowedWarmP50Ms,
-    targetWarmP50Ms: baseline.targetWarmP50Ms,
-    baselineWarmP50Ms: baseline.baselineWarmP50Ms,
+    coldP95Ms: percentile(coldMs, 0.95),
+    warmP95Ms: percentile(warmMs, 0.95),
+    maxAllowedWarmP95Ms,
+    targetWarmP95Ms: baseline.targetWarmP95Ms,
+    baselineWarmP95Ms: baseline.baselineWarmP95Ms,
     allowedRegressionPercent: baseline.allowedRegressionPercent,
     command,
   };
@@ -230,8 +230,8 @@ const formatSummary = (summary: TimingSummary): string =>
   [
     "tooling hot path benchmark passed",
     `command: ${summary.command.join(" ")}`,
-    `cold p50 ${formatMs(summary.coldP50Ms)}`,
-    `warm p50 ${formatMs(summary.warmP50Ms)} (baseline ${formatMs(summary.baselineWarmP50Ms)}, regression budget ${formatMs(summary.maxAllowedWarmP50Ms)}, target ${formatMs(summary.targetWarmP50Ms)})`,
+    `cold p95 ${formatMs(summary.coldP95Ms)}`,
+    `warm p95 ${formatMs(summary.warmP95Ms)} (baseline ${formatMs(summary.baselineWarmP95Ms)}, regression budget ${formatMs(summary.maxAllowedWarmP95Ms)}, target ${formatMs(summary.targetWarmP95Ms)})`,
   ].join("\n");
 
 const main = async (): Promise<void> => {
@@ -239,8 +239,8 @@ const main = async (): Promise<void> => {
   const baseline = await readBaseline(options.baselinePath);
   const summary = await runBenchmark(options, baseline);
 
-  if (summary.warmP50Ms > summary.maxAllowedWarmP50Ms) {
-    const message = `tooling hot path benchmark failed: warm p50 ${formatMs(summary.warmP50Ms)} exceeded regression budget ${formatMs(summary.maxAllowedWarmP50Ms)} (baseline ${formatMs(summary.baselineWarmP50Ms)} + ${summary.allowedRegressionPercent}%)`;
+  if (summary.warmP95Ms > summary.maxAllowedWarmP95Ms) {
+    const message = `tooling hot path benchmark failed: warm p95 ${formatMs(summary.warmP95Ms)} exceeded regression budget ${formatMs(summary.maxAllowedWarmP95Ms)} (baseline ${formatMs(summary.baselineWarmP95Ms)} + ${summary.allowedRegressionPercent}%)`;
     if (options.json) process.stderr.write(`${JSON.stringify({ ok: false, ...summary })}\n`);
     else process.stderr.write(`${message}\n`);
     process.exitCode = 1;

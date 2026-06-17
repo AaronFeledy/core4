@@ -15,6 +15,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type FileSyncSessionInfo,
   type FileSyncSessionRef,
   type FileSyncSessionSpec,
   PluginManifest,
@@ -792,6 +793,130 @@ describe("lando start", () => {
     expect(createdSessions).toEqual([{ mountKey: "app-mount", index: 1 }]);
   });
 
+  test("reuses an existing file-sync session on repeat app:start", async () => {
+    const planWithFileSync: AppPlan = {
+      ...plan,
+      fileSync: [
+        {
+          engineId: "mutagen",
+          session: {
+            app: { kind: "user", id: plan.id, root: plan.root },
+            service: ServiceName.make("web"),
+            mountKey: "app-mount",
+            source: plan.root,
+            target: {
+              _tag: "volume",
+              name: `${plan.name}-web-app-mount`,
+              path: PortablePath.make("/app"),
+            },
+            mode: "two-way-safe",
+            excludes: [],
+          },
+        },
+      ],
+    };
+    const existingRef = "session-web-app-mount" as unknown as FileSyncSessionRef;
+    const existingSession: FileSyncSessionInfo = {
+      ref: existingRef,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: ServiceName.make("web"),
+      mountKey: "app-mount",
+      status: "paused",
+      lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
+    };
+    const calls: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "auto",
+        exclusionPatterns: true,
+        conflictReporting: true,
+        progressReporting: true,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: (spec: FileSyncSessionSpec) =>
+        Effect.sync(() => {
+          calls.push(`create:${spec.mountKey}`);
+          return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
+        }),
+      pauseSession: () => Effect.void,
+      resumeSession: (ref) =>
+        Effect.sync(() => {
+          calls.push(`resume:${String(ref)}`);
+        }),
+      terminateSession: () => Effect.void,
+      listSessions: (filter) =>
+        Effect.sync(() => {
+          calls.push(`list:${filter.mountKey ?? "all"}`);
+          return [existingSession];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const provider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: true }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: () => Effect.void,
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId,
+          status: "running",
+          state: "running",
+          endpoints: [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    const fullLayer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+      Layer.succeed(EventService, {
+        publish: () => Effect.void,
+        subscribe: () => Effect.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+      }),
+      unusedGlobalServicesLayer,
+      Layer.succeed(FileSyncEngine, fakeEngine),
+    );
+
+    await Effect.runPromise(startApp().pipe(Effect.provide(fullLayer)));
+
+    expect(calls).toEqual(["list:app-mount", "resume:session-web-app-mount"]);
+  });
+
   test("runs file-sync setup before creating the first accelerated session on app:start", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
@@ -1276,6 +1401,134 @@ describe("lando start", () => {
       "create:app-mount",
       "create:mount-1",
       "terminate:session-web-app-mount",
+      "destroy:true:true",
+    ]);
+  });
+
+  test("pauses resumed file-sync sessions when a later session fails", async () => {
+    const planWithFileSync: AppPlan = {
+      ...plan,
+      fileSync: ["app-mount", "mount-1"].map((mountKey) => ({
+        engineId: "mutagen",
+        session: {
+          app: { kind: "user", id: plan.id, root: plan.root },
+          service: ServiceName.make("web"),
+          mountKey,
+          source: plan.root,
+          target: {
+            _tag: "volume" as const,
+            name: `${plan.name}-web-${mountKey}`,
+            path: PortablePath.make(mountKey === "app-mount" ? "/app" : "/cache"),
+          },
+          mode: "two-way-safe" as const,
+          excludes: [],
+        },
+      })),
+    };
+    const existingRef = "session-web-app-mount" as unknown as FileSyncSessionRef;
+    const existingSession: FileSyncSessionInfo = {
+      ref: existingRef,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: ServiceName.make("web"),
+      mountKey: "app-mount",
+      status: "paused",
+      lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
+    };
+    const callLog: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "auto",
+        exclusionPatterns: true,
+        conflictReporting: true,
+        progressReporting: true,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: (spec: FileSyncSessionSpec) =>
+        Effect.gen(function* () {
+          callLog.push(`create:${spec.mountKey}`);
+          yield* Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "sync failed" }));
+        }),
+      pauseSession: (ref) => Effect.sync(() => callLog.push(`pause:${String(ref)}`)),
+      resumeSession: (ref) => Effect.sync(() => callLog.push(`resume:${String(ref)}`)),
+      terminateSession: (ref) => Effect.sync(() => callLog.push(`terminate:${String(ref)}`)),
+      listSessions: (filter) =>
+        Effect.sync(() => {
+          callLog.push(`list:${filter.mountKey ?? "all"}`);
+          return filter.mountKey === "app-mount" ? [existingSession] : [];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const provider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: true }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: (_target, options) =>
+        Effect.sync(() => {
+          callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
+        }),
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId,
+          status: "running",
+          state: "running",
+          endpoints: [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    const layer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+      Layer.succeed(EventService, {
+        publish: () => Effect.void,
+        subscribe: () => Effect.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+      }),
+      unusedGlobalServicesLayer,
+      Layer.succeed(FileSyncEngine, fakeEngine),
+    );
+
+    await expect(startApp().pipe(Effect.provide(layer), Effect.runPromise)).rejects.toThrow("sync failed");
+    expect(callLog).toEqual([
+      "list:app-mount",
+      "resume:session-web-app-mount",
+      "list:mount-1",
+      "create:mount-1",
+      "pause:session-web-app-mount",
       "destroy:true:true",
     ]);
   });
