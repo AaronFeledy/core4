@@ -102,6 +102,10 @@ default_install_dir() {
     printf '%s\n' "$LANDO_INSTALL_DIR"
     return
   fi
+  if [ -n "${LANDO_USER_DATA_ROOT:-}" ]; then
+    printf '%s\n' "$LANDO_USER_DATA_ROOT/bin"
+    return
+  fi
 
   os=${LANDO_INSTALL_OS:-$(uname -s)}
   case "$os" in
@@ -123,7 +127,16 @@ verify_checksum() {
   artifact=$3
   expected=$(awk -v artifact="$artifact" '($2 == artifact || $2 == "./" artifact || $2 == "dist/" artifact) { print $1; exit }' "$sums")
   [ -n "$expected" ] || fail "Checksum manifest does not contain $artifact"
-  actual=$(sha256sum "$binary" | awk '{ print $1 }')
+  case "${LANDO_INSTALL_OS:-$(uname -s)}" in
+    Darwin)
+      need shasum
+      actual=$(shasum -a 256 "$binary" | awk '{ print $1 }')
+      ;;
+    *)
+      need sha256sum
+      actual=$(sha256sum "$binary" | awk '{ print $1 }')
+      ;;
+  esac
   [ "$actual" = "$expected" ] || fail "Checksum mismatch for $artifact"
 }
 
@@ -138,7 +151,6 @@ need cp
 need mkdir
 need mktemp
 need sed
-need sha256sum
 need tr
 need awk
 

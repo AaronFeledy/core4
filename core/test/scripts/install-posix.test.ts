@@ -22,17 +22,22 @@ const sha256 = (bytes: Uint8Array): string => {
   return hash.digest("hex");
 };
 
-const createReleaseFixture = async (root: string, channel = "stable") => {
+const createReleaseFixture = async (
+  root: string,
+  channel = "stable",
+  options: { readonly checksum?: string; readonly platform?: "linux-x64" | "darwin-x64" } = {},
+) => {
+  const platform = options.platform ?? "linux-x64";
   const releaseRoot = join(root, "release");
   await mkdir(releaseRoot, { recursive: true });
 
-  const binaryPath = join(releaseRoot, "lando-linux-x64");
+  const binaryPath = join(releaseRoot, `lando-${platform}`);
   const binary = new TextEncoder().encode('#!/bin/sh\necho "lando 4.0.0-test"\n');
   await writeFile(binaryPath, binary);
   await chmod(binaryPath, 0o755);
 
   const sumsPath = join(releaseRoot, "SHA256SUMS");
-  await writeFile(sumsPath, `${sha256(binary)}  lando-linux-x64\n`);
+  await writeFile(sumsPath, `${options.checksum ?? sha256(binary)}  lando-${platform}\n`);
   const sigPath = join(releaseRoot, "SHA256SUMS.sig");
   await writeFile(sigPath, "fixture-signature\n");
 
@@ -40,7 +45,7 @@ const createReleaseFixture = async (root: string, channel = "stable") => {
     channel,
     latest: "4.0.0-test",
     binaries: {
-      "linux-x64": { url: fileUrl(binaryPath), sha256: sha256(binary), size: binary.length },
+      [platform]: { url: fileUrl(binaryPath), sha256: sha256(binary), size: binary.length },
     },
     checksums: { url: fileUrl(sumsPath), signature: fileUrl(sigPath) },
   };
@@ -135,11 +140,11 @@ describe("scripts/install.sh", () => {
     }
   });
 
-  test("defaults to the Linux user data bin directory when LANDO_INSTALL_DIR is unset", async () => {
+  test("defaults to the configured user data bin directory when LANDO_INSTALL_DIR is unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { gpgPath, logPath } = await createFakeGpg(root);
-    const xdgDataHome = join(root, "xdg-data");
+    const userDataRoot = join(root, "custom data root");
 
     const result = await runInstaller({
       GPG_LOG: logPath,
@@ -148,14 +153,77 @@ describe("scripts/install.sh", () => {
       LANDO_INSTALL_OS: "Linux",
       LANDO_INSTALL_ARCH: "x86_64",
       LANDO_INSTALL_LIBC: "glibc",
-      XDG_DATA_HOME: xdgDataHome,
+      LANDO_USER_DATA_ROOT: userDataRoot,
     });
 
-    const installedPath = join(xdgDataHome, "lando", "bin", "lando");
+    const installedPath = join(userDataRoot, "bin", "lando");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
     expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
+
+  test("maps Darwin x64 and verifies checksums with the portable shasum path", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root, "stable", { platform: "darwin-x64" });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Darwin",
+      LANDO_INSTALL_ARCH: "x86_64",
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("platform: darwin-x64");
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+  });
+
+  test("fails closed when signature verification fails", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const gpgPath = join(root, "failing-gpg.sh");
+    await writeExecutable(gpgPath, "#!/bin/sh\nexit 1\n");
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Signature verification failed");
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
+  });
+
+  test("fails closed when the downloaded binary does not match SHA256SUMS", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root, "stable", { checksum: "0".repeat(64) });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Checksum mismatch");
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
   });
 
   test("rejects unsupported POSIX platform constraints before installing", async () => {
