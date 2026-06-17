@@ -680,6 +680,16 @@ describe("release orchestrator", () => {
       expect(manifestScript).toContain(": > dist/SHA256SUMS");
       expect(manifestScript).toContain(": > dist/SHA512SUMS");
       expect(manifestScript).not.toContain("lando-linux-");
+      expect(manifestScript).not.toContain("build-update-manifest.ts");
+      expect(manifestScript).not.toContain("dist/update-manifest.json");
+
+      const signingScript = shellStages.find(
+        ({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg --batch"),
+      )?.script;
+      expect(signingScript).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
+      expect(signingScript).not.toContain("build-update-manifest.ts");
+      expect(signingScript).not.toContain("dist/update-manifest.json");
+      expect(signingScript).not.toContain("'cosign' 'sign-blob'");
     });
 
     test("writes Linux checksum manifests and GPG-signs them in the manifest stage", async () => {

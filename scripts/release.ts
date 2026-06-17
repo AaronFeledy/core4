@@ -424,7 +424,7 @@ const nonSigningManifestScript = (
     ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
     ": > dist/SHA512SUMS",
     ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
-    releaseUpdateManifestScript(platforms, env),
+    ...(platforms.length === 0 ? [] : [releaseUpdateManifestScript(platforms, env)]),
   ].join("\n");
 };
 
@@ -488,12 +488,16 @@ const renderShellCommand = (cmd: ReadonlyArray<string>): string => cmd.map(shell
 
 const manifestSigningScript = (env: ReleaseEnvironment, platforms: ReadonlyArray<CiPlatform>): string =>
   [
-    releaseUpdateManifestScript(platforms, env, { allowMissingBinaries: false }),
     "gpg --batch --yes --armor --detach-sign dist/SHA256SUMS",
     "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
     "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
     "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
-    ...updateManifestCosignCommands(env).map(renderShellCommand),
+    ...(platforms.length === 0
+      ? []
+      : [
+          releaseUpdateManifestScript(platforms, env, { allowMissingBinaries: false }),
+          ...updateManifestCosignCommands(env).map(renderShellCommand),
+        ]),
   ].join("\n");
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
