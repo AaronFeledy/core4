@@ -1044,3 +1044,9 @@
 - Added source/compiled update flag parity for `--channel` and `--dry-run`, focused manifest tests for signature-before-trust ordering, minimum blocking, SemVer prerelease ordering, downgrade refusal, signed-manifest replay refusal, release-manifest generation, and the required executable guide `docs/guides/update/channels-and-manifests.mdx` plus coverage/drift surface rows.
 - Verification: focused update/release/OCLIF/library/codegen tests, manifest-builder CLI smoke, package typecheck, targeted Biome lint, telemetry inventory, renderer-boundary, guide lint, guide coverage, public transcripts, guide-drift local skip, and diff check passed.
 ---
+
+## 2026-06-17 11:14 CDT - US-261 Review
+- Fixed review blockers: release and runtime channel derivation now recognize `v4.X.Y-dev.N` and `v4.X.Y-next.N` suffixes, top-level `lando update` alias invalid-channel behavior is covered at source/compiled parity, and the PRD JSON criteria now includes signed-manifest replay refusal to match the Markdown PRD.
+- Review notes (rejected/deferred): external `cosign` verification in the runtime update path is accepted for US-261 because this story owns signature-before-trust behavior, while embedded trust-root verification is a broader self-update implementation hardening; CDN channel-file publication (`stable.json`/`next.json`/`dev.json`) remains Stage 13 operational wiring, not the Stage 11 manifest writer fixed here.
+- Verification: typecheck, lint, and focused update/release/dispatch parity tests passed (118 pass / 0 fail).
+---

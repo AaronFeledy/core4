@@ -1094,6 +1094,7 @@
         "Manifest URLs are `https://update.lando.dev/v4/{stable,next,dev}.json`.",
         "`UpdateManifestSchema` validates channel, version, minimum, artifact URLs, checksums, signatures, and platform entries.",
         "The manifest sibling `.sig` is verified before any manifest fields are trusted.",
+        "A signed manifest older than the newest signed manifest previously observed for that channel is refused as possible replay.",
         "The `minimum` field blocks auto-update for binaries that are too old and prints manual update remediation.",
         "Tests pass",
         "Typecheck passes",

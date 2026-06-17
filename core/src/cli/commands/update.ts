@@ -117,8 +117,14 @@ export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
 
 export const updateChannelForVersion = (version: string): UpdateChannel => {
   const prerelease = version.split("+", 1)[0]?.split("-", 2)[1];
-  if (prerelease?.startsWith("alpha") === true) return "dev";
-  if (prerelease?.startsWith("beta") === true || prerelease?.startsWith("rc") === true) return "next";
+  if (prerelease?.startsWith("dev") === true || prerelease?.startsWith("alpha") === true) return "dev";
+  if (
+    prerelease?.startsWith("next") === true ||
+    prerelease?.startsWith("beta") === true ||
+    prerelease?.startsWith("rc") === true
+  ) {
+    return "next";
+  }
   return "stable";
 };
 

@@ -229,7 +229,9 @@ describe("release orchestrator", () => {
   });
 
   test("builds a schema-valid update manifest for every release platform", async () => {
+    expect(updateChannelForReleaseVersion("4.0.0-dev.7")).toBe("dev");
     expect(updateChannelForReleaseVersion("4.0.0-alpha.2")).toBe("dev");
+    expect(updateChannelForReleaseVersion("4.0.0-next.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-rc.1")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0")).toBe("stable");

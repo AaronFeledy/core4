@@ -136,7 +136,9 @@ describe("update signed manifest", () => {
   });
 
   test("derives the default update channel from the current binary version", () => {
+    expect(updateChannelForVersion("4.0.0-dev.7")).toBe("dev");
     expect(updateChannelForVersion("4.0.0-alpha.3")).toBe("dev");
+    expect(updateChannelForVersion("4.0.0-next.2")).toBe("next");
     expect(updateChannelForVersion("4.0.0-beta.2")).toBe("next");
     expect(updateChannelForVersion("4.0.0-rc.1")).toBe("next");
     expect(updateChannelForVersion("4.0.0")).toBe("stable");

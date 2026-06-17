@@ -30,8 +30,14 @@ export const updateChannelForReleaseVersion = (version: string): UpdateChannel =
   const normalized = normalizeVersion(version);
   const prerelease = normalized.split("-")[1]?.split("+")[0] ?? "";
   const prereleaseParts = prerelease.split(".").filter((part) => part.length > 0);
-  if (prereleaseParts.includes("alpha")) return "dev";
-  if (prereleaseParts.includes("beta") || prereleaseParts.includes("rc")) return "next";
+  if (prereleaseParts.includes("dev") || prereleaseParts.includes("alpha")) return "dev";
+  if (
+    prereleaseParts.includes("next") ||
+    prereleaseParts.includes("beta") ||
+    prereleaseParts.includes("rc")
+  ) {
+    return "next";
+  }
   return "stable";
 };
 
