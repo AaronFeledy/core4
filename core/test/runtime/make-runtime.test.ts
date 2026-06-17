@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
   AppPlanner,
+  CacheService,
   CommandRegistry,
   ConfigService,
   FileSystem,
@@ -119,6 +120,54 @@ describe("makeLandoRuntime", () => {
     const registry = Context.get(context, PluginRegistry);
 
     await expect(Effect.runPromise(registry.list)).resolves.toEqual([]);
+  });
+
+  test("does not install process signal handlers by default", async () => {
+    const beforeSigint = process.listenerCount("SIGINT");
+    const beforeSigterm = process.listenerCount("SIGTERM");
+
+    await Effect.runPromise(Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "minimal" }))));
+
+    expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
+    expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+  });
+
+  test("repeated runtime construction keeps mutable service state isolated", async () => {
+    const writeAndRead = Effect.gen(function* () {
+      const cache = yield* CacheService;
+      yield* cache.write("runtime-isolation", "first");
+      return yield* cache.read("runtime-isolation", Schema.String);
+    });
+    const readOnly = Effect.gen(function* () {
+      const cache = yield* CacheService;
+      return yield* cache.read("runtime-isolation", Schema.String);
+    });
+
+    await expect(
+      Effect.runPromise(writeAndRead.pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })))),
+    ).resolves.toBe("first");
+    await expect(
+      Effect.runPromise(readOnly.pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })))),
+    ).resolves.toBeNull();
+  });
+
+  test("the returned runtime layer finalizes scoped resources when the scope closes", async () => {
+    let finalized = false;
+    const scopedResource = Layer.scopedDiscard(
+      Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          finalized = true;
+        }),
+      ),
+    );
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(makeLandoRuntime({ bootstrap: "minimal", plugins: { layers: [scopedResource] } })),
+      ),
+    );
+
+    expect(finalized).toBe(true);
   });
 
   test("honors bundled-only plugin policy", async () => {
