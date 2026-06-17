@@ -1332,8 +1332,8 @@
         "Lint passes."
       ],
       "priority": 75,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Pinned makeLandoRuntime library defaults, no default signal-handler mutation, repeated runtime isolation, and scoped layer finalization with runtime tests; shipped the embedding-runtime executable guide proving default runtime behavior and isolated repeated construction."
     },
     {
       "id": "US-275",

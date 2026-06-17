@@ -15,7 +15,7 @@
  * - Runs the requested bootstrap sequence.
  * - Keeps resource ownership in the layer's outer scope.
  */
-import { Either, Layer, Schema } from "effect";
+import { Effect, Either, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, EmbeddingPluginPolicy, ProviderId } from "@lando/sdk/schema";
@@ -44,6 +44,7 @@ import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
+import { installSignalHandlers } from "./interrupt.ts";
 
 // Differences from CLI defaults:
 // - logger: "silent" in library mode (CLI: "pretty"/"json")
@@ -216,6 +217,10 @@ const runtimeLayerFor = (
     pluginDiscovery: pluginPolicy.discovery,
   }) as RuntimeLayer;
 
+const signalHandlersLayer = Layer.scopedDiscard(
+  Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber })),
+);
+
 const bootstrapError = (message: string, cause: unknown): LandoRuntimeBootstrapError =>
   new LandoRuntimeBootstrapError({
     message,
@@ -279,9 +284,12 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(hostLayersResult.left);
   }
 
-  const hostLayers = hostLayersResult.right;
+  const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
+    decoded.right.installSignalHandlers === true
+      ? [...hostLayersResult.right, signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>]
+      : hostLayersResult.right;
   return mergeRuntimeWithHostLayers(
-    baseLayer as Layer.Layer<unknown, unknown, unknown>,
+    baseLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
     hostLayers,
   ) as RuntimeLayer;
 }
