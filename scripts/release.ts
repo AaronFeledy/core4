@@ -269,9 +269,11 @@ const windowsSigningCredentials: CredentialRequirement = {
 const appleNotarizationCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
 };
-const manifestSigningCredentials: CredentialRequirement = {
-  allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
+const manifestChecksumSigningCredentials: CredentialRequirement = {
   allOfAny: [["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"]],
+};
+const manifestCosignCredentials: CredentialRequirement = {
+  allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
 };
 const provenanceCredentials: CredentialRequirement = {
   allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
@@ -412,6 +414,11 @@ const releaseUpdateManifestScript = (
   return args.map(shellQuote).join(" ");
 };
 
+const updateManifestPlatformsForContext = (context: ReleaseStageContext): ReadonlyArray<CiPlatform> =>
+  context.target === "library" ? [] : releasePlatformsForContext(context);
+
+const shouldSignUpdateManifest = (platforms: ReadonlyArray<CiPlatform>): boolean => platforms.length > 0;
+
 const nonSigningManifestScript = (
   platforms: ReadonlyArray<CiPlatform>,
   env: ReleaseEnvironment = process.env,
@@ -424,7 +431,7 @@ const nonSigningManifestScript = (
     ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
     ": > dist/SHA512SUMS",
     ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
-    ...(platforms.length === 0 ? [] : [releaseUpdateManifestScript(platforms, env)]),
+    ...(shouldSignUpdateManifest(platforms) ? [releaseUpdateManifestScript(platforms, env)] : []),
   ].join("\n");
 };
 
@@ -492,12 +499,12 @@ const manifestSigningScript = (env: ReleaseEnvironment, platforms: ReadonlyArray
     "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
     "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
     "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
-    ...(platforms.length === 0
-      ? []
-      : [
+    ...(shouldSignUpdateManifest(platforms)
+      ? [
           releaseUpdateManifestScript(platforms, env, { allowMissingBinaries: false }),
           ...updateManifestCosignCommands(env).map(renderShellCommand),
-        ]),
+        ]
+      : []),
   ].join("\n");
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
@@ -792,21 +799,30 @@ const shellStage =
     const artifactFamily = artifactFamilyForStage(stage, target);
 
     if (stage.id === "11-manifest") {
+      const updateManifestPlatforms = updateManifestPlatformsForContext(context);
       await runner.shell({
         stageId: stage.id,
         artifactFamily,
         summary: stage.commandSummary,
         remediation: stage.remediation,
-        script: nonSigningManifestScript(
-          target === "library" ? [] : releasePlatformsForContext(context),
-          context.env,
-        ),
+        script: nonSigningManifestScript(updateManifestPlatforms, context.env),
       });
       if (
         !credentialGate(
           "11-manifest signing",
-          "manifest signing credentials",
-          manifestSigningCredentials,
+          "checksum manifest signing credentials",
+          manifestChecksumSigningCredentials,
+          context,
+        )
+      ) {
+        return;
+      }
+      if (
+        shouldSignUpdateManifest(updateManifestPlatforms) &&
+        !credentialGate(
+          "11-manifest signing",
+          "update manifest cosign credentials",
+          manifestCosignCredentials,
           context,
         )
       ) {
@@ -817,10 +833,7 @@ const shellStage =
         artifactFamily,
         summary: "sign release checksum manifests",
         remediation: stage.remediation,
-        script: manifestSigningScript(
-          context.env,
-          target === "library" ? [] : releasePlatformsForContext(context),
-        ),
+        script: manifestSigningScript(context.env, updateManifestPlatforms),
       });
       return;
     }

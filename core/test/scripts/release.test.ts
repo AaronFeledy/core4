@@ -345,7 +345,7 @@ describe("release orchestrator", () => {
     );
     expect(logs).toContain("[release] skip 10-notarize (no macOS release platform selected)");
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (manifest signing credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (checksum manifest signing credentials absent)",
     );
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
@@ -622,7 +622,7 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "11-manifest",
+      stageId: "12-provenance-sbom",
       artifactFamily: "library",
     });
   });
@@ -664,7 +664,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "11-manifest",
-        env: manifestSigningEnv,
+        env: manifestGpgOnlyEnv,
         runner: {
           spawn: async () => {},
           shell: async ({ stageId, script }) => {
@@ -876,7 +876,7 @@ describe("release orchestrator", () => {
       });
 
       expect(logs).toContain(
-        "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (manifest signing credentials absent)",
+        "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (update manifest cosign credentials absent)",
       );
       expect(logs).toContain(
         "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
@@ -1669,7 +1669,7 @@ describe("release orchestrator", () => {
         logger: () => {},
         now: () => 0,
       }),
-    ).rejects.toThrow("Missing manifest signing credentials");
+    ).rejects.toThrow("Missing checksum manifest signing credentials");
 
     await manifestStage.run({
       target: "all",
