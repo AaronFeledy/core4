@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
 - Release compile targets and generated CI platform ids share `CI_PLATFORMS` from `scripts/ci-platforms.ts`; do not duplicate the platform id/target list in release or workflow code.
 - Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
@@ -933,11 +934,32 @@
 - Exercised the story's user-facing library surface by importing `@lando/core/docs/redactions` and confirming `redactPublicTranscript`/`redactPublicTranscriptText` resolve as functions; adjacent compiled `--help` smoke passed.
 - **Learnings for future iterations:** For library-contract stories, the real user scenario is package import resolution; default provider setup can remain blocked by the placeholder runtime bundle even when the story's acceptance surface is fully verifiable.
 ---
+## 2026-06-16 17:10 CDT - US-256
+- Shipped Linux release checksum signing: binary releases now write SHA256SUMS/SHA512SUMS entries for linux-x64 and linux-arm64, fail when those binaries are missing, GPG-sign and verify both manifests in Stage 11, then keyless-cosign sign and verify SHA256SUMS in Stage 12 before publish.
+- Kept release targets scoped: library-only releases still write manifest files but do not require Linux binaries, and local rehearsal warning-skips missing cosign credentials without spawning cosign.
+- Verification: focused release tests, typecheck, lint, guide lint, manual Stage 11/12 driver, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Linux authenticity lives at the checksum-manifest layer; keep binary artifact requirements out of library-only releases, and make keyless cosign gates match the actual ACTIONS OIDC request environment the command depends on.
+---
+
 ## 2026-06-16 19:14 CDT - US-274
 - Completed the library runtime embedding contract by pinning `makeLandoRuntime` defaults, no default signal-handler mutation, repeated runtime isolation, and scoped layer finalization in focused runtime tests.
 - Shipped the `embedding-runtime` executable guide so embedding hosts have a tested library-mode path for default runtime construction and isolated repeated runtimes.
 - Verification: typecheck, lint, focused runtime/library tests, guide lint/coverage, generated embedding-runtime guide scenarios, and full tests passed.
 - **Learnings for future iterations:** Providing a Layer separately rebuilds it; examples that need retained runtime state should write/read inside one provided runtime scope, then construct a separate runtime to prove isolation.
+---
+
+## 2026-06-16 19:45 CDT - US-256 Build
+- Verified the in-flight Linux checksum signing branch is complete with no new code changes: release manifests cover Linux checksum generation, GPG manifest signing, keyless cosign verification for `SHA256SUMS`, and local-rehearsal credential skipping as required.
+- Verification: typecheck, lint, focused release tests, full tests, and release manifest-stage smoke passed.
+- **Learnings for future iterations:** `LOCAL_REHEARSAL=1` narrows release platform selection to the host platform; use a non-local stage context with a temp dist when proving all configured release platforms participate in manifest generation without running the whole release pipeline.
+---
+
+## 2026-06-16 20:27 CDT - US-256 Review
+- Reviewed Linux checksum-manifest signing (stages 11/12) against PRD-08 US-256 + §17.1/§17.5: all functional ACs hold — stage 11 emits SHA256SUMS/SHA512SUMS covering linux-x64 + linux-arm64 behind `test -f` guards then GPG sign+verify, and stage 12 keyless-cosign signs+verifies SHA256SUMS gated on GitHub OIDC request env (ACTIONS_ID_TOKEN_REQUEST_TOKEN/_URL), ordered before stage 13 publish. No in-scope code changes needed.
+- Review notes (rejected/deferred): cosign identity-regexp dot-escaping deferred again — same shared default constant as US-255, OIDC-issuer-pinned + anchored, negligible practical risk. Shell-quote helper for artifact paths and the dead static stage-11 `command:` field rejected as out-of-scope speculative hardening (paths derive from repo-controlled CI_PLATFORMS ids, not user input).
+- Verification: typecheck, lint (+deprecation), and focused release tests (35 pass) green. Full `bun test` shows a small, run-varying failure set (21→2→1 across identical runs; a parallel oracle observed a different 3) that ALL pass in isolation (dispatch-parity 57 pass, packed-install pass) and none touch scripts/release.ts — environmental parallel-suite flakiness, not a US-256 regression.
+- **Learnings for future iterations:** the full suite is flaky under parallel contention (real `bun pack`/install IO timeouts + compiled-binary dispatch-parity timing); confirm any suspected full-suite failure in isolation before treating it as a regression.
 ---
 
 ## 2026-06-16 20:35 CDT - US-274 Review

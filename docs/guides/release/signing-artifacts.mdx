@@ -37,6 +37,14 @@ tags: [beta, docs, release, signing]
     </Step>
   </Scenario>
 
+  <Scenario id="linux-checksum-signing" render={false} reason="core/test/scripts/release.test.ts covers checksum manifest signing without live GPG or cosign credentials">
+    <Step name="checksum-manifests">
+      <Variable name="coverage" value="linux-x64 + linux-arm64" display="Stage 11 writes SHA256SUMS and SHA512SUMS for Linux release binaries" />
+      <Variable name="gpg" value="gpg --armor --detach-sign + gpg --verify" display="Stage 11 GPG-signs and verifies both checksum manifests when credentials are present" />
+      <Variable name="cosign" value="cosign sign-blob + cosign verify-blob dist/SHA256SUMS" display="Stage 12 keyless cosign signs and verifies SHA256SUMS" />
+    </Step>
+  </Scenario>
+
   <Scenario id="credential-gating" render={false} reason="Credential skip/fail behavior is covered by release-orchestrator tests with injected env and stubbed runners">
     <Step name="platform-credentials">
       <Variable name="macos" value="LANDO_RELEASE_SIGNING_IDENTITY + LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE" display="macOS signing and notarization require Developer ID and keychain-profile credentials outside local rehearsal" />
