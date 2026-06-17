@@ -1046,8 +1046,8 @@
         "Lint passes"
       ],
       "priority": 59,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now generates CycloneDX 1.6 SBOMs for publishable binary/library artifacts, links each release manifest artifact to its SBOM path and SHA-256, and fails closed when a manifest artifact remains without a matching SBOM."
     },
     {
       "id": "US-259",
@@ -1064,8 +1064,8 @@
         "Lint passes"
       ],
       "priority": 60,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now emits SLSA v1.0 in-toto provenance attestations for each publishable binary/library artifact, links each manifest artifact to its provenance path and SHA-256, keyless-signs and verifies each attestation with cosign using the configured GitHub Actions OIDC identity/issuer, and fails closed when a manifest artifact lacks matching provenance."
     },
     {
       "id": "US-260",
@@ -1082,8 +1082,8 @@
         "Lint passes"
       ],
       "priority": 61,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now keyless cosign-signs and verifies every selected binary artifact, writes release-note verification commands with the same OIDC identity/issuer and signature/certificate paths, and fails closed before publish when binary verification fails."
     },
     {
       "id": "US-261",
@@ -1419,8 +1419,8 @@
         "Lint passes."
       ],
       "priority": 80,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "External plugin acceptance harness now covers ESM file:// package roots, Bun-native TypeScript entries, package-root dependency resolution, in-root contribution module normalization to file:// URLs, escaping-module PluginLoadError isolation, codegen:check, bundled artifact codegen, and canonical recipe codegen guide surface."
     }
   ]
 }

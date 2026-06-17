@@ -1,5 +1,6 @@
 ## Codebase Patterns
 - Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
+- External installed plugin contribution modules must be resolved against the plugin package root and normalized to `file://` specifiers during registry discovery; later loaders import the manifest value directly, so validating without rewriting leaves relative modules resolved from core instead of the plugin package.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
 - Release compile targets and generated CI platform ids share `CI_PLATFORMS` from `scripts/ci-platforms.ts`; do not duplicate the platform id/target list in release or workflow code.
 - Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
@@ -19,6 +20,8 @@
 - Public-transcript docs consumption: render the generated `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json` artifacts through `@lando/core/docs/render` (`core/src/docs/render`), not by hand-parsing JSON — it decodes with the `PublicTranscript` schema and produces deterministic, source-linked HTML. The emit side (`scripts/build-guide-scenarios.ts`) and the missing-artifact gate (`scripts/check-public-transcripts.ts`, run as `bun run check:public-transcripts` in the `guide-scenarios-linux-x64` CI job) MUST share the exported `publicTranscriptRelativePath` helper so artifact paths never drift; a guide counts as "requires a transcript" when it is a `Shipped` INDEX.md row with a renderable (`render !== false`) scenario.
 - Effect scope finalizers run uninterruptibly, which masks `Effect.timeout` (the timer fires but cannot interrupt the timed-out effect). A bounded best-effort flush inside `Effect.addFinalizer` must wrap its body in `Effect.interruptible(...)` so the timeout can actually cancel a hanging effect; otherwise shutdown can hang forever on a stuck I/O effect.
 - Telemetry redaction is enforced in the transport's `record` (`core/src/telemetry/service.ts`) via `redactTelemetryData` BEFORE `Queue.offer`, so no disabled/failing/plugin sink ever sees a raw payload. The layer both allowlists known events to their inventory fields (constraining update telemetry) and scrubs free-string values; reuse `scrubTelemetryValue`/`redactTelemetryData` from `core/src/telemetry/redaction.ts` for any new event rather than scrubbing ad hoc at the call site.
+- Release supply-chain stages should generate artifact-specific SBOM manifest links first, then enforce that every manifest artifact has an SBOM; manifest artifact paths/SBOM links must stay POSIX-style `dist/...` regardless of host OS.
+- Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -980,4 +983,56 @@
 - CI outcome: pass (27 checks)
 - Review feedback: fixed (re-merged origin/main twice to clear progress.txt conflicts as new PRs landed; no code conflicts; no Bugbot findings)
 - Merge: merged (squash)
+
+## 2026-06-16 23:56 CDT - US-279
+- Completed the linux-x64 §17.9 acceptance harness tail: external installed plugin discovery now imports ESM and Bun-native TypeScript entries from managed package roots, resolves package-root dependencies, normalizes in-root global-service contribution modules to loadable file URLs, and isolates PluginLoadError failures without hiding unrelated healthy plugins.
+- Shipped the host-safe release acceptance rehearsal guide and guide-index/build guard covering criteria 20-27, including codegen:check, bundled plugin/recipe codegen, and lando init recipe reachability surfaces.
+- Verification: RED focused registry tests failed on missing file:// package-root support and outside-root module acceptance; GREEN focused plugin/build tests passed, guide lint/coverage passed, generated release-acceptance guide scenarios passed, codegen:check passed, typecheck and lint passed, reviewer gate passed, and the final full-suite retry that was already running passed.
+- **Learnings for future iterations:**
+  - A plugin manifest module path consumed later by a generic loader must be rewritten to the loader's actual import specifier at discovery time; root-containment validation alone is not enough when the loader imports the manifest value directly.
+---
+
+## 2026-06-17 00:47 CDT - US-258
+- Shipped CycloneDX SBOM generation in release stage 12: publishable binary and library artifacts now get artifact-specific `dist/*-sbom.cdx.json` files, each SBOM records artifact identity/version/SHA-256/tool metadata/components, and the update manifest links each artifact to its SBOM path and checksum.
+- Stage 12 now fails closed when a manifest artifact remains without a matching SBOM, while still allowing stage 12 to complete manifest entries that were created before SBOM generation.
+- Verification: focused release tests, manual `scripts/release-sbom.ts` helper QA, guide lint/coverage/public-transcript gates, `dev:guides --once` for the release guide, typecheck, lint, build, and full tests passed.
+- **Learnings for future iterations:**
+  - Generate SBOM links before enforcing manifest completeness, or a future manifest stage that pre-populates artifact entries will fail before stage 12 can attach the SBOMs it owns.
+---
+
+## 2026-06-17 01:10 CDT - US-258 Review
+- Reviewed CycloneDX SBOM generation against PRD-09 US-258 via 5-lane review-work. SBOM mechanism is correct and verified: CycloneDX 1.6 fields (name/version/SHA-256/components/tool metadata), per-artifact naming (incl. windows `.exe` and library `.tgz` stems), manifest linkage (path + checksum), and the fail-closed missing-SBOM gate all hold; QA exercised the script + edge cases and security cleared shell-quoting and checksum integrity. No code changes needed.
+- Review notes (rejected/deferred): library archive `dist/lando-library-<version>.tgz` has no producer in any release stage, so an `all`/`library` run of the full orchestrator would ENOENT in Stage 12 — deferred, NOT fixed: producing/publishing the library archive is owned by US-266 ("the release includes the library archive"), no live workflow runs the full orchestrator with a library target today, and US-266 mandates fail-if-missing so US-258's unconditional reference is the correct design (a skip-if-missing guard would be wrong). `update-manifest.json` carrying a `{schemaVersion,artifacts}` SBOM shape vs the normative `UpdateManifestSchema` is pre-existing (Stage 11 writer created that filename/shape; US-261 unimplemented) and belongs to US-261/US-266, not this story. Minor `fileURLToPath`-vs-`.pathname` nit is unreachable (Stage 12 runs Linux-only per the spec-15 matrix); left untouched to keep the diff focused.
+- Verification: typecheck and lint passed; focused `core/test/scripts/release.test.ts` passed (38 tests).
+- **Learnings for future iterations:** US-266 must ensure the library archive is produced before Stage 12 runs — US-258 already wired the library SBOM artifact + manifest link, so the gap to close is the archive producer (Stage 6/publish), not the SBOM step.
+---
+
+## 2026-06-17 02:00 CDT - US-259
+- Shipped SLSA v1.0 provenance in release Stage 12: every publishable binary/library artifact now gets an in-toto provenance statement linked from the release manifest with artifact digest, builder identity, source ref, commit SHA, workflow path, and release version.
+- Stage 12 keyless-signs and verifies each provenance attestation with cosign using the configured GitHub Actions OIDC identity/issuer, and fails closed if any manifest artifact lacks matching provenance.
+- Verification: red/green focused release tests passed; typecheck and lint passed; real release script fixture produced SBOM + provenance manifest links and decoded the SLSA predicate; Oracle reviewer returned PASS.
+- **Learnings for future iterations:**
+  - Keep Stage 12 supply-chain generation ordered as manifest checksums/signing first, SBOM generation/linkage second, provenance generation/linkage third, then cosign over generated provenance files so manifest completeness checks can fail on the final publishable artifact set.
+---
+
+## 2026-06-17 03:05 CDT - US-259 Review
+- Reviewed SLSA v1.0 provenance + cosign/OIDC wiring against PRD-09 US-259 via 5-lane review-work. Code, payload shape (in-toto Statement v1 / slsa.dev provenance v1 with builder id, source ref, commit SHA, artifact digest, workflow path, release version), keyless sign/verify, and the fail-closed missing-attestation gate are correct and test-covered.
+- Fixed the one real blocker: the co-owned guide `docs/guides/release/verify-supply-chain-artifacts.mdx` (Required at story acceptance for US-259) still only documented US-258's SBOM, so the change to `scripts/release.ts` would trip the PR-time guide-drift gate. Extended it with render={false} provenance scenarios covering attestation contract, keyless cosign signing, identity/issuer-pinned verification, and fail-closed behavior.
+- Review notes (rejected): goal-lane FAIL on `DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP` only matching `refs/tags` while the release workflow runs on `workflow_run`/`main` — rejected as out-of-scope: the constant is pre-existing (introduced by US-256 Windows signing, reused by US-257 checksums, both merged), shared across the whole release-cosign surface, and a placeholder (`lando-community/core4` ≠ the real repo) meant to be finalized with §15 release-identity config; changing it here would silently alter shipped signing stages. Security LOW notes (env override could broaden the identity pin; direct-CLI `--artifact ../..` path traversal) are pre-existing seams shared with US-256/257/258 and not reachable from the orchestrated release path.
+- Verification: typecheck, lint, lint:guides, check:guide-coverage passed; `core/test/scripts/release.test.ts` (40 pass) and the regenerated guide scenario (4 pass) passed.
+- **Learnings for future iterations:** the release-cosign certificate identity regexp + `lando-community/core4` repo default are placeholders; §15/release-identity work must align the regexp to the actual workflow trigger (tag vs `workflow_run`/main) and real repo, and that fix is cross-cutting across US-256/257/259, not per-story.
+---
+
+## 2026-06-17 03:35 CDT - US-260
+- Shipped binary-level cosign verification in release Stage 12: every selected release binary now gets a keyless signature and certificate, CI runs the matching `cosign verify-blob` command with the configured GitHub Actions OIDC identity/issuer, and verification failure stops the release before publish.
+- Stage 12 now writes `dist/release-notes.md` with each binary's signature path, certificate path, and exact verification command generated from the same helper used for CI verification.
+- Verification: red/green focused release tests passed; typecheck, lint, and build passed; release-script surface QA produced five binary verification commands and generated release notes in a temp fixture.
+- **Learnings for future iterations:**
+  - Keep release-note verification snippets coupled to the same command builder used for CI verification; otherwise a future identity/issuer/path change can make published instructions differ from what the pipeline actually verified.
+---
+
+## 2026-06-17 04:05 CDT - US-260 Review
+- Added the AC5 "identity / issuer mismatch" coverage that was missing: a focused release test asserts `cosign verify-blob` fails the release closed when a binary's signing certificate identity/issuer does not match the pinned `--certificate-identity-regexp`/`--certificate-oidc-issuer`. Stage 12 binary signing/verification and release-note generation otherwise matched the PRD.
+- Review notes (rejected): the generated `dist/release-notes.md` and per-binary `.sig`/`.crt` are not yet wired into a `gh release create` publish (binary publish is skipped in stage 13). Rejected as out of scope — this is the established §15 release-publish-wiring gap shared by US-256/257/258/259; stage-12 verification still runs before stage 13, so a failed binary verify-blob aborts the release before publish (AC4 holds).
+- Verification: typecheck, lint passed; `core/test/scripts/release.test.ts` (44 pass) passed.
 ---

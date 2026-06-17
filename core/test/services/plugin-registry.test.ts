@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { Cause, Effect, Exit, Layer } from "effect";
 
@@ -9,6 +10,10 @@ import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 import { PluginRegistryLive, makePluginRegistryLive } from "../../src/plugins/registry.ts";
+import {
+  collectGlobalServiceContributions,
+  defaultGlobalServiceModuleLoader,
+} from "../../src/services/global-services.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",
@@ -21,6 +26,8 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/template-handlebars",
   "@lando/template-mustache",
 ];
+
+const repoRoot = resolve(import.meta.dirname, "../../..");
 
 let userDataRoot: string;
 let appRoot: string;
@@ -402,6 +409,280 @@ describe("PluginRegistryLive", () => {
     expect(warnings).toEqual([
       expect.stringContaining("Plugin discovery from user source failed for @example/broken-user-plugin"),
     ]);
+  });
+
+  test("loads an external ESM plugin from a file URL package root and resolves package-root dependencies", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "esm-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "node_modules", "@example", "plugin-helper"), { recursive: true });
+    await writeFile(
+      join(packageRoot, "node_modules", "@example", "plugin-helper", "package.json"),
+      `${JSON.stringify({ name: "@example/plugin-helper", type: "module", exports: "./index.mjs" }, null, 2)}\n`,
+    );
+    await writeFile(
+      join(packageRoot, "node_modules", "@example", "plugin-helper", "index.mjs"),
+      `export const marker = "from package root";\n`,
+    );
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/esm-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/esm-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.mjs",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(
+      join(packageRoot, "index.mjs"),
+      `import { marker } from "@example/plugin-helper";\nif (marker !== "from package root") throw new Error("dependency not resolved from package root");\nexport const loaded = true;\n`,
+    );
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/esm-plugin", version: "1.0.0", path: pathToFileURL(packageRoot).href },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/esm-plugin")),
+    );
+
+    expect(String(manifest.name)).toBe("@example/esm-plugin");
+    expect(warnings).toEqual([]);
+  });
+
+  test("loads an external TypeScript plugin entry when Bun supports the file type", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "ts-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "src"), { recursive: true });
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/ts-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/ts-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "src/index.ts",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(packageRoot, "src", "index.ts"), `export const marker: string = "loaded";\n`);
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/ts-plugin", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/ts-plugin")),
+    );
+
+    expect(String(manifest.name)).toBe("@example/ts-plugin");
+    expect(warnings).toEqual([]);
+  });
+
+  test("rejects external plugin entries that escape the package root through symlinks", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "symlink-entry-plugin", "1.0.0");
+    const healthyRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await mkdir(brokenRoot, { recursive: true });
+    const outsideEntry = join(userPluginsRoot, "outside-entry.mjs");
+    await writeFile(outsideEntry, "export {}\n");
+    await symlink(outsideEntry, join(brokenRoot, "entry.mjs"));
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/symlink-entry-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/symlink-entry-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "entry.mjs",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/symlink-entry-plugin", version: "1.0.0", path: brokenRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/symlink-entry-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(warnings).toEqual([expect.stringContaining("PluginLoadError")]);
+    expect(warnings[0]).toContain("resolves through symlink outside the plugin package root");
+  });
+
+  test("normalizes accepted external contribution module paths so global-service loading resolves from the package root", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "global-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "src"), { recursive: true });
+    const effectModuleUrl = pathToFileURL(resolve(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/global-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/global-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              globalServices: [{ id: "external-mail", module: "./src/global-service.mjs" }],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(packageRoot, "index.js"), "export {};\n");
+    await writeFile(
+      join(packageRoot, "src", "global-service.mjs"),
+      `import { Effect } from ${JSON.stringify(effectModuleUrl)};\nexport default Effect.succeed({ id: "external-mail", type: "node:lts" });\n`,
+    );
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/global-plugin", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/global-plugin")),
+    );
+    const [entry] = collectGlobalServiceContributions([manifest]);
+
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    expect(entry.contribution.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "global-service.mjs")).href,
+    );
+    const service = await Effect.runPromise(defaultGlobalServiceModuleLoader.load(entry));
+    expect(service).toMatchObject({ type: "node:lts" });
+  });
+
+  test("rejects external contribution modules outside the package root without blocking healthy plugins", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "broken-module-plugin", "1.0.0");
+    const healthyRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await mkdir(brokenRoot, { recursive: true });
+    await writeFile(join(userPluginsRoot, "outside.ts"), "export {};\n");
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/broken-module-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/broken-module-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              globalServices: [{ id: "escape", module: "../../../outside.ts" }],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/broken-module-plugin", version: "1.0.0", path: brokenRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/broken-module-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(warnings).toEqual([expect.stringContaining("PluginLoadError")]);
+    expect(warnings[0]).toContain("resolves outside the plugin package root");
+  });
+
+  test("rejects external contribution modules that escape the package root through symlinks", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "symlink-module-plugin", "1.0.0");
+    const healthyRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await mkdir(join(brokenRoot, "src"), { recursive: true });
+    const outsideModule = join(userPluginsRoot, "outside-global-service.mjs");
+    await writeFile(outsideModule, "export default {}\n");
+    await symlink(outsideModule, join(brokenRoot, "src", "global-service.mjs"));
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/symlink-module-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/symlink-module-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              globalServices: [{ id: "escape", module: "./src/global-service.mjs" }],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/symlink-module-plugin", version: "1.0.0", path: brokenRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/symlink-module-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(warnings).toEqual([expect.stringContaining("PluginLoadError")]);
+    expect(warnings[0]).toContain("resolves through symlink outside the plugin package root");
   });
 
   test("fails with PluginLoadError for plugins outside the bundled registry", async () => {

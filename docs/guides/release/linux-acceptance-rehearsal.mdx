@@ -1,0 +1,37 @@
+---
+id: release-linux-acceptance-rehearsal
+provider: test
+platforms: [linux, wsl]
+timeout: 60000
+tags: [beta, docs, release, acceptance]
+---
+
+<Guide>
+  <Scenario id="external-plugin-loading" render={false} reason="The plugin registry unit tests create temporary external package roots, import ESM and TypeScript entries, and assert failed imports stay isolated without touching a real plugin store">
+    <Step name="criteria-20-24">
+      <Variable name="esm" value="file:// plugin package root" display="External ESM plugins load from an absolute file URL under the managed plugin store" />
+      <Variable name="typescript" value="src/index.ts" display="External TypeScript plugin entries load through Bun's native TypeScript importer" />
+      <Variable name="dependencies" value="package-root node_modules" display="External plugin entries resolve dependencies from their own package root" />
+      <Variable name="containment" value="module paths stay inside package root" display="Contribution module paths that escape the package root are rejected before use" />
+      <Variable name="isolation" value="PluginLoadError" display="A failed external import marks that plugin unhealthy while unrelated plugins still load" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="codegen-clean-check" render={false} reason="The release acceptance run invokes the repository codegen:check gate; guide CI does not rewrite the checkout during docs generation">
+    <Step name="criterion-25">
+      <Variable name="command" value="bun run codegen:check" display="Regenerate codegen outputs, run the deprecation release gate, then typecheck the clean checkout" />
+      <Variable name="clean" value="git diff --exit-code" display="Acceptance requires no uncommitted generated drift after the gate" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="bundled-artifact-codegen" render={false} reason="Bundled plugin and recipe generators are covered by focused build/codegen tests so guide scenarios remain host-safe and do not mutate source fixtures">
+    <Step name="criterion-26">
+      <Variable name="pluginSource" value="core/build.config.ts#bundledPlugins" display="Removing a bundled plugin from the ship list regenerates bundled plugin and manifest outputs without hand-editing src" />
+      <Variable name="pluginOutput" value="core/src/plugins/bundled.ts + core/oclif.manifest.json" display="The rebuilt binary omits removed bundled plugin metadata from generated outputs" />
+    </Step>
+    <Step name="criterion-27">
+      <Variable name="recipeSource" value="recipes/<id>/recipe.yml + core/build.config.ts#bundledRecipes" display="Adding a canonical recipe to the ship list is picked up by bundled-recipe codegen" />
+      <Variable name="recipeSurface" value="lando init --recipe <id>" display="The next built binary reaches the generated recipe through the init recipe source table" />
+    </Step>
+  </Scenario>
+</Guide>

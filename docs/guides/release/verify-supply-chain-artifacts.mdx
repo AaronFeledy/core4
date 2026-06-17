@@ -1,0 +1,40 @@
+---
+id: release-supply-chain-artifacts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release, sbom, supply-chain]
+---
+
+<Guide>
+  <Scenario id="cyclonedx-sbom-contract" render={false} reason="Release SBOM generation is asserted by core/test/scripts/release.test.ts with deterministic fixture artifacts, so this guide does not run live signing or publishing tools">
+    <Step name="sbom-artifacts">
+      <Variable name="format" value="CycloneDX JSON 1.6" display="Stage 12 emits CycloneDX JSON SBOM files for publishable release artifacts" />
+      <Variable name="naming" value="dist/lando-&lt;artifact&gt;-&lt;version&gt;-sbom.cdx.json" display="Each binary and library archive receives an artifact-specific SBOM path" />
+      <Variable name="contents" value="artifact name, version, SHA-256, component list, tool metadata" display="Each SBOM carries the release artifact identity, checksum, package components, Bun runtime component, and generator metadata" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="manifest-sbom-links" render={false} reason="Manifest linkage and fail-closed missing-SBOM behavior are covered by release-orchestrator tests with fixture manifests">
+    <Step name="manifest-linkage">
+      <Variable name="manifest" value="dist/update-manifest.json" display="The release manifest records each artifact's path, SHA-256, SBOM path, and SBOM SHA-256" />
+      <Variable name="failure" value="artifact lacks a matching SBOM" display="Stage 12 fails closed if a publishable manifest artifact has no matching SBOM link" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="slsa-provenance-contract" render={false} reason="Release provenance generation is asserted by core/test/scripts/release.test.ts with deterministic fixture artifacts, so this guide does not run live cosign or OIDC tooling">
+    <Step name="provenance-attestations">
+      <Variable name="format" value="SLSA v1.0 in-toto Statement" display="Stage 12 emits an in-toto Statement v1 attestation with the SLSA provenance v1 predicate for each publishable release artifact" />
+      <Variable name="naming" value="dist/lando-&lt;artifact&gt;-&lt;version&gt;-provenance.slsa.json" display="Each binary and library archive receives an artifact-specific provenance attestation path" />
+      <Variable name="contents" value="builder identity, source ref, commit SHA, artifact digest, workflow path, release version" display="Each attestation records the GitHub Actions builder identity, source ref, commit SHA, subject artifact SHA-256 digest, release workflow path, and release version" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="provenance-cosign-verification" render={false} reason="Keyless cosign signing, identity/issuer-pinned verification, and fail-closed missing-attestation behavior are covered by release-orchestrator tests without live OIDC">
+    <Step name="cosign-keyless">
+      <Variable name="signature" value="cosign sign-blob keyless via GitHub Actions OIDC" display="Stage 12 keyless-signs each provenance attestation with cosign using GitHub Actions OIDC, emitting a .sig and .crt alongside the attestation" />
+      <Variable name="verification" value="cosign verify-blob --certificate-identity-regexp --certificate-oidc-issuer" display="Stage 12 verifies each attestation, pinning the certificate identity regexp to the official release workflow and the OIDC issuer to token.actions.githubusercontent.com so artifacts from any other workflow are rejected" />
+      <Variable name="failure" value="artifact lacks a matching SLSA provenance attestation" display="Stage 12 fails closed if a publishable manifest artifact has no matching provenance link or its checksum does not match" />
+    </Step>
+  </Scenario>
+</Guide>
