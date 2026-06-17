@@ -997,3 +997,19 @@
 - Verification: typecheck and lint passed; focused `core/test/scripts/release.test.ts` passed (38 tests).
 - **Learnings for future iterations:** US-266 must ensure the library archive is produced before Stage 12 runs — US-258 already wired the library SBOM artifact + manifest link, so the gap to close is the archive producer (Stage 6/publish), not the SBOM step.
 ---
+
+## 2026-06-17 02:00 CDT - US-259
+- Shipped SLSA v1.0 provenance in release Stage 12: every publishable binary/library artifact now gets an in-toto provenance statement linked from the release manifest with artifact digest, builder identity, source ref, commit SHA, workflow path, and release version.
+- Stage 12 keyless-signs and verifies each provenance attestation with cosign using the configured GitHub Actions OIDC identity/issuer, and fails closed if any manifest artifact lacks matching provenance.
+- Verification: red/green focused release tests passed; typecheck and lint passed; real release script fixture produced SBOM + provenance manifest links and decoded the SLSA predicate; Oracle reviewer returned PASS.
+- **Learnings for future iterations:**
+  - Keep Stage 12 supply-chain generation ordered as manifest checksums/signing first, SBOM generation/linkage second, provenance generation/linkage third, then cosign over generated provenance files so manifest completeness checks can fail on the final publishable artifact set.
+---
+
+## 2026-06-17 03:05 CDT - US-259 Review
+- Reviewed SLSA v1.0 provenance + cosign/OIDC wiring against PRD-09 US-259 via 5-lane review-work. Code, payload shape (in-toto Statement v1 / slsa.dev provenance v1 with builder id, source ref, commit SHA, artifact digest, workflow path, release version), keyless sign/verify, and the fail-closed missing-attestation gate are correct and test-covered.
+- Fixed the one real blocker: the co-owned guide `docs/guides/release/verify-supply-chain-artifacts.mdx` (Required at story acceptance for US-259) still only documented US-258's SBOM, so the change to `scripts/release.ts` would trip the PR-time guide-drift gate. Extended it with render={false} provenance scenarios covering attestation contract, keyless cosign signing, identity/issuer-pinned verification, and fail-closed behavior.
+- Review notes (rejected): goal-lane FAIL on `DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP` only matching `refs/tags` while the release workflow runs on `workflow_run`/`main` — rejected as out-of-scope: the constant is pre-existing (introduced by US-256 Windows signing, reused by US-257 checksums, both merged), shared across the whole release-cosign surface, and a placeholder (`lando-community/core4` ≠ the real repo) meant to be finalized with §15 release-identity config; changing it here would silently alter shipped signing stages. Security LOW notes (env override could broaden the identity pin; direct-CLI `--artifact ../..` path traversal) are pre-existing seams shared with US-256/257/258 and not reachable from the orchestrated release path.
+- Verification: typecheck, lint, lint:guides, check:guide-coverage passed; `core/test/scripts/release.test.ts` (40 pass) and the regenerated guide scenario (4 pass) passed.
+- **Learnings for future iterations:** the release-cosign certificate identity regexp + `lando-community/core4` repo default are placeholders; §15/release-identity work must align the regexp to the actual workflow trigger (tag vs `workflow_run`/main) and real repo, and that fix is cross-cutting across US-256/257/259, not per-story.
+---

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -28,6 +29,8 @@ const writeFixtureFile = async (root: string, path: string, content: string): Pr
   await writeFile(join(root, path), content, "utf8");
 };
 
+const sha256Text = (text: string): string => createHash("sha256").update(text).digest("hex");
+
 const releaseStage = (id: string): ReleaseStage => {
   const stage = RELEASE_STAGES.find((candidate) => candidate.id === id);
   expect(stage).toBeDefined();
@@ -54,6 +57,10 @@ describe("release orchestrator", () => {
   const provenanceSigningEnv = {
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
+    GITHUB_REF: "refs/tags/v4.0.0-beta.1",
+    GITHUB_REPOSITORY: "lando-community/core4",
+    GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+    GITHUB_WORKFLOW_REF: "lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
   };
   const windowsSigningEnv = {
     LANDO_RELEASE_WINDOWS_CERTIFICATE: "certs/windows-release.pfx",
@@ -693,7 +700,8 @@ describe("release orchestrator", () => {
         logger: () => {},
       });
 
-      expect(provenanceCommands).toEqual([
+      const checksumCommands = provenanceCommands.filter((cmd) => cmd.includes("dist/SHA256SUMS"));
+      expect(checksumCommands).toEqual([
         [
           "cosign",
           "sign-blob",
@@ -801,6 +809,119 @@ describe("release orchestrator", () => {
       });
     });
 
+    test("generates and signs SLSA provenance for release artifacts", async () => {
+      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceCommands: Array<ReadonlyArray<string>> = [];
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await writeFixtureFile(root, "dist/lando-library-4.0.0-beta.1.tgz", "library archive");
+        await writeFixtureFile(root, "dist/update-manifest.json", '{"schemaVersion":1,"artifacts":{}}');
+
+        await withFixtureCwd(root, async () => {
+          await provenanceStage.run({
+            target: "all",
+            env: {
+              ...provenanceSigningEnv,
+              LANDO_RELEASE_PLATFORM: "linux-x64",
+              LANDO_RELEASE_VERSION: "4.0.0-beta.1",
+            },
+            localRehearsal: false,
+            runner: {
+              spawn: async ({ cmd }) => {
+                if (cmd.some((part) => part.includes("provenance"))) provenanceCommands.push(cmd);
+              },
+              shell: async ({ script }) => {
+                await Bun.$`sh -euc ${script}`.quiet();
+              },
+            },
+            logger: () => {},
+            now: () => 0,
+          });
+        });
+
+        const manifest = JSON.parse(await readFile(join(root, "dist", "update-manifest.json"), "utf8"));
+        const binaryEntry = manifest.artifacts["lando-linux-x64"];
+        expect(binaryEntry.provenance.path).toBe("dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json");
+        expect(binaryEntry.provenance.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(manifest.artifacts["lando-library-4.0.0-beta.1.tgz"].provenance.path).toBe(
+          "dist/lando-library-4.0.0-beta.1-provenance.slsa.json",
+        );
+
+        const provenance = JSON.parse(await readFile(join(root, binaryEntry.provenance.path), "utf8"));
+        expect(provenance._type).toBe("https://in-toto.io/Statement/v1");
+        expect(provenance.predicateType).toBe("https://slsa.dev/provenance/v1");
+        expect(provenance.subject).toEqual([
+          { name: "lando-linux-x64", digest: { sha256: binaryEntry.sha256 } },
+        ]);
+        expect(provenance.predicate.runDetails.builder.id).toBe(
+          "https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
+        );
+        expect(provenance.predicate.buildDefinition.resolvedDependencies[0].uri).toBe(
+          "git+https://github.com/lando-community/core4@refs/tags/v4.0.0-beta.1",
+        );
+        expect(provenance.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit).toBe(
+          "0123456789abcdef0123456789abcdef01234567",
+        );
+        expect(provenance.predicate.buildDefinition.externalParameters.workflowPath).toBe(
+          ".github/workflows/release.yml",
+        );
+        expect(provenance.predicate.buildDefinition.externalParameters.releaseVersion).toBe("4.0.0-beta.1");
+        expect(provenance.predicate.buildDefinition.externalParameters.sourceRef).toBe(
+          "refs/tags/v4.0.0-beta.1",
+        );
+
+        expect(provenanceCommands).toEqual([
+          [
+            "cosign",
+            "sign-blob",
+            "--yes",
+            "--output-signature",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json.sig",
+            "--output-certificate",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json.crt",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json",
+          ],
+          [
+            "cosign",
+            "verify-blob",
+            "--certificate-identity-regexp",
+            "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+            "--certificate-oidc-issuer",
+            "https://token.actions.githubusercontent.com",
+            "--signature",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json.sig",
+            "--certificate",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json.crt",
+            "dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json",
+          ],
+          [
+            "cosign",
+            "sign-blob",
+            "--yes",
+            "--output-signature",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json.sig",
+            "--output-certificate",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json.crt",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json",
+          ],
+          [
+            "cosign",
+            "verify-blob",
+            "--certificate-identity-regexp",
+            "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+            "--certificate-oidc-issuer",
+            "https://token.actions.githubusercontent.com",
+            "--signature",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json.sig",
+            "--certificate",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json.crt",
+            "dist/lando-library-4.0.0-beta.1-provenance.slsa.json",
+          ],
+        ]);
+      });
+    });
+
     test("provenance stage fails when a manifest artifact lacks a matching SBOM", async () => {
       const provenanceStage = releaseStage("12-provenance-sbom");
 
@@ -864,6 +985,52 @@ describe("release orchestrator", () => {
           expect(manifest.artifacts["lando-linux-x64"]?.sbom?.path).toBe(
             "dist/lando-linux-x64-0.0.0-sbom.cdx.json",
           );
+        });
+      });
+    });
+
+    test("provenance stage fails when a manifest artifact lacks a matching attestation", async () => {
+      const provenanceStage = releaseStage("12-provenance-sbom");
+      const sbom = "{}\n";
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await writeFixtureFile(root, "dist/orphan-sbom.cdx.json", sbom);
+        await writeFixtureFile(
+          root,
+          "dist/update-manifest.json",
+          JSON.stringify({
+            schemaVersion: 1,
+            artifacts: {
+              orphan: {
+                kind: "binary",
+                path: "dist/orphan",
+                sha256: "a".repeat(64),
+                sbom: { path: "dist/orphan-sbom.cdx.json", sha256: sha256Text(sbom) },
+              },
+            },
+          }),
+        );
+
+        await withFixtureCwd(root, async () => {
+          await expect(
+            provenanceStage.run({
+              target: "binary",
+              env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+              localRehearsal: false,
+              runner: {
+                spawn: async () => {},
+                shell: async ({ script }) => {
+                  const proc = Bun.spawn(["sh", "-euc", script], { stderr: "pipe", stdout: "pipe" });
+                  const stderr = await new Response(proc.stderr).text();
+                  const exitCode = await proc.exited;
+                  if (exitCode !== 0) throw new Error(stderr);
+                },
+              },
+              logger: () => {},
+              now: () => 0,
+            }),
+          ).rejects.toThrow("lacks a matching SLSA provenance attestation");
         });
       });
     });

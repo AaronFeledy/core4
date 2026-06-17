@@ -16,6 +16,7 @@ import {
 } from "./check-deprecations.ts";
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
+import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
 
 export type ArtifactTarget = "all" | "binary" | "library";
 export type ReleaseArtifactFamily = "binary" | "library" | "binary+library";
@@ -455,10 +456,16 @@ const manifestSigningScript = (): string =>
 const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
 const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
 const releaseSbomScriptPath = new URL("./release-sbom.ts", import.meta.url).pathname;
+const releaseProvenanceScriptPath = new URL("./release-provenance.ts", import.meta.url).pathname;
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
-const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+const cosignSignAndVerifyBlobCommands = (
+  env: ReleaseEnvironment,
+  blobPath: string,
+  signaturePath: string,
+  certificatePath: string,
+): ReadonlyArray<ReadonlyArray<string>> => {
   const certificateIdentityRegexp =
     envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
     DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
@@ -469,10 +476,10 @@ const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
       "sign-blob",
       "--yes",
       "--output-signature",
-      CHECKSUM_SIGNATURE,
+      signaturePath,
       "--output-certificate",
-      CHECKSUM_CERTIFICATE,
-      "dist/SHA256SUMS",
+      certificatePath,
+      blobPath,
     ],
     [
       "cosign",
@@ -482,13 +489,16 @@ const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
       "--certificate-oidc-issuer",
       COSIGN_OIDC_ISSUER,
       "--signature",
-      CHECKSUM_SIGNATURE,
+      signaturePath,
       "--certificate",
-      CHECKSUM_CERTIFICATE,
-      "dist/SHA256SUMS",
+      certificatePath,
+      blobPath,
     ],
   ];
 };
+
+const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> =>
+  cosignSignAndVerifyBlobCommands(env, "dist/SHA256SUMS", CHECKSUM_SIGNATURE, CHECKSUM_CERTIFICATE);
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
   `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
@@ -521,6 +531,45 @@ const releaseSbomScript = (context: ReleaseStageContext): string => {
   ];
   return args.map(shellQuote).join(" ");
 };
+
+const releaseProvenanceScript = (context: ReleaseStageContext): string => {
+  const version = releaseVersion(context.env);
+  const args = [
+    "bun",
+    releaseProvenanceScriptPath,
+    "--version",
+    version,
+    "--manifest",
+    "dist/update-manifest.json",
+    "--source-ref",
+    envValue(context.env, "GITHUB_REF") ?? "",
+    "--commit-sha",
+    envValue(context.env, "GITHUB_SHA") ?? "",
+    "--repository",
+    envValue(context.env, "GITHUB_REPOSITORY") ?? "lando-community/core4",
+    "--workflow-ref",
+    envValue(context.env, "GITHUB_WORKFLOW_REF") ??
+      `lando-community/core4/.github/workflows/release.yml@${envValue(context.env, "GITHUB_REF") ?? ""}`,
+    ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
+  ];
+  return args.map(shellQuote).join(" ");
+};
+
+const releaseProvenanceFiles = (context: ReleaseStageContext): ReadonlyArray<string> => {
+  const version = releaseVersion(context.env);
+  return releaseSbomArtifacts(context, version).map((artifact) => {
+    const separator = artifact.indexOf(":");
+    return releaseProvenancePathForArtifact(artifact.slice(separator + 1), version);
+  });
+};
+
+const provenanceCosignCommands = (
+  env: ReleaseEnvironment,
+  files: ReadonlyArray<string>,
+): ReadonlyArray<ReadonlyArray<string>> =>
+  files.flatMap((provenancePath) =>
+    cosignSignAndVerifyBlobCommands(env, provenancePath, `${provenancePath}.sig`, `${provenancePath}.crt`),
+  );
 
 const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
   "bun",
@@ -746,7 +795,7 @@ const provenanceSbomStage: ReleaseStage = {
   forLibrary: true,
   kind: "spawn",
   commandSummary: "generate provenance and SBOM artifacts",
-  remediation: "Implement supply-chain attestation generation before making this stage required.",
+  remediation: "Fix provenance/SBOM generation or signing and rerun scripts/release.ts from a clean tree.",
   run: async (context): Promise<void> => {
     if (
       !credentialGate(
@@ -758,11 +807,13 @@ const provenanceSbomStage: ReleaseStage = {
     )
       return;
 
+    const artifactFamily = artifactFamilyForStage(provenanceSbomStage, context.target);
+
     await spawnCommands(
       context.runner,
       {
         stageId: "12-provenance-sbom",
-        artifactFamily: artifactFamilyForStage(provenanceSbomStage, context.target),
+        artifactFamily,
         summary: "cosign-sign and verify release checksum manifest",
         remediation: provenanceSbomStage.remediation,
       },
@@ -770,12 +821,30 @@ const provenanceSbomStage: ReleaseStage = {
     );
     await context.runner.shell({
       stageId: "12-provenance-sbom",
-      artifactFamily: artifactFamilyForStage(provenanceSbomStage, context.target),
+      artifactFamily,
       summary: "generate CycloneDX SBOM artifacts and link release manifest entries",
       remediation: provenanceSbomStage.remediation,
       script: releaseSbomScript(context),
     });
     context.logger("[release] generated CycloneDX SBOM artifacts");
+    await context.runner.shell({
+      stageId: "12-provenance-sbom",
+      artifactFamily,
+      summary: "generate SLSA provenance attestations and link release manifest entries",
+      remediation: provenanceSbomStage.remediation,
+      script: releaseProvenanceScript(context),
+    });
+    await spawnCommands(
+      context.runner,
+      {
+        stageId: "12-provenance-sbom",
+        artifactFamily,
+        summary: "cosign-sign and verify SLSA provenance attestations",
+        remediation: provenanceSbomStage.remediation,
+      },
+      provenanceCosignCommands(context.env, releaseProvenanceFiles(context)),
+    );
+    context.logger("[release] generated and signed SLSA provenance attestations");
   },
 };
 
