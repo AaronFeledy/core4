@@ -151,6 +151,7 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
     }
 
     const createdRefs: Array<FileSyncSessionRef> = [];
+    const resumedPausedRefs: Array<FileSyncSessionRef> = [];
     yield* Effect.forEach(
       plan.fileSync,
       (entry) =>
@@ -162,7 +163,10 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
           });
           const existingSession = existingSessions[0];
           if (existingSession !== undefined) {
-            if (existingSession.status === "paused") yield* engine.resumeSession(existingSession.ref);
+            if (existingSession.status === "paused") {
+              yield* engine.resumeSession(existingSession.ref);
+              resumedPausedRefs.push(existingSession.ref);
+            }
             if (existingSession.status === "running" || existingSession.status === "paused") return;
           }
 
@@ -176,10 +180,19 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
     ).pipe(
       Effect.catchAll((error) =>
         Effect.forEach(
-          createdRefs.reverse(),
+          [...createdRefs].reverse(),
           (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
           { discard: true },
-        ).pipe(Effect.flatMap(() => Effect.fail(error))),
+        ).pipe(
+          Effect.zipRight(
+            Effect.forEach(
+              [...resumedPausedRefs].reverse(),
+              (ref) => engine.pauseSession(ref).pipe(Effect.catchAll(() => Effect.void)),
+              { discard: true },
+            ),
+          ),
+          Effect.flatMap(() => Effect.fail(error)),
+        ),
       ),
     );
   });
