@@ -64,7 +64,7 @@ const createReleaseFixture = async (
   const manifestPath = join(channelRoot, `${channel}.json`);
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 
-  return { binaryPath, channelRoot, manifestPath, sumsPath, sigPath };
+  return { channelRoot, manifestPath };
 };
 
 const createFakeGpg = async (root: string) => {
@@ -143,9 +143,9 @@ describe("scripts/install.sh", () => {
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
     const root = await makeTempRoot();
-    const fixtures = [];
+    let channelRoot = "";
     for (const channel of ["stable", "next", "dev"] as const) {
-      fixtures.push(await createReleaseFixture(root, channel));
+      channelRoot = (await createReleaseFixture(root, channel)).channelRoot;
     }
     const { gpgPath, logPath } = await createFakeGpg(root);
 
@@ -154,7 +154,7 @@ describe("scripts/install.sh", () => {
       const result = await runInstaller({
         GPG_LOG: logPath,
         LANDO_CHANNEL: channel,
-        LANDO_INSTALL_BASE_URL: fileUrl(fixtures[0].channelRoot),
+        LANDO_INSTALL_BASE_URL: fileUrl(channelRoot),
         LANDO_INSTALL_DIR: installDir,
         LANDO_INSTALL_GPG: gpgPath,
         LANDO_INSTALL_OS: "Linux",
