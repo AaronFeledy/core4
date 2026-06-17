@@ -20,6 +20,7 @@
 - Effect scope finalizers run uninterruptibly, which masks `Effect.timeout` (the timer fires but cannot interrupt the timed-out effect). A bounded best-effort flush inside `Effect.addFinalizer` must wrap its body in `Effect.interruptible(...)` so the timeout can actually cancel a hanging effect; otherwise shutdown can hang forever on a stuck I/O effect.
 - Telemetry redaction is enforced in the transport's `record` (`core/src/telemetry/service.ts`) via `redactTelemetryData` BEFORE `Queue.offer`, so no disabled/failing/plugin sink ever sees a raw payload. The layer both allowlists known events to their inventory fields (constraining update telemetry) and scrubs free-string values; reuse `scrubTelemetryValue`/`redactTelemetryData` from `core/src/telemetry/redaction.ts` for any new event rather than scrubbing ad hoc at the call site.
 - Release supply-chain stages should generate artifact-specific SBOM manifest links first, then enforce that every manifest artifact has an SBOM; manifest artifact paths/SBOM links must stay POSIX-style `dist/...` regardless of host OS.
+- Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -1012,4 +1013,12 @@
 - Review notes (rejected): goal-lane FAIL on `DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP` only matching `refs/tags` while the release workflow runs on `workflow_run`/`main` — rejected as out-of-scope: the constant is pre-existing (introduced by US-256 Windows signing, reused by US-257 checksums, both merged), shared across the whole release-cosign surface, and a placeholder (`lando-community/core4` ≠ the real repo) meant to be finalized with §15 release-identity config; changing it here would silently alter shipped signing stages. Security LOW notes (env override could broaden the identity pin; direct-CLI `--artifact ../..` path traversal) are pre-existing seams shared with US-256/257/258 and not reachable from the orchestrated release path.
 - Verification: typecheck, lint, lint:guides, check:guide-coverage passed; `core/test/scripts/release.test.ts` (40 pass) and the regenerated guide scenario (4 pass) passed.
 - **Learnings for future iterations:** the release-cosign certificate identity regexp + `lando-community/core4` repo default are placeholders; §15/release-identity work must align the regexp to the actual workflow trigger (tag vs `workflow_run`/main) and real repo, and that fix is cross-cutting across US-256/257/259, not per-story.
+---
+
+## 2026-06-17 03:35 CDT - US-260
+- Shipped binary-level cosign verification in release Stage 12: every selected release binary now gets a keyless signature and certificate, CI runs the matching `cosign verify-blob` command with the configured GitHub Actions OIDC identity/issuer, and verification failure stops the release before publish.
+- Stage 12 now writes `dist/release-notes.md` with each binary's signature path, certificate path, and exact verification command generated from the same helper used for CI verification.
+- Verification: red/green focused release tests passed; typecheck, lint, and build passed; release-script surface QA produced five binary verification commands and generated release notes in a temp fixture.
+- **Learnings for future iterations:**
+  - Keep release-note verification snippets coupled to the same command builder used for CI verification; otherwise a future identity/issuer/path change can make published instructions differ from what the pipeline actually verified.
 ---

@@ -1082,8 +1082,8 @@
         "Lint passes"
       ],
       "priority": 61,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now keyless cosign-signs and verifies every selected binary artifact, writes release-note verification commands with the same OIDC identity/issuer and signature/certificate paths, and fails closed before publish when binary verification fails."
     },
     {
       "id": "US-261",
