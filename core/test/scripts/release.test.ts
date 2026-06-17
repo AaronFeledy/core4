@@ -692,7 +692,7 @@ describe("release orchestrator", () => {
       expect(signingScript).not.toContain("'cosign' 'sign-blob'");
     });
 
-    test("writes Linux checksum manifests and GPG-signs them in the manifest stage", async () => {
+    test("writes checksum manifests for every release binary and GPG-signs them in the manifest stage", async () => {
       const shellStages: Array<{ stageId: string; script: string }> = [];
 
       await runRelease({
@@ -710,10 +710,15 @@ describe("release orchestrator", () => {
       });
 
       const manifestScripts = shellStages.filter(({ stageId }) => stageId === "11-manifest");
+      expect(manifestScripts[0]?.script).toContain("./dist/lando-darwin-arm64");
+      expect(manifestScripts[0]?.script).toContain("./dist/lando-darwin-x64");
       expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-arm64");
       expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-x64");
+      expect(manifestScripts[0]?.script).toContain("./dist/lando-windows-x64.exe");
+      expect(manifestScripts[0]?.script).toContain('sha256sum "./dist/lando-darwin-x64"');
       expect(manifestScripts[0]?.script).toContain('sha256sum "./dist/lando-linux-arm64"');
       expect(manifestScripts[0]?.script).toContain('sha512sum "./dist/lando-linux-x64"');
+      expect(manifestScripts[0]?.script).toContain('sha512sum "./dist/lando-windows-x64.exe"');
       expect(manifestScripts[0]?.script).toContain("bun");
       expect(manifestScripts[0]?.script).toContain("build-update-manifest.ts");
       expect(manifestScripts[0]?.script).toContain("dist/update-manifest.json");

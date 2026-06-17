@@ -29,6 +29,7 @@ const createReleaseFixture = async (
     readonly checksum?: string;
     readonly platform?: "linux-x64" | "darwin-x64";
     readonly sumsPathStyle?: "bare" | "release";
+    readonly manifestSignatureStyle?: "gpg" | "cosign";
   } = {},
 ) => {
   const platform = options.platform ?? "linux-x64";
@@ -47,8 +48,13 @@ const createReleaseFixture = async (
       ? `${hash}  ./dist/lando-${platform}\n`
       : `${hash}  lando-${platform}\n`;
   await writeFile(sumsPath, sumsLine);
-  const sigPath = join(releaseRoot, "SHA256SUMS.asc");
-  await writeFile(sigPath, "fixture-signature\n");
+  const ascPath = join(releaseRoot, "SHA256SUMS.asc");
+  await writeFile(ascPath, "fixture-gpg-signature\n");
+  const cosignSigPath = join(releaseRoot, "SHA256SUMS.sig");
+  await writeFile(cosignSigPath, "fixture-cosign-signature\n");
+
+  const signatureUrl =
+    options.manifestSignatureStyle === "cosign" ? fileUrl(cosignSigPath) : fileUrl(ascPath);
 
   const manifest = {
     channel,
@@ -56,7 +62,7 @@ const createReleaseFixture = async (
     binaries: {
       [platform]: { url: fileUrl(binaryPath), sha256: sha256(binary), size: binary.length },
     },
-    checksums: { url: fileUrl(sumsPath), signature: fileUrl(sigPath) },
+    checksums: { url: fileUrl(sumsPath), signature: signatureUrl },
   };
 
   const channelRoot = join(root, "channels");
@@ -64,7 +70,7 @@ const createReleaseFixture = async (
   const manifestPath = join(channelRoot, `${channel}.json`);
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 
-  return { channelRoot, manifestPath };
+  return { ascPath, binaryPath, channelRoot, cosignSigPath, manifestPath, sumsPath };
 };
 
 const createFakeGpg = async (root: string) => {
@@ -95,6 +101,30 @@ const runInstaller = async (
 };
 
 describe("scripts/install.sh", () => {
+  test("verifies GPG using SHA256SUMS.asc when manifest checksums.signature points at SHA256SUMS.sig", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root, "stable", { manifestSignatureStyle: "cosign" });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    const gpgLog = await Bun.file(logPath).text();
+    expect(gpgLog).toContain("SHA256SUMS.asc");
+    expect(gpgLog).not.toContain("SHA256SUMS.sig");
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+  });
+
   test("matches SHA256SUMS entries that use release-style ./dist/ path prefixes", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { sumsPathStyle: "release" });
@@ -143,9 +173,9 @@ describe("scripts/install.sh", () => {
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
     const root = await makeTempRoot();
-    let channelRoot = "";
+    const fixtures = [];
     for (const channel of ["stable", "next", "dev"] as const) {
-      channelRoot = (await createReleaseFixture(root, channel)).channelRoot;
+      fixtures.push(await createReleaseFixture(root, channel));
     }
     const { gpgPath, logPath } = await createFakeGpg(root);
 
@@ -154,7 +184,7 @@ describe("scripts/install.sh", () => {
       const result = await runInstaller({
         GPG_LOG: logPath,
         LANDO_CHANNEL: channel,
-        LANDO_INSTALL_BASE_URL: fileUrl(channelRoot),
+        LANDO_INSTALL_BASE_URL: fileUrl(fixtures[0].channelRoot),
         LANDO_INSTALL_DIR: installDir,
         LANDO_INSTALL_GPG: gpgPath,
         LANDO_INSTALL_OS: "Linux",

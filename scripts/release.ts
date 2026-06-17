@@ -296,11 +296,8 @@ const macosReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): Readon
     .sort((left, right) => (left.id === "darwin-x64" ? -1 : right.id === "darwin-x64" ? 1 : 0))
     .map(releaseBinaryPath);
 
-const linuxReleaseArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
-  platforms
-    .filter((platform) => platform.id.startsWith("linux-"))
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map(releaseBinaryPath);
+const checksumManifestArtifactPaths = (platforms: ReadonlyArray<CiPlatform>): ReadonlyArray<string> =>
+  [...platforms].sort((left, right) => left.id.localeCompare(right.id)).map(releaseBinaryPath);
 
 const macosCodesignCommands = (
   env: ReleaseEnvironment,
@@ -423,14 +420,14 @@ const nonSigningManifestScript = (
   platforms: ReadonlyArray<CiPlatform>,
   env: ReleaseEnvironment = process.env,
 ): string => {
-  const linuxArtifacts = linuxReleaseArtifactPaths(platforms);
+  const checksumArtifacts = checksumManifestArtifactPaths(platforms);
   return [
     "mkdir -p dist",
-    ...linuxArtifacts.map((artifactPath) => `test -f "${artifactPath}"`),
+    ...checksumArtifacts.map((artifactPath) => `test -f "${artifactPath}"`),
     ": > dist/SHA256SUMS",
-    ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
+    ...checksumArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
     ": > dist/SHA512SUMS",
-    ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
+    ...checksumArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
     ...(shouldSignUpdateManifest(platforms) ? [releaseUpdateManifestScript(platforms, env)] : []),
   ].join("\n");
 };

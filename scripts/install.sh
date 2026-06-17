@@ -60,6 +60,22 @@ manifest_checksum_field() {
   printf '%s\n' "$value"
 }
 
+resolve_gpg_signature_url() {
+  manifest_url=$1
+  value=$(manifest_checksum_field "$manifest_url" "signature")
+  if [ -n "${LANDO_INSTALL_GPG_SIGNATURE_URL:-}" ]; then
+    printf '%s\n' "$LANDO_INSTALL_GPG_SIGNATURE_URL"
+    return
+  fi
+  case "$value" in
+    *.sig)
+      base=${value%.sig}
+      printf '%s\n' "${base}.asc"
+      ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
+
 detect_libc() {
   if [ -n "${LANDO_INSTALL_LIBC:-}" ]; then
     printf '%s\n' "$LANDO_INSTALL_LIBC"
@@ -226,7 +242,7 @@ binary=$tmp/lando
 download "$manifest_url" "$manifest"
 binary_url=$(manifest_binary_field "$manifest" "$platform" "url")
 sums_url=$(manifest_checksum_field "$manifest" "url")
-signature_url=$(manifest_checksum_field "$manifest" "signature")
+signature_url=$(resolve_gpg_signature_url "$manifest")
 artifact=$(basename_from_url "$binary_url")
 
 download "$binary_url" "$binary"
