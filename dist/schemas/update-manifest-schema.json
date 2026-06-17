@@ -1,0 +1,216 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "binaries": {
+      "additionalProperties": false,
+      "properties": {
+        "darwin-arm64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        },
+        "darwin-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        },
+        "linux-arm64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        },
+        "linux-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        },
+        "windows-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "sha256",
+            "size"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "darwin-x64",
+        "darwin-arm64",
+        "linux-x64",
+        "linux-arm64",
+        "windows-x64"
+      ],
+      "type": "object"
+    },
+    "channel": {
+      "enum": [
+        "stable",
+        "next",
+        "dev"
+      ],
+      "type": "string"
+    },
+    "checksums": {
+      "additionalProperties": false,
+      "properties": {
+        "signature": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "latest": {
+      "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "type": "string"
+    },
+    "minimum": {
+      "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "type": "string"
+    },
+    "notes": {
+      "description": "a string matching the pattern ^https:\\/\\/",
+      "pattern": "^https:\\/\\/",
+      "type": "string"
+    },
+    "released": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "channel",
+    "latest",
+    "released",
+    "minimum",
+    "binaries",
+    "checksums",
+    "notes"
+  ],
+  "type": "object"
+}
