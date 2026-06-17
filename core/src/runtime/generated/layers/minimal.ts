@@ -23,6 +23,7 @@ import { ConfigServiceLive } from "../../../services/config.ts";
 import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { PrivilegeServiceLive } from "../../../services/privilege.ts";
+import { ProcessRunnerLive } from "../../../services/process-runner.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
 import { makeTelemetryLayer } from "../../../telemetry/service.ts";
 import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-layer-support.ts";
@@ -41,6 +42,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
+    ProcessRunnerLive,
     PrivilegeServiceLive,
     SecretStoreLive,
   );
