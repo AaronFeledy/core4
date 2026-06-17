@@ -23,6 +23,7 @@ tags: [beta, docs, release, acceptance]
 
   <Scenario id="performance-and-level-none" render={false} reason="Linux performance checks run in CI/nightly against the built binary; guide generation records the proof surface without running benchmarks locally">
     <Step name="criterion-18">
+      <Variable name="e2eJob" value="guide-scenarios-linux-x64" display="The linux-x64 guide scenario job runs the compiled-binary e2e @smoke subset with provider diagnostics" />
       <Variable name="ciJob" value="perf-budget-linux-x64" display="The linux-x64 perf-budget job downloads the built binary and runs the release-blocking benchmark surface" />
       <Variable name="benchmark" value="bun run bench:tooling-hot-path -- --binary dist/lando" display="Nightly/perf evidence records the tooling hot-path benchmark against the released binary" />
     </Step>

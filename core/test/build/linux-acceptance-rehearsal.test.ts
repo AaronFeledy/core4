@@ -45,7 +45,9 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain("core/src/runtime/generated/layers/<level>.ts");
 
     expect(guide).toContain('Scenario id="performance-and-level-none" render={false}');
+    expect(guide).toContain("guide-scenarios-linux-x64");
     expect(guide).toContain("perf-budget-linux-x64");
+    expect(guide).toContain("compiled-binary e2e @smoke subset");
     expect(guide).toContain("bun run bench:tooling-hot-path -- --binary dist/lando");
     expect(guide).toContain("level-none invocations do not import @oclif/core");
     expect(guide).toContain("Context.Service");
