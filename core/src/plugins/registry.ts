@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { type Context, Effect, Either, Layer, Schema } from "effect";
 
@@ -28,7 +29,82 @@ interface DiscoveredPlugin {
 const pluginManifestError = (message: string, cause: unknown): PluginManifestError =>
   new PluginManifestError({ message, issues: [String(cause)] });
 
-const loadInstalledPluginManifest = async (packageRoot: string): Promise<PluginManifest> => {
+const pluginLoadError = (pluginName: string, message: string, cause?: unknown): PluginLoadError =>
+  new PluginLoadError({
+    message: cause === undefined ? message : `${message}: ${String(cause)}`,
+    pluginName,
+  });
+
+const packageRootPath = (packageRoot: string): string =>
+  packageRoot.startsWith("file://") ? fileURLToPath(packageRoot) : packageRoot;
+
+const realPathOrResolved = async (path: string): Promise<string> => realpath(path).catch(() => resolve(path));
+
+const resolvePluginModulePath = async (
+  packageRoot: string,
+  pluginName: string,
+  modulePath: string,
+): Promise<string> => {
+  const root = resolve(packageRoot);
+  const candidate = modulePath.startsWith("file://")
+    ? fileURLToPath(modulePath)
+    : isAbsolute(modulePath)
+      ? modulePath
+      : resolve(root, modulePath);
+  const resolved = resolve(candidate);
+  const relativePath = relative(root, resolved);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw pluginLoadError(
+      pluginName,
+      `Plugin module ${modulePath} resolves outside the plugin package root ${root}.`,
+    );
+  }
+
+  const realRoot = await realPathOrResolved(root);
+  const realResolved = await realPathOrResolved(resolved);
+  const realRelativePath = relative(realRoot, realResolved);
+  if (realRelativePath.startsWith("..") || isAbsolute(realRelativePath)) {
+    throw pluginLoadError(
+      pluginName,
+      `Plugin module ${modulePath} resolves through symlink outside the plugin package root ${root}.`,
+    );
+  }
+
+  return resolved;
+};
+
+const loadExternalPluginEntry = async (packageRoot: string, manifest: PluginManifest): Promise<void> => {
+  if (manifest.entry === undefined) return;
+  const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
+  try {
+    await import(pathToFileURL(entryPath).href);
+  } catch (cause) {
+    throw pluginLoadError(String(manifest.name), `Failed to import plugin entry ${manifest.entry}`, cause);
+  }
+};
+
+const normalizeExternalContributionModules = async (
+  packageRoot: string,
+  manifest: PluginManifest,
+): Promise<PluginManifest> => {
+  if (manifest.contributes?.globalServices === undefined) return manifest;
+  return Promise.all(
+    manifest.contributes.globalServices.map(async (contribution) => {
+      if (contribution.module === undefined) return contribution;
+      const resolved = await resolvePluginModulePath(packageRoot, String(manifest.name), contribution.module);
+      return { ...contribution, module: pathToFileURL(resolved).href };
+    }),
+  ).then((globalServices) => ({
+    ...manifest,
+    contributes: {
+      ...manifest.contributes,
+      globalServices,
+    },
+  }));
+};
+
+const loadInstalledPluginManifest = async (packageRootInput: string): Promise<PluginManifest> => {
+  const packageRoot = packageRootPath(packageRootInput);
   const packageJsonPath = join(packageRoot, "package.json");
   let parsed: unknown;
   try {
@@ -41,20 +117,22 @@ const loadInstalledPluginManifest = async (packageRoot: string): Promise<PluginM
   if (Either.isLeft(decoded)) {
     throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.left);
   }
-  return decoded.right;
+  const manifest = await normalizeExternalContributionModules(packageRoot, decoded.right);
+  await loadExternalPluginEntry(packageRoot, manifest);
+  return manifest;
 };
 
 const warnPluginDiscoveryFailure = (
   logger: Context.Tag.Service<typeof Logger> | undefined,
   source: Exclude<PluginSourceKind, "system">,
   pluginName: string,
-  cause: PluginManifestError,
+  cause: PluginManifestError | PluginLoadError,
 ): Effect.Effect<void> =>
   logger === undefined
     ? Effect.void
     : logger
         .warn(
-          `Plugin discovery from ${source} source failed for ${pluginName}; skipping that plugin. ${cause.message}`,
+          `Plugin discovery from ${source} source failed for ${pluginName}; skipping that plugin. ${cause._tag}: ${cause.message}`,
         )
         .pipe(Effect.catchAll(() => Effect.void));
 
@@ -72,7 +150,7 @@ const discoverInstalledPlugins = (
         Effect.tryPromise({
           try: async () => ({ source, manifest: await loadInstalledPluginManifest(entry.path) }),
           catch: (cause) =>
-            cause instanceof PluginManifestError
+            cause instanceof PluginManifestError || cause instanceof PluginLoadError
               ? cause
               : pluginManifestError(
                   `Failed to discover ${source} plugin ${entry.name} from ${entry.path}`,
