@@ -27,6 +27,80 @@ import type { Interfaces } from "@oclif/core";
 export const COMPILED_OCLIF_MANIFEST = ${JSON.stringify(manifest, null, 2)} satisfies Interfaces.Manifest;
 `;
 
+const cacheDefaultValue = async (flag: Interfaces.OptionFlag<unknown>): Promise<unknown> => {
+  if (typeof flag.defaultHelp === "function") {
+    try {
+      return await flag.defaultHelp({ flags: {}, options: flag });
+    } catch (_error) {
+      return undefined;
+    }
+  }
+
+  if (typeof flag.default === "function") {
+    try {
+      return await flag.default({ flags: {}, options: flag });
+    } catch (_error) {
+      return undefined;
+    }
+  }
+
+  return flag.default;
+};
+
+const cacheLoadedFlag = async (
+  name: string,
+  flag: Interfaces.BooleanFlag<unknown> | Interfaces.OptionFlag<unknown>,
+): Promise<Command.Flag.Cached> => {
+  const common = {
+    aliases: flag.aliases,
+    char: flag.char,
+    charAliases: flag.charAliases,
+    combinable: flag.combinable,
+    dependsOn: flag.dependsOn,
+    deprecateAliases: flag.deprecateAliases,
+    deprecated: flag.deprecated,
+    description: flag.description,
+    env: flag.env,
+    exclusive: flag.exclusive,
+    helpGroup: flag.helpGroup,
+    helpLabel: flag.helpLabel,
+    hidden: flag.hidden,
+    name,
+    noCacheDefault: flag.noCacheDefault,
+    relationships: flag.relationships,
+    required: flag.required,
+    summary: flag.summary,
+  };
+
+  if (flag.type === "boolean") {
+    return {
+      ...common,
+      allowNo: flag.allowNo,
+      type: flag.type,
+    };
+  }
+
+  return {
+    ...common,
+    default: await cacheDefaultValue(flag),
+    delimiter: flag.delimiter,
+    hasDynamicHelp: typeof flag.defaultHelp === "function",
+    helpValue: flag.helpValue,
+    multiple: flag.multiple,
+    options: flag.options,
+    type: flag.type,
+  };
+};
+
+const cacheLoadedFlags = async (
+  flags: Interfaces.FlagInput | undefined,
+): Promise<Record<string, Command.Flag.Cached>> =>
+  Object.fromEntries(
+    await Promise.all(
+      Object.entries(flags ?? {}).map(async ([name, flag]) => [name, await cacheLoadedFlag(name, flag)]),
+    ),
+  );
+
 const main = async (): Promise<void> => {
   const config = await Config.load({ root: CORE_ROOT, ignoreManifest: true });
   const rootPlugin = config.plugins.get(config.pjson.name);
@@ -39,7 +113,13 @@ const main = async (): Promise<void> => {
 
   for (const command of rootPlugin.commands) {
     const { load: _load, ...cached } = command;
-    commands[command.id] = { ...cached, hidden: cached.hidden ?? false };
+    const flags = await cacheLoadedFlags((await command.load()).flags);
+    commands[command.id] = {
+      ...cached,
+      flags,
+      hasDynamicHelp: Object.values(flags).some((flag) => flag.hasDynamicHelp === true),
+      hidden: cached.hidden ?? false,
+    };
   }
 
   const manifest = { commands, version: config.version } satisfies Interfaces.Manifest;
