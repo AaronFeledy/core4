@@ -1064,3 +1064,10 @@
 - Verification: typecheck, lint, benchmark test, start scenario test, linux acceptance rehearsal test, guide-drift test, guide coverage, guide lint, compiled bytecode build, and sandbox compiled setup/start smoke passed. TypeScript LSP diagnostics could not run because the LSP server is not installed in this environment.
 - **Learnings for future iterations:** File-sync start rollback must restore pre-existing paused sessions it resumes, not just terminate newly-created sessions; release perf acceptance needs p95 evidence, not p50 summaries.
 ---
+
+## 2026-06-17 14:53 CDT - Babysit
+- PR: #390 https://github.com/AaronFeledy/core4/pull/390
+- CI outcome: pass
+- Review feedback: fixed (7 Cursor Bugbot findings on update.ts/release.ts/build-update-manifest.ts addressed across prior triage commits: prerelease-prefix + leading-v channel/semver normalization, dry-run now skips persist/replace, placeholder-binary rejection at trust time, signed manifests force allowMissingBinaries off, and library releases skip update-manifest cosign/OIDC; verified against HEAD before merge; Bugbot re-ran clean on final HEAD)
+- Merge: merged (squash)
+---
