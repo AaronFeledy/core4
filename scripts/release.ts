@@ -873,14 +873,17 @@ const platformSignStage: ReleaseStage = {
       remediation: platformSignStage.remediation,
     };
 
-    for (const plan of selectedPlans) {
-      if (credentialGate("9-sign", plan.credentialLabel, plan.credentials, context)) {
-        await spawnCommands(context.runner, command, plan.commands(context.env, platforms));
-      }
-    }
-
     if (selectedPlans.length === 0) {
       context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
+      return;
+    }
+
+    const gatedPlans = selectedPlans.filter((plan) =>
+      credentialGate("9-sign", plan.credentialLabel, plan.credentials, context),
+    );
+
+    for (const plan of gatedPlans) {
+      await spawnCommands(context.runner, command, plan.commands(context.env, platforms));
     }
   },
 };
