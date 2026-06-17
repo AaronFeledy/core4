@@ -1,0 +1,102 @@
+---
+id: embedding-runtime
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, library, embedding]
+---
+
+# Embedding the Lando runtime
+
+Embedding hosts create one scoped runtime layer with `makeLandoRuntime()`, provide it to
+Effect programs, and close the host scope when the runtime is no longer needed. Library
+mode keeps host applications safe by default: logging is silent, renderer output is JSON,
+plugin discovery is explicit-only, telemetry is disabled unless opted in, and signal
+handlers are not installed by runtime construction.
+
+<Guide>
+  <Scenario id="library-default-runtime">
+    <Step name="inspect-defaults">
+      <Run
+        runtime="library"
+        code={`const runtime = LandoCore.makeLandoRuntime({ bootstrap: "tooling" });
+const defaults = yield* Effect.gen(function* () {
+  const renderer = yield* LandoCore.Renderer;
+  const telemetry = yield* LandoCore.Telemetry;
+  const plugins = yield* LandoCore.PluginRegistry;
+  return {
+    renderer: renderer.id,
+    telemetry: telemetry.enabled,
+    pluginNames: yield* plugins.list,
+  };
+}).pipe(Effect.provide(runtime));
+
+expect(defaults.renderer).toBe("json");
+expect(defaults.telemetry).toBe(false);
+expect(defaults.pluginNames).toEqual([]);`}
+        displayCode={`import { Effect } from "effect";
+import { PluginRegistry, Renderer, Telemetry, makeLandoRuntime } from "@lando/core";
+
+const runtime = makeLandoRuntime({ bootstrap: "tooling" });
+const defaults = await Effect.runPromise(
+  Effect.gen(function* () {
+    const renderer = yield* Renderer;
+    const telemetry = yield* Telemetry;
+    const plugins = yield* PluginRegistry;
+    return {
+      renderer: renderer.id,
+      telemetry: telemetry.enabled,
+      pluginNames: yield* plugins.list,
+    };
+  }).pipe(Effect.provide(runtime)),
+);
+
+console.log(defaults);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="repeated-runtime-isolation">
+    <Step name="construct-twice">
+      <Run
+        runtime="library"
+        code={`const first = LandoCore.makeLandoRuntime({ bootstrap: "minimal" });
+const second = LandoCore.makeLandoRuntime({ bootstrap: "minimal" });
+
+const firstValue = yield* Effect.gen(function* () {
+  const cache = yield* LandoCore.CacheService;
+  yield* cache.write("runtime-key", "first");
+  return yield* cache.read("runtime-key");
+}).pipe(Effect.provide(first));
+const secondValue = yield* Effect.gen(function* () {
+  const cache = yield* LandoCore.CacheService;
+  return yield* cache.read("runtime-key");
+}).pipe(Effect.provide(second));
+
+expect(firstValue).toBe("first");
+expect(secondValue).toBeNull();`}
+        displayCode={`import { Effect, Schema } from "effect";
+import { CacheService, makeLandoRuntime } from "@lando/core";
+
+const first = makeLandoRuntime({ bootstrap: "minimal" });
+const second = makeLandoRuntime({ bootstrap: "minimal" });
+
+await Effect.runPromise(
+  Effect.gen(function* () {
+    const cache = yield* CacheService;
+    yield* cache.write("runtime-key", "first");
+  }).pipe(Effect.provide(first)),
+);
+
+const secondValue = await Effect.runPromise(
+  Effect.gen(function* () {
+    const cache = yield* CacheService;
+    return yield* cache.read("runtime-key", Schema.String);
+  }).pipe(Effect.provide(second)),
+);
+
+console.log(secondValue);`}
+      />
+    </Step>
+  </Scenario>
+</Guide>

@@ -933,3 +933,22 @@
 - Exercised the story's user-facing library surface by importing `@lando/core/docs/redactions` and confirming `redactPublicTranscript`/`redactPublicTranscriptText` resolve as functions; adjacent compiled `--help` smoke passed.
 - **Learnings for future iterations:** For library-contract stories, the real user scenario is package import resolution; default provider setup can remain blocked by the placeholder runtime bundle even when the story's acceptance surface is fully verifiable.
 ---
+## 2026-06-16 19:14 CDT - US-274
+- Completed the library runtime embedding contract by pinning `makeLandoRuntime` defaults, no default signal-handler mutation, repeated runtime isolation, and scoped layer finalization in focused runtime tests.
+- Shipped the `embedding-runtime` executable guide so embedding hosts have a tested library-mode path for default runtime construction and isolated repeated runtimes.
+- Verification: typecheck, lint, focused runtime/library tests, guide lint/coverage, generated embedding-runtime guide scenarios, and full tests passed.
+- **Learnings for future iterations:** Providing a Layer separately rebuilds it; examples that need retained runtime state should write/read inside one provided runtime scope, then construct a separate runtime to prove isolation.
+---
+
+## 2026-06-16 20:35 CDT - US-274 Review
+- Fixed the review blocker in the enabled signal-handler path: `installSignalHandlers: true` now installs scoped SIGINT/SIGTERM listeners, interrupts the running Effect fiber, and removes listeners when the runtime scope closes; default library construction remains process-global-mutation free.
+- Review notes (deferred): `plugins.discovery.system` remains schema-visible but not wired as a distinct discovery source; left out of scope because US-274's default-safety acceptance is covered by the empty default registry, while system discovery opt-in needs the broader plugin-discovery seam.
+- Verification: typecheck, lint, focused runtime/generated-bootstrap tests, guide coverage/lint, generated embedding-runtime guide scenarios, and full `bun test` passed.
+---
+
+## 2026-06-16 21:26 CDT - US-274 Verify
+- Verified the freshly built compiled binary in `lando4-dev`: version smoke passed, `setup --skip-provider --no-interactive` completed, and an embedding-host script confirmed JSON renderer/telemetry-off/empty plugin defaults, repeated runtime isolation, and opt-in signal interruption with listener cleanup.
+- Fixed a verify-found signal binding gap: the first review fix installed process listeners from the runtime layer acquisition fiber, but an actual `makeLandoRuntime(...).pipe(Effect.provide(...))` host program was not interrupted; the handler now also interrupts active Effect runtime roots and a subprocess regression locks the embedding-host path.
+- Adjacent smoke: compiled `--help` and `setup --help` passed; typecheck, lint, focused runtime/generated-bootstrap tests, guide checks, generated embedding-runtime scenarios, and full `bun test` passed.
+- **Learnings for future iterations:** Layer acquisition can run on a different fiber than the provided host program; signal-handler tests must exercise `makeLandoRuntime(...).pipe(Effect.provide(...))` end to end, not only the lower-level installer helper.
+---
