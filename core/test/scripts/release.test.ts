@@ -990,6 +990,51 @@ describe("release orchestrator", () => {
       expect(binaryVerifyAttempted).toBe(true);
     });
 
+    test("binary verification fails closed on a certificate identity / issuer mismatch", async () => {
+      let mismatchedVerifyCommand: ReadonlyArray<string> | undefined;
+
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "12-provenance-sbom",
+          env: {
+            ...manifestSigningEnv,
+            ...provenanceSigningEnv,
+            LANDO_RELEASE_PLATFORM: "linux-x64",
+          },
+          runner: {
+            spawn: async ({ stageId, summary, cmd }) => {
+              if (
+                stageId === "12-provenance-sbom" &&
+                summary === "cosign-sign and verify release binaries" &&
+                cmd[1] === "verify-blob" &&
+                cmd.at(-1) === "dist/lando-linux-x64"
+              ) {
+                mismatchedVerifyCommand = cmd;
+                throw new Error(
+                  "no matching signatures: certificate identity does not match the configured identity regexp",
+                );
+              }
+            },
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "12-provenance-sbom",
+        artifactFamily: "binary",
+        commandSummary: "generate provenance and SBOM artifacts",
+      });
+      expect(mismatchedVerifyCommand).toContain("--certificate-identity-regexp");
+      expect(mismatchedVerifyCommand).toContain(
+        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+      );
+      expect(mismatchedVerifyCommand).toContain("--certificate-oidc-issuer");
+      expect(mismatchedVerifyCommand).toContain("https://token.actions.githubusercontent.com");
+    });
+
     test("generates CycloneDX SBOMs for release artifacts and links them from the manifest", async () => {
       const provenanceStage = releaseStage("12-provenance-sbom");
 

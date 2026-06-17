@@ -1022,3 +1022,9 @@
 - **Learnings for future iterations:**
   - Keep release-note verification snippets coupled to the same command builder used for CI verification; otherwise a future identity/issuer/path change can make published instructions differ from what the pipeline actually verified.
 ---
+
+## 2026-06-17 04:05 CDT - US-260 Review
+- Added the AC5 "identity / issuer mismatch" coverage that was missing: a focused release test asserts `cosign verify-blob` fails the release closed when a binary's signing certificate identity/issuer does not match the pinned `--certificate-identity-regexp`/`--certificate-oidc-issuer`. Stage 12 binary signing/verification and release-note generation otherwise matched the PRD.
+- Review notes (rejected): the generated `dist/release-notes.md` and per-binary `.sig`/`.crt` are not yet wired into a `gh release create` publish (binary publish is skipped in stage 13). Rejected as out of scope — this is the established §15 release-publish-wiring gap shared by US-256/257/258/259; stage-12 verification still runs before stage 13, so a failed binary verify-blob aborts the release before publish (AC4 holds).
+- Verification: typecheck, lint passed; `core/test/scripts/release.test.ts` (44 pass) passed.
+---
