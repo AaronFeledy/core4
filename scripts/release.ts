@@ -454,6 +454,9 @@ const manifestSigningScript = (): string =>
 
 const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
 const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
+const releaseSbomScriptPath = new URL("./release-sbom.ts", import.meta.url).pathname;
+
+const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
 const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
   const certificateIdentityRegexp =
@@ -489,6 +492,35 @@ const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
   `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+
+const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO_RELEASE_VERSION") ?? "0.0.0";
+
+const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
+
+const releaseSbomArtifacts = (context: ReleaseStageContext, version: string): ReadonlyArray<string> => {
+  const artifacts: Array<string> = [];
+  if (context.target !== "library") {
+    artifacts.push(
+      ...releasePlatformsForContext(context).map((platform) => `binary:${releaseBinaryPath(platform)}`),
+    );
+  }
+  if (context.target !== "binary") artifacts.push(`library:${releaseLibraryArchivePath(version)}`);
+  return artifacts;
+};
+
+const releaseSbomScript = (context: ReleaseStageContext): string => {
+  const version = releaseVersion(context.env);
+  const args = [
+    "bun",
+    releaseSbomScriptPath,
+    "--version",
+    version,
+    "--manifest",
+    "dist/update-manifest.json",
+    ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
+  ];
+  return args.map(shellQuote).join(" ");
+};
 
 const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
   "bun",
@@ -736,7 +768,14 @@ const provenanceSbomStage: ReleaseStage = {
       },
       checksumCosignCommands(context.env),
     );
-    context.logger("[release] skip 12-provenance-sbom (SBOM and SLSA provenance not yet wired)");
+    await context.runner.shell({
+      stageId: "12-provenance-sbom",
+      artifactFamily: artifactFamilyForStage(provenanceSbomStage, context.target),
+      summary: "generate CycloneDX SBOM artifacts and link release manifest entries",
+      remediation: provenanceSbomStage.remediation,
+      script: releaseSbomScript(context),
+    });
+    context.logger("[release] generated CycloneDX SBOM artifacts");
   },
 };
 
