@@ -14,7 +14,6 @@ export const UPDATE_OUTCOMES = [
 ] as const;
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 
-// Re-export the inventory object so callers share the same source of truth.
 export const TELEMETRY_EVENT_INVENTORY = TELEMETRY_EVENT_FIELD_NAMES;
 
 export interface UpdateOutcomeTelemetryInput {

@@ -21,7 +21,6 @@ import { updateOptionsFromInput } from "../../src/cli/oclif/commands/meta/update
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 const noopTelemetry = {
   enabled: false,
@@ -109,27 +108,9 @@ const fetcherForManifest =
 const fetcherFor = (channel: UpdateChannel, seen: string[] = []): UpdateManifestFetcher =>
   fetcherForManifest(manifestFor(channel), seen);
 
-const verifierFor =
-  (seen: string[] = []): UpdateManifestSignatureVerifier =>
-  (input) =>
-    Effect.sync(() => {
-      seen.push(
-        [
-          input.manifestUrl,
-          input.signatureUrl,
-          new TextDecoder().decode(input.signatureBytes),
-          input.certificateUrl,
-          new TextDecoder().decode(input.certificateBytes),
-        ].join("|"),
-      );
-    });
+const verifierFor = (): UpdateManifestSignatureVerifier => () => Effect.void;
 
-const checksumVerifierFor =
-  (seen: string[] = []): UpdateChecksumSignatureVerifier =>
-  (input) =>
-    Effect.sync(() => {
-      seen.push([input.checksumsUrl, input.signatureUrl, decoder.decode(input.signatureBytes)].join("|"));
-    });
+const checksumVerifierFor = (): UpdateChecksumSignatureVerifier => () => Effect.void;
 
 const fetcherForSelfUpdate =
   ({

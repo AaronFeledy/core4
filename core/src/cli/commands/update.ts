@@ -124,7 +124,6 @@ export type UpdateError =
 
 export interface UpdateOptions {
   readonly channel?: UpdateChannel;
-  /** Check only, don't apply. */
   readonly dryRun?: boolean;
   readonly currentVersion?: string;
   readonly targetVersion?: string;
@@ -195,10 +194,12 @@ export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
 const normalizeVersion = (version: string): string => (version.startsWith("v") ? version.slice(1) : version);
 
 const prereleaseChannelIdentifier = (version: string): string => {
-  const withoutBuild = normalizeVersion(version).split("+", 1)[0] ?? "";
+  const normalized = normalizeVersion(version);
+  const withoutBuild = normalized.split("+", 1)[0] ?? normalized;
   const prereleaseIndex = withoutBuild.indexOf("-");
   if (prereleaseIndex === -1) return "";
-  return withoutBuild.slice(prereleaseIndex + 1).split(".", 1)[0] ?? "";
+  const prerelease = withoutBuild.slice(prereleaseIndex + 1);
+  return prerelease.split(".", 1)[0] ?? prerelease;
 };
 
 export const updateChannelForVersion = (version: string): UpdateChannel => {
@@ -378,7 +379,8 @@ const compareNumbers = (left: number, right: number): number => {
 };
 
 const parseVersion = (version: string): ParsedVersion => {
-  const withoutBuild = normalizeVersion(version).split("+", 1)[0] ?? normalizeVersion(version);
+  const normalized = normalizeVersion(version);
+  const withoutBuild = normalized.split("+", 1)[0] ?? normalized;
   const prereleaseIndex = withoutBuild.indexOf("-");
   const core = prereleaseIndex === -1 ? withoutBuild : withoutBuild.slice(0, prereleaseIndex);
   const prerelease = prereleaseIndex === -1 ? [] : withoutBuild.slice(prereleaseIndex + 1).split(".");
@@ -876,11 +878,12 @@ const defaultUpdate = (
         }),
       );
     }
-    const binary = manifest.binaries[updateManifestPlatform()];
+    const manifestPlatform = updateManifestPlatform();
+    const binary = manifest.binaries[manifestPlatform];
     if (binary === undefined) {
       return yield* Effect.fail(
         new UpdateNetworkError({
-          message: `Update manifest at ${manifestUrl} has no binary entry for ${updateManifestPlatform()}.`,
+          message: `Update manifest at ${manifestUrl} has no binary entry for ${manifestPlatform}.`,
           url: manifestUrl,
         }),
       );
@@ -888,7 +891,7 @@ const defaultUpdate = (
     if (isPlaceholderBinary(binary)) {
       return yield* Effect.fail(
         new UpdateNetworkError({
-          message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${updateManifestPlatform()}.`,
+          message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${manifestPlatform}.`,
           url: manifestUrl,
         }),
       );
@@ -901,11 +904,8 @@ const defaultUpdate = (
     yield* enforceNoDowngrade(manifest, options.currentVersion);
     yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
     const selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
-    if (
-      !options.dryRun &&
-      selfUpdate !== undefined &&
-      compareVersions(manifest.latest, options.currentVersion) > 0
-    ) {
+    const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
+    if (!options.dryRun && selfUpdate !== undefined && hasNewCoreVersion) {
       const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
         yield* Effect.all([
           fetchBytes(options.fetchManifestBytes, binaryUrl),
@@ -936,7 +936,7 @@ const defaultUpdate = (
     return {
       manifest,
       result: {
-        updatedCore: !options.dryRun && compareVersions(manifest.latest, options.currentVersion) > 0,
+        updatedCore: !options.dryRun && hasNewCoreVersion,
         updatedPlugins: [],
       },
     };
