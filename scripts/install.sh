@@ -97,21 +97,67 @@ detect_platform() {
   esac
 }
 
+resolve_config_file_root() {
+  if [ -n "${LANDO_CONFIG__user_conf_root:-}" ]; then
+    printf '%s\n' "${LANDO_CONFIG__user_conf_root}"
+    return
+  fi
+  if [ -n "${LANDO_USER_CONF_ROOT:-}" ]; then
+    printf '%s\n' "${LANDO_USER_CONF_ROOT}"
+    return
+  fi
+  printf '%s\n' "${HOME:-.}/.lando"
+}
+
+read_config_user_data_root() {
+  conf_root=$1
+  config="${conf_root}/config.yml"
+  [ -r "$config" ] || return 0
+  awk '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    function strip_comment(s) { sub(/[ \t]+#.*$/, "", s); return s }
+    /^[ \t]*#/ { next }
+    /^[ \t]*$/ { next }
+    $0 ~ /^[ \t]*userDataRoot:/ {
+      line = strip_comment($0)
+      sub(/^[ \t]*userDataRoot:[ \t]*/, "", line)
+      val = trim(line)
+      if (val == "" || val == "null") next
+      gsub(/^["'\'']|["'\'']$/, "", val)
+      if (val != "") { print val; exit }
+    }
+  ' "$config" 2>/dev/null || true
+}
+
+default_user_data_root() {
+  if [ -n "${LANDO_USER_DATA_ROOT:-}" ]; then
+    printf '%s\n' "$LANDO_USER_DATA_ROOT"
+    return
+  fi
+  configured=$(read_config_user_data_root "$(resolve_config_file_root)")
+  if [ -n "$configured" ]; then
+    printf '%s\n' "$configured"
+    return
+  fi
+  os=${LANDO_INSTALL_OS:-$(uname -s)}
+  case "$os" in
+    Darwin) printf '%s\n' "$HOME/Library/Application Support/Lando" ;;
+    *)
+      if [ -n "${XDG_DATA_HOME:-}" ]; then
+        printf '%s\n' "${XDG_DATA_HOME}/lando"
+      else
+        printf '%s\n' "${HOME:-.}/.local/share/lando"
+      fi
+      ;;
+  esac
+}
+
 default_install_dir() {
   if [ -n "${LANDO_INSTALL_DIR:-}" ]; then
     printf '%s\n' "$LANDO_INSTALL_DIR"
     return
   fi
-  if [ -n "${LANDO_USER_DATA_ROOT:-}" ]; then
-    printf '%s\n' "$LANDO_USER_DATA_ROOT/bin"
-    return
-  fi
-
-  os=${LANDO_INSTALL_OS:-$(uname -s)}
-  case "$os" in
-    Darwin) printf '%s\n' "$HOME/Library/Application Support/Lando/bin" ;;
-    *) printf '%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}/lando/bin" ;;
-  esac
+  printf '%s/bin\n' "$(default_user_data_root)"
 }
 
 basename_from_url() {

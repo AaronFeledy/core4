@@ -269,8 +269,11 @@ const windowsSigningCredentials: CredentialRequirement = {
 const appleNotarizationCredentials: CredentialRequirement = {
   allOf: ["LANDO_RELEASE_APPLE_KEYCHAIN_PROFILE"],
 };
-const manifestSigningCredentials: CredentialRequirement = {
+const manifestChecksumSigningCredentials: CredentialRequirement = {
   allOfAny: [["LANDO_RELEASE_GPG_KEY", "GPG_PRIVATE_KEY"]],
+};
+const manifestCosignCredentials: CredentialRequirement = {
+  allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
 };
 const provenanceCredentials: CredentialRequirement = {
   allOf: ["ACTIONS_ID_TOKEN_REQUEST_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL"],
@@ -357,6 +360,88 @@ const cosignCertificateIdentityRegexp = (env: ReleaseEnvironment): string =>
   envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
   DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
 
+const spawnCommands = async (
+  runner: ReleaseRunner,
+  command: Omit<ReleaseSpawnCommand, "cmd">,
+  commands: ReadonlyArray<ReadonlyArray<string>>,
+): Promise<void> => {
+  for (const cmd of commands) {
+    await runner.spawn({ ...command, cmd });
+  }
+};
+
+const spawnCommandsForStage = (
+  stageId: string,
+  context: ReleaseStageContext,
+  platforms: ReadonlyArray<CiPlatform>,
+  commands: ReadonlyArray<ReadonlyArray<string>>,
+): ReadonlyArray<ReadonlyArray<string>> => {
+  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, platforms);
+  return commands;
+};
+
+const updateManifestScriptPath = new URL("./build-update-manifest.ts", import.meta.url).pathname;
+
+const releaseUpdateManifestScript = (
+  platforms: ReadonlyArray<CiPlatform>,
+  env: ReleaseEnvironment,
+  options: { readonly allowMissingBinaries?: boolean } = {},
+): string => {
+  const args = [
+    "bun",
+    updateManifestScriptPath,
+    "--version",
+    releaseVersion(env),
+    "--dist-dir",
+    "dist",
+    "--output",
+    "dist/update-manifest.json",
+  ];
+  const minimum = envValue(env, "LANDO_RELEASE_UPDATE_MINIMUM");
+  if (minimum !== undefined) args.push("--minimum", minimum);
+  const released = envValue(env, "LANDO_RELEASE_RELEASED");
+  if (released !== undefined) args.push("--released", released);
+  const repository = envValue(env, "GITHUB_REPOSITORY");
+  if (repository !== undefined) args.push("--repository", repository);
+  const allowMissingBinaries =
+    options.allowMissingBinaries ??
+    (envValue(env, "LOCAL_REHEARSAL") === "1" ||
+      platforms.length === 0 ||
+      envValue(env, "LANDO_RELEASE_PLATFORM") !== undefined);
+  if (allowMissingBinaries) {
+    args.push("--allow-missing-binaries");
+  }
+  return args.map(shellQuote).join(" ");
+};
+
+const updateManifestPlatformsForContext = (context: ReleaseStageContext): ReadonlyArray<CiPlatform> =>
+  context.target === "library" ? [] : releasePlatformsForContext(context);
+
+const shouldSignUpdateManifest = (platforms: ReadonlyArray<CiPlatform>): boolean => platforms.length > 0;
+
+const nonSigningManifestScript = (
+  platforms: ReadonlyArray<CiPlatform>,
+  env: ReleaseEnvironment = process.env,
+): string => {
+  const linuxArtifacts = linuxReleaseArtifactPaths(platforms);
+  return [
+    "mkdir -p dist",
+    ...linuxArtifacts.map((artifactPath) => `test -f "${artifactPath}"`),
+    ": > dist/SHA256SUMS",
+    ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
+    ": > dist/SHA512SUMS",
+    ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
+    ...(shouldSignUpdateManifest(platforms) ? [releaseUpdateManifestScript(platforms, env)] : []),
+  ].join("\n");
+};
+
+const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
+const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
+const UPDATE_MANIFEST_SIGNATURE = "dist/update-manifest.json.sig";
+const UPDATE_MANIFEST_CERTIFICATE = "dist/update-manifest.json.crt";
+const releaseSbomScriptPath = new URL("./release-sbom.ts", import.meta.url).pathname;
+const releaseProvenanceScriptPath = new URL("./release-provenance.ts", import.meta.url).pathname;
+
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const markdownCommandQuote = (value: string): string => JSON.stringify(value);
 
@@ -397,6 +482,30 @@ const cosignSignAndVerifyBlobCommands = (
 
 const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> =>
   cosignSignAndVerifyBlobCommands(env, "dist/SHA256SUMS", CHECKSUM_SIGNATURE, CHECKSUM_CERTIFICATE);
+
+const updateManifestCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> =>
+  cosignSignAndVerifyBlobCommands(
+    env,
+    "dist/update-manifest.json",
+    UPDATE_MANIFEST_SIGNATURE,
+    UPDATE_MANIFEST_CERTIFICATE,
+  );
+
+const renderShellCommand = (cmd: ReadonlyArray<string>): string => cmd.map(shellQuote).join(" ");
+
+const manifestSigningScript = (env: ReleaseEnvironment, platforms: ReadonlyArray<CiPlatform>): string =>
+  [
+    "gpg --batch --yes --armor --detach-sign dist/SHA256SUMS",
+    "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
+    "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
+    "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
+    ...(shouldSignUpdateManifest(platforms)
+      ? [
+          releaseUpdateManifestScript(platforms, env, { allowMissingBinaries: false }),
+          ...updateManifestCosignCommands(env).map(renderShellCommand),
+        ]
+      : []),
+  ].join("\n");
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
   `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
@@ -505,7 +614,7 @@ const releaseSbomScript = (context: ReleaseStageContext): string => {
     "--version",
     version,
     "--manifest",
-    "dist/update-manifest.json",
+    "dist/release-artifacts.json",
     ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");
@@ -519,7 +628,7 @@ const releaseProvenanceScript = (context: ReleaseStageContext): string => {
     "--version",
     version,
     "--manifest",
-    "dist/update-manifest.json",
+    "dist/release-artifacts.json",
     "--source-ref",
     envValue(context.env, "GITHUB_REF") ?? "",
     "--commit-sha",
@@ -600,52 +709,6 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
     ],
   ];
 };
-
-const spawnCommands = async (
-  runner: ReleaseRunner,
-  command: Omit<ReleaseSpawnCommand, "cmd">,
-  commands: ReadonlyArray<ReadonlyArray<string>>,
-): Promise<void> => {
-  for (const cmd of commands) {
-    await runner.spawn({ ...command, cmd });
-  }
-};
-
-const spawnCommandsForStage = (
-  stageId: string,
-  context: ReleaseStageContext,
-  platforms: ReadonlyArray<CiPlatform>,
-  commands: ReadonlyArray<ReadonlyArray<string>>,
-): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, platforms);
-  return commands;
-};
-
-const nonSigningManifestScript = (platforms: ReadonlyArray<CiPlatform>): string => {
-  const linuxArtifacts = linuxReleaseArtifactPaths(platforms);
-  return [
-    "mkdir -p dist",
-    ...linuxArtifacts.map((artifactPath) => `test -f "${artifactPath}"`),
-    ": > dist/SHA256SUMS",
-    ...linuxArtifacts.map((artifactPath) => `sha256sum "${artifactPath}" >> dist/SHA256SUMS`),
-    ": > dist/SHA512SUMS",
-    ...linuxArtifacts.map((artifactPath) => `sha512sum "${artifactPath}" >> dist/SHA512SUMS`),
-    "printf '%s\\n' '{\"schemaVersion\":1,\"artifacts\":{}}' > dist/update-manifest.json",
-  ].join("\n");
-};
-
-const manifestSigningScript = (): string =>
-  [
-    "gpg --batch --yes --armor --detach-sign dist/SHA256SUMS",
-    "gpg --batch --yes --armor --detach-sign dist/SHA512SUMS",
-    "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
-    "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
-  ].join("\n");
-
-const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
-const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
-const releaseSbomScriptPath = new URL("./release-sbom.ts", import.meta.url).pathname;
-const releaseProvenanceScriptPath = new URL("./release-provenance.ts", import.meta.url).pathname;
 
 const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
   "bun",
@@ -736,18 +799,30 @@ const shellStage =
     const artifactFamily = artifactFamilyForStage(stage, target);
 
     if (stage.id === "11-manifest") {
+      const updateManifestPlatforms = updateManifestPlatformsForContext(context);
       await runner.shell({
         stageId: stage.id,
         artifactFamily,
         summary: stage.commandSummary,
         remediation: stage.remediation,
-        script: nonSigningManifestScript(target === "library" ? [] : releasePlatformsForContext(context)),
+        script: nonSigningManifestScript(updateManifestPlatforms, context.env),
       });
       if (
         !credentialGate(
           "11-manifest signing",
-          "manifest signing credentials",
-          manifestSigningCredentials,
+          "checksum manifest signing credentials",
+          manifestChecksumSigningCredentials,
+          context,
+        )
+      ) {
+        return;
+      }
+      if (
+        shouldSignUpdateManifest(updateManifestPlatforms) &&
+        !credentialGate(
+          "11-manifest signing",
+          "update manifest cosign credentials",
+          manifestCosignCredentials,
           context,
         )
       ) {
@@ -758,7 +833,7 @@ const shellStage =
         artifactFamily,
         summary: "sign release checksum manifests",
         remediation: stage.remediation,
-        script: manifestSigningScript(),
+        script: manifestSigningScript(context.env, updateManifestPlatforms),
       });
       return;
     }
@@ -943,7 +1018,7 @@ const provenanceSbomStage: ReleaseStage = {
     await context.runner.shell({
       stageId: "12-provenance-sbom",
       artifactFamily,
-      summary: "generate CycloneDX SBOM artifacts and link release manifest entries",
+      summary: "generate CycloneDX SBOM artifacts and link release artifact entries",
       remediation: provenanceSbomStage.remediation,
       script: releaseSbomScript(context),
     });
@@ -951,7 +1026,7 @@ const provenanceSbomStage: ReleaseStage = {
     await context.runner.shell({
       stageId: "12-provenance-sbom",
       artifactFamily,
-      summary: "generate SLSA provenance attestations and link release manifest entries",
+      summary: "generate SLSA provenance attestations and link release artifact entries",
       remediation: provenanceSbomStage.remediation,
       script: releaseProvenanceScript(context),
     });

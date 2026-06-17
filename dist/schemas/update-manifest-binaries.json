@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "darwin-arm64": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    },
+    "darwin-x64": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    },
+    "linux-arm64": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    },
+    "linux-x64": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    },
+    "windows-x64": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "sha256",
+        "size"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "darwin-x64",
+    "darwin-arm64",
+    "linux-x64",
+    "linux-arm64",
+    "windows-x64"
+  ],
+  "type": "object"
+}

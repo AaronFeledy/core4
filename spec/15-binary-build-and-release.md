@@ -209,7 +209,7 @@ The manifest is a JSON file published to a stable URL per channel:
 - `https://update.lando.dev/v4/next.json`
 - `https://update.lando.dev/v4/dev.json`
 
-Schema (validated by `UpdateManifestSchema` in `@lando/core/schema`):
+Schema (validated by `UpdateManifestSchema` in `@lando/sdk/schema`, also re-exported from `@lando/core/schema`):
 
 ```jsonc
 {

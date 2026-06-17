@@ -222,7 +222,7 @@ export const generateReleaseProvenance = async ({
 
 const parseCliArgs = (args: ReadonlyArray<string>): GenerateReleaseProvenanceInput => {
   let version: string | undefined;
-  let manifestPath = "dist/update-manifest.json";
+  let manifestPath = "dist/release-artifacts.json";
   const artifacts: Array<ReleaseProvenanceArtifactInput> = [];
   const env: Record<string, string | undefined> = { ...process.env };
 

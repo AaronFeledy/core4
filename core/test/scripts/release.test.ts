@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 
+import { UpdateManifestSchema } from "@lando/sdk/schema";
+import { buildUpdateManifest, updateChannelForReleaseVersion } from "../../../scripts/build-update-manifest";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
@@ -52,6 +55,11 @@ describe("release orchestrator", () => {
   const localRehearsalEnv = { LOCAL_REHEARSAL: "1" };
   const libraryPublishEnv = { LANDO_RELEASE_NPM_TOKEN: "token" };
   const manifestSigningEnv = {
+    LANDO_RELEASE_GPG_KEY: "key",
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
+    ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
+  };
+  const manifestGpgOnlyEnv = {
     LANDO_RELEASE_GPG_KEY: "key",
   };
   const provenanceSigningEnv = {
@@ -179,7 +187,7 @@ describe("release orchestrator", () => {
     );
     expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
     expect(shellStages.some((entry) => entry.startsWith("11-manifest:mkdir -p dist"))).toBe(true);
-    expect(shellStages.some((entry) => entry.startsWith("11-manifest:gpg --batch"))).toBe(true);
+    expect(shellStages.some((entry) => entry.includes("gpg --batch"))).toBe(true);
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });
 
@@ -218,6 +226,73 @@ describe("release orchestrator", () => {
     expect(binaryStageOutcomes).toEqual(
       RELEASE_STAGES.filter((stage) => stage.forBinary).map((stage) => stage.id),
     );
+  });
+
+  test("builds a schema-valid update manifest for every release platform", async () => {
+    expect(updateChannelForReleaseVersion("4.0.0-dev.7")).toBe("dev");
+    expect(updateChannelForReleaseVersion("4.0.0-alpha.2")).toBe("dev");
+    expect(updateChannelForReleaseVersion("4.0.0-next.2")).toBe("next");
+    expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForReleaseVersion("4.0.0-rc.1")).toBe("next");
+    expect(updateChannelForReleaseVersion("v4.0.0-beta.2")).toBe("next");
+    expect(updateChannelForReleaseVersion("4.0.0-development.1")).toBe("stable");
+    expect(updateChannelForReleaseVersion("4.0.0-alphabet.1")).toBe("stable");
+    expect(updateChannelForReleaseVersion("4.0.0-preview.alpha.1")).toBe("stable");
+    expect(updateChannelForReleaseVersion("4.0.0")).toBe("stable");
+
+    await withReleaseFixtureRoot(async (root) => {
+      await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+
+      await withFixtureCwd(root, async () => {
+        const manifest = await buildUpdateManifest({
+          version: "4.0.0-beta.2",
+          released: "2026-06-17T12:00:00.000Z",
+          minimum: "4.0.0-alpha.1",
+          distDir: "dist",
+          repository: "lando-community/core4",
+          allowMissingBinaries: true,
+        });
+        const decoded = Schema.decodeUnknownSync(UpdateManifestSchema)(manifest, {
+          onExcessProperty: "error",
+        });
+
+        expect(decoded.channel).toBe("next");
+        expect(decoded.latest).toBe("4.0.0-beta.2");
+        expect(decoded.minimum).toBe("4.0.0-alpha.1");
+        expect(Object.keys(decoded.binaries).sort()).toEqual(
+          CI_PLATFORMS.map((platform) => platform.id).sort(),
+        );
+        expect(decoded.binaries["linux-x64"]).toEqual({
+          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/lando-linux-x64",
+          sha256: sha256Text("linux-x64 artifact"),
+          size: "linux-x64 artifact".length,
+        });
+        expect(decoded.binaries["windows-x64"].sha256).toBe("0".repeat(64));
+        expect(decoded.binaries["windows-x64"].size).toBe(0);
+        expect(decoded.checksums).toEqual({
+          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/SHA256SUMS",
+          signature:
+            "https://github.com/lando-community/core4/releases/download/v4.0.0-beta.2/SHA256SUMS.sig",
+        });
+        expect(decoded.notes).toBe("https://github.com/lando-community/core4/releases/tag/v4.0.0-beta.2");
+      });
+    });
+  });
+
+  test("update manifest generation fails on missing release binaries unless explicitly allowed", async () => {
+    await withReleaseFixtureRoot(async (root) => {
+      await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+
+      await withFixtureCwd(root, async () => {
+        await expect(
+          buildUpdateManifest({
+            version: "4.0.0-beta.2",
+            released: "2026-06-17T12:00:00.000Z",
+            distDir: "dist",
+          }),
+        ).rejects.toThrow();
+      });
+    });
   });
 
   test("exposes the required artifact-family stage split", () => {
@@ -270,7 +345,7 @@ describe("release orchestrator", () => {
     );
     expect(logs).toContain("[release] skip 10-notarize (no macOS release platform selected)");
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (manifest signing credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (checksum manifest signing credentials absent)",
     );
     expect(logs).toContain(
       "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
@@ -538,7 +613,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "12-provenance-sbom",
-        env: manifestSigningEnv,
+        env: manifestGpgOnlyEnv,
         runner: {
           spawn: async () => {},
           shell: async () => {},
@@ -552,11 +627,11 @@ describe("release orchestrator", () => {
     });
   });
 
-  test("provenance cosign requires complete GitHub OIDC credentials", async () => {
+  test("manifest signing cosign requires complete GitHub OIDC credentials", async () => {
     for (const env of [
-      { ...manifestSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64", GITHUB_TOKEN: "token" },
+      { ...manifestGpgOnlyEnv, LANDO_RELEASE_PLATFORM: "linux-x64", GITHUB_TOKEN: "token" },
       {
-        ...manifestSigningEnv,
+        ...manifestGpgOnlyEnv,
         LANDO_RELEASE_PLATFORM: "linux-x64",
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
       },
@@ -575,7 +650,7 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "12-provenance-sbom",
+        stageId: "11-manifest",
         artifactFamily: "binary",
       });
     }
@@ -589,7 +664,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "11-manifest",
-        env: manifestSigningEnv,
+        env: manifestGpgOnlyEnv,
         runner: {
           spawn: async () => {},
           shell: async ({ stageId, script }) => {
@@ -605,6 +680,16 @@ describe("release orchestrator", () => {
       expect(manifestScript).toContain(": > dist/SHA256SUMS");
       expect(manifestScript).toContain(": > dist/SHA512SUMS");
       expect(manifestScript).not.toContain("lando-linux-");
+      expect(manifestScript).not.toContain("build-update-manifest.ts");
+      expect(manifestScript).not.toContain("dist/update-manifest.json");
+
+      const signingScript = shellStages.find(
+        ({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg --batch"),
+      )?.script;
+      expect(signingScript).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
+      expect(signingScript).not.toContain("build-update-manifest.ts");
+      expect(signingScript).not.toContain("dist/update-manifest.json");
+      expect(signingScript).not.toContain("'cosign' 'sign-blob'");
     });
 
     test("writes Linux checksum manifests and GPG-signs them in the manifest stage", async () => {
@@ -629,8 +714,13 @@ describe("release orchestrator", () => {
       expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-x64");
       expect(manifestScripts[0]?.script).toContain('sha256sum "./dist/lando-linux-arm64"');
       expect(manifestScripts[0]?.script).toContain('sha512sum "./dist/lando-linux-x64"');
-      expect(manifestScripts[0]?.script).toContain("printf '%s\\n' '{\"schemaVersion\":1,\"artifacts\":{}}'");
+      expect(manifestScripts[0]?.script).toContain("bun");
+      expect(manifestScripts[0]?.script).toContain("build-update-manifest.ts");
+      expect(manifestScripts[0]?.script).toContain("dist/update-manifest.json");
       expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
+      expect(manifestScripts[1]?.script).toContain("build-update-manifest.ts");
+      expect(manifestScripts[1]?.script).toContain("dist/update-manifest.json");
+      expect(manifestScripts[1]?.script).not.toContain("--allow-missing-binaries");
       expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA512SUMS");
       expect(manifestScripts[1]?.script).toContain(
         "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
@@ -638,7 +728,12 @@ describe("release orchestrator", () => {
       expect(manifestScripts[1]?.script).toContain(
         "gpg --batch --verify dist/SHA512SUMS.asc dist/SHA512SUMS",
       );
-      expect(manifestScripts.some(({ script }) => script.includes("cosign"))).toBe(false);
+      expect(manifestScripts[1]?.script).toContain("'cosign' 'sign-blob'");
+      expect(manifestScripts[1]?.script).toContain("'--output-signature' 'dist/update-manifest.json.sig'");
+      expect(manifestScripts[1]?.script).toContain("'--output-certificate' 'dist/update-manifest.json.crt'");
+      expect(manifestScripts[1]?.script).toContain("'cosign' 'verify-blob'");
+      expect(manifestScripts[1]?.script).toContain("'--signature' 'dist/update-manifest.json.sig'");
+      expect(manifestScripts[1]?.script).toContain("'--certificate' 'dist/update-manifest.json.crt'");
     });
 
     test("checksum manifest generation fails when a required Linux binary is missing", async () => {
@@ -654,6 +749,33 @@ describe("release orchestrator", () => {
             manifestStage.run({
               target: "binary",
               env: {},
+              localRehearsal: false,
+              runner: {
+                spawn: async () => {},
+                shell: async ({ script }) => {
+                  await Bun.$`sh -euc ${script}`.quiet();
+                },
+              },
+              logger: () => {},
+              now: () => 0,
+            }),
+          ).rejects.toThrow();
+        });
+      });
+    });
+
+    test("signed update manifest refuses placeholder binary entries", async () => {
+      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
+      expect(manifestStage).toBeDefined();
+      if (manifestStage === undefined) throw new Error("missing manifest stage");
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await withFixtureCwd(root, async () => {
+          await expect(
+            manifestStage.run({
+              target: "binary",
+              env: { ...manifestSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
               localRehearsal: false,
               runner: {
                 spawn: async () => {},
@@ -741,7 +863,7 @@ describe("release orchestrator", () => {
         env: {
           LOCAL_REHEARSAL: "1",
           LANDO_RELEASE_PLATFORM: "linux-x64",
-          ...manifestSigningEnv,
+          ...manifestGpgOnlyEnv,
           GITHUB_TOKEN: "token",
         },
         runner: {
@@ -753,6 +875,9 @@ describe("release orchestrator", () => {
         logger: (line) => logs.push(line),
       });
 
+      expect(logs).toContain(
+        "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (update manifest cosign credentials absent)",
+      );
       expect(logs).toContain(
         "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
       );
@@ -1038,7 +1163,7 @@ describe("release orchestrator", () => {
         await writeFixtureFile(root, "dist/lando-linux-arm64", "linux-arm64 artifact");
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
         await writeFixtureFile(root, "dist/lando-library-0.0.0.tgz", "library archive");
-        await writeFixtureFile(root, "dist/update-manifest.json", '{"schemaVersion":1,"artifacts":{}}');
+        await writeFixtureFile(root, "dist/release-artifacts.json", '{"schemaVersion":1,"artifacts":{}}');
 
         await withFixtureCwd(root, async () => {
           await provenanceStage.run({
@@ -1056,7 +1181,7 @@ describe("release orchestrator", () => {
           });
         });
 
-        const manifest = JSON.parse(await readFile(join(root, "dist", "update-manifest.json"), "utf8"));
+        const manifest = JSON.parse(await readFile(join(root, "dist", "release-artifacts.json"), "utf8"));
         const linuxEntry = manifest.artifacts["lando-linux-x64"];
         expect(linuxEntry.path).toBe("dist/lando-linux-x64");
         expect(linuxEntry.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -1084,7 +1209,7 @@ describe("release orchestrator", () => {
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
         await writeFixtureFile(root, "dist/lando-library-4.0.0-beta.1.tgz", "library archive");
-        await writeFixtureFile(root, "dist/update-manifest.json", '{"schemaVersion":1,"artifacts":{}}');
+        await writeFixtureFile(root, "dist/release-artifacts.json", '{"schemaVersion":1,"artifacts":{}}');
 
         await withFixtureCwd(root, async () => {
           await provenanceStage.run({
@@ -1108,7 +1233,7 @@ describe("release orchestrator", () => {
           });
         });
 
-        const manifest = JSON.parse(await readFile(join(root, "dist", "update-manifest.json"), "utf8"));
+        const manifest = JSON.parse(await readFile(join(root, "dist", "release-artifacts.json"), "utf8"));
         const binaryEntry = manifest.artifacts["lando-linux-x64"];
         expect(binaryEntry.provenance.path).toBe("dist/lando-linux-x64-4.0.0-beta.1-provenance.slsa.json");
         expect(binaryEntry.provenance.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -1197,7 +1322,7 @@ describe("release orchestrator", () => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
         await writeFixtureFile(
           root,
-          "dist/update-manifest.json",
+          "dist/release-artifacts.json",
           JSON.stringify({
             schemaVersion: 1,
             artifacts: {
@@ -1234,7 +1359,7 @@ describe("release orchestrator", () => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
         await writeFixtureFile(
           root,
-          "dist/update-manifest.json",
+          "dist/release-artifacts.json",
           JSON.stringify({
             schemaVersion: 1,
             artifacts: {
@@ -1246,7 +1371,7 @@ describe("release orchestrator", () => {
         await withFixtureCwd(root, async () => {
           const manifest = await generateReleaseSboms({
             version: "0.0.0",
-            manifestPath: "dist/update-manifest.json",
+            manifestPath: "dist/release-artifacts.json",
             artifacts: [{ kind: "binary", path: "dist/lando-linux-x64" }],
           });
 
@@ -1266,7 +1391,7 @@ describe("release orchestrator", () => {
         await writeFixtureFile(root, "dist/orphan-sbom.cdx.json", sbom);
         await writeFixtureFile(
           root,
-          "dist/update-manifest.json",
+          "dist/release-artifacts.json",
           JSON.stringify({
             schemaVersion: 1,
             artifacts: {
@@ -1544,11 +1669,15 @@ describe("release orchestrator", () => {
         logger: () => {},
         now: () => 0,
       }),
-    ).rejects.toThrow("Missing manifest signing credentials");
+    ).rejects.toThrow("Missing checksum manifest signing credentials");
 
     await manifestStage.run({
       target: "all",
-      env: { GPG_PRIVATE_KEY: "key" },
+      env: {
+        GPG_PRIVATE_KEY: "key",
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
+        ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
+      },
       localRehearsal: false,
       runner: {
         spawn: async () => {},

@@ -443,6 +443,22 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(sourceAlias.stdout));
     }, 30_000);
 
+    test("update top-level alias and meta:update canonical id reject invalid channels on both paths", async () => {
+      const sourceAlias = await runSourceCli(["update", "--channel=bogus", "--dry-run"]);
+      const sourceCanonical = await runSourceCli(["meta:update", "--channel=bogus", "--dry-run"]);
+      const compiledAlias = await runCompiledCli(["update", "--channel=bogus", "--dry-run"]);
+      const compiledCanonical = await runCompiledCli(["meta:update", "--channel=bogus", "--dry-run"]);
+
+      expect(sourceAlias.exitCode).toBe(2);
+      expect(sourceCanonical.exitCode).toBe(sourceAlias.exitCode);
+      expect(compiledAlias.exitCode).toBe(sourceAlias.exitCode);
+      expect(compiledCanonical.exitCode).toBe(sourceAlias.exitCode);
+      expect(normalizeOutput(sourceAlias.stderr)).toContain("Expected --channel=bogus to be one of");
+      expect(normalizeOutput(sourceCanonical.stderr)).toBe(normalizeOutput(sourceAlias.stderr));
+      expect(normalizeOutput(compiledAlias.stderr)).toContain("Expected --channel=bogus to be one of");
+      expect(normalizeOutput(compiledCanonical.stderr)).toBe(normalizeOutput(compiledAlias.stderr));
+    }, 30_000);
+
     test("uninstall top-level alias and meta:uninstall canonical id render the same dry-run plan on each path", async () => {
       const isolated = makeIsolatedEnv();
       try {

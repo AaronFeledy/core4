@@ -143,11 +143,10 @@ describe("scripts/install.sh", () => {
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
     const root = await makeTempRoot();
-    const fixtures = await Promise.all([
-      createReleaseFixture(root, "stable"),
-      createReleaseFixture(root, "next"),
-      createReleaseFixture(root, "dev"),
-    ]);
+    const fixtures = [];
+    for (const channel of ["stable", "next", "dev"] as const) {
+      fixtures.push(await createReleaseFixture(root, channel));
+    }
     const { gpgPath, logPath } = await createFakeGpg(root);
 
     for (const channel of ["stable", "next", "dev"] as const) {
@@ -184,6 +183,33 @@ describe("scripts/install.sh", () => {
       LANDO_INSTALL_ARCH: "x86_64",
       LANDO_INSTALL_LIBC: "glibc",
       LANDO_USER_DATA_ROOT: userDataRoot,
+    });
+
+    const installedPath = join(userDataRoot, "bin", "lando");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
+
+  test("reads userDataRoot from config.yml when install env overrides are unset", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const confRoot = join(root, "conf");
+    const userDataRoot = join(root, "from-config-yml");
+    await mkdir(confRoot, { recursive: true });
+    await writeFile(join(confRoot, "config.yml"), `userDataRoot: ${userDataRoot}\n`);
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      HOME: root,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+      LANDO_USER_CONF_ROOT: confRoot,
     });
 
     const installedPath = join(userDataRoot, "bin", "lando");

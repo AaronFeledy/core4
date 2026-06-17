@@ -31,3 +31,4 @@ export * from "./primitives.ts";
 export * from "./recipe.ts";
 export * from "./service-info.ts";
 export * from "./template.ts";
+export * from "./update-manifest.ts";

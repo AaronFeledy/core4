@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+  "pattern": "^[0-9a-f]{64}$",
+  "type": "string"
+}
