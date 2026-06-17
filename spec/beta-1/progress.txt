@@ -930,3 +930,9 @@
 - **Learnings for future iterations:**
   - Linux authenticity lives at the checksum-manifest layer; keep binary artifact requirements out of library-only releases, and make keyless cosign gates match the actual ACTIONS OIDC request environment the command depends on.
 ---
+
+## 2026-06-16 19:45 CDT - US-256 Build
+- Verified the in-flight Linux checksum signing branch is complete with no new code changes: release manifests cover Linux checksum generation, GPG manifest signing, keyless cosign verification for `SHA256SUMS`, and local-rehearsal credential skipping as required.
+- Verification: typecheck, lint, focused release tests, full tests, and release manifest-stage smoke passed.
+- **Learnings for future iterations:** `LOCAL_REHEARSAL=1` narrows release platform selection to the host platform; use a non-local stage context with a temp dist when proving all configured release platforms participate in manifest generation without running the whole release pipeline.
+---
