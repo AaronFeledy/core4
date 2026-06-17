@@ -201,7 +201,7 @@ Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide con
 - `core/src/cli/commands/update.ts`
 - `core/src/cli/commands/meta/update*`
 - `core/src/cli/run.ts`
-- `core/src/schema/update.ts`
+- `sdk/src/schema/update-manifest.ts`
 - `core/src/telemetry/**`
 - `sdk/src/**/update*`
 - `sdk/src/**/supply*`
