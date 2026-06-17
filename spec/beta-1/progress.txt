@@ -1083,3 +1083,8 @@
 - Review feedback: fixed (7 Cursor Bugbot findings on update.ts/release.ts/build-update-manifest.ts addressed across prior triage commits: prerelease-prefix + leading-v channel/semver normalization, dry-run now skips persist/replace, placeholder-binary rejection at trust time, signed manifests force allowMissingBinaries off, and library releases skip update-manifest cosign/OIDC; verified against HEAD before merge; Bugbot re-ran clean on final HEAD)
 - Merge: merged (squash)
 ---
+## 2026-06-17 15:08 CDT - US-267 Build
+- Verified the in-flight POSIX installer branch complete with no new code changes: the installer already detects supported POSIX platform ids, resolves channel manifests, verifies checksum signatures and binary hashes, and installs the verified binary to the requested/default bin directory.
+- Verification: typecheck, lint, focused POSIX installer tests, guide coverage/lint, generated POSIX installer guide scenario, shell syntax check, and manual shell QA passed; LSP diagnostics were unavailable because the TypeScript server was previously declined and the Bash server is not installed.
+- **Learnings for future iterations:** A POSIX installer verification pass should include both `sh -n scripts/install.sh` and a real `sh scripts/install.sh` run against `file://` fixtures, because that catches shell portability and path/manifest assumptions beyond TypeScript/Biome gates.
+---
