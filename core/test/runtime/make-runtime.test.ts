@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
@@ -22,6 +24,8 @@ import {
 
 import { installSignalHandlers } from "../../src/runtime/interrupt.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+
+const repoRoot = resolve(import.meta.dirname, "../../..");
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
   const lines: Array<string> = [];
@@ -168,6 +172,41 @@ describe("makeLandoRuntime", () => {
     if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
     expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
     expect(process.listenerCount("SIGUSR2")).toBe(before);
+  });
+
+  test("makeLandoRuntime signal handlers interrupt the provided program", () => {
+    const script = String.raw`
+      import { strict as assert } from "node:assert";
+      import { Cause, Effect, Exit } from "effect";
+      import { makeLandoRuntime } from "@lando/core";
+
+      const before = process.listenerCount("SIGINT");
+      let during = 0;
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          during = process.listenerCount("SIGINT");
+          process.emit("SIGINT");
+          yield* Effect.never;
+        }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }))),
+      );
+
+      assert.equal(during, before + 1);
+      assert.equal(Exit.isFailure(exit), true);
+      if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
+      assert.equal(Cause.isInterruptedOnly(exit.cause), true);
+      assert.equal(process.listenerCount("SIGINT"), before);
+      console.log("signal-ok");
+    `;
+    const proc = Bun.spawnSync([process.execPath, "--eval", script], {
+      cwd: repoRoot,
+      env: { ...process.env, PWD: repoRoot },
+      stderr: "pipe",
+      stdout: "pipe",
+      timeout: 10_000,
+    });
+
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stdout.toString()).toContain("signal-ok");
   });
 
   test("repeated runtime construction keeps mutable service state isolated", async () => {

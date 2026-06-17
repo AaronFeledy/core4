@@ -10,7 +10,7 @@
  * default in library mode so the host owns its own signal model.
  *
  */
-import { Effect, type Fiber, type Scope } from "effect";
+import { Effect, Fiber, type Scope } from "effect";
 
 export interface InstallSignalHandlersOptions {
   readonly fiber: Fiber.RuntimeFiber<unknown, unknown>;
@@ -25,8 +25,12 @@ export const installSignalHandlers = (
 ): Effect.Effect<void, never, Scope.Scope> =>
   Effect.gen(function* () {
     const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
+    const interruptor = options.fiber.id();
     const handlers = signals.map((signal) => {
-      const handler = () => options.fiber.unsafeInterruptAsFork(options.fiber.id());
+      const handler = () => {
+        options.fiber.unsafeInterruptAsFork(interruptor);
+        for (const fiber of Fiber.unsafeRoots(void 0)) fiber.unsafeInterruptAsFork(interruptor);
+      };
       process.once(signal, handler);
       return { signal, handler };
     });

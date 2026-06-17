@@ -945,3 +945,10 @@
 - Review notes (deferred): `plugins.discovery.system` remains schema-visible but not wired as a distinct discovery source; left out of scope because US-274's default-safety acceptance is covered by the empty default registry, while system discovery opt-in needs the broader plugin-discovery seam.
 - Verification: typecheck, lint, focused runtime/generated-bootstrap tests, guide coverage/lint, generated embedding-runtime guide scenarios, and full `bun test` passed.
 ---
+
+## 2026-06-16 21:26 CDT - US-274 Verify
+- Verified the freshly built compiled binary in `lando4-dev`: version smoke passed, `setup --skip-provider --no-interactive` completed, and an embedding-host script confirmed JSON renderer/telemetry-off/empty plugin defaults, repeated runtime isolation, and opt-in signal interruption with listener cleanup.
+- Fixed a verify-found signal binding gap: the first review fix installed process listeners from the runtime layer acquisition fiber, but an actual `makeLandoRuntime(...).pipe(Effect.provide(...))` host program was not interrupted; the handler now also interrupts active Effect runtime roots and a subprocess regression locks the embedding-host path.
+- Adjacent smoke: compiled `--help` and `setup --help` passed; typecheck, lint, focused runtime/generated-bootstrap tests, guide checks, generated embedding-runtime scenarios, and full `bun test` passed.
+- **Learnings for future iterations:** Layer acquisition can run on a different fiber than the provided host program; signal-handler tests must exercise `makeLandoRuntime(...).pipe(Effect.provide(...))` end to end, not only the lower-level installer helper.
+---
