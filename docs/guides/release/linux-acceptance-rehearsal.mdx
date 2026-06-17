@@ -7,6 +7,32 @@ tags: [beta, docs, release, acceptance]
 ---
 
 <Guide>
+  <Scenario id="runtime-bytecode-aot" render={false} reason="Focused CLI/build tests prove these runtime and build contracts without starting live provider resources during guide generation">
+    <Step name="criterion-15">
+      <Variable name="fileSyncCreate" value="core/test/cli/start.scenario.test.ts" display="FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply" />
+      <Variable name="fileSyncReuse" value="core/test/cli/start.scenario.test.ts" display="repeat app:start invocations reuse existing file-sync sessions instead of re-creating them" />
+    </Step>
+    <Step name="criterion-16">
+      <Variable name="bytecode" value="bun build ./core/bin/lando.ts --compile --bytecode" display="The canonical release and CI compile commands build the compiled binary with Bun bytecode enabled" />
+    </Step>
+    <Step name="criterion-17">
+      <Variable name="aotLayers" value="core/src/runtime/generated/layers/<level>.ts" display="AOT bootstrap layers are committed as generated per-level modules and consumed by the runtime layer factory" />
+      <Variable name="runtimeBoundary" value="core/test/runtime/generated-bootstrap-layers.test.ts" display="The runtime layer factory is guarded against hand-written Layer.mergeAll or Layer.provide composition" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="performance-and-level-none" render={false} reason="Linux performance checks run in CI/nightly against the built binary; guide generation records the proof surface without running benchmarks locally">
+    <Step name="criterion-18">
+      <Variable name="e2eJob" value="guide-scenarios-linux-x64" display="The linux-x64 guide scenario job runs the compiled-binary e2e @smoke subset with provider diagnostics" />
+      <Variable name="ciJob" value="perf-budget-linux-x64" display="The linux-x64 perf-budget job downloads the built binary and runs the release-blocking benchmark surface" />
+      <Variable name="benchmark" value="bun run bench:tooling-hot-path -- --binary dist/lando" display="Nightly/perf evidence records the tooling hot-path benchmark against the released binary" />
+    </Step>
+    <Step name="criterion-19">
+      <Variable name="fastPath" value="core/test/cli/fast-path.test.ts" display="level-none invocations do not import @oclif/core before the pre-OCLIF fast path exits" />
+      <Variable name="serviceBoundary" value="core/test/cli/fast-path-canary-preload.ts" display="The fast-path canary fails if Effect Context.Service construction enters the level-none import path" />
+    </Step>
+  </Scenario>
+
   <Scenario id="external-plugin-loading" render={false} reason="The plugin registry unit tests create temporary external package roots, import ESM and TypeScript entries, and assert failed imports stay isolated without touching a real plugin store">
     <Step name="criteria-20-24">
       <Variable name="esm" value="file:// plugin package root" display="External ESM plugins load from an absolute file URL under the managed plugin store" />

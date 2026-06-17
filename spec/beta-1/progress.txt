@@ -1036,3 +1036,16 @@
 - Review notes (rejected): the generated `dist/release-notes.md` and per-binary `.sig`/`.crt` are not yet wired into a `gh release create` publish (binary publish is skipped in stage 13). Rejected as out of scope — this is the established §15 release-publish-wiring gap shared by US-256/257/258/259; stage-12 verification still runs before stage 13, so a failed binary verify-blob aborts the release before publish (AC4 holds).
 - Verification: typecheck, lint passed; `core/test/scripts/release.test.ts` (44 pass) passed.
 ---
+## 2026-06-17 12:09 CDT - US-278
+- Completed the linux-x64 §17.9 acceptance harness coverage for criteria 15-19: `app:start` now reuses existing file-sync sessions on repeat starts, and the release acceptance rehearsal guide records host-safe proof surfaces for file sync, bytecode compile, AOT bootstrap layers, perf-budget evidence, and level-none import discipline.
+- Verification: RED focused tests failed on missing criteria 15-19 guide coverage and missing repeat-start file-sync reuse; GREEN focused start/build tests passed; guide lint/coverage and generated guide scenarios passed; typecheck and lint passed; host-safe `lando start` command smoke returned the expected no-Landofile remediation.
+- **Learnings for future iterations:**
+  - Acceptance rehearsal guide scenarios should name concrete test/CI proof surfaces for each criterion and stay `render={false}` when the real release operation would mutate the host or require live provider credentials.
+---
+
+## 2026-06-17 12:37 CDT - US-278 Review
+- Fixed review blockers in the linux-x64 acceptance harness: resumed paused file-sync sessions are paused again if a later start file-sync step fails, and Criterion 18 now records both linux-x64 e2e evidence and p95 perf-budget evidence.
+- Review notes (rejected/deferred): none; the review-work blockers were confirmed and fixed in scope.
+- Verification: typecheck, lint, benchmark test, start scenario test, linux acceptance rehearsal test, guide-drift test, guide coverage, guide lint, compiled bytecode build, and sandbox compiled setup/start smoke passed. TypeScript LSP diagnostics could not run because the LSP server is not installed in this environment.
+- **Learnings for future iterations:** File-sync start rollback must restore pre-existing paused sessions it resumes, not just terminate newly-created sessions; release perf acceptance needs p95 evidence, not p50 summaries.
+---
