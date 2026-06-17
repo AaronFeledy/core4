@@ -802,6 +802,11 @@ const applyPosixSelfUpdate = ({
             ),
           ),
         );
+        // The candidate has been renamed into place, so the temp dir is empty. Remove
+        // it now because a successful execve replaces the process before the finalizer runs.
+        yield* Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
+          Effect.catchAll(() => Effect.void),
+        );
         const execArgv = [executablePath, ...selfUpdate.argv.slice(1)];
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
@@ -815,11 +820,10 @@ const applyPosixSelfUpdate = ({
                 }),
             ),
             Effect.tapError(() =>
+              // rename(2) atomically replaces the destination; do not rm first or the
+              // executable path is briefly absent on rollback.
               Effect.tryPromise({
-                try: async () => {
-                  await rm(executablePath, { force: true });
-                  await selfUpdate.rename(backupPath, executablePath);
-                },
+                try: () => selfUpdate.rename(backupPath, executablePath),
                 catch: () => undefined,
               }).pipe(Effect.catchAll(() => Effect.void)),
             ),

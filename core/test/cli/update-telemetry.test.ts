@@ -77,6 +77,7 @@ describe("update telemetry", () => {
     const failures: ReadonlyArray<readonly [string, Exclude<UpdateOutcome, "success">]> = [
       ["UpdateSignatureVerificationError", "signature_failure"],
       ["UpdateChecksumSignatureVerificationError", "signature_failure"],
+      ["UpdateChecksumVerificationError", "signature_failure"],
       ["UpdateLaunchProbeError", "launch_probe_failure"],
       ["UpdatePermissionError", "permission_failure"],
       ["UpdateNetworkError", "network_failure"],

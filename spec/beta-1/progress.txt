@@ -1101,3 +1101,11 @@
 - **Learnings for future iterations:**
   - Self-update replacement needs rollback around both rename phases and failed re-exec; otherwise a failed install can leave the executable path missing or leave the process running after replacing itself.
 ---
+
+## 2026-06-17 17:55 CDT - US-262 Review
+- Made the POSIX self-update execve-failure rollback atomic (restore `.bak` over the installed binary with a single `rename(2)` instead of `rm`+`rename`, which left the executable path briefly absent), and removed the now-empty update temp dir before execve so a successful re-exec does not leak a `.lando-update-*` directory beside the binary.
+- Added the missing `UpdateChecksumVerificationError` -> `signature_failure` row to the update telemetry mapping test (the tag was already mapped in `events.ts` but untested).
+- Review notes (deferred): swallowed restore-failure on both rollback branches and absent fsync-before-rename are pre-existing robustness gaps consistent with the install-rename branch and not introduced regressions; left as-is to keep the diff focused.
+- Verification: typecheck, lint, and focused update-manifest/update-telemetry tests passed (29 tests).
+- **Learnings for future iterations:** Self-update rollback must rely on atomic `rename(2)` overwrite, never `rm`-then-`rename`; and any cleanup that must survive a successful `execve` has to run before the exec call because the process image is replaced before scoped finalizers fire.
+---
