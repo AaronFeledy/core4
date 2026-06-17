@@ -1,0 +1,34 @@
+---
+id: update-channels-and-manifests
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, update, supply-chain]
+---
+
+<Guide>
+  <Scenario id="channel-resolution" render={false} reason="Update channel URL resolution is covered by focused command tests without contacting update.lando.dev">
+    <Step name="stable-next-dev">
+      <Variable name="stable" value="https://update.lando.dev/v4/stable.json" display="The stable channel resolves to the stable v4 update manifest" />
+      <Variable name="next" value="https://update.lando.dev/v4/next.json" display="The next channel resolves to the next v4 update manifest" />
+      <Variable name="dev" value="https://update.lando.dev/v4/dev.json" display="The dev channel resolves to the dev v4 update manifest" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="signed-manifest-trust-root" render={false} reason="Manifest signature verification is asserted with injected manifest bytes and signature verifiers in core/test/cli/update-manifest.test.ts">
+    <Step name="verify-before-trust">
+      <Variable name="signature" value="&lt;manifest-url&gt;.sig + &lt;manifest-url&gt;.crt" display="The updater fetches the sibling signature and certificate for the selected manifest URL" />
+      <Variable name="ordering" value="verify before JSON parse/schema trust" display="The manifest signature is verified before any manifest fields or artifact URLs are trusted" />
+      <Variable name="failure" value="UpdateSignatureVerificationError" display="A bad manifest signature stops the update before schema decoding or binary download" />
+      <Variable name="replay" value="UpdateManifestReplayError" display="A signed manifest older than the newest signed manifest previously observed for that channel is refused as possible replay" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="manifest-schema-and-minimum" render={false} reason="UpdateManifestSchema and minimum-version behavior are covered by focused schema and command tests">
+    <Step name="schema-fields">
+      <Variable name="schema" value="channel,latest,released,minimum,binaries,checksums,notes" display="UpdateManifestSchema validates channel, version, minimum, artifact URLs, checksums, signatures, and per-platform binary entries" />
+      <Variable name="minimum" value="manual update required" display="A binary older than manifest.minimum refuses auto-update and prints official installer plus GitHub Releases remediation" />
+      <Variable name="platforms" value="darwin-x64,darwin-arm64,linux-x64,linux-arm64,windows-x64" display="The manifest carries explicit entries for every release binary platform" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -1106,6 +1106,87 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Update Channel.",
+      "docsPath": "docs/reference/schemas/update-channel.mdx",
+      "id": "UpdateChannel",
+      "jsonSchemaPath": "dist/schemas/update-channel.json",
+      "packageExport": "@lando/sdk/schema#UpdateChannel",
+      "title": "Update Channel"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Update Manifest Platform.",
+      "docsPath": "docs/reference/schemas/update-manifest-platform.mdx",
+      "id": "UpdateManifestPlatform",
+      "jsonSchemaPath": "dist/schemas/update-manifest-platform.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestPlatform",
+      "title": "Update Manifest Platform"
+    },
+    {
+      "deprecated": false,
+      "description": "a string matching the pattern ^https:\\/\\/",
+      "docsPath": "docs/reference/schemas/update-manifest-https-url.mdx",
+      "id": "UpdateManifestHttpsUrl",
+      "jsonSchemaPath": "dist/schemas/update-manifest-https-url.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestHttpsUrl",
+      "title": "Update Manifest Https Url"
+    },
+    {
+      "deprecated": false,
+      "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "docsPath": "docs/reference/schemas/update-manifest-semver.mdx",
+      "id": "UpdateManifestSemver",
+      "jsonSchemaPath": "dist/schemas/update-manifest-semver.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestSemver",
+      "title": "Update Manifest Semver"
+    },
+    {
+      "deprecated": false,
+      "description": "a string matching the pattern ^[0-9a-f]{64}$",
+      "docsPath": "docs/reference/schemas/update-manifest-sha256.mdx",
+      "id": "UpdateManifestSha256",
+      "jsonSchemaPath": "dist/schemas/update-manifest-sha256.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestSha256",
+      "title": "Update Manifest Sha256"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Update Manifest Binary.",
+      "docsPath": "docs/reference/schemas/update-manifest-binary.mdx",
+      "id": "UpdateManifestBinary",
+      "jsonSchemaPath": "dist/schemas/update-manifest-binary.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestBinary",
+      "title": "Update Manifest Binary"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Update Manifest Binaries.",
+      "docsPath": "docs/reference/schemas/update-manifest-binaries.mdx",
+      "id": "UpdateManifestBinaries",
+      "jsonSchemaPath": "dist/schemas/update-manifest-binaries.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestBinaries",
+      "title": "Update Manifest Binaries"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Update Manifest Checksums.",
+      "docsPath": "docs/reference/schemas/update-manifest-checksums.mdx",
+      "id": "UpdateManifestChecksums",
+      "jsonSchemaPath": "dist/schemas/update-manifest-checksums.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestChecksums",
+      "title": "Update Manifest Checksums"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Update Manifest Schema.",
+      "docsPath": "docs/reference/schemas/update-manifest-schema.mdx",
+      "id": "UpdateManifestSchema",
+      "jsonSchemaPath": "dist/schemas/update-manifest-schema.json",
+      "packageExport": "@lando/sdk/schema#UpdateManifestSchema",
+      "title": "Update Manifest Schema"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Lando Event.",
       "docsPath": "docs/reference/schemas/lando-event.mdx",
       "id": "LandoEvent",
@@ -1658,6 +1739,15 @@
       "RecipeRegistryResolution",
       "RecipeRegistryResponse",
       "TemplateRenderContext",
+      "UpdateChannel",
+      "UpdateManifestPlatform",
+      "UpdateManifestHttpsUrl",
+      "UpdateManifestSemver",
+      "UpdateManifestSha256",
+      "UpdateManifestBinary",
+      "UpdateManifestBinaries",
+      "UpdateManifestChecksums",
+      "UpdateManifestSchema",
       "LandoEvent",
       "PreBootstrapEvent",
       "PostBootstrapEvent",
@@ -19021,6 +19111,374 @@
       },
       "$ref": "#/$defs/Transcript",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "UpdateChannel": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["stable", "next", "dev"],
+      "type": "string"
+    },
+    "UpdateManifestBinaries": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "darwin-arm64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "sha256", "size"],
+          "type": "object"
+        },
+        "darwin-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "sha256", "size"],
+          "type": "object"
+        },
+        "linux-arm64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "sha256", "size"],
+          "type": "object"
+        },
+        "linux-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "sha256", "size"],
+          "type": "object"
+        },
+        "windows-x64": {
+          "additionalProperties": false,
+          "properties": {
+            "sha256": {
+              "description": "a string matching the pattern ^[0-9a-f]{64}$",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "size": {
+              "description": "a non-negative number",
+              "minimum": 0,
+              "title": "greaterThanOrEqualTo(0)",
+              "type": "integer"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "sha256", "size"],
+          "type": "object"
+        }
+      },
+      "required": ["darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64", "windows-x64"],
+      "type": "object"
+    },
+    "UpdateManifestBinary": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "description": "a string matching the pattern ^[0-9a-f]{64}$",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "size": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "greaterThanOrEqualTo(0)",
+          "type": "integer"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": ["url", "sha256", "size"],
+      "type": "object"
+    },
+    "UpdateManifestChecksums": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "signature": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        },
+        "url": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        }
+      },
+      "required": ["url", "signature"],
+      "type": "object"
+    },
+    "UpdateManifestHttpsUrl": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "a string matching the pattern ^https:\\/\\/",
+      "pattern": "^https:\\/\\/",
+      "type": "string"
+    },
+    "UpdateManifestPlatform": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64", "windows-x64"],
+      "type": "string"
+    },
+    "UpdateManifestSchema": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "binaries": {
+          "additionalProperties": false,
+          "properties": {
+            "darwin-arm64": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "size": {
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "greaterThanOrEqualTo(0)",
+                  "type": "integer"
+                },
+                "url": {
+                  "description": "a string matching the pattern ^https:\\/\\/",
+                  "pattern": "^https:\\/\\/",
+                  "type": "string"
+                }
+              },
+              "required": ["url", "sha256", "size"],
+              "type": "object"
+            },
+            "darwin-x64": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "size": {
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "greaterThanOrEqualTo(0)",
+                  "type": "integer"
+                },
+                "url": {
+                  "description": "a string matching the pattern ^https:\\/\\/",
+                  "pattern": "^https:\\/\\/",
+                  "type": "string"
+                }
+              },
+              "required": ["url", "sha256", "size"],
+              "type": "object"
+            },
+            "linux-arm64": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "size": {
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "greaterThanOrEqualTo(0)",
+                  "type": "integer"
+                },
+                "url": {
+                  "description": "a string matching the pattern ^https:\\/\\/",
+                  "pattern": "^https:\\/\\/",
+                  "type": "string"
+                }
+              },
+              "required": ["url", "sha256", "size"],
+              "type": "object"
+            },
+            "linux-x64": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "size": {
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "greaterThanOrEqualTo(0)",
+                  "type": "integer"
+                },
+                "url": {
+                  "description": "a string matching the pattern ^https:\\/\\/",
+                  "pattern": "^https:\\/\\/",
+                  "type": "string"
+                }
+              },
+              "required": ["url", "sha256", "size"],
+              "type": "object"
+            },
+            "windows-x64": {
+              "additionalProperties": false,
+              "properties": {
+                "sha256": {
+                  "description": "a string matching the pattern ^[0-9a-f]{64}$",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "size": {
+                  "description": "a non-negative number",
+                  "minimum": 0,
+                  "title": "greaterThanOrEqualTo(0)",
+                  "type": "integer"
+                },
+                "url": {
+                  "description": "a string matching the pattern ^https:\\/\\/",
+                  "pattern": "^https:\\/\\/",
+                  "type": "string"
+                }
+              },
+              "required": ["url", "sha256", "size"],
+              "type": "object"
+            }
+          },
+          "required": ["darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64", "windows-x64"],
+          "type": "object"
+        },
+        "channel": {
+          "enum": ["stable", "next", "dev"],
+          "type": "string"
+        },
+        "checksums": {
+          "additionalProperties": false,
+          "properties": {
+            "signature": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            },
+            "url": {
+              "description": "a string matching the pattern ^https:\\/\\/",
+              "pattern": "^https:\\/\\/",
+              "type": "string"
+            }
+          },
+          "required": ["url", "signature"],
+          "type": "object"
+        },
+        "latest": {
+          "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+          "type": "string"
+        },
+        "minimum": {
+          "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+          "type": "string"
+        },
+        "notes": {
+          "description": "a string matching the pattern ^https:\\/\\/",
+          "pattern": "^https:\\/\\/",
+          "type": "string"
+        },
+        "released": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["channel", "latest", "released", "minimum", "binaries", "checksums", "notes"],
+      "type": "object"
+    },
+    "UpdateManifestSemver": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "a string matching the pattern ^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "type": "string"
+    },
+    "UpdateManifestSha256": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "a string matching the pattern ^[0-9a-f]{64}$",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
     },
     "UseFixtureProps": {
       "$defs": {

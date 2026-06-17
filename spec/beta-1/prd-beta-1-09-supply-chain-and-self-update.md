@@ -77,6 +77,7 @@ This PRD depends on PRD-08's release pipeline. It fills §17.5 supply-chain requ
 - [ ] Manifest URLs are `https://update.lando.dev/v4/{stable,next,dev}.json`.
 - [ ] `UpdateManifestSchema` validates channel, version, minimum, artifact URLs, checksums, signatures, and platform entries.
 - [ ] The manifest sibling `.sig` is verified before any manifest fields are trusted.
+- [ ] A signed manifest older than the newest signed manifest previously observed for that channel is refused as possible replay.
 - [ ] The `minimum` field blocks auto-update for binaries that are too old and prints manual update remediation.
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -148,6 +149,7 @@ This PRD depends on PRD-08's release pipeline. It fills §17.5 supply-chain requ
 - FR-6: `lando update` MUST resolve `stable`, `next`, and `dev` to `https://update.lando.dev/v4/{stable,next,dev}.json`.
 - FR-7: Update manifests MUST be validated by `UpdateManifestSchema` and verified through a sibling `.sig` before fields are trusted.
 - FR-8: The manifest `minimum` field MUST block auto-update for too-old binaries.
+- FR-8a: A signed update manifest MUST NOT move a channel below the newest signed version previously observed by that local install.
 - FR-9: POSIX update MUST use temp download, launch probe, checksum and signature verification, `rename(2)`, `.bak` rollback, and `execve(2)`.
 - FR-10: Failed launch probes MUST restore `.bak` and surface `UpdateLaunchProbeError`.
 - FR-11: Windows update MUST use delayed swap or spawn-and-exit replacement for running `.exe` files.
@@ -196,8 +198,10 @@ Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide con
 - `scripts/release.ts`
 - `scripts/release/**`
 - `core/src/self-update/**`
+- `core/src/cli/commands/update.ts`
 - `core/src/cli/commands/meta/update*`
 - `core/src/cli/run.ts`
+- `sdk/src/schema/update-manifest.ts`
 - `core/src/telemetry/**`
 - `sdk/src/**/update*`
 - `sdk/src/**/supply*`

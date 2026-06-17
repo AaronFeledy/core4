@@ -1094,14 +1094,15 @@
         "Manifest URLs are `https://update.lando.dev/v4/{stable,next,dev}.json`.",
         "`UpdateManifestSchema` validates channel, version, minimum, artifact URLs, checksums, signatures, and platform entries.",
         "The manifest sibling `.sig` is verified before any manifest fields are trusted.",
+        "A signed manifest older than the newest signed manifest previously observed for that channel is refused as possible replay.",
         "The `minimum` field blocks auto-update for binaries that are too old and prints manual update remediation.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
       ],
       "priority": 62,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "`lando update` now resolves stable/next/dev manifest URLs (defaulting to the current binary channel when no flag is passed), fetches and verifies sibling manifest signatures/certificates before JSON/schema trust, validates the §17.6.1 UpdateManifestSchema shape, blocks binaries older than manifest.minimum with prerelease-aware SemVer comparison, refuses signed downgrade manifests, refuses signed channel replay below the newest previously observed signed manifest, and release stage 11 emits a schema-conformant dist/update-manifest.json while SBOM/provenance artifact tracking moves to dist/release-artifacts.json."
     },
     {
       "id": "US-262",

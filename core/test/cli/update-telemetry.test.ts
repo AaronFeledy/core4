@@ -3,10 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { LandoCommandError } from "@lando/sdk/errors";
-import { Telemetry } from "@lando/sdk/services";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { update } from "../../src/cli/commands/update.ts";
 import {
   TELEMETRY_EVENT_INVENTORY,
+  type UpdateOutcome,
   recordUpdateOutcomeTelemetry,
   updateOutcomeFromError,
 } from "../../src/telemetry/events.ts";
@@ -22,6 +23,13 @@ const makeTelemetry = () => {
   } satisfies typeof Telemetry.Service;
   return { telemetry, records };
 };
+
+const noopProcessRunner = {
+  run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+  stream: () => {
+    throw new Error("stream is not used by update telemetry tests");
+  },
+} satisfies typeof ProcessRunner.Service;
 
 describe("update telemetry", () => {
   test("inventory freezes update outcome and deprecation-used fields", () => {
@@ -60,16 +68,18 @@ describe("update telemetry", () => {
         },
       },
     ]);
-    expect(Object.keys(records[0]?.data ?? {})).toEqual(TELEMETRY_EVENT_INVENTORY["update-outcome"]);
+    expect(Object.keys(records[0]?.data ?? {})).toEqual(
+      Array.from(TELEMETRY_EVENT_INVENTORY["update-outcome"]),
+    );
   });
 
   test("maps update failure categories without leaking raw error details", async () => {
-    const failures = [
+    const failures: ReadonlyArray<readonly [string, Exclude<UpdateOutcome, "success">]> = [
       ["UpdateSignatureVerificationError", "signature_failure"],
       ["UpdateLaunchProbeError", "launch_probe_failure"],
       ["UpdatePermissionError", "permission_failure"],
       ["UpdateNetworkError", "network_failure"],
-    ] as const;
+    ];
 
     for (const [tag, outcome] of failures) {
       const { telemetry, records } = makeTelemetry();
@@ -84,7 +94,7 @@ describe("update telemetry", () => {
         }),
       );
 
-      expect(outcome).toBe(updateOutcomeFromError(error));
+      expect(updateOutcomeFromError(error)).toBe(outcome);
       expect(records[0]?.data).toEqual({
         version: "4.0.0",
         targetVersion: "4.1.0",
@@ -123,7 +133,14 @@ describe("update telemetry", () => {
     const { telemetry, records } = makeTelemetry();
 
     const result = await Effect.runPromise(
-      update({ channel: "dev", targetVersion: "4.1.0" }).pipe(Effect.provideService(Telemetry, telemetry)),
+      update({
+        channel: "dev",
+        targetVersion: "4.1.0",
+        runUpdate: () => Effect.succeed({ updatedCore: false, updatedPlugins: [] }),
+      }).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, telemetry),
+      ),
     );
 
     expect(result).toEqual({ updatedCore: false, updatedPlugins: [] });
@@ -154,7 +171,10 @@ describe("update telemetry", () => {
         channel: "stable",
         targetVersion: "4.1.0",
         runUpdate: () => Effect.fail(failure),
-      }).pipe(Effect.provideService(Telemetry, telemetry)),
+      }).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, telemetry),
+      ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

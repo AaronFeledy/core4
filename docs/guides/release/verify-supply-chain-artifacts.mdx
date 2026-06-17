@@ -17,7 +17,7 @@ tags: [beta, docs, release, sbom, supply-chain]
 
   <Scenario id="manifest-sbom-links" render={false} reason="Manifest linkage and fail-closed missing-SBOM behavior are covered by release-orchestrator tests with fixture manifests">
     <Step name="manifest-linkage">
-      <Variable name="manifest" value="dist/update-manifest.json" display="The release manifest records each artifact's path, SHA-256, SBOM path, and SBOM SHA-256" />
+      <Variable name="manifest" value="dist/release-artifacts.json" display="The release artifact tracker records each artifact's path, SHA-256, SBOM path, and SBOM SHA-256" />
       <Variable name="failure" value="artifact lacks a matching SBOM" display="Stage 12 fails closed if a publishable manifest artifact has no matching SBOM link" />
     </Step>
   </Scenario>

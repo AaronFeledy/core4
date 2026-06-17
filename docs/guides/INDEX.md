@@ -47,6 +47,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-254, US-255, US-256 | Platform signing overview | `docs/guides/release/signing-artifacts.mdx` | Shipped |
 | PRD-08 | US-257 | Bytecode compile and budget | `docs/guides/release/compiled-bytecode-budget.mdx` | Shipped |
 | PRD-09 | US-258, US-259, US-260 | Verifying release artifacts | `docs/guides/release/verify-supply-chain-artifacts.mdx` | Shipped |
+| PRD-09 | US-261 | Update channels and signed manifests | `docs/guides/update/channels-and-manifests.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |

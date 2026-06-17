@@ -2722,7 +2722,22 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: ["update"],
       args: {},
       description: "Update Lando core and plugins.",
-      flags: {},
+      flags: {
+        channel: {
+          description: "Release channel to resolve.",
+          name: "channel",
+          hasDynamicHelp: false,
+          multiple: false,
+          options: ["stable", "next", "dev"],
+          type: "option",
+        },
+        "dry-run": {
+          description: "Verify update metadata without replacing the binary.",
+          name: "dry-run",
+          allowNo: false,
+          type: "boolean",
+        },
+      },
       hasDynamicHelp: false,
       hidden: false,
       hiddenAliases: [],

@@ -217,7 +217,7 @@ export const generateReleaseSboms = async ({
 
 const parseCliArgs = (args: ReadonlyArray<string>): GenerateReleaseSbomsInput => {
   let version: string | undefined;
-  let manifestPath = "dist/update-manifest.json";
+  let manifestPath = "dist/release-artifacts.json";
   const artifacts: Array<ReleaseSbomArtifactInput> = [];
 
   for (let index = 0; index < args.length; index += 1) {

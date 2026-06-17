@@ -140,6 +140,7 @@ import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/un
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import { shellenvShellFromInput } from "./oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "./oclif/commands/meta/uninstall.ts";
+import { updateOptionsFromInput } from "./oclif/commands/meta/update.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
 import {
@@ -1799,8 +1800,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "update" || argv[0] === "meta:update") {
     if (rejectInvalidInvocation("meta:update", argv.slice(1))) return;
+    const input = compiledCommandInputFromArgv("meta:update", argv.slice(1));
     await runCompiledCommand(
-      update(),
+      update(updateOptionsFromInput(input)),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
       () => undefined,
     );

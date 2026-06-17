@@ -1036,6 +1036,21 @@
 - Review notes (rejected): the generated `dist/release-notes.md` and per-binary `.sig`/`.crt` are not yet wired into a `gh release create` publish (binary publish is skipped in stage 13). Rejected as out of scope — this is the established §15 release-publish-wiring gap shared by US-256/257/258/259; stage-12 verification still runs before stage 13, so a failed binary verify-blob aborts the release before publish (AC4 holds).
 - Verification: typecheck, lint passed; `core/test/scripts/release.test.ts` (44 pass) passed.
 ---
+
+## 2026-06-17 04:30 CDT - US-261
+- Shipped signed update-manifest trust: `lando update`/`meta:update` now resolve `stable`, `next`, and `dev` to `https://update.lando.dev/v4/{channel}.json`, default no-flag updates to the current binary channel, fetch the sibling `.sig`/`.crt`, verify the manifest signature before JSON parsing/schema trust, and only then decode `UpdateManifestSchema`.
+- Added the core `UpdateManifestSchema` export covering channel, latest/released/minimum versions, per-platform binary URLs/checksums/signatures, checksum manifest URL/signature, and release notes URL. The command blocks binaries older than `minimum` with prerelease-aware SemVer comparison, refuses signed downgrade manifests, refuses signed channel replay below the newest previously observed signed manifest, and prints manual official-installer / GitHub Releases remediation for minimum failures.
+- Stage 11 now writes a schema-conformant `dist/update-manifest.json`; SBOM/provenance artifact tracking moved to `dist/release-artifacts.json` so the self-update manifest filename is no longer overloaded with `{schemaVersion,artifacts}` metadata.
+- Added source/compiled update flag parity for `--channel` and `--dry-run`, focused manifest tests for signature-before-trust ordering, minimum blocking, SemVer prerelease ordering, downgrade refusal, signed-manifest replay refusal, release-manifest generation, and the required executable guide `docs/guides/update/channels-and-manifests.mdx` plus coverage/drift surface rows.
+- Verification: focused update/release/OCLIF/library/codegen tests, manifest-builder CLI smoke, package typecheck, targeted Biome lint, telemetry inventory, renderer-boundary, guide lint, guide coverage, public transcripts, guide-drift local skip, and diff check passed.
+---
+
+## 2026-06-17 11:14 CDT - US-261 Review
+- Fixed review blockers: release and runtime channel derivation now recognize `v4.X.Y-dev.N` and `v4.X.Y-next.N` suffixes, top-level `lando update` alias invalid-channel behavior is covered at source/compiled parity, and the PRD JSON criteria now includes signed-manifest replay refusal to match the Markdown PRD.
+- Review notes (rejected/deferred): external `cosign` verification in the runtime update path is accepted for US-261 because this story owns signature-before-trust behavior, while embedded trust-root verification is a broader self-update implementation hardening; CDN channel-file publication (`stable.json`/`next.json`/`dev.json`) remains Stage 13 operational wiring, not the Stage 11 manifest writer fixed here.
+- Verification: typecheck, lint, and focused update/release/dispatch parity tests passed (118 pass / 0 fail).
+---
+
 ## 2026-06-17 12:09 CDT - US-278
 - Completed the linux-x64 §17.9 acceptance harness coverage for criteria 15-19: `app:start` now reuses existing file-sync sessions on repeat starts, and the release acceptance rehearsal guide records host-safe proof surfaces for file sync, bytecode compile, AOT bootstrap layers, perf-budget evidence, and level-none import discipline.
 - Verification: RED focused tests failed on missing criteria 15-19 guide coverage and missing repeat-start file-sync reuse; GREEN focused start/build tests passed; guide lint/coverage and generated guide scenarios passed; typecheck and lint passed; host-safe `lando start` command smoke returned the expected no-Landofile remediation.

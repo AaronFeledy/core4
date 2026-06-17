@@ -223,6 +223,7 @@ describe("import boundaries (basic importability)", () => {
     const mod = await import("../../src/schema/index.ts");
     expect(mod.GlobalConfig).toBeDefined();
     expect(mod.LandofileShape).toBeDefined();
+    expect(mod.UpdateManifestSchema).toBeDefined();
   });
 
   test("can import @lando/core/errors standalone", async () => {

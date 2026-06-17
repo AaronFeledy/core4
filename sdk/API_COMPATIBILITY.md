@@ -173,6 +173,15 @@
 - `TranscriptRunFrame`
 - `TranscriptVerifyFrame`
 - `UseFixtureProps`
+- `UpdateChannel`
+- `UpdateManifestBinaries`
+- `UpdateManifestBinary`
+- `UpdateManifestChecksums`
+- `UpdateManifestHttpsUrl`
+- `UpdateManifestPlatform`
+- `UpdateManifestSchema`
+- `UpdateManifestSemver`
+- `UpdateManifestSha256`
 - `VariableProps`
 - `VerifyProps`
 - `withSchemaDeprecations`

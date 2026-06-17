@@ -32,6 +32,7 @@ import type {
   PluginRegistry,
   PluginTrustStore,
   PrivilegeService,
+  ProcessRunner,
   Renderer,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -122,7 +123,8 @@ type MinimalRuntimeServices =
   | FileSystem
   | CacheService
   | PluginTrustStore
-  | PrivilegeService;
+  | PrivilegeService
+  | ProcessRunner;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =
