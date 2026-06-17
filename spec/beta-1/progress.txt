@@ -990,3 +990,10 @@
 - **Learnings for future iterations:**
   - Generate SBOM links before enforcing manifest completeness, or a future manifest stage that pre-populates artifact entries will fail before stage 12 can attach the SBOMs it owns.
 ---
+
+## 2026-06-17 01:10 CDT - US-258 Review
+- Reviewed CycloneDX SBOM generation against PRD-09 US-258 via 5-lane review-work. SBOM mechanism is correct and verified: CycloneDX 1.6 fields (name/version/SHA-256/components/tool metadata), per-artifact naming (incl. windows `.exe` and library `.tgz` stems), manifest linkage (path + checksum), and the fail-closed missing-SBOM gate all hold; QA exercised the script + edge cases and security cleared shell-quoting and checksum integrity. No code changes needed.
+- Review notes (rejected/deferred): library archive `dist/lando-library-<version>.tgz` has no producer in any release stage, so an `all`/`library` run of the full orchestrator would ENOENT in Stage 12 — deferred, NOT fixed: producing/publishing the library archive is owned by US-266 ("the release includes the library archive"), no live workflow runs the full orchestrator with a library target today, and US-266 mandates fail-if-missing so US-258's unconditional reference is the correct design (a skip-if-missing guard would be wrong). `update-manifest.json` carrying a `{schemaVersion,artifacts}` SBOM shape vs the normative `UpdateManifestSchema` is pre-existing (Stage 11 writer created that filename/shape; US-261 unimplemented) and belongs to US-261/US-266, not this story. Minor `fileURLToPath`-vs-`.pathname` nit is unreachable (Stage 12 runs Linux-only per the spec-15 matrix); left untouched to keep the diff focused.
+- Verification: typecheck and lint passed; focused `core/test/scripts/release.test.ts` passed (38 tests).
+- **Learnings for future iterations:** US-266 must ensure the library archive is produced before Stage 12 runs — US-258 already wired the library SBOM artifact + manifest link, so the gap to close is the archive producer (Stage 6/publish), not the SBOM step.
+---
