@@ -94,6 +94,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
 | PRD-11 | US-274 | makeLandoRuntime embedding runtime | `docs/guides/library/embedding-runtime.mdx` | Shipped |
 | PRD-11 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Shipped |
+| PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
 
 ## Core service catalog (capability guides — no PRD mapping)
 

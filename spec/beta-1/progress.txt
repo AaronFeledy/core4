@@ -1,5 +1,6 @@
 ## Codebase Patterns
 - Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
+- External installed plugin contribution modules must be resolved against the plugin package root and normalized to `file://` specifiers during registry discovery; later loaders import the manifest value directly, so validating without rewriting leaves relative modules resolved from core instead of the plugin package.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
 - Release compile targets and generated CI platform ids share `CI_PLATFORMS` from `scripts/ci-platforms.ts`; do not duplicate the platform id/target list in release or workflow code.
 - Release rehearsal keeps the canonical 13-stage table intact: use `--through-stage` for ordered prefixes and credential gates for `LOCAL_REHEARSAL=1` warning-skips, not stage removal or reordering.
@@ -981,6 +982,13 @@
 - CI outcome: pass (27 checks)
 - Review feedback: fixed (re-merged origin/main twice to clear progress.txt conflicts as new PRs landed; no code conflicts; no Bugbot findings)
 - Merge: merged (squash)
+
+## 2026-06-16 23:56 CDT - US-279
+- Completed the linux-x64 §17.9 acceptance harness tail: external installed plugin discovery now imports ESM and Bun-native TypeScript entries from managed package roots, resolves package-root dependencies, normalizes in-root global-service contribution modules to loadable file URLs, and isolates PluginLoadError failures without hiding unrelated healthy plugins.
+- Shipped the host-safe release acceptance rehearsal guide and guide-index/build guard covering criteria 20-27, including codegen:check, bundled plugin/recipe codegen, and lando init recipe reachability surfaces.
+- Verification: RED focused registry tests failed on missing file:// package-root support and outside-root module acceptance; GREEN focused plugin/build tests passed, guide lint/coverage passed, generated release-acceptance guide scenarios passed, codegen:check passed, typecheck and lint passed, reviewer gate passed, and the final full-suite retry that was already running passed.
+- **Learnings for future iterations:**
+  - A plugin manifest module path consumed later by a generic loader must be rewritten to the loader's actual import specifier at discovery time; root-containment validation alone is not enough when the loader imports the manifest value directly.
 ---
 
 ## 2026-06-17 00:47 CDT - US-258
