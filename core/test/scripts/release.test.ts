@@ -649,9 +649,7 @@ describe("release orchestrator", () => {
       await withReleaseFixtureRoot(async (root) => {
         await mkdir(join(root, "dist"), { recursive: true });
         await writeFile(join(root, "dist", "lando-linux-x64"), "linux-x64", "utf8");
-        const previousCwd = process.cwd();
-        process.chdir(root);
-        try {
+        await withFixtureCwd(root, async () => {
           await expect(
             manifestStage.run({
               target: "binary",
@@ -667,9 +665,7 @@ describe("release orchestrator", () => {
               now: () => 0,
             }),
           ).rejects.toThrow();
-        } finally {
-          process.chdir(previousCwd);
-        }
+        });
       });
     });
 

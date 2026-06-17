@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Lando v4 release orchestrator — runs the fixed release pipeline.
- *
- * The orchestrator owns stage ordering. Artifact families may skip stages, but
- * flags/config cannot reorder the canonical sequence.
- */
 import { relative } from "node:path";
 
 import { $ } from "bun";
