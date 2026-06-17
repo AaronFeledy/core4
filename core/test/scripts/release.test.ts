@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -8,6 +8,7 @@ import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
+import { generateReleaseSboms } from "../../../scripts/release-sbom";
 
 const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
 
@@ -734,6 +735,135 @@ describe("release orchestrator", () => {
       );
       expect(spawnStages).not.toContain("12-provenance-sbom");
     });
+
+    test("generates CycloneDX SBOMs for release artifacts and links them from the manifest", async () => {
+      const provenanceStage = RELEASE_STAGES.find((stage) => stage.id === "12-provenance-sbom");
+      expect(provenanceStage).toBeDefined();
+      if (provenanceStage === undefined) throw new Error("missing provenance stage");
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-arm64", "linux-arm64 artifact");
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await writeFixtureFile(root, "dist/lando-library-0.0.0.tgz", "library archive");
+        await writeFixtureFile(root, "dist/update-manifest.json", '{"schemaVersion":1,"artifacts":{}}');
+
+        const previousCwd = process.cwd();
+        process.chdir(root);
+        try {
+          await provenanceStage.run({
+            target: "all",
+            env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+            localRehearsal: false,
+            runner: {
+              spawn: async () => {},
+              shell: async ({ script }) => {
+                await Bun.$`sh -euc ${script}`.quiet();
+              },
+            },
+            logger: () => {},
+            now: () => 0,
+          });
+        } finally {
+          process.chdir(previousCwd);
+        }
+
+        const manifest = JSON.parse(await readFile(join(root, "dist", "update-manifest.json"), "utf8"));
+        const linuxEntry = manifest.artifacts["lando-linux-x64"];
+        expect(linuxEntry.path).toBe("dist/lando-linux-x64");
+        expect(linuxEntry.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(linuxEntry.sbom.path).toBe("dist/lando-linux-x64-0.0.0-sbom.cdx.json");
+        expect(linuxEntry.sbom.sha256).toMatch(/^[0-9a-f]{64}$/);
+
+        const sbom = JSON.parse(await readFile(join(root, linuxEntry.sbom.path), "utf8"));
+        expect(sbom.bomFormat).toBe("CycloneDX");
+        expect(sbom.specVersion).toBe("1.6");
+        expect(sbom.metadata.component.name).toBe("lando-linux-x64");
+        expect(sbom.metadata.component.version).toBe("0.0.0");
+        expect(sbom.metadata.component.hashes[0]).toEqual({ alg: "SHA-256", content: linuxEntry.sha256 });
+        expect(sbom.metadata.tools.components[0].name).toBe("@lando/core release-sbom");
+        expect(sbom.components.map((component: { name: string }) => component.name)).toContain("@lando/core");
+        expect(manifest.artifacts["lando-library-0.0.0.tgz"].sbom.path).toBe(
+          "dist/lando-library-0.0.0-sbom.cdx.json",
+        );
+      });
+    });
+
+    test("provenance stage fails when a manifest artifact lacks a matching SBOM", async () => {
+      const provenanceStage = RELEASE_STAGES.find((stage) => stage.id === "12-provenance-sbom");
+      expect(provenanceStage).toBeDefined();
+      if (provenanceStage === undefined) throw new Error("missing provenance stage");
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await writeFixtureFile(
+          root,
+          "dist/update-manifest.json",
+          JSON.stringify({
+            schemaVersion: 1,
+            artifacts: {
+              "missing-artifact": { kind: "binary", path: "dist/missing-artifact", sha256: "a".repeat(64) },
+            },
+          }),
+        );
+
+        const previousCwd = process.cwd();
+        process.chdir(root);
+        try {
+          await expect(
+            provenanceStage.run({
+              target: "binary",
+              env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
+              localRehearsal: false,
+              runner: {
+                spawn: async () => {},
+                shell: async ({ script }) => {
+                  const proc = Bun.spawn(["sh", "-euc", script], { stderr: "pipe", stdout: "pipe" });
+                  const stderr = await new Response(proc.stderr).text();
+                  const exitCode = await proc.exited;
+                  if (exitCode !== 0) throw new Error(stderr);
+                },
+              },
+              logger: () => {},
+              now: () => 0,
+            }),
+          ).rejects.toThrow("lacks a matching SBOM");
+        } finally {
+          process.chdir(previousCwd);
+        }
+      });
+    });
+
+    test("SBOM generation can complete manifest entries created before stage 12", async () => {
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await writeFixtureFile(
+          root,
+          "dist/update-manifest.json",
+          JSON.stringify({
+            schemaVersion: 1,
+            artifacts: {
+              "lando-linux-x64": { kind: "binary", path: "dist/lando-linux-x64", sha256: "a".repeat(64) },
+            },
+          }),
+        );
+
+        const previousCwd = process.cwd();
+        process.chdir(root);
+        try {
+          const manifest = await generateReleaseSboms({
+            version: "0.0.0",
+            manifestPath: "dist/update-manifest.json",
+            artifacts: [{ kind: "binary", path: "dist/lando-linux-x64" }],
+          });
+
+          expect(manifest.artifacts["lando-linux-x64"]?.sbom?.path).toBe(
+            "dist/lando-linux-x64-0.0.0-sbom.cdx.json",
+          );
+        } finally {
+          process.chdir(previousCwd);
+        }
+      });
+    });
   });
 
   describe("Windows release signing", () => {
@@ -974,6 +1104,7 @@ describe("release orchestrator", () => {
           },
         },
         logger: () => {},
+        now: () => 0,
       }),
     ).rejects.toThrow("Missing manifest signing credentials");
 

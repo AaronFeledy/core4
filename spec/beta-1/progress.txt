@@ -19,6 +19,7 @@
 - Public-transcript docs consumption: render the generated `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json` artifacts through `@lando/core/docs/render` (`core/src/docs/render`), not by hand-parsing JSON — it decodes with the `PublicTranscript` schema and produces deterministic, source-linked HTML. The emit side (`scripts/build-guide-scenarios.ts`) and the missing-artifact gate (`scripts/check-public-transcripts.ts`, run as `bun run check:public-transcripts` in the `guide-scenarios-linux-x64` CI job) MUST share the exported `publicTranscriptRelativePath` helper so artifact paths never drift; a guide counts as "requires a transcript" when it is a `Shipped` INDEX.md row with a renderable (`render !== false`) scenario.
 - Effect scope finalizers run uninterruptibly, which masks `Effect.timeout` (the timer fires but cannot interrupt the timed-out effect). A bounded best-effort flush inside `Effect.addFinalizer` must wrap its body in `Effect.interruptible(...)` so the timeout can actually cancel a hanging effect; otherwise shutdown can hang forever on a stuck I/O effect.
 - Telemetry redaction is enforced in the transport's `record` (`core/src/telemetry/service.ts`) via `redactTelemetryData` BEFORE `Queue.offer`, so no disabled/failing/plugin sink ever sees a raw payload. The layer both allowlists known events to their inventory fields (constraining update telemetry) and scrubs free-string values; reuse `scrubTelemetryValue`/`redactTelemetryData` from `core/src/telemetry/redaction.ts` for any new event rather than scrubbing ad hoc at the call site.
+- Release supply-chain stages should generate artifact-specific SBOM manifest links first, then enforce that every manifest artifact has an SBOM; manifest artifact paths/SBOM links must stay POSIX-style `dist/...` regardless of host OS.
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -980,4 +981,12 @@
 - CI outcome: pass (27 checks)
 - Review feedback: fixed (re-merged origin/main twice to clear progress.txt conflicts as new PRs landed; no code conflicts; no Bugbot findings)
 - Merge: merged (squash)
+---
+
+## 2026-06-17 00:47 CDT - US-258
+- Shipped CycloneDX SBOM generation in release stage 12: publishable binary and library artifacts now get artifact-specific `dist/*-sbom.cdx.json` files, each SBOM records artifact identity/version/SHA-256/tool metadata/components, and the update manifest links each artifact to its SBOM path and checksum.
+- Stage 12 now fails closed when a manifest artifact remains without a matching SBOM, while still allowing stage 12 to complete manifest entries that were created before SBOM generation.
+- Verification: focused release tests, manual `scripts/release-sbom.ts` helper QA, guide lint/coverage/public-transcript gates, `dev:guides --once` for the release guide, typecheck, lint, build, and full tests passed.
+- **Learnings for future iterations:**
+  - Generate SBOM links before enforcing manifest completeness, or a future manifest stage that pre-populates artifact entries will fail before stage 12 can attach the SBOMs it owns.
 ---

@@ -1046,8 +1046,8 @@
         "Lint passes"
       ],
       "priority": 59,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now generates CycloneDX 1.6 SBOMs for publishable binary/library artifacts, links each release manifest artifact to its SBOM path and SHA-256, and fails closed when a manifest artifact remains without a matching SBOM."
     },
     {
       "id": "US-259",

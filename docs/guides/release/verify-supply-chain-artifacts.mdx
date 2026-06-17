@@ -1,0 +1,24 @@
+---
+id: release-supply-chain-artifacts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, release, sbom, supply-chain]
+---
+
+<Guide>
+  <Scenario id="cyclonedx-sbom-contract" render={false} reason="Release SBOM generation is asserted by core/test/scripts/release.test.ts with deterministic fixture artifacts, so this guide does not run live signing or publishing tools">
+    <Step name="sbom-artifacts">
+      <Variable name="format" value="CycloneDX JSON 1.6" display="Stage 12 emits CycloneDX JSON SBOM files for publishable release artifacts" />
+      <Variable name="naming" value="dist/lando-&lt;artifact&gt;-&lt;version&gt;-sbom.cdx.json" display="Each binary and library archive receives an artifact-specific SBOM path" />
+      <Variable name="contents" value="artifact name, version, SHA-256, component list, tool metadata" display="Each SBOM carries the release artifact identity, checksum, package components, Bun runtime component, and generator metadata" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="manifest-sbom-links" render={false} reason="Manifest linkage and fail-closed missing-SBOM behavior are covered by release-orchestrator tests with fixture manifests">
+    <Step name="manifest-linkage">
+      <Variable name="manifest" value="dist/update-manifest.json" display="The release manifest records each artifact's path, SHA-256, SBOM path, and SBOM SHA-256" />
+      <Variable name="failure" value="artifact lacks a matching SBOM" display="Stage 12 fails closed if a publishable manifest artifact has no matching SBOM link" />
+    </Step>
+  </Scenario>
+</Guide>
