@@ -649,9 +649,7 @@ describe("release orchestrator", () => {
       await withReleaseFixtureRoot(async (root) => {
         await mkdir(join(root, "dist"), { recursive: true });
         await writeFile(join(root, "dist", "lando-linux-x64"), "linux-x64", "utf8");
-        const previousCwd = process.cwd();
-        process.chdir(root);
-        try {
+        await withFixtureCwd(root, async () => {
           await expect(
             manifestStage.run({
               target: "binary",
@@ -667,9 +665,7 @@ describe("release orchestrator", () => {
               now: () => 0,
             }),
           ).rejects.toThrow();
-        } finally {
-          process.chdir(previousCwd);
-        }
+        });
       });
     });
 
@@ -761,6 +757,278 @@ describe("release orchestrator", () => {
         "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
       );
       expect(spawnStages).not.toContain("12-provenance-sbom");
+    });
+
+    test("binary verification signs every release binary and writes release-note commands", async () => {
+      const binaryCommands: Array<ReadonlyArray<string>> = [];
+      const releaseNoteScripts: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "12-provenance-sbom",
+        env: {
+          ...macosSigningEnv,
+          ...windowsSigningEnv,
+          ...manifestSigningEnv,
+          ...provenanceSigningEnv,
+          LANDO_RELEASE_VERSION: "4.0.0-beta.1",
+        },
+        runner: {
+          spawn: async ({ stageId, summary, cmd }) => {
+            if (stageId === "12-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
+              binaryCommands.push(cmd);
+            }
+          },
+          shell: async ({ summary, script }) => {
+            if (summary === "write release-note binary verification commands")
+              releaseNoteScripts.push(script);
+          },
+        },
+        logger: () => {},
+      });
+
+      expect(binaryCommands).toEqual([
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-darwin-arm64.sig",
+          "--output-certificate",
+          "dist/lando-darwin-arm64.crt",
+          "dist/lando-darwin-arm64",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-darwin-arm64.sig",
+          "--certificate",
+          "dist/lando-darwin-arm64.crt",
+          "dist/lando-darwin-arm64",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-darwin-x64.sig",
+          "--output-certificate",
+          "dist/lando-darwin-x64.crt",
+          "dist/lando-darwin-x64",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-darwin-x64.sig",
+          "--certificate",
+          "dist/lando-darwin-x64.crt",
+          "dist/lando-darwin-x64",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-linux-arm64.sig",
+          "--output-certificate",
+          "dist/lando-linux-arm64.crt",
+          "dist/lando-linux-arm64",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-linux-arm64.sig",
+          "--certificate",
+          "dist/lando-linux-arm64.crt",
+          "dist/lando-linux-arm64",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-linux-x64.sig",
+          "--output-certificate",
+          "dist/lando-linux-x64.crt",
+          "dist/lando-linux-x64",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-linux-x64.sig",
+          "--certificate",
+          "dist/lando-linux-x64.crt",
+          "dist/lando-linux-x64",
+        ],
+        [
+          "cosign",
+          "sign-blob",
+          "--yes",
+          "--output-signature",
+          "dist/lando-windows-x64.exe.sig",
+          "--output-certificate",
+          "dist/lando-windows-x64.exe.crt",
+          "dist/lando-windows-x64.exe",
+        ],
+        [
+          "cosign",
+          "verify-blob",
+          "--certificate-identity-regexp",
+          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "--certificate-oidc-issuer",
+          "https://token.actions.githubusercontent.com",
+          "--signature",
+          "dist/lando-windows-x64.exe.sig",
+          "--certificate",
+          "dist/lando-windows-x64.exe.crt",
+          "dist/lando-windows-x64.exe",
+        ],
+      ]);
+      expect(releaseNoteScripts).toHaveLength(1);
+      const notes = releaseNoteScripts[0] ?? "";
+      expect(notes).toContain("Signature: `dist/lando-linux-x64.sig`");
+      expect(notes).toContain("Certificate: `dist/lando-linux-x64.crt`");
+      expect(notes).toContain("cosign verify-blob \\");
+      expect(notes).toContain("--signature dist/lando-linux-x64.sig \\");
+      expect(notes).toContain("dist/lando-linux-x64");
+    });
+
+    test("binary verification uses the configured identity in CI and release notes", async () => {
+      const binaryCommands: Array<ReadonlyArray<string>> = [];
+      const releaseNoteScripts: Array<string> = [];
+
+      await runRelease({
+        deprecationGate: passingDeprecationGate,
+        target: "binary",
+        throughStage: "12-provenance-sbom",
+        env: {
+          ...manifestSigningEnv,
+          ...provenanceSigningEnv,
+          LANDO_RELEASE_PLATFORM: "linux-x64",
+          LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP: "^https://github.com/example/repo/.+$",
+        },
+        runner: {
+          spawn: async ({ stageId, summary, cmd }) => {
+            if (stageId === "12-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
+              binaryCommands.push(cmd);
+            }
+          },
+          shell: async ({ summary, script }) => {
+            if (summary === "write release-note binary verification commands")
+              releaseNoteScripts.push(script);
+          },
+        },
+        logger: () => {},
+      });
+
+      expect(binaryCommands[1]).toContain("^https://github.com/example/repo/.+$");
+      expect(releaseNoteScripts[0]).toContain(
+        '--certificate-identity-regexp "^https://github.com/example/repo/.+$" \\',
+      );
+    });
+
+    test("binary verification fails closed when a binary signature is missing", async () => {
+      let binaryVerifyAttempted = false;
+
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "12-provenance-sbom",
+          env: {
+            ...manifestSigningEnv,
+            ...provenanceSigningEnv,
+            LANDO_RELEASE_PLATFORM: "linux-x64",
+          },
+          runner: {
+            spawn: async ({ stageId, summary, cmd }) => {
+              if (
+                stageId === "12-provenance-sbom" &&
+                summary === "cosign-sign and verify release binaries" &&
+                cmd[1] === "verify-blob" &&
+                cmd.at(-1) === "dist/lando-linux-x64"
+              ) {
+                binaryVerifyAttempted = true;
+                throw new Error("missing signature");
+              }
+            },
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "12-provenance-sbom",
+        artifactFamily: "binary",
+        commandSummary: "generate provenance and SBOM artifacts",
+      });
+      expect(binaryVerifyAttempted).toBe(true);
+    });
+
+    test("binary verification fails closed on a certificate identity / issuer mismatch", async () => {
+      let mismatchedVerifyCommand: ReadonlyArray<string> | undefined;
+
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "12-provenance-sbom",
+          env: {
+            ...manifestSigningEnv,
+            ...provenanceSigningEnv,
+            LANDO_RELEASE_PLATFORM: "linux-x64",
+          },
+          runner: {
+            spawn: async ({ stageId, summary, cmd }) => {
+              if (
+                stageId === "12-provenance-sbom" &&
+                summary === "cosign-sign and verify release binaries" &&
+                cmd[1] === "verify-blob" &&
+                cmd.at(-1) === "dist/lando-linux-x64"
+              ) {
+                mismatchedVerifyCommand = cmd;
+                throw new Error(
+                  "no matching signatures: certificate identity does not match the configured identity regexp",
+                );
+              }
+            },
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "12-provenance-sbom",
+        artifactFamily: "binary",
+        commandSummary: "generate provenance and SBOM artifacts",
+      });
+      expect(mismatchedVerifyCommand).toContain("--certificate-identity-regexp");
+      expect(mismatchedVerifyCommand).toContain(
+        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+      );
+      expect(mismatchedVerifyCommand).toContain("--certificate-oidc-issuer");
+      expect(mismatchedVerifyCommand).toContain("https://token.actions.githubusercontent.com");
     });
 
     test("generates CycloneDX SBOMs for release artifacts and links them from the manifest", async () => {

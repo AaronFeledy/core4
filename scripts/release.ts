@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Lando v4 release orchestrator — runs the fixed release pipeline.
- *
- * The orchestrator owns stage ordering. Artifact families may skip stages, but
- * flags/config cannot reorder the canonical sequence.
- */
 import { relative } from "node:path";
 
 import { $ } from "bun";
@@ -362,13 +356,15 @@ const requiredEnv = (env: ReleaseEnvironment, name: string): string => {
   return value;
 };
 
+const cosignCertificateIdentityRegexp = (env: ReleaseEnvironment): string =>
+  envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
+  DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+
 const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
   const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
   const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
   const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
-  const certificateIdentityRegexp =
-    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
-    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
 
   return [
     [
@@ -459,6 +455,7 @@ const releaseSbomScriptPath = new URL("./release-sbom.ts", import.meta.url).path
 const releaseProvenanceScriptPath = new URL("./release-provenance.ts", import.meta.url).pathname;
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+const markdownCommandQuote = (value: string): string => JSON.stringify(value);
 
 const cosignSignAndVerifyBlobCommands = (
   env: ReleaseEnvironment,
@@ -466,9 +463,7 @@ const cosignSignAndVerifyBlobCommands = (
   signaturePath: string,
   certificatePath: string,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  const certificateIdentityRegexp =
-    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
-    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
 
   return [
     [
@@ -502,6 +497,87 @@ const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
 
 const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
   `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+
+interface ReleaseBinarySignatureArtifact {
+  readonly binaryPath: string;
+  readonly signaturePath: string;
+  readonly certificatePath: string;
+}
+
+const normalizeReleaseArtifactPath = (path: string): string => path.replace(/^\.\//, "");
+
+const releaseBinarySignatureArtifact = (path: string): ReleaseBinarySignatureArtifact => {
+  const binaryPath = normalizeReleaseArtifactPath(path);
+  return { binaryPath, signaturePath: `${binaryPath}.sig`, certificatePath: `${binaryPath}.crt` };
+};
+
+const releaseBinarySignatureArtifacts = (
+  context: ReleaseStageContext,
+): ReadonlyArray<ReleaseBinarySignatureArtifact> => {
+  if (context.target === "library") return [];
+  return releasePlatformsForContext(context).map((platform) =>
+    releaseBinarySignatureArtifact(releaseBinaryPath(platform)),
+  );
+};
+
+const binaryCosignCommands = (
+  env: ReleaseEnvironment,
+  artifacts: ReadonlyArray<ReleaseBinarySignatureArtifact>,
+): ReadonlyArray<ReadonlyArray<string>> =>
+  artifacts.flatMap((artifact) =>
+    cosignSignAndVerifyBlobCommands(
+      env,
+      artifact.binaryPath,
+      artifact.signaturePath,
+      artifact.certificatePath,
+    ),
+  );
+
+const renderBinaryVerificationCommand = (
+  env: ReleaseEnvironment,
+  artifact: ReleaseBinarySignatureArtifact,
+): string =>
+  [
+    "cosign verify-blob \\",
+    `  --certificate-identity-regexp ${markdownCommandQuote(cosignCertificateIdentityRegexp(env))} \\`,
+    `  --certificate-oidc-issuer ${markdownCommandQuote(COSIGN_OIDC_ISSUER)} \\`,
+    `  --signature ${artifact.signaturePath} \\`,
+    `  --certificate ${artifact.certificatePath} \\`,
+    `  ${artifact.binaryPath}`,
+  ].join("\n");
+
+const releaseBinaryVerificationNotes = (
+  env: ReleaseEnvironment,
+  artifacts: ReadonlyArray<ReleaseBinarySignatureArtifact>,
+): string =>
+  [
+    "## Binary Verification",
+    "",
+    "Each release binary is keyless-signed with cosign through GitHub Actions OIDC.",
+    "",
+    ...artifacts.flatMap((artifact) => [
+      `### ${artifact.binaryPath.split("/").at(-1)}`,
+      "",
+      `Signature: \`${artifact.signaturePath}\``,
+      `Certificate: \`${artifact.certificatePath}\``,
+      "",
+      "```bash",
+      renderBinaryVerificationCommand(env, artifact),
+      "```",
+      "",
+    ]),
+  ].join("\n");
+
+const releaseBinaryVerificationNotesScript = (
+  env: ReleaseEnvironment,
+  artifacts: ReadonlyArray<ReleaseBinarySignatureArtifact>,
+): string =>
+  [
+    "mkdir -p dist",
+    "cat > dist/release-notes.md <<'LANDO_RELEASE_NOTES'",
+    releaseBinaryVerificationNotes(env, artifacts),
+    "LANDO_RELEASE_NOTES",
+  ].join("\n");
 
 const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO_RELEASE_VERSION") ?? "0.0.0";
 
@@ -808,6 +884,7 @@ const provenanceSbomStage: ReleaseStage = {
       return;
 
     const artifactFamily = artifactFamilyForStage(provenanceSbomStage, context.target);
+    const binarySignatureArtifacts = releaseBinarySignatureArtifacts(context);
 
     await spawnCommands(
       context.runner,
@@ -819,6 +896,25 @@ const provenanceSbomStage: ReleaseStage = {
       },
       checksumCosignCommands(context.env),
     );
+    if (binarySignatureArtifacts.length > 0) {
+      await spawnCommands(
+        context.runner,
+        {
+          stageId: "12-provenance-sbom",
+          artifactFamily,
+          summary: "cosign-sign and verify release binaries",
+          remediation: provenanceSbomStage.remediation,
+        },
+        binaryCosignCommands(context.env, binarySignatureArtifacts),
+      );
+      await context.runner.shell({
+        stageId: "12-provenance-sbom",
+        artifactFamily,
+        summary: "write release-note binary verification commands",
+        remediation: provenanceSbomStage.remediation,
+        script: releaseBinaryVerificationNotesScript(context.env, binarySignatureArtifacts),
+      });
+    }
     await context.runner.shell({
       stageId: "12-provenance-sbom",
       artifactFamily,
