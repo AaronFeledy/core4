@@ -13,15 +13,15 @@ import { join } from "node:path";
 import { Effect, Either, Schema } from "effect";
 
 import type { LandoCommandError } from "@lando/sdk/errors";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import {
   type UpdateChannel,
   UpdateChannel as UpdateChannelSchema,
-  type UpdateManifest,
+  type UpdateManifestSchema as UpdateManifest,
   UpdateManifestSchema,
-} from "../../schema/update.ts";
+} from "@lando/sdk/schema";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
+import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../../telemetry/events.ts";
 import { CORE_VERSION } from "../../version.ts";
 

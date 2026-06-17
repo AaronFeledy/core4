@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
+import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import {
   type UpdateManifestFetcher,
@@ -16,7 +17,6 @@ import {
 } from "../../src/cli/commands/update.ts";
 import { updateOptionsFromInput } from "../../src/cli/oclif/commands/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
-import { type UpdateChannel, UpdateManifestSchema } from "../../src/schema/update.ts";
 
 const encoder = new TextEncoder();
 

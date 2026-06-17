@@ -6,13 +6,13 @@ import { dirname, join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
+import { UpdateManifestSchema } from "@lando/sdk/schema";
 import { buildUpdateManifest, updateChannelForReleaseVersion } from "../../../scripts/build-update-manifest";
 import { checkDeprecationReleaseGate } from "../../../scripts/check-deprecations";
 import { CI_PLATFORMS } from "../../../scripts/ci-platforms";
 import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
-import { UpdateManifestSchema } from "../../src/schema/update";
 
 type ReleaseStage = (typeof RELEASE_STAGES)[number];
 

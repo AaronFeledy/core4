@@ -4,8 +4,10 @@ import { dirname, join } from "node:path";
 
 import { Schema } from "effect";
 
-import { type UpdateChannel, type UpdateManifest, UpdateManifestSchema } from "../core/src/schema/update.ts";
+import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { CI_PLATFORMS } from "./ci-platforms.ts";
+
+type UpdateManifest = typeof UpdateManifestSchema.Encoded;
 
 const zeroSha256 = "0".repeat(64);
 const defaultRepository = "lando-community/core4";
@@ -97,7 +99,9 @@ export const buildUpdateManifest = async ({
     notes: `https://github.com/${repository}/releases/tag/${tag}`,
   };
 
-  return Schema.decodeUnknownSync(UpdateManifestSchema)(manifest, { onExcessProperty: "error" });
+  return Schema.encodeSync(UpdateManifestSchema)(
+    Schema.decodeUnknownSync(UpdateManifestSchema)(manifest, { onExcessProperty: "error" }),
+  );
 };
 
 export const writeUpdateManifest = async ({
