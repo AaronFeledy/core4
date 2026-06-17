@@ -497,27 +497,27 @@ const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
-const releaseSbomArtifacts = (context: ReleaseStageContext): ReadonlyArray<string> => {
+const releaseSbomArtifacts = (context: ReleaseStageContext, version: string): ReadonlyArray<string> => {
   const artifacts: Array<string> = [];
   if (context.target !== "library") {
     artifacts.push(
       ...releasePlatformsForContext(context).map((platform) => `binary:${releaseBinaryPath(platform)}`),
     );
   }
-  if (context.target !== "binary")
-    artifacts.push(`library:${releaseLibraryArchivePath(releaseVersion(context.env))}`);
+  if (context.target !== "binary") artifacts.push(`library:${releaseLibraryArchivePath(version)}`);
   return artifacts;
 };
 
 const releaseSbomScript = (context: ReleaseStageContext): string => {
+  const version = releaseVersion(context.env);
   const args = [
     "bun",
     releaseSbomScriptPath,
     "--version",
-    releaseVersion(context.env),
+    version,
     "--manifest",
     "dist/update-manifest.json",
-    ...releaseSbomArtifacts(context).flatMap((artifact) => ["--artifact", artifact]),
+    ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");
 };

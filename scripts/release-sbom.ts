@@ -35,6 +35,7 @@ interface ReleaseManifest {
 const repoPackageJson = new URL("../package.json", import.meta.url);
 const corePackageJson = new URL("../core/package.json", import.meta.url);
 const sdkPackageJson = new URL("../sdk/package.json", import.meta.url);
+const artifactFormatError = "--artifact must be formatted as <binary|library>:<path>";
 
 const normalizeManifestPath = (path: string): string => path.replace(/^\.\//, "");
 
@@ -139,11 +140,17 @@ const assertGeneratedManifestSboms = async (manifest: ReleaseManifest): Promise<
 
 const readPackageComponents = async (
   releaseVersion: string,
-): Promise<ReadonlyArray<Record<string, unknown>>> => [
-  { type: "library", name: "@lando/core", version: await packageVersion(corePackageJson, releaseVersion) },
-  { type: "library", name: "@lando/sdk", version: await packageVersion(sdkPackageJson, releaseVersion) },
-  { type: "platform", name: "bun", version: Bun.version },
-];
+): Promise<ReadonlyArray<Record<string, unknown>>> => {
+  const [coreVersion, sdkVersion] = await Promise.all([
+    packageVersion(corePackageJson, releaseVersion),
+    packageVersion(sdkPackageJson, releaseVersion),
+  ]);
+  return [
+    { type: "library", name: "@lando/core", version: coreVersion },
+    { type: "library", name: "@lando/sdk", version: sdkVersion },
+    { type: "platform", name: "bun", version: Bun.version },
+  ];
+};
 
 const buildCycloneDxSbom = async (
   artifact: ReleaseSbomArtifactInput,
@@ -256,11 +263,11 @@ const parseCliArgs = (args: ReadonlyArray<string>): GenerateReleaseSbomsInput =>
 
 const parseArtifact = (value: string): ReleaseSbomArtifactInput => {
   const separator = value.indexOf(":");
-  if (separator === -1) throw new Error("--artifact must be formatted as <binary|library>:<path>");
+  if (separator === -1) throw new Error(artifactFormatError);
   const kind = value.slice(0, separator);
   const path = value.slice(separator + 1);
   if ((kind !== "binary" && kind !== "library") || path === "") {
-    throw new Error("--artifact must be formatted as <binary|library>:<path>");
+    throw new Error(artifactFormatError);
   }
   return { kind, path };
 };

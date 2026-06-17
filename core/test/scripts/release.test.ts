@@ -10,6 +10,8 @@ import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, redactReleaseCommand, runRelease } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
 
+type ReleaseStage = (typeof RELEASE_STAGES)[number];
+
 const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
 
 const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
@@ -24,6 +26,23 @@ const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Pro
 const writeFixtureFile = async (root: string, path: string, content: string): Promise<void> => {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content, "utf8");
+};
+
+const releaseStage = (id: string): ReleaseStage => {
+  const stage = RELEASE_STAGES.find((candidate) => candidate.id === id);
+  expect(stage).toBeDefined();
+  if (stage === undefined) throw new Error(`missing release stage ${id}`);
+  return stage;
+};
+
+const withFixtureCwd = async <T>(root: string, run: () => Promise<T>): Promise<T> => {
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    return await run();
+  } finally {
+    process.chdir(previousCwd);
+  }
 };
 
 describe("release orchestrator", () => {
@@ -737,9 +756,7 @@ describe("release orchestrator", () => {
     });
 
     test("generates CycloneDX SBOMs for release artifacts and links them from the manifest", async () => {
-      const provenanceStage = RELEASE_STAGES.find((stage) => stage.id === "12-provenance-sbom");
-      expect(provenanceStage).toBeDefined();
-      if (provenanceStage === undefined) throw new Error("missing provenance stage");
+      const provenanceStage = releaseStage("12-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-arm64", "linux-arm64 artifact");
@@ -747,9 +764,7 @@ describe("release orchestrator", () => {
         await writeFixtureFile(root, "dist/lando-library-0.0.0.tgz", "library archive");
         await writeFixtureFile(root, "dist/update-manifest.json", '{"schemaVersion":1,"artifacts":{}}');
 
-        const previousCwd = process.cwd();
-        process.chdir(root);
-        try {
+        await withFixtureCwd(root, async () => {
           await provenanceStage.run({
             target: "all",
             env: { ...provenanceSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
@@ -763,9 +778,7 @@ describe("release orchestrator", () => {
             logger: () => {},
             now: () => 0,
           });
-        } finally {
-          process.chdir(previousCwd);
-        }
+        });
 
         const manifest = JSON.parse(await readFile(join(root, "dist", "update-manifest.json"), "utf8"));
         const linuxEntry = manifest.artifacts["lando-linux-x64"];
@@ -789,9 +802,7 @@ describe("release orchestrator", () => {
     });
 
     test("provenance stage fails when a manifest artifact lacks a matching SBOM", async () => {
-      const provenanceStage = RELEASE_STAGES.find((stage) => stage.id === "12-provenance-sbom");
-      expect(provenanceStage).toBeDefined();
-      if (provenanceStage === undefined) throw new Error("missing provenance stage");
+      const provenanceStage = releaseStage("12-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
@@ -806,9 +817,7 @@ describe("release orchestrator", () => {
           }),
         );
 
-        const previousCwd = process.cwd();
-        process.chdir(root);
-        try {
+        await withFixtureCwd(root, async () => {
           await expect(
             provenanceStage.run({
               target: "binary",
@@ -827,9 +836,7 @@ describe("release orchestrator", () => {
               now: () => 0,
             }),
           ).rejects.toThrow("lacks a matching SBOM");
-        } finally {
-          process.chdir(previousCwd);
-        }
+        });
       });
     });
 
@@ -847,9 +854,7 @@ describe("release orchestrator", () => {
           }),
         );
 
-        const previousCwd = process.cwd();
-        process.chdir(root);
-        try {
+        await withFixtureCwd(root, async () => {
           const manifest = await generateReleaseSboms({
             version: "0.0.0",
             manifestPath: "dist/update-manifest.json",
@@ -859,9 +864,7 @@ describe("release orchestrator", () => {
           expect(manifest.artifacts["lando-linux-x64"]?.sbom?.path).toBe(
             "dist/lando-linux-x64-0.0.0-sbom.cdx.json",
           );
-        } finally {
-          process.chdir(previousCwd);
-        }
+        });
       });
     });
   });
