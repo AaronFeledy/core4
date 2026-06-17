@@ -6,9 +6,10 @@
  * The compiled binary self-updates by writing a new binary alongside,
  * atomic-renaming, and re-execing.
  */
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
 
@@ -68,13 +69,58 @@ export class UpdateManifestReplayError extends Schema.TaggedError<UpdateManifest
   },
 ) {}
 
+export class UpdateChecksumSignatureVerificationError extends Schema.TaggedError<UpdateChecksumSignatureVerificationError>()(
+  "UpdateChecksumSignatureVerificationError",
+  {
+    message: Schema.String,
+    checksumsUrl: Schema.String,
+    signatureUrl: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class UpdateChecksumVerificationError extends Schema.TaggedError<UpdateChecksumVerificationError>()(
+  "UpdateChecksumVerificationError",
+  {
+    message: Schema.String,
+    artifact: Schema.String,
+    expected: Schema.optional(Schema.String),
+    actual: Schema.optional(Schema.String),
+  },
+) {}
+
+export class UpdateLaunchProbeError extends Schema.TaggedError<UpdateLaunchProbeError>()(
+  "UpdateLaunchProbeError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    stdout: Schema.optional(Schema.String),
+    stderr: Schema.optional(Schema.String),
+    exitCode: Schema.Number,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionError>()(
+  "UpdatePermissionError",
+  {
+    message: Schema.String,
+    path: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export type UpdateError =
   | LandoCommandError
   | UpdateNetworkError
   | UpdateSignatureVerificationError
   | UpdateMinimumVersionError
   | UpdateDowngradeError
-  | UpdateManifestReplayError;
+  | UpdateManifestReplayError
+  | UpdateChecksumSignatureVerificationError
+  | UpdateChecksumVerificationError
+  | UpdateLaunchProbeError
+  | UpdatePermissionError;
 
 export interface UpdateOptions {
   readonly channel?: UpdateChannel;
@@ -83,7 +129,9 @@ export interface UpdateOptions {
   readonly currentVersion?: string;
   readonly targetVersion?: string;
   readonly fetchManifestBytes?: UpdateManifestFetcher;
+  readonly selfUpdate?: false | UpdateSelfUpdateOptions;
   readonly verifyManifestSignature?: UpdateManifestSignatureVerifier;
+  readonly verifyChecksumSignature?: UpdateChecksumSignatureVerifier;
   readonly updateStatePath?: string;
   readonly runUpdate?: () => Effect.Effect<UpdateResult, UpdateError, never>;
 }
@@ -102,9 +150,38 @@ export interface UpdateManifestSignatureInput {
   readonly certificateBytes: Uint8Array;
 }
 
+export interface UpdateChecksumSignatureInput {
+  readonly checksumsUrl: string;
+  readonly checksumsBytes: Uint8Array;
+  readonly signatureUrl: string;
+  readonly signatureBytes: Uint8Array;
+  readonly certificateUrl: string;
+  readonly certificateBytes: Uint8Array;
+}
+
+export interface UpdateExecveInput {
+  readonly path: string;
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Record<string, string>;
+}
+
+export type UpdateExecve = (input: UpdateExecveInput) => Effect.Effect<void, unknown, never>;
+export type UpdateRename = (from: string, to: string) => Promise<void>;
+
+export interface UpdateSelfUpdateOptions {
+  readonly executablePath?: string;
+  readonly argv?: ReadonlyArray<string>;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly execve?: UpdateExecve;
+  readonly rename?: UpdateRename;
+}
+
 export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 export type UpdateManifestSignatureVerifier = (
   input: UpdateManifestSignatureInput,
+) => Effect.Effect<void, unknown, ProcessRunner>;
+export type UpdateChecksumSignatureVerifier = (
+  input: UpdateChecksumSignatureInput,
 ) => Effect.Effect<void, unknown, ProcessRunner>;
 
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";
@@ -188,6 +265,57 @@ const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = ({
           return yield* Effect.fail(
             new Error(
               `cosign verify-blob failed for ${manifestUrl}${output.length === 0 ? "" : `: ${output}`}`,
+            ),
+          );
+        }
+      }),
+    (root) =>
+      Effect.promise(() => rm(root, { recursive: true, force: true })).pipe(
+        Effect.catchAll(() => Effect.void),
+      ),
+  );
+
+const defaultVerifyChecksumSignature: UpdateChecksumSignatureVerifier = ({
+  certificateBytes,
+  checksumsBytes,
+  checksumsUrl,
+  signatureBytes,
+}) =>
+  Effect.acquireUseRelease(
+    Effect.tryPromise(() => mkdtemp(join(tmpdir(), "lando-update-checksums-"))),
+    (root) =>
+      Effect.gen(function* () {
+        const processRunner = yield* ProcessRunner;
+        const checksumsPath = join(root, "SHA256SUMS");
+        const signaturePath = join(root, "SHA256SUMS.sig");
+        const certificatePath = join(root, "SHA256SUMS.crt");
+        yield* Effect.tryPromise(() =>
+          Promise.all([
+            writeFile(checksumsPath, checksumsBytes),
+            writeFile(signaturePath, signatureBytes),
+            writeFile(certificatePath, certificateBytes),
+          ]),
+        );
+        const result = yield* processRunner.run({
+          cmd: "cosign",
+          args: [
+            "verify-blob",
+            "--certificate-identity-regexp",
+            UPDATE_COSIGN_CERTIFICATE_IDENTITY_REGEXP,
+            "--certificate-oidc-issuer",
+            "https://token.actions.githubusercontent.com",
+            "--signature",
+            signaturePath,
+            "--certificate",
+            certificatePath,
+            checksumsPath,
+          ],
+        });
+        if (result.exitCode !== 0) {
+          const output = `${result.stdout}\n${result.stderr}`.trim().slice(0, 500);
+          return yield* Effect.fail(
+            new Error(
+              `cosign verify-blob failed for ${checksumsUrl}${output.length === 0 ? "" : `: ${output}`}`,
             ),
           );
         }
@@ -448,6 +576,261 @@ const verifyManifestSignature = (
     ),
   );
 
+const verifyChecksumSignature = (
+  verifier: UpdateChecksumSignatureVerifier,
+  input: UpdateChecksumSignatureInput,
+): Effect.Effect<void, UpdateChecksumSignatureVerificationError, ProcessRunner> =>
+  verifier(input).pipe(
+    Effect.mapError(
+      (cause) =>
+        new UpdateChecksumSignatureVerificationError({
+          message: `Update checksum signature verification failed for ${input.checksumsUrl}.`,
+          checksumsUrl: input.checksumsUrl,
+          signatureUrl: input.signatureUrl,
+          cause,
+        }),
+    ),
+  );
+
+const checksumCertificateUrlFor = (signatureUrl: string): string => {
+  if (signatureUrl.endsWith(".sig")) return `${signatureUrl.slice(0, -4)}.crt`;
+  return `${signatureUrl}.crt`;
+};
+
+const artifactNameFromUrl = (url: string): string => {
+  try {
+    return basename(new URL(url).pathname);
+  } catch {
+    return basename(url);
+  }
+};
+
+const normalizeChecksumPath = (path: string): string => path.replace(/^\*/u, "").replace(/^\.\//u, "");
+
+const checksumEntryForArtifact = (checksums: string, artifact: string): string | undefined => {
+  for (const line of checksums.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const match = /^(?<sha>[a-fA-F0-9]{64})\s+(?<path>.+)$/u.exec(trimmed);
+    if (match?.groups === undefined) continue;
+    const sha = match.groups.sha;
+    const path = match.groups.path;
+    if (sha === undefined || path === undefined) continue;
+    const entryPath = normalizeChecksumPath(path.trim());
+    if (basename(entryPath) === artifact) return sha.toLowerCase();
+  }
+  return undefined;
+};
+
+const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const verifyBinaryChecksum = ({
+  artifact,
+  binaryBytes,
+  checksumsBytes,
+  manifestSha256,
+}: {
+  readonly artifact: string;
+  readonly binaryBytes: Uint8Array;
+  readonly checksumsBytes: Uint8Array;
+  readonly manifestSha256: string;
+}): Effect.Effect<void, UpdateChecksumVerificationError> =>
+  Effect.sync(() => new TextDecoder().decode(checksumsBytes)).pipe(
+    Effect.flatMap((checksums) => {
+      const expected = checksumEntryForArtifact(checksums, artifact);
+      if (expected === undefined) {
+        return Effect.fail(
+          new UpdateChecksumVerificationError({
+            message: `Update checksums do not contain an entry for ${artifact}.`,
+            artifact,
+          }),
+        );
+      }
+      if (expected !== manifestSha256.toLowerCase()) {
+        return Effect.fail(
+          new UpdateChecksumVerificationError({
+            message: `Update manifest checksum for ${artifact} does not match the signed checksum manifest.`,
+            artifact,
+            expected,
+            actual: manifestSha256.toLowerCase(),
+          }),
+        );
+      }
+      const actual = sha256Hex(binaryBytes);
+      return actual === expected
+        ? Effect.void
+        : Effect.fail(
+            new UpdateChecksumVerificationError({
+              message: `Downloaded update artifact ${artifact} failed checksum verification.`,
+              artifact,
+              expected,
+              actual,
+            }),
+          );
+    }),
+  );
+
+const stringEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+
+interface ExecveProcess {
+  readonly execve?: (path: string, argv: ReadonlyArray<string>, env: Record<string, string>) => never;
+}
+
+const defaultExecve: UpdateExecve = (input) =>
+  Effect.try({
+    try: () => {
+      const execve = (process as ExecveProcess).execve;
+      if (execve === undefined) throw new Error("process.execve is not available in this runtime");
+      execve(input.path, input.argv, input.env);
+    },
+    catch: (cause) => cause,
+  });
+
+const isLikelyLandoExecutable = (path: string): boolean => basename(path).startsWith("lando");
+
+const defaultSelfUpdateExecutablePath = (): string | undefined => {
+  if (process.platform === "win32") return undefined;
+  return isLikelyLandoExecutable(process.execPath) ? process.execPath : undefined;
+};
+
+const resolveSelfUpdateOptions = (
+  input: false | UpdateSelfUpdateOptions | undefined,
+):
+  | Required<Pick<UpdateSelfUpdateOptions, "executablePath" | "argv" | "env" | "execve" | "rename">>
+  | undefined => {
+  if (input === false || process.platform === "win32") return undefined;
+  const executablePath = input?.executablePath ?? defaultSelfUpdateExecutablePath();
+  if (executablePath === undefined) return undefined;
+  return {
+    executablePath,
+    argv: input?.argv ?? process.argv,
+    env: input?.env ?? process.env,
+    execve: input?.execve ?? defaultExecve,
+    rename: input?.rename ?? rename,
+  };
+};
+
+const writeDownloadedBinary = (path: string, bytes: Uint8Array): Effect.Effect<void, UpdatePermissionError> =>
+  Effect.tryPromise({
+    try: async () => {
+      await writeFile(path, bytes);
+      await chmod(path, 0o755);
+    },
+    catch: (cause) =>
+      new UpdatePermissionError({
+        message: `Failed to write executable update artifact at ${path}.`,
+        path,
+        cause,
+      }),
+  });
+
+const runLaunchProbe = (path: string): Effect.Effect<void, UpdateLaunchProbeError, ProcessRunner> =>
+  Effect.gen(function* () {
+    const processRunner = yield* ProcessRunner;
+    const result = yield* processRunner.run({ cmd: path, args: ["--version"], timeoutMs: 15_000 }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new UpdateLaunchProbeError({
+            message: `Downloaded update artifact could not run its launch probe at ${path}.`,
+            path,
+            exitCode: -1,
+            cause,
+          }),
+      ),
+    );
+    if (result.exitCode === 0) return;
+    return yield* Effect.fail(
+      new UpdateLaunchProbeError({
+        message: `Downloaded update artifact failed its launch probe at ${path}.`,
+        path,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+      }),
+    );
+  });
+
+const renameForUpdate = (
+  renamePath: UpdateRename,
+  from: string,
+  to: string,
+): Effect.Effect<void, UpdatePermissionError> =>
+  Effect.tryPromise({
+    try: () => renamePath(from, to),
+    catch: (cause) =>
+      new UpdatePermissionError({
+        message: `Failed to rename ${from} to ${to}.`,
+        path: to,
+        cause,
+      }),
+  });
+
+const applyPosixSelfUpdate = ({
+  binaryBytes,
+  executablePath,
+  selfUpdate,
+}: {
+  readonly binaryBytes: Uint8Array;
+  readonly executablePath: string;
+  readonly selfUpdate: Required<Pick<UpdateSelfUpdateOptions, "argv" | "env" | "execve" | "rename">>;
+}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  Effect.acquireUseRelease(
+    Effect.tryPromise({
+      try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
+      catch: (cause) =>
+        new UpdatePermissionError({
+          message: `Failed to create update temp directory next to ${executablePath}.`,
+          path: executablePath,
+          cause,
+        }),
+    }),
+    (tempDir) =>
+      Effect.gen(function* () {
+        const tempBinaryPath = join(tempDir, basename(executablePath));
+        const backupPath = `${executablePath}.bak`;
+        yield* writeDownloadedBinary(tempBinaryPath, binaryBytes);
+        yield* runLaunchProbe(tempBinaryPath);
+        yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath);
+        yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath).pipe(
+          Effect.catchAll((error) =>
+            renameForUpdate(selfUpdate.rename, backupPath, executablePath).pipe(
+              Effect.catchAll(() => Effect.void),
+              Effect.flatMap(() => Effect.fail(error)),
+            ),
+          ),
+        );
+        const execArgv = [executablePath, ...selfUpdate.argv.slice(1)];
+        yield* selfUpdate
+          .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new UpdatePermissionError({
+                  message: `Failed to exec updated Lando binary at ${executablePath}.`,
+                  path: executablePath,
+                  cause,
+                }),
+            ),
+            Effect.tapError(() =>
+              Effect.tryPromise({
+                try: async () => {
+                  await rm(executablePath, { force: true });
+                  await selfUpdate.rename(backupPath, executablePath);
+                },
+                catch: () => undefined,
+              }).pipe(Effect.catchAll(() => Effect.void)),
+            ),
+          );
+      }),
+    (tempDir) =>
+      Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
+        Effect.catchAll(() => Effect.void),
+      ),
+  );
+
 interface DefaultUpdateSuccess {
   readonly manifest: UpdateManifest;
   readonly result: UpdateResult;
@@ -501,9 +884,46 @@ const defaultUpdate = (
         }),
       );
     }
+    const binaryUrl = binary.url;
+    const checksumsUrl = manifest.checksums.url;
+    const checksumSignatureUrl = manifest.checksums.signature;
+    const checksumCertificateUrl = checksumCertificateUrlFor(checksumSignatureUrl);
     yield* enforceMinimumVersion(manifest, options.currentVersion);
     yield* enforceNoDowngrade(manifest, options.currentVersion);
     yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
+    const selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
+    if (
+      !options.dryRun &&
+      selfUpdate !== undefined &&
+      compareVersions(manifest.latest, options.currentVersion) > 0
+    ) {
+      const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
+        yield* Effect.all([
+          fetchBytes(options.fetchManifestBytes, binaryUrl),
+          fetchBytes(options.fetchManifestBytes, checksumsUrl),
+          fetchBytes(options.fetchManifestBytes, checksumSignatureUrl),
+          fetchBytes(options.fetchManifestBytes, checksumCertificateUrl),
+        ]);
+      yield* verifyChecksumSignature(options.verifyChecksumSignature, {
+        checksumsUrl,
+        checksumsBytes,
+        signatureUrl: checksumSignatureUrl,
+        signatureBytes: checksumSignatureBytes,
+        certificateUrl: checksumCertificateUrl,
+        certificateBytes: checksumCertificateBytes,
+      });
+      yield* verifyBinaryChecksum({
+        artifact: artifactNameFromUrl(binaryUrl),
+        binaryBytes,
+        checksumsBytes,
+        manifestSha256: binary.sha256,
+      });
+      yield* applyPosixSelfUpdate({
+        binaryBytes,
+        executablePath: selfUpdate.executablePath,
+        selfUpdate,
+      });
+    }
     return {
       manifest,
       result: {
@@ -518,7 +938,9 @@ interface RequiredUpdateOptions {
   readonly currentVersion: string;
   readonly dryRun: boolean;
   readonly fetchManifestBytes: UpdateManifestFetcher;
+  readonly selfUpdate: false | UpdateSelfUpdateOptions | undefined;
   readonly updateStatePath: string;
+  readonly verifyChecksumSignature: UpdateChecksumSignatureVerifier;
   readonly verifyManifestSignature: UpdateManifestSignatureVerifier;
 }
 
@@ -527,7 +949,9 @@ const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
   channel: options.channel ?? updateChannelForVersion(options.currentVersion ?? CORE_VERSION),
   dryRun: options.dryRun === true,
   fetchManifestBytes: options.fetchManifestBytes ?? defaultFetchManifestBytes,
+  selfUpdate: options.selfUpdate,
   updateStatePath: options.updateStatePath ?? updateManifestStatePath(),
+  verifyChecksumSignature: options.verifyChecksumSignature ?? defaultVerifyChecksumSignature,
   verifyManifestSignature: options.verifyManifestSignature ?? defaultVerifyManifestSignature,
 });
 

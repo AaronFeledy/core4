@@ -1119,8 +1119,8 @@
         "Lint passes"
       ],
       "priority": 63,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "POSIX self-update now downloads verified binary/checksum/signature artifacts, writes the candidate under the target executable filesystem, launch-probes it, renames the current binary to .bak, installs the candidate with rename, rolls back on install/re-exec failure, and invokes execve with preserved argv/env."
     },
     {
       "id": "US-263",

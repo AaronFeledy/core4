@@ -1095,3 +1095,9 @@
 - Review feedback: fixed (resolved CONFLICTING merge with main; Bugbot 3 findings — installer now cosign-verifies SHA256SUMS.sig, Darwin default aligned to ~/.local/share/lando, config.yml parser mirrors minimal-YAML subset)
 - Merge: merged (squash)
 ---
+## 2026-06-17 16:44 CDT - US-262
+- Completed POSIX self-update replacement: `lando update` now verifies signed checksum data and the downloaded binary before launch probing, stages the candidate beside the target executable, preserves a `.bak` rollback file, installs via rename, rolls back on install/re-exec failure, and re-execs with preserved argv/env.
+- Verification: typecheck, lint, build, focused update/telemetry tests, narrow update dispatch-parity spot check, and source CLI invalid-channel smoke passed; TypeScript LSP diagnostics were unavailable because the LSP server is not installed and was previously declined.
+- **Learnings for future iterations:**
+  - Self-update replacement needs rollback around both rename phases and failed re-exec; otherwise a failed install can leave the executable path missing or leave the process running after replacing itself.
+---

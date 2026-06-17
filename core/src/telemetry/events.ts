@@ -40,6 +40,8 @@ export const updateOutcomeFromError = (error: unknown): UpdateOutcome => {
   const tag = tagFrom(error) ?? tagFrom(causeFrom(error));
   switch (tag) {
     case "UpdateSignatureVerificationError":
+    case "UpdateChecksumSignatureVerificationError":
+    case "UpdateChecksumVerificationError":
       return "signature_failure";
     case "UpdateLaunchProbeError":
       return "launch_probe_failure";
