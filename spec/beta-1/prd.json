@@ -1064,8 +1064,8 @@
         "Lint passes"
       ],
       "priority": 60,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now emits SLSA v1.0 in-toto provenance attestations for each publishable binary/library artifact, links each manifest artifact to its provenance path and SHA-256, keyless-signs and verifies each attestation with cosign using the configured GitHub Actions OIDC identity/issuer, and fails closed when a manifest artifact lacks matching provenance."
     },
     {
       "id": "US-260",

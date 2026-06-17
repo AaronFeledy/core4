@@ -997,3 +997,11 @@
 - Verification: typecheck and lint passed; focused `core/test/scripts/release.test.ts` passed (38 tests).
 - **Learnings for future iterations:** US-266 must ensure the library archive is produced before Stage 12 runs — US-258 already wired the library SBOM artifact + manifest link, so the gap to close is the archive producer (Stage 6/publish), not the SBOM step.
 ---
+
+## 2026-06-17 02:00 CDT - US-259
+- Shipped SLSA v1.0 provenance in release Stage 12: every publishable binary/library artifact now gets an in-toto provenance statement linked from the release manifest with artifact digest, builder identity, source ref, commit SHA, workflow path, and release version.
+- Stage 12 keyless-signs and verifies each provenance attestation with cosign using the configured GitHub Actions OIDC identity/issuer, and fails closed if any manifest artifact lacks matching provenance.
+- Verification: red/green focused release tests passed; typecheck and lint passed; real release script fixture produced SBOM + provenance manifest links and decoded the SLSA predicate; Oracle reviewer returned PASS.
+- **Learnings for future iterations:**
+  - Keep Stage 12 supply-chain generation ordered as manifest checksums/signing first, SBOM generation/linkage second, provenance generation/linkage third, then cosign over generated provenance files so manifest completeness checks can fail on the final publishable artifact set.
+---
