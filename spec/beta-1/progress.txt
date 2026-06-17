@@ -1109,3 +1109,8 @@
 - Verification: typecheck, lint, and focused update-manifest/update-telemetry tests passed (29 tests).
 - **Learnings for future iterations:** Self-update rollback must rely on atomic `rename(2)` overwrite, never `rm`-then-`rename`; and any cleanup that must survive a successful `execve` has to run before the exec call because the process image is replaced before scoped finalizers fire.
 ---
+## 2026-06-17 18:40 CDT - US-262 Verify
+- Verified the compiled binary end-to-end in `lando4-dev`: rebuilt `core/dist/lando`, ran `lando setup --provider=lando --yes` with a checksum-verified local runtime-bundle manifest and live Podman socket, then drove a copied compiled binary through a local HTTPS `update.lando.dev` self-update scenario that verified manifest/checksum inputs, launch-probed the candidate, atomically replaced itself, preserved `.bak`, removed temp update dirs, and re-execed with argv/env intact. Adjacent dry-run update smoke confirmed no replacement, no `.bak`, and no temp-dir leak.
+- Fixed a compiled `$bunfs` re-exec argv blocker: POSIX self-update now drops Bun's internal compiled entrypoint from the argv passed to `execve`, preserving only the user command arguments.
+- **Learnings for future iterations:** Compiled Bun self-update can expose an extra `/$bunfs/...` argv entry during re-exec; real compiled verification should assert the post-update process sees only the user-facing command argv.
+---
