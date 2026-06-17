@@ -234,6 +234,8 @@ describe("release orchestrator", () => {
     expect(updateChannelForReleaseVersion("4.0.0-next.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-rc.1")).toBe("next");
+    expect(updateChannelForReleaseVersion("4.0.0-development.1")).toBe("stable");
+    expect(updateChannelForReleaseVersion("4.0.0-alphabet.1")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0")).toBe("stable");
 
     await withReleaseFixtureRoot(async (root) => {

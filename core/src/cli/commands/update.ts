@@ -116,12 +116,13 @@ export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
   `${UPDATE_BASE_URL}/${channel}.json`;
 
 export const updateChannelForVersion = (version: string): UpdateChannel => {
-  const prerelease = version.split("+", 1)[0]?.split("-", 2)[1];
-  if (prerelease?.startsWith("dev") === true || prerelease?.startsWith("alpha") === true) return "dev";
+  const prerelease = version.split("+", 1)[0]?.split("-", 2)[1] ?? "";
+  const prereleaseParts = prerelease.split(".").filter((part) => part.length > 0);
+  if (prereleaseParts.includes("dev") || prereleaseParts.includes("alpha")) return "dev";
   if (
-    prerelease?.startsWith("next") === true ||
-    prerelease?.startsWith("beta") === true ||
-    prerelease?.startsWith("rc") === true
+    prereleaseParts.includes("next") ||
+    prereleaseParts.includes("beta") ||
+    prereleaseParts.includes("rc")
   ) {
     return "next";
   }
