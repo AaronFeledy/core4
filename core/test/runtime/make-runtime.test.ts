@@ -20,6 +20,7 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 
+import { installSignalHandlers } from "../../src/runtime/interrupt.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
@@ -130,6 +131,43 @@ describe("makeLandoRuntime", () => {
 
     expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
     expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+  });
+
+  test("installs and removes process signal handlers when explicitly requested", async () => {
+    const beforeSigint = process.listenerCount("SIGINT");
+    const beforeSigterm = process.listenerCount("SIGTERM");
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* Layer.build(makeLandoRuntime({ bootstrap: "minimal", installSignalHandlers: true }));
+          expect(process.listenerCount("SIGINT")).toBe(beforeSigint + 1);
+          expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm + 1);
+        }),
+      ),
+    );
+
+    expect(process.listenerCount("SIGINT")).toBe(beforeSigint);
+    expect(process.listenerCount("SIGTERM")).toBe(beforeSigterm);
+  });
+
+  test("installed signal handlers interrupt the running fiber", async () => {
+    const before = process.listenerCount("SIGUSR2");
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber, signals: ["SIGUSR2"] }));
+          expect(process.listenerCount("SIGUSR2")).toBe(before + 1);
+          process.emit("SIGUSR2");
+          yield* Effect.never;
+        }),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
+    expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(process.listenerCount("SIGUSR2")).toBe(before);
   });
 
   test("repeated runtime construction keeps mutable service state isolated", async () => {

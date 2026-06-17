@@ -939,3 +939,9 @@
 - Verification: typecheck, lint, focused runtime/library tests, guide lint/coverage, generated embedding-runtime guide scenarios, and full tests passed.
 - **Learnings for future iterations:** Providing a Layer separately rebuilds it; examples that need retained runtime state should write/read inside one provided runtime scope, then construct a separate runtime to prove isolation.
 ---
+
+## 2026-06-16 20:35 CDT - US-274 Review
+- Fixed the review blocker in the enabled signal-handler path: `installSignalHandlers: true` now installs scoped SIGINT/SIGTERM listeners, interrupts the running Effect fiber, and removes listeners when the runtime scope closes; default library construction remains process-global-mutation free.
+- Review notes (deferred): `plugins.discovery.system` remains schema-visible but not wired as a distinct discovery source; left out of scope because US-274's default-safety acceptance is covered by the empty default registry, while system discovery opt-in needs the broader plugin-discovery seam.
+- Verification: typecheck, lint, focused runtime/generated-bootstrap tests, guide coverage/lint, generated embedding-runtime guide scenarios, and full `bun test` passed.
+---

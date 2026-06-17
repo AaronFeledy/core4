@@ -9,27 +9,31 @@
  * Embedding hosts opt into this via `installSignalHandlers: true`. Off by
  * default in library mode so the host owns its own signal model.
  *
- * Status: stub — wires up `process.on("SIGINT", ...)` against a `Fiber.Runtime`
- * passed in. Implementation lands with the OCLIF init hook.
  */
-import type { Effect, Fiber } from "effect";
+import { Effect, type Fiber, type Scope } from "effect";
 
 export interface InstallSignalHandlersOptions {
   readonly fiber: Fiber.RuntimeFiber<unknown, unknown>;
   /**
-   * Signals to handle. Defaults to `["SIGINT"]`. CLI installs both
-   * `SIGINT` and `SIGTERM`; embedding hosts may want only `SIGINT`.
+   * Signals to handle. Defaults to the CLI signal set.
    */
   readonly signals?: ReadonlyArray<NodeJS.Signals>;
 }
 
-/**
- * TODO: wire signal handlers to `Fiber.interrupt(fiber)`.
- * Returns a cleanup `Effect` that removes the listeners.
- */
 export const installSignalHandlers = (
-  _options: InstallSignalHandlersOptions,
-): Effect.Effect<void, never, never> => {
-  // Implementation lands with the OCLIF init hook.
-  throw new Error("installSignalHandlers: not yet implemented");
-};
+  options: InstallSignalHandlersOptions,
+): Effect.Effect<void, never, Scope.Scope> =>
+  Effect.gen(function* () {
+    const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
+    const handlers = signals.map((signal) => {
+      const handler = () => options.fiber.unsafeInterruptAsFork(options.fiber.id());
+      process.once(signal, handler);
+      return { signal, handler };
+    });
+
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        for (const { signal, handler } of handlers) process.off(signal, handler);
+      }),
+    );
+  });
