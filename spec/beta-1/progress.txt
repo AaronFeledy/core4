@@ -1055,3 +1055,9 @@
 - Verification: RED installer test failed on missing `scripts/install.sh`; GREEN focused installer tests passed; guide coverage/lint and generated guide scenario passed; typecheck and lint passed; manual shell QA installed and executed a fixture binary through the real script.
 - **Learnings for future iterations:** Installer tests can stay host-safe by serving release fixtures from `file://` URLs and injecting a fake GPG command, while still exercising the real shell script download/verify/install flow end to end.
 ---
+
+## 2026-06-17 14:41 CDT - US-267 Review
+- Fixed review blockers in the POSIX installer story: installer verification docs/tests now use the GPG `SHA256SUMS.asc` artifact instead of conflating it with cosign `.sig`, focused tests execute the script with POSIX `sh`, and PRD-10 guide-drift input now matches the actual `scripts/install.sh` path.
+- Review notes (deferred): vendored GPG trust roots, PATH/setup prompts, and installer script signing remain deferred to US-269/US-270/US-271 as recorded in `prd.json`.
+- Verification: typecheck, lint, guide coverage/lint, generated POSIX installer guide scenario, shell syntax check, and focused POSIX installer tests passed (7 tests, 37 assertions).
+---

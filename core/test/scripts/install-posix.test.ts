@@ -38,7 +38,7 @@ const createReleaseFixture = async (
 
   const sumsPath = join(releaseRoot, "SHA256SUMS");
   await writeFile(sumsPath, `${options.checksum ?? sha256(binary)}  lando-${platform}\n`);
-  const sigPath = join(releaseRoot, "SHA256SUMS.sig");
+  const sigPath = join(releaseRoot, "SHA256SUMS.asc");
   await writeFile(sigPath, "fixture-signature\n");
 
   const manifest = {
@@ -71,7 +71,7 @@ const createFakeGpg = async (root: string) => {
 const runInstaller = async (
   env: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
-  const proc = Bun.spawn(["bash", installerPath], {
+  const proc = Bun.spawn(["sh", installerPath], {
     cwd: repoRoot,
     env: { ...process.env, ...env },
     stdout: "pipe",
@@ -108,7 +108,7 @@ describe("scripts/install.sh", () => {
     expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
     expect(await Bun.$`${join(installDir, "lando")} version`.text()).toContain("lando 4.0.0-test");
     expect(await Bun.file(logPath).text()).toContain("--verify");
-    expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.sig");
+    expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.asc");
   });
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {

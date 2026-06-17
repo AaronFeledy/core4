@@ -163,7 +163,7 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 
 manifest=$tmp/manifest.json
 sums=$tmp/SHA256SUMS
-signature=$tmp/SHA256SUMS.sig
+signature=$tmp/SHA256SUMS.asc
 binary=$tmp/lando
 
 download "$manifest_url" "$manifest"

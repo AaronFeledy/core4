@@ -19,8 +19,8 @@ tags: [beta, docs, installer]
       <Variable name="dev" value="LANDO_CHANNEL=dev" display="dev resolves to the dev channel manifest" />
     </Step>
     <Step name="verify-and-install">
-      <Variable name="downloads" value="binary + SHA256SUMS + SHA256SUMS.sig" display="The installer downloads the binary, checksum manifest, and checksum signature for the detected platform" />
-      <Variable name="verify" value="gpg --batch --verify SHA256SUMS.sig SHA256SUMS" display="Checksum manifests must verify before the binary is trusted" />
+      <Variable name="downloads" value="binary + SHA256SUMS + SHA256SUMS.asc" display="The installer downloads the binary, checksum manifest, and GPG checksum signature for the detected platform" />
+      <Variable name="verify" value="gpg --batch --verify SHA256SUMS.asc SHA256SUMS" display="Checksum manifests must verify before the binary is trusted" />
       <Variable name="installDir" value="${LANDO_INSTALL_DIR:-&lt;userDataRoot&gt;/bin}/lando" display="The verified binary installs to the chosen install dir, creating it when absent" />
     </Step>
   </Scenario>
