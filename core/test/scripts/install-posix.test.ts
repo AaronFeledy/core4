@@ -25,7 +25,11 @@ const sha256 = (bytes: Uint8Array): string => {
 const createReleaseFixture = async (
   root: string,
   channel = "stable",
-  options: { readonly checksum?: string; readonly platform?: "linux-x64" | "darwin-x64" } = {},
+  options: {
+    readonly checksum?: string;
+    readonly platform?: "linux-x64" | "darwin-x64";
+    readonly sumsPathStyle?: "bare" | "release";
+  } = {},
 ) => {
   const platform = options.platform ?? "linux-x64";
   const releaseRoot = join(root, "release");
@@ -37,7 +41,12 @@ const createReleaseFixture = async (
   await chmod(binaryPath, 0o755);
 
   const sumsPath = join(releaseRoot, "SHA256SUMS");
-  await writeFile(sumsPath, `${options.checksum ?? sha256(binary)}  lando-${platform}\n`);
+  const hash = options.checksum ?? sha256(binary);
+  const sumsLine =
+    options.sumsPathStyle === "release"
+      ? `${hash}  ./dist/lando-${platform}\n`
+      : `${hash}  lando-${platform}\n`;
+  await writeFile(sumsPath, sumsLine);
   const sigPath = join(releaseRoot, "SHA256SUMS.asc");
   await writeFile(sigPath, "fixture-signature\n");
 
@@ -86,6 +95,27 @@ const runInstaller = async (
 };
 
 describe("scripts/install.sh", () => {
+  test("matches SHA256SUMS entries that use release-style ./dist/ path prefixes", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root, "stable", { sumsPathStyle: "release" });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+  });
+
   test("installs the verified linux-x64 binary into LANDO_INSTALL_DIR", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);

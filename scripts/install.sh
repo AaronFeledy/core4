@@ -125,7 +125,18 @@ verify_checksum() {
   sums=$1
   binary=$2
   artifact=$3
-  expected=$(awk -v artifact="$artifact" '($2 == artifact || $2 == "./" artifact || $2 == "dist/" artifact) { print $1; exit }' "$sums")
+  expected=$(
+    awk -v artifact="$artifact" '
+      {
+        path = $2
+        sub(/^.*\//, "", path)
+        if ($2 == artifact || path == artifact) {
+          print $1
+          exit
+        }
+      }
+    ' "$sums"
+  )
   [ -n "$expected" ] || fail "Checksum manifest does not contain $artifact"
   case "${LANDO_INSTALL_OS:-$(uname -s)}" in
     Darwin)
