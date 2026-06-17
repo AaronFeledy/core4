@@ -1419,19 +1419,19 @@ describe("release orchestrator", () => {
           "sha256",
           "/f",
           "certs/windows-release.pfx",
-          "dist/lando-windows-x64.exe",
+          "./dist/lando-windows-x64.exe",
         ],
         [
           "cosign",
           "sign-blob",
           "--yes",
           "--output-signature",
-          "dist/lando-windows-x64.exe.sig",
+          "./dist/lando-windows-x64.exe.sig",
           "--output-certificate",
-          "dist/lando-windows-x64.exe.crt",
-          "dist/lando-windows-x64.exe",
+          "./dist/lando-windows-x64.exe.crt",
+          "./dist/lando-windows-x64.exe",
         ],
-        ["signtool", "verify", "/pa", "/v", "dist/lando-windows-x64.exe"],
+        ["signtool", "verify", "/pa", "/v", "./dist/lando-windows-x64.exe"],
         [
           "cosign",
           "verify-blob",
@@ -1440,10 +1440,10 @@ describe("release orchestrator", () => {
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
-          "dist/lando-windows-x64.exe.sig",
+          "./dist/lando-windows-x64.exe.sig",
           "--certificate",
-          "dist/lando-windows-x64.exe.crt",
-          "dist/lando-windows-x64.exe",
+          "./dist/lando-windows-x64.exe.crt",
+          "./dist/lando-windows-x64.exe",
         ],
       ]);
       expect(spawnStages.findIndex(({ stageId }) => stageId === "9-sign")).toBeLessThan(
@@ -1488,7 +1488,7 @@ describe("release orchestrator", () => {
         "certs/windows-release.pfx",
         "/p",
         "secret",
-        "dist/lando-windows-x64.exe",
+        "./dist/lando-windows-x64.exe",
       ]);
       expect(signingCommands[3]).toContain("^https://github.com/example/repo/.+$");
     });
@@ -1530,7 +1530,7 @@ describe("release orchestrator", () => {
         "certs/windows-release.pfx",
         "/p",
         "super-secret-password",
-        "dist/lando-windows-x64.exe",
+        "./dist/lando-windows-x64.exe",
       ]);
 
       expect(failureMessage).not.toContain("super-secret-password");

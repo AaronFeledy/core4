@@ -338,9 +338,6 @@ const macosNotarizationCommands = (
   ]);
 };
 
-const WINDOWS_RELEASE_BINARY = "dist/lando-windows-x64.exe";
-const WINDOWS_SIGNATURE = `${WINDOWS_RELEASE_BINARY}.sig`;
-const WINDOWS_CERTIFICATE = `${WINDOWS_RELEASE_BINARY}.crt`;
 const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
 const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
   "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
@@ -360,54 +357,6 @@ const requiredEnv = (env: ReleaseEnvironment, name: string): string => {
 const cosignCertificateIdentityRegexp = (env: ReleaseEnvironment): string =>
   envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
   DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
-
-const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
-  const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
-  const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
-  const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
-  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
-
-  return [
-    [
-      "signtool",
-      "sign",
-      "/tr",
-      timestampUrl,
-      "/td",
-      "sha256",
-      "/fd",
-      "sha256",
-      "/f",
-      certificate,
-      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
-      WINDOWS_RELEASE_BINARY,
-    ],
-    [
-      "cosign",
-      "sign-blob",
-      "--yes",
-      "--output-signature",
-      WINDOWS_SIGNATURE,
-      "--output-certificate",
-      WINDOWS_CERTIFICATE,
-      WINDOWS_RELEASE_BINARY,
-    ],
-    ["signtool", "verify", "/pa", "/v", WINDOWS_RELEASE_BINARY],
-    [
-      "cosign",
-      "verify-blob",
-      "--certificate-identity-regexp",
-      certificateIdentityRegexp,
-      "--certificate-oidc-issuer",
-      COSIGN_OIDC_ISSUER,
-      "--signature",
-      WINDOWS_SIGNATURE,
-      "--certificate",
-      WINDOWS_CERTIFICATE,
-      WINDOWS_RELEASE_BINARY,
-    ],
-  ];
-};
 
 const spawnCommands = async (
   runner: ReleaseRunner,
@@ -651,7 +600,7 @@ const releaseSbomScript = (context: ReleaseStageContext): string => {
     "--version",
     version,
     "--manifest",
-    "dist/release-artifacts.json",
+    "dist/update-manifest.json",
     ...releaseSbomArtifacts(context, version).flatMap((artifact) => ["--artifact", artifact]),
   ];
   return args.map(shellQuote).join(" ");
@@ -665,7 +614,7 @@ const releaseProvenanceScript = (context: ReleaseStageContext): string => {
     "--version",
     version,
     "--manifest",
-    "dist/release-artifacts.json",
+    "dist/update-manifest.json",
     "--source-ref",
     envValue(context.env, "GITHUB_REF") ?? "",
     "--commit-sha",
@@ -695,6 +644,57 @@ const provenanceCosignCommands = (
   files.flatMap((provenancePath) =>
     cosignSignAndVerifyBlobCommands(env, provenancePath, `${provenancePath}.sig`, `${provenancePath}.crt`),
   );
+
+const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
+  const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
+  const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
+  const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
+  const binaryPath = releaseBinaryPath({ id: "windows-x64" });
+  const signaturePath = `${binaryPath}.sig`;
+  const certificatePath = `${binaryPath}.crt`;
+
+  return [
+    [
+      "signtool",
+      "sign",
+      "/tr",
+      timestampUrl,
+      "/td",
+      "sha256",
+      "/fd",
+      "sha256",
+      "/f",
+      certificate,
+      ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
+      binaryPath,
+    ],
+    [
+      "cosign",
+      "sign-blob",
+      "--yes",
+      "--output-signature",
+      signaturePath,
+      "--output-certificate",
+      certificatePath,
+      binaryPath,
+    ],
+    ["signtool", "verify", "/pa", "/v", binaryPath],
+    [
+      "cosign",
+      "verify-blob",
+      "--certificate-identity-regexp",
+      certificateIdentityRegexp,
+      "--certificate-oidc-issuer",
+      COSIGN_OIDC_ISSUER,
+      "--signature",
+      signaturePath,
+      "--certificate",
+      certificatePath,
+      binaryPath,
+    ],
+  ];
+};
 
 const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
   "bun",
@@ -881,6 +881,31 @@ const defineStage = (
   return { ...stage, run: skipStage(base, stage.command as string) };
 };
 
+interface PlatformSigningPlan {
+  readonly selected: (platforms: ReadonlyArray<CiPlatform>) => boolean;
+  readonly credentialLabel: string;
+  readonly credentials: CredentialRequirement;
+  readonly commands: (
+    env: ReleaseEnvironment,
+    platforms: ReadonlyArray<CiPlatform>,
+  ) => ReadonlyArray<ReadonlyArray<string>>;
+}
+
+const platformSigningPlans: ReadonlyArray<PlatformSigningPlan> = [
+  {
+    selected: hasMacosPlatform,
+    credentialLabel: "macOS Developer ID signing identity",
+    credentials: macosSigningCredentials,
+    commands: macosCodesignCommands,
+  },
+  {
+    selected: hasWindowsPlatform,
+    credentialLabel: "Windows signing credentials",
+    credentials: windowsSigningCredentials,
+    commands: (env) => windowsSigningCommands(env),
+  },
+];
+
 const platformSignStage: ReleaseStage = {
   id: "9-sign",
   label: "Sign",
@@ -892,13 +917,7 @@ const platformSignStage: ReleaseStage = {
   remediation: "Provision platform signing credentials or run a local rehearsal mode that may skip signing.",
   run: async (context): Promise<void> => {
     const platforms = releasePlatformsForContext(context);
-    const nativeSigningPlatformSelected = hasMacosPlatform(platforms) || hasWindowsPlatform(platforms);
-    const signMacos =
-      hasMacosPlatform(platforms) &&
-      credentialGate("9-sign", "macOS Developer ID signing identity", macosSigningCredentials, context);
-    const signWindows =
-      hasWindowsPlatform(platforms) &&
-      credentialGate("9-sign", "Windows signing credentials", windowsSigningCredentials, context);
+    const selectedPlans = platformSigningPlans.filter((plan) => plan.selected(platforms));
     const command = {
       stageId: "9-sign",
       artifactFamily: artifactFamilyForStage(platformSignStage, context.target),
@@ -906,11 +925,17 @@ const platformSignStage: ReleaseStage = {
       remediation: platformSignStage.remediation,
     };
 
-    if (signMacos)
-      await spawnCommands(context.runner, command, macosCodesignCommands(context.env, platforms));
-    if (signWindows) await spawnCommands(context.runner, command, windowsSigningCommands(context.env));
-    if (!nativeSigningPlatformSelected) {
+    if (selectedPlans.length === 0) {
       context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
+      return;
+    }
+
+    const gatedPlans = selectedPlans.filter((plan) =>
+      credentialGate("9-sign", plan.credentialLabel, plan.credentials, context),
+    );
+
+    for (const plan of gatedPlans) {
+      await spawnCommands(context.runner, command, plan.commands(context.env, platforms));
     }
   },
 };
@@ -970,7 +995,7 @@ const provenanceSbomStage: ReleaseStage = {
     await context.runner.shell({
       stageId: "12-provenance-sbom",
       artifactFamily,
-      summary: "generate CycloneDX SBOM artifacts and link release artifact entries",
+      summary: "generate CycloneDX SBOM artifacts and link release manifest entries",
       remediation: provenanceSbomStage.remediation,
       script: releaseSbomScript(context),
     });
@@ -978,7 +1003,7 @@ const provenanceSbomStage: ReleaseStage = {
     await context.runner.shell({
       stageId: "12-provenance-sbom",
       artifactFamily,
-      summary: "generate SLSA provenance attestations and link release artifact entries",
+      summary: "generate SLSA provenance attestations and link release manifest entries",
       remediation: provenanceSbomStage.remediation,
       script: releaseProvenanceScript(context),
     });
