@@ -60,19 +60,15 @@ manifest_checksum_field() {
   printf '%s\n' "$value"
 }
 
-resolve_gpg_signature_url() {
-  manifest_url=$1
-  value=$(manifest_checksum_field "$manifest_url" "signature")
-  if [ -n "${LANDO_INSTALL_GPG_SIGNATURE_URL:-}" ]; then
-    printf '%s\n' "$LANDO_INSTALL_GPG_SIGNATURE_URL"
+cosign_certificate_url() {
+  signature_url=$1
+  if [ -n "${LANDO_INSTALL_COSIGN_CERTIFICATE_URL:-}" ]; then
+    printf '%s\n' "$LANDO_INSTALL_COSIGN_CERTIFICATE_URL"
     return
   fi
-  case "$value" in
-    *.sig)
-      base=${value%.sig}
-      printf '%s\n' "${base}.asc"
-      ;;
-    *) printf '%s\n' "$value" ;;
+  case "$signature_url" in
+    *.sig) printf '%s.crt\n' "${signature_url%.sig}" ;;
+    *) fail "Cannot derive cosign certificate URL from signature URL: $signature_url" ;;
   esac
 }
 
@@ -119,7 +115,7 @@ resolve_config_file_root() {
     return
   fi
   if [ -n "${LANDO_USER_CONF_ROOT:-}" ]; then
-    printf '%s\n' "${LANDO_USER_CONF_ROOT}"
+    printf '%s\n' "$LANDO_USER_CONF_ROOT"
     return
   fi
   printf '%s\n' "${HOME:-.}/.lando"
@@ -130,17 +126,61 @@ read_config_user_data_root() {
   config="${conf_root}/config.yml"
   [ -r "$config" ] || return 0
   awk '
-    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-    function strip_comment(s) { sub(/[ \t]+#.*$/, "", s); return s }
-    /^[ \t]*#/ { next }
-    /^[ \t]*$/ { next }
-    $0 ~ /^[ \t]*userDataRoot:/ {
-      line = strip_comment($0)
-      sub(/^[ \t]*userDataRoot:[ \t]*/, "", line)
-      val = trim(line)
-      if (val == "" || val == "null") next
-      gsub(/^["'\'']|["'\'']$/, "", val)
-      if (val != "") { print val; exit }
+    function ltrim(s) { sub(/^ +/, "", s); return s }
+    function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+    function trim(s) { return rtrim(ltrim(s)) }
+    function parse_scalar(s, trimmed) {
+      trimmed = trim(s)
+      if (trimmed == "") return "string:\n"
+      if (trimmed == "null") return "nonstring:\n"
+      if (trimmed == "true") return "nonstring:\n"
+      if (trimmed == "false") return "nonstring:\n"
+      if (trimmed ~ /^\[/ || trimmed ~ /^\{/) fail = 1
+      if (fail) return ""
+      if ((trimmed ~ /^".*"$/) || (trimmed ~ /^'\''.*'\''$/)) {
+        trimmed = substr(trimmed, 2, length(trimmed) - 2)
+      }
+      return "string:" trimmed "\n"
+    }
+    BEGIN { depth = 0; indent_stack[0] = -1; root_stack[0] = 1; seen = 0; kind = ""; value = "" }
+    {
+      line = $0
+      sub(/[ \t]+#.*/, "", line)
+      trimmed_line = trim(line)
+      if (trimmed_line == "" || trimmed_line ~ /^#/) next
+      indent = match(line, /[^ ]/) - 1
+      if (indent < 0) indent = 0
+      if (trimmed_line !~ /^[A-Za-z0-9_-]+:/) { fail = 1; exit }
+      key = trimmed_line
+      sub(/:.*/, "", key)
+      raw = trimmed_line
+      sub(/^[A-Za-z0-9_-]+:/, "", raw)
+      while (depth > 0 && indent <= indent_stack[depth]) depth--
+      if (indent <= indent_stack[depth]) { fail = 1; exit }
+      parent_is_root = root_stack[depth]
+      if (trim(raw) == "") {
+        if (parent_is_root && key == "userDataRoot") { seen = 1; kind = "object"; value = "" }
+        depth++
+        indent_stack[depth] = indent
+        root_stack[depth] = 0
+        next
+      }
+      parsed = parse_scalar(raw)
+      if (fail) exit
+      parsed_kind = parsed
+      sub(/:.*/, "", parsed_kind)
+      parsed_value = parsed
+      sub(/^[^:]*:/, "", parsed_value)
+      sub(/\n$/, "", parsed_value)
+      if (parent_is_root && key == "userDataRoot") {
+        seen = 1
+        kind = parsed_kind
+        value = parsed_value
+      }
+    }
+    END {
+      if (fail || !seen || kind != "string" || value == "") exit 0
+      print value
     }
   ' "$config" 2>/dev/null || true
 }
@@ -155,17 +195,11 @@ default_user_data_root() {
     printf '%s\n' "$configured"
     return
   fi
-  os=${LANDO_INSTALL_OS:-$(uname -s)}
-  case "$os" in
-    Darwin) printf '%s\n' "$HOME/Library/Application Support/Lando" ;;
-    *)
-      if [ -n "${XDG_DATA_HOME:-}" ]; then
-        printf '%s\n' "${XDG_DATA_HOME}/lando"
-      else
-        printf '%s\n' "${HOME:-.}/.local/share/lando"
-      fi
-      ;;
-  esac
+  if [ -n "${XDG_DATA_HOME:-}" ]; then
+    printf '%s\n' "${XDG_DATA_HOME}/lando"
+  else
+    printf '%s\n' "${HOME:-.}/.local/share/lando"
+  fi
 }
 
 default_install_dir() {
@@ -213,6 +247,30 @@ verify_checksum() {
   [ "$actual" = "$expected" ] || fail "Checksum mismatch for $artifact"
 }
 
+verify_checksums_signature() {
+  signature_url=$1
+  sums=$2
+  signature=$3
+  case "$signature_url" in
+    *.sig)
+      certificate=$tmp/SHA256SUMS.crt
+      certificate_url=$(cosign_certificate_url "$signature_url")
+      download "$certificate_url" "$certificate"
+      cosign=${LANDO_INSTALL_COSIGN:-cosign}
+      "$cosign" verify-blob \
+        --certificate-identity-regexp "${LANDO_INSTALL_COSIGN_CERTIFICATE_IDENTITY_REGEXP:-^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$}" \
+        --certificate-oidc-issuer "${LANDO_INSTALL_COSIGN_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}" \
+        --signature "$signature" \
+        --certificate "$certificate" \
+        "$sums" >/dev/null 2>&1 || fail "Signature verification failed for SHA256SUMS"
+      ;;
+    *)
+      gpg=${LANDO_INSTALL_GPG:-gpg}
+      "$gpg" --batch --verify "$signature" "$sums" >/dev/null 2>&1 || fail "Signature verification failed for SHA256SUMS"
+      ;;
+  esac
+}
+
 case "${LANDO_CHANNEL:-stable}" in
   stable|next|dev) channel=${LANDO_CHANNEL:-stable} ;;
   *) fail "Unsupported Lando channel: ${LANDO_CHANNEL:-}" ;;
@@ -236,21 +294,20 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 
 manifest=$tmp/manifest.json
 sums=$tmp/SHA256SUMS
-signature=$tmp/SHA256SUMS.asc
+signature=$tmp/SHA256SUMS.signature
 binary=$tmp/lando
 
 download "$manifest_url" "$manifest"
 binary_url=$(manifest_binary_field "$manifest" "$platform" "url")
 sums_url=$(manifest_checksum_field "$manifest" "url")
-signature_url=$(resolve_gpg_signature_url "$manifest")
+signature_url=$(manifest_checksum_field "$manifest" "signature")
 artifact=$(basename_from_url "$binary_url")
 
 download "$binary_url" "$binary"
 download "$sums_url" "$sums"
 download "$signature_url" "$signature"
 
-gpg=${LANDO_INSTALL_GPG:-gpg}
-"$gpg" --batch --verify "$signature" "$sums" >/dev/null 2>&1 || fail "Signature verification failed for SHA256SUMS"
+verify_checksums_signature "$signature_url" "$sums" "$signature"
 verify_checksum "$sums" "$binary" "$artifact"
 
 mkdir -p "$install_dir"

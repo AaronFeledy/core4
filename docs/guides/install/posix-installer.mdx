@@ -7,7 +7,7 @@ tags: [beta, docs, installer]
 ---
 
 <Guide>
-  <Scenario id="install-posix-binary" render={false} reason="The installer unit tests drive scripts/install.sh against local file:// release fixtures with fake GPG verification, so guide generation never downloads release artifacts or mutates the host">
+  <Scenario id="install-posix-binary" render={false} reason="The installer unit tests drive scripts/install.sh against local file:// release fixtures with fake signature verification, so guide generation never downloads release artifacts or mutates the host">
     <Step name="detect-platform">
       <Variable name="linuxX64" value="Linux x86_64 glibc -> linux-x64" display="The POSIX installer maps a glibc linux-x64 host to the linux-x64 release artifact" />
       <Variable name="linuxArm64" value="Linux arm64 glibc -> linux-arm64" display="The installer also maps Linux arm64 to the matching release artifact" />
@@ -19,8 +19,8 @@ tags: [beta, docs, installer]
       <Variable name="dev" value="LANDO_CHANNEL=dev" display="dev resolves to the dev channel manifest" />
     </Step>
     <Step name="verify-and-install">
-      <Variable name="downloads" value="binary + SHA256SUMS + SHA256SUMS.asc" display="The installer downloads the binary and checksum manifest; when the channel manifest points checksums.signature at the cosign SHA256SUMS.sig URL it still fetches SHA256SUMS.asc for GPG verification" />
-      <Variable name="verify" value="gpg --batch --verify SHA256SUMS.asc SHA256SUMS" display="Checksum manifests must verify before the binary is trusted" />
+      <Variable name="downloads" value="binary + SHA256SUMS + SHA256SUMS.sig + SHA256SUMS.crt" display="The installer downloads the binary, checksum manifest, and cosign checksum signature/certificate for the detected platform" />
+      <Variable name="verify" value="cosign verify-blob --signature SHA256SUMS.sig --certificate SHA256SUMS.crt SHA256SUMS" display="Checksum manifests must verify before the binary is trusted" />
       <Variable name="installDir" value="${LANDO_INSTALL_DIR:-&lt;userDataRoot&gt;/bin}/lando" display="The verified binary installs to the chosen install dir, creating it when absent" />
     </Step>
   </Scenario>
