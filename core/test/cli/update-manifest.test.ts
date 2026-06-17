@@ -548,6 +548,58 @@ describe("update signed manifest", () => {
     ]);
   });
 
+  test("POSIX self-update drops Bun's compiled entrypoint from re-exec argv", async () => {
+    const root = await makeTempRoot("lando-self-update-bunfs-argv-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+    await chmod(executablePath, 0o755);
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const execs: ReadonlyArray<string>[] = [];
+
+    await Effect.runPromise(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          argv: [executablePath, "/$bunfs/root/lando", "update", "--channel", "stable"],
+          env: {},
+          execve: (input) =>
+            Effect.sync(() => {
+              execs.push(input.argv);
+            }),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(execs).toEqual([[executablePath, "update", "--channel", "stable"]]);
+  });
+
   test("POSIX self-update fails before probe or rename when the binary checksum does not match", async () => {
     const root = await makeTempRoot("lando-self-update-checksum-");
     const executablePath = join(root, "lando");

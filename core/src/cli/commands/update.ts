@@ -768,6 +768,11 @@ const renameForUpdate = (
       }),
   });
 
+const reexecUserArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const userArgv = argv.slice(1);
+  return userArgv[0]?.startsWith("/$bunfs/") === true ? userArgv.slice(1) : userArgv;
+};
+
 const applyPosixSelfUpdate = ({
   binaryBytes,
   executablePath,
@@ -807,7 +812,7 @@ const applyPosixSelfUpdate = ({
         yield* Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
           Effect.catchAll(() => Effect.void),
         );
-        const execArgv = [executablePath, ...selfUpdate.argv.slice(1)];
+        const execArgv = [executablePath, ...reexecUserArgv(selfUpdate.argv)];
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
           .pipe(
