@@ -1209,8 +1209,8 @@
         "Lint passes"
       ],
       "priority": 68,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "POSIX install.sh now detects Linux/macOS release platform ids, rejects unsupported Linux libc/architectures, resolves stable/next/dev channel manifests, verifies SHA256SUMS signatures plus binary checksums, and installs the verified binary to LANDO_INSTALL_DIR or the Linux userDataRoot bin default."
     },
     {
       "id": "US-268",

@@ -48,6 +48,11 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-257 | Bytecode compile and budget | `docs/guides/release/compiled-bytecode-budget.mdx` | Shipped |
 | PRD-09 | US-258, US-259, US-260 | Verifying release artifacts | `docs/guides/release/verify-supply-chain-artifacts.mdx` | Shipped |
 | PRD-09 | US-261 | Update channels and signed manifests | `docs/guides/update/channels-and-manifests.mdx` | Shipped |
+| PRD-10 | US-266 | Manual GitHub Releases install | `docs/guides/install/github-releases.mdx` | Planned |
+| PRD-10 | US-267, US-269 | POSIX curl-pipe installer | `docs/guides/install/posix-installer.mdx` | Shipped |
+| PRD-10 | US-268, US-269 | Windows PowerShell installer | `docs/guides/install/windows-installer.mdx` | Planned |
+| PRD-10 | US-270 | PATH and setup after install | `docs/guides/install/path-and-setup.mdx` | Planned |
+| PRD-10 | US-271 | Verifying installer scripts | `docs/guides/install/verify-installer-scripts.mdx` | Planned |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |
