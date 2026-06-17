@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -141,8 +141,10 @@ describe("update signed manifest", () => {
     expect(updateChannelForVersion("4.0.0-next.2")).toBe("next");
     expect(updateChannelForVersion("4.0.0-beta.2")).toBe("next");
     expect(updateChannelForVersion("4.0.0-rc.1")).toBe("next");
+    expect(updateChannelForVersion("v4.0.0-beta.2")).toBe("next");
     expect(updateChannelForVersion("4.0.0-development.1")).toBe("stable");
     expect(updateChannelForVersion("4.0.0-alphabet.1")).toBe("stable");
+    expect(updateChannelForVersion("4.0.0-preview.alpha.1")).toBe("stable");
     expect(updateChannelForVersion("4.0.0")).toBe("stable");
   });
 
@@ -285,6 +287,20 @@ describe("update signed manifest", () => {
     expect(tag).toBe("UpdateMinimumVersionError");
   });
 
+  test("minimum checks strip an optional v version prefix", async () => {
+    const tag = await failureTag(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "v4.0.0-beta.1",
+        dryRun: true,
+        fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), minimum: "4.0.0" }),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(tag).toBe("UpdateMinimumVersionError");
+  });
+
   test("minimum follows SemVer prerelease precedence", async () => {
     const cases = [
       { currentVersion: "4.0.0-alpha.1", minimum: "4.0.0-alpha.2", allowed: false },
@@ -354,7 +370,7 @@ describe("update signed manifest", () => {
       runUpdate({
         channel: "stable",
         currentVersion: "4.2.0",
-        dryRun: true,
+        dryRun: false,
         fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
         updateStatePath,
         verifyManifestSignature: verifierFor(),
@@ -373,6 +389,64 @@ describe("update signed manifest", () => {
     );
 
     expect(tag).toBe("UpdateManifestReplayError");
+  });
+
+  test("dry-run verifies the signed manifest without persisting replay state", async () => {
+    const updateStatePath = join(updateStateRoot, "dry-run-state.json");
+
+    const result = await Effect.runPromise(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        dryRun: true,
+        fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+        updateStatePath,
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(result.updatedCore).toBe(false);
+    await expect(readFile(updateStatePath, "utf8")).rejects.toThrow();
+  });
+
+  test("normal update verification persists replay state and reports core update intent", async () => {
+    const updateStatePath = join(updateStateRoot, "normal-state.json");
+
+    const result = await Effect.runPromise(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        dryRun: false,
+        fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+        updateStatePath,
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(result.updatedCore).toBe(true);
+    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
+  });
+
+  test("rejects placeholder binary entries after signed manifest verification", async () => {
+    const tag = await failureTag(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        dryRun: true,
+        fetchManifestBytes: fetcherForManifest({
+          ...manifestFor("stable"),
+          binaries: Object.fromEntries(
+            Object.entries(manifestFor("stable").binaries).map(([platformId, binary]) => [
+              platformId,
+              { ...binary, sha256: "0".repeat(64), size: 0 },
+            ]),
+          ) as ReturnType<typeof manifestFor>["binaries"],
+        }),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(tag).toBe("UpdateNetworkError");
   });
 
   test("source and compiled input helpers map update flags identically", () => {

@@ -115,17 +115,19 @@ const updateManifestStatePath = (): string => join(resolveUserCacheRoot(), "upda
 export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
   `${UPDATE_BASE_URL}/${channel}.json`;
 
+const normalizeVersion = (version: string): string => (version.startsWith("v") ? version.slice(1) : version);
+
+const prereleaseChannelIdentifier = (version: string): string => {
+  const withoutBuild = normalizeVersion(version).split("+", 1)[0] ?? "";
+  const prereleaseIndex = withoutBuild.indexOf("-");
+  if (prereleaseIndex === -1) return "";
+  return withoutBuild.slice(prereleaseIndex + 1).split(".", 1)[0] ?? "";
+};
+
 export const updateChannelForVersion = (version: string): UpdateChannel => {
-  const prerelease = version.split("+", 1)[0]?.split("-", 2)[1] ?? "";
-  const prereleaseParts = prerelease.split(".").filter((part) => part.length > 0);
-  if (prereleaseParts.includes("dev") || prereleaseParts.includes("alpha")) return "dev";
-  if (
-    prereleaseParts.includes("next") ||
-    prereleaseParts.includes("beta") ||
-    prereleaseParts.includes("rc")
-  ) {
-    return "next";
-  }
+  const identifier = prereleaseChannelIdentifier(version);
+  if (identifier === "dev" || identifier === "alpha") return "dev";
+  if (identifier === "next" || identifier === "beta" || identifier === "rc") return "next";
   return "stable";
 };
 
@@ -135,6 +137,9 @@ const updateManifestPlatform = (): keyof UpdateManifest["binaries"] =>
   process.platform === "win32"
     ? "windows-x64"
     : (`${process.platform}-${process.arch}` as keyof UpdateManifest["binaries"]);
+
+const isPlaceholderBinary = (binary: UpdateManifest["binaries"][keyof UpdateManifest["binaries"]]): boolean =>
+  binary.size === 0 || binary.sha256 === "" || /^0+$/u.test(binary.sha256);
 
 const defaultFetchManifestBytes: UpdateManifestFetcher = async (url) => {
   const response = await fetch(url, { redirect: "follow" });
@@ -245,7 +250,7 @@ const compareNumbers = (left: number, right: number): number => {
 };
 
 const parseVersion = (version: string): ParsedVersion => {
-  const withoutBuild = version.split("+", 1)[0] ?? version;
+  const withoutBuild = normalizeVersion(version).split("+", 1)[0] ?? normalizeVersion(version);
   const prereleaseIndex = withoutBuild.indexOf("-");
   const core = prereleaseIndex === -1 ? withoutBuild : withoutBuild.slice(0, prereleaseIndex);
   const prerelease = prereleaseIndex === -1 ? [] : withoutBuild.slice(prereleaseIndex + 1).split(".");
@@ -403,6 +408,7 @@ const writeUpdateManifestState = (
 const enforceManifestFreshness = (
   manifest: UpdateManifest,
   statePath: string,
+  options: { readonly persist: boolean },
 ): Effect.Effect<void, UpdateNetworkError | UpdateManifestReplayError> =>
   Effect.gen(function* () {
     const state = yield* readUpdateManifestState(statePath);
@@ -417,6 +423,8 @@ const enforceManifestFreshness = (
         }),
       );
     }
+
+    if (!options.persist) return;
 
     yield* writeUpdateManifestState(statePath, {
       ...state,
@@ -485,10 +493,24 @@ const defaultUpdate = (
         }),
       );
     }
+    if (isPlaceholderBinary(binary)) {
+      return yield* Effect.fail(
+        new UpdateNetworkError({
+          message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${updateManifestPlatform()}.`,
+          url: manifestUrl,
+        }),
+      );
+    }
     yield* enforceMinimumVersion(manifest, options.currentVersion);
     yield* enforceNoDowngrade(manifest, options.currentVersion);
-    yield* enforceManifestFreshness(manifest, options.updateStatePath);
-    return { manifest, result: { updatedCore: false, updatedPlugins: [] } };
+    yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
+    return {
+      manifest,
+      result: {
+        updatedCore: !options.dryRun && compareVersions(manifest.latest, options.currentVersion) > 0,
+        updatedPlugins: [],
+      },
+    };
   });
 
 interface RequiredUpdateOptions {
