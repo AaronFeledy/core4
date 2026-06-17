@@ -933,3 +933,9 @@
 - Exercised the story's user-facing library surface by importing `@lando/core/docs/redactions` and confirming `redactPublicTranscript`/`redactPublicTranscriptText` resolve as functions; adjacent compiled `--help` smoke passed.
 - **Learnings for future iterations:** For library-contract stories, the real user scenario is package import resolution; default provider setup can remain blocked by the placeholder runtime bundle even when the story's acceptance surface is fully verifiable.
 ---
+## 2026-06-16 19:14 CDT - US-274
+- Completed the library runtime embedding contract by pinning `makeLandoRuntime` defaults, no default signal-handler mutation, repeated runtime isolation, and scoped layer finalization in focused runtime tests.
+- Shipped the `embedding-runtime` executable guide so embedding hosts have a tested library-mode path for default runtime construction and isolated repeated runtimes.
+- Verification: typecheck, lint, focused runtime/library tests, guide lint/coverage, generated embedding-runtime guide scenarios, and full tests passed.
+- **Learnings for future iterations:** Providing a Layer separately rebuilds it; examples that need retained runtime state should write/read inside one provided runtime scope, then construct a separate runtime to prove isolation.
+---
