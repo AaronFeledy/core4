@@ -155,6 +155,17 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
       plan.fileSync,
       (entry) =>
         Effect.gen(function* () {
+          const existingSessions = yield* engine.listSessions({
+            app: entry.session.app,
+            service: entry.session.service,
+            mountKey: entry.session.mountKey,
+          });
+          const existingSession = existingSessions[0];
+          if (existingSession !== undefined) {
+            if (existingSession.status === "paused") yield* engine.resumeSession(existingSession.ref);
+            if (existingSession.status === "running" || existingSession.status === "paused") return;
+          }
+
           const sessionScope = yield* Scope.make();
           const ref = yield* engine
             .createSession(entry.session)

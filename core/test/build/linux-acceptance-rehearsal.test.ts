@@ -34,4 +34,20 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain("core/build.config.ts#bundledPlugins");
     expect(guide).toContain("lando init --recipe <id>");
   });
+
+  test("documents criteria 15-19 proof surfaces without running host-mutating release work", async () => {
+    const guide = await readFile(guidePath, "utf8");
+
+    expect(guide).toContain('Scenario id="runtime-bytecode-aot" render={false}');
+    expect(guide).toContain("FileSyncEngine creates accelerated app:start sessions");
+    expect(guide).toContain("repeat app:start invocations reuse existing file-sync sessions");
+    expect(guide).toContain("bun build ./core/bin/lando.ts --compile --bytecode");
+    expect(guide).toContain("core/src/runtime/generated/layers/<level>.ts");
+
+    expect(guide).toContain('Scenario id="performance-and-level-none" render={false}');
+    expect(guide).toContain("perf-budget-linux-x64");
+    expect(guide).toContain("bun run bench:tooling-hot-path -- --binary dist/lando");
+    expect(guide).toContain("level-none invocations do not import @oclif/core");
+    expect(guide).toContain("Context.Service");
+  });
 });
