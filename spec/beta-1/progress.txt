@@ -1049,3 +1049,9 @@
 - Verification: typecheck, lint, benchmark test, start scenario test, linux acceptance rehearsal test, guide-drift test, guide coverage, guide lint, compiled bytecode build, and sandbox compiled setup/start smoke passed. TypeScript LSP diagnostics could not run because the LSP server is not installed in this environment.
 - **Learnings for future iterations:** File-sync start rollback must restore pre-existing paused sessions it resumes, not just terminate newly-created sessions; release perf acceptance needs p95 evidence, not p50 summaries.
 ---
+## 2026-06-17 13:52 CDT - US-267
+- Shipped the POSIX curl-pipe installer foundation: `install.sh` detects supported POSIX release platform ids, rejects unsupported Linux libc/architectures before download, resolves stable/next/dev channel manifests, downloads the selected binary plus `SHA256SUMS` and signature, verifies signature and checksum, and installs to `LANDO_INSTALL_DIR` or the Linux user data bin default.
+- Published the POSIX installer guide and added the PRD-10 installer guide rows so guide coverage tracks shipped versus planned installer surfaces.
+- Verification: RED installer test failed on missing `scripts/install.sh`; GREEN focused installer tests passed; guide coverage/lint and generated guide scenario passed; typecheck and lint passed; manual shell QA installed and executed a fixture binary through the real script.
+- **Learnings for future iterations:** Installer tests can stay host-safe by serving release fixtures from `file://` URLs and injecting a fake GPG command, while still exercising the real shell script download/verify/install flow end to end.
+---
