@@ -342,9 +342,6 @@ const macosNotarizationCommands = (
   ]);
 };
 
-const WINDOWS_RELEASE_BINARY = "dist/lando-windows-x64.exe";
-const WINDOWS_SIGNATURE = `${WINDOWS_RELEASE_BINARY}.sig`;
-const WINDOWS_CERTIFICATE = `${WINDOWS_RELEASE_BINARY}.crt`;
 const DEFAULT_WINDOWS_TIMESTAMP_URL = "http://timestamp.digicert.com";
 const DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP =
   "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$";
@@ -361,13 +358,65 @@ const requiredEnv = (env: ReleaseEnvironment, name: string): string => {
   return value;
 };
 
+const cosignCertificateIdentityRegexp = (env: ReleaseEnvironment): string =>
+  envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
+  DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+
+const cosignSignBlobCommand = ({
+  blobPath,
+  signaturePath,
+  certificatePath,
+}: {
+  readonly blobPath: string;
+  readonly signaturePath: string;
+  readonly certificatePath: string;
+}): ReadonlyArray<string> => [
+  "cosign",
+  "sign-blob",
+  "--yes",
+  "--output-signature",
+  signaturePath,
+  "--output-certificate",
+  certificatePath,
+  blobPath,
+];
+
+const cosignVerifyBlobCommand = ({
+  blobPath,
+  signaturePath,
+  certificatePath,
+  certificateIdentityRegexp,
+}: {
+  readonly blobPath: string;
+  readonly signaturePath: string;
+  readonly certificatePath: string;
+  readonly certificateIdentityRegexp: string;
+}): ReadonlyArray<string> => [
+  "cosign",
+  "verify-blob",
+  "--certificate-identity-regexp",
+  certificateIdentityRegexp,
+  "--certificate-oidc-issuer",
+  COSIGN_OIDC_ISSUER,
+  "--signature",
+  signaturePath,
+  "--certificate",
+  certificatePath,
+  blobPath,
+];
+
+const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
+  `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+
+const windowsReleaseBinaryPath = releaseBinaryPath({ id: "windows-x64" });
+const windowsSignaturePath = `${windowsReleaseBinaryPath}.sig`;
+const windowsCertificatePath = `${windowsReleaseBinaryPath}.crt`;
+
 const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
   const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
   const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
   const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
-  const certificateIdentityRegexp =
-    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
-    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
 
   return [
     [
@@ -382,32 +431,20 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
       "/f",
       certificate,
       ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
-      WINDOWS_RELEASE_BINARY,
+      windowsReleaseBinaryPath,
     ],
-    [
-      "cosign",
-      "sign-blob",
-      "--yes",
-      "--output-signature",
-      WINDOWS_SIGNATURE,
-      "--output-certificate",
-      WINDOWS_CERTIFICATE,
-      WINDOWS_RELEASE_BINARY,
-    ],
-    ["signtool", "verify", "/pa", "/v", WINDOWS_RELEASE_BINARY],
-    [
-      "cosign",
-      "verify-blob",
-      "--certificate-identity-regexp",
+    cosignSignBlobCommand({
+      blobPath: windowsReleaseBinaryPath,
+      signaturePath: windowsSignaturePath,
+      certificatePath: windowsCertificatePath,
+    }),
+    ["signtool", "verify", "/pa", "/v", windowsReleaseBinaryPath],
+    cosignVerifyBlobCommand({
+      blobPath: windowsReleaseBinaryPath,
+      signaturePath: windowsSignaturePath,
+      certificatePath: windowsCertificatePath,
       certificateIdentityRegexp,
-      "--certificate-oidc-issuer",
-      COSIGN_OIDC_ISSUER,
-      "--signature",
-      WINDOWS_SIGNATURE,
-      "--certificate",
-      WINDOWS_CERTIFICATE,
-      WINDOWS_RELEASE_BINARY,
-    ],
+    }),
   ];
 };
 
@@ -456,39 +493,22 @@ const CHECKSUM_SIGNATURE = "dist/SHA256SUMS.sig";
 const CHECKSUM_CERTIFICATE = "dist/SHA256SUMS.crt";
 
 const checksumCosignCommands = (env: ReleaseEnvironment): ReadonlyArray<ReadonlyArray<string>> => {
-  const certificateIdentityRegexp =
-    envValue(env, "LANDO_RELEASE_COSIGN_CERTIFICATE_IDENTITY_REGEXP") ??
-    DEFAULT_COSIGN_CERTIFICATE_IDENTITY_REGEXP;
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
 
   return [
-    [
-      "cosign",
-      "sign-blob",
-      "--yes",
-      "--output-signature",
-      CHECKSUM_SIGNATURE,
-      "--output-certificate",
-      CHECKSUM_CERTIFICATE,
-      "dist/SHA256SUMS",
-    ],
-    [
-      "cosign",
-      "verify-blob",
-      "--certificate-identity-regexp",
+    cosignSignBlobCommand({
+      blobPath: "dist/SHA256SUMS",
+      signaturePath: CHECKSUM_SIGNATURE,
+      certificatePath: CHECKSUM_CERTIFICATE,
+    }),
+    cosignVerifyBlobCommand({
+      blobPath: "dist/SHA256SUMS",
+      signaturePath: CHECKSUM_SIGNATURE,
+      certificatePath: CHECKSUM_CERTIFICATE,
       certificateIdentityRegexp,
-      "--certificate-oidc-issuer",
-      COSIGN_OIDC_ISSUER,
-      "--signature",
-      CHECKSUM_SIGNATURE,
-      "--certificate",
-      CHECKSUM_CERTIFICATE,
-      "dist/SHA256SUMS",
-    ],
+    }),
   ];
 };
-
-const releaseBinaryPath = (platform: Pick<CiPlatform, "id">): string =>
-  `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
 
 const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
   "bun",
@@ -672,6 +692,31 @@ const defineStage = (
   return { ...stage, run: skipStage(base, stage.command as string) };
 };
 
+interface PlatformSigningPlan {
+  readonly selected: (platforms: ReadonlyArray<CiPlatform>) => boolean;
+  readonly credentialLabel: string;
+  readonly credentials: CredentialRequirement;
+  readonly commands: (
+    env: ReleaseEnvironment,
+    platforms: ReadonlyArray<CiPlatform>,
+  ) => ReadonlyArray<ReadonlyArray<string>>;
+}
+
+const platformSigningPlans: ReadonlyArray<PlatformSigningPlan> = [
+  {
+    selected: hasMacosPlatform,
+    credentialLabel: "macOS Developer ID signing identity",
+    credentials: macosSigningCredentials,
+    commands: macosCodesignCommands,
+  },
+  {
+    selected: hasWindowsPlatform,
+    credentialLabel: "Windows signing credentials",
+    credentials: windowsSigningCredentials,
+    commands: (env) => windowsSigningCommands(env),
+  },
+];
+
 const platformSignStage: ReleaseStage = {
   id: "9-sign",
   label: "Sign",
@@ -683,13 +728,7 @@ const platformSignStage: ReleaseStage = {
   remediation: "Provision platform signing credentials or run a local rehearsal mode that may skip signing.",
   run: async (context): Promise<void> => {
     const platforms = releasePlatformsForContext(context);
-    const nativeSigningPlatformSelected = hasMacosPlatform(platforms) || hasWindowsPlatform(platforms);
-    const signMacos =
-      hasMacosPlatform(platforms) &&
-      credentialGate("9-sign", "macOS Developer ID signing identity", macosSigningCredentials, context);
-    const signWindows =
-      hasWindowsPlatform(platforms) &&
-      credentialGate("9-sign", "Windows signing credentials", windowsSigningCredentials, context);
+    const selectedPlans = platformSigningPlans.filter((plan) => plan.selected(platforms));
     const command = {
       stageId: "9-sign",
       artifactFamily: artifactFamilyForStage(platformSignStage, context.target),
@@ -697,10 +736,13 @@ const platformSignStage: ReleaseStage = {
       remediation: platformSignStage.remediation,
     };
 
-    if (signMacos)
-      await spawnCommands(context.runner, command, macosCodesignCommands(context.env, platforms));
-    if (signWindows) await spawnCommands(context.runner, command, windowsSigningCommands(context.env));
-    if (!nativeSigningPlatformSelected) {
+    for (const plan of selectedPlans) {
+      if (credentialGate("9-sign", plan.credentialLabel, plan.credentials, context)) {
+        await spawnCommands(context.runner, command, plan.commands(context.env, platforms));
+      }
+    }
+
+    if (selectedPlans.length === 0) {
       context.logger("[release] skip 9-sign (selected release platforms are signed at the manifest layer)");
     }
   },
