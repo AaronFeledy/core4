@@ -554,7 +554,10 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
   const certificate = requiredEnv(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE");
   const certificatePassword = envValue(env, "LANDO_RELEASE_WINDOWS_CERTIFICATE_PASSWORD");
   const timestampUrl = envValue(env, "LANDO_RELEASE_WINDOWS_TIMESTAMP_URL") ?? DEFAULT_WINDOWS_TIMESTAMP_URL;
-  const windowsBinary = releaseBinarySignatureArtifact(releaseBinaryPath({ id: "windows-x64" }));
+  const certificateIdentityRegexp = cosignCertificateIdentityRegexp(env);
+  const binaryPath = releaseBinaryPath({ id: "windows-x64" });
+  const signaturePath = `${binaryPath}.sig`;
+  const certificatePath = `${binaryPath}.crt`;
 
   return [
     [
@@ -569,15 +572,32 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
       "/f",
       certificate,
       ...(certificatePassword === undefined ? [] : ["/p", certificatePassword]),
-      windowsBinary.binaryPath,
+      binaryPath,
     ],
-    ...cosignSignAndVerifyBlobCommands(
-      env,
-      windowsBinary.binaryPath,
-      windowsBinary.signaturePath,
-      windowsBinary.certificatePath,
-    ),
-    ["signtool", "verify", "/pa", "/v", windowsBinary.binaryPath],
+    [
+      "cosign",
+      "sign-blob",
+      "--yes",
+      "--output-signature",
+      signaturePath,
+      "--output-certificate",
+      certificatePath,
+      binaryPath,
+    ],
+    ["signtool", "verify", "/pa", "/v", binaryPath],
+    [
+      "cosign",
+      "verify-blob",
+      "--certificate-identity-regexp",
+      certificateIdentityRegexp,
+      "--certificate-oidc-issuer",
+      COSIGN_OIDC_ISSUER,
+      "--signature",
+      signaturePath,
+      "--certificate",
+      certificatePath,
+      binaryPath,
+    ],
   ];
 };
 
