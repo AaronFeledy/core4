@@ -974,3 +974,10 @@
 - Adjacent smoke: compiled `--help` and `setup --help` passed; typecheck, lint, focused runtime/generated-bootstrap tests, guide checks, generated embedding-runtime scenarios, and full `bun test` passed.
 - **Learnings for future iterations:** Layer acquisition can run on a different fiber than the provided host program; signal-handler tests must exercise `makeLandoRuntime(...).pipe(Effect.provide(...))` end to end, not only the lower-level installer helper.
 ---
+
+## 2026-06-16 22:28 CDT - Babysit
+- PR: #383 https://github.com/AaronFeledy/core4/pull/383
+- CI outcome: pass (27 checks)
+- Review feedback: fixed (re-merged origin/main twice to clear progress.txt conflicts as new PRs landed; no code conflicts; no Bugbot findings)
+- Merge: merged (squash)
+---
