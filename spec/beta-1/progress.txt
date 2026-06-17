@@ -1042,3 +1042,10 @@
 - **Learnings for future iterations:**
   - Acceptance rehearsal guide scenarios should name concrete test/CI proof surfaces for each criterion and stay `render={false}` when the real release operation would mutate the host or require live provider credentials.
 ---
+
+## 2026-06-17 12:37 CDT - US-278 Review
+- Fixed review blockers in the linux-x64 acceptance harness: resumed paused file-sync sessions are paused again if a later start file-sync step fails, and Criterion 18 now records both linux-x64 e2e evidence and p95 perf-budget evidence.
+- Review notes (rejected/deferred): none; the review-work blockers were confirmed and fixed in scope.
+- Verification: typecheck, lint, benchmark test, start scenario test, linux acceptance rehearsal test, guide-drift test, guide coverage, guide lint, compiled bytecode build, and sandbox compiled setup/start smoke passed. TypeScript LSP diagnostics could not run because the LSP server is not installed in this environment.
+- **Learnings for future iterations:** File-sync start rollback must restore pre-existing paused sessions it resumes, not just terminate newly-created sessions; release perf acceptance needs p95 evidence, not p50 summaries.
+---
