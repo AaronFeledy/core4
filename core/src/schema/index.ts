@@ -10,4 +10,5 @@
  * tree-shakes unused exports.
  */
 
+export * from "./update.ts";
 export * from "@lando/sdk/schema";

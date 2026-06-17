@@ -19,7 +19,10 @@ const publicEntryPoints = [
     specifier: "@lando/core/schema",
     exportKey: "./schema",
     target: "./src/schema/index.ts",
-    assertSymbol: (mod: Record<string, unknown>) => expect(mod.GlobalConfig).toBeDefined(),
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.GlobalConfig).toBeDefined();
+      expect(mod.UpdateManifestSchema).toBeDefined();
+    },
   },
   {
     specifier: "@lando/core/errors",
@@ -106,7 +109,7 @@ const getExportTarget = (entry: EntryPoint): { readonly types: string; readonly 
 };
 
 describe("@lando/core public package entry points", () => {
-  test.each(publishedEntryPoints)(
+  test.each([...publishedEntryPoints] as EntryPoint[])(
     "$specifier exposes explicit TS types and ESM import target",
     async (entry) => {
       const target = getExportTarget(entry);
