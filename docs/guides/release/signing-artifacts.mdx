@@ -37,11 +37,11 @@ tags: [beta, docs, release, signing]
     </Step>
   </Scenario>
 
-  <Scenario id="linux-checksum-signing" render={false} reason="The checksum manifest and signing commands are covered by core/test/scripts/release.test.ts without requiring live GPG or cosign credentials">
+  <Scenario id="linux-checksum-signing" render={false} reason="core/test/scripts/release.test.ts covers checksum manifest signing without live GPG or cosign credentials">
     <Step name="checksum-manifests">
-      <Variable name="coverage" value="linux-x64 + linux-arm64" display="Stage 11 writes SHA256SUMS and SHA512SUMS entries for the Linux release binaries" />
-      <Variable name="gpg" value="gpg --armor --detach-sign + gpg --verify" display="Stage 11 GPG-signs and verifies both checksum manifests when release credentials are present" />
-      <Variable name="cosign" value="cosign sign-blob + cosign verify-blob dist/SHA256SUMS" display="Stage 12 keyless cosign signs and verifies SHA256SUMS before publish" />
+      <Variable name="coverage" value="linux-x64 + linux-arm64" display="Stage 11 writes SHA256SUMS and SHA512SUMS for Linux release binaries" />
+      <Variable name="gpg" value="gpg --armor --detach-sign + gpg --verify" display="Stage 11 GPG-signs and verifies both checksum manifests when credentials are present" />
+      <Variable name="cosign" value="cosign sign-blob + cosign verify-blob dist/SHA256SUMS" display="Stage 12 keyless cosign signs and verifies SHA256SUMS" />
     </Step>
   </Scenario>
 

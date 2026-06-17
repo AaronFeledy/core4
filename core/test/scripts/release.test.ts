@@ -511,9 +511,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         target: "library",
         throughStage: "12-provenance-sbom",
-        env: {
-          ...manifestSigningEnv,
-        },
+        env: manifestSigningEnv,
         runner: {
           spawn: async () => {},
           shell: async () => {},

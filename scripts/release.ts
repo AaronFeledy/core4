@@ -424,10 +424,10 @@ const spawnCommands = async (
 const spawnCommandsForStage = (
   stageId: string,
   context: ReleaseStageContext,
+  platforms: ReadonlyArray<CiPlatform>,
   commands: ReadonlyArray<ReadonlyArray<string>>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (stageId === "10-notarize")
-    return macosNotarizationCommands(context.env, releasePlatformsForContext(context));
+  if (stageId === "10-notarize") return macosNotarizationCommands(context.env, platforms);
   return commands;
 };
 
@@ -509,11 +509,13 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 ];
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
+  const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
+
   for (const platform of releasePlatformsForContext(context)) {
     const startedAt = context.now();
     await context.runner.spawn({
       stageId: "7-compile",
-      artifactFamily: artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target),
+      artifactFamily,
       summary: "bun build --compile --bytecode ./core/bin/lando.ts",
       remediation: defaultRemediation,
       cmd: compileCommand(platform),
@@ -527,7 +529,7 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
     }
     await context.runner.spawn({
       stageId: "7-compile",
-      artifactFamily: artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target),
+      artifactFamily,
       summary: "sanitize compiled release binary",
       remediation: defaultRemediation,
       cmd: sanitizeCommand(platform),
@@ -543,8 +545,9 @@ const spawnStage =
   async (context: ReleaseStageContext): Promise<void> => {
     const { runner, target } = context;
     const requirement = credentialSkipRequirements[stage.id];
+    const platforms = stage.id === "10-notarize" ? releasePlatformsForContext(context) : [];
 
-    if (stage.id === "10-notarize" && !hasMacosPlatform(releasePlatformsForContext(context))) {
+    if (stage.id === "10-notarize" && !hasMacosPlatform(platforms)) {
       context.logger("[release] skip 10-notarize (no macOS release platform selected)");
       return;
     }
@@ -555,7 +558,7 @@ const spawnStage =
     )
       return;
 
-    for (const cmd of spawnCommandsForStage(stage.id, context, commands)) {
+    for (const cmd of spawnCommandsForStage(stage.id, context, platforms, commands)) {
       await runner.spawn({
         stageId: stage.id,
         artifactFamily: artifactFamilyForStage(stage, target),
@@ -573,11 +576,12 @@ const shellStage =
   ) =>
   async (context: ReleaseStageContext): Promise<void> => {
     const { runner, target } = context;
+    const artifactFamily = artifactFamilyForStage(stage, target);
 
     if (stage.id === "11-manifest") {
       await runner.shell({
         stageId: stage.id,
-        artifactFamily: artifactFamilyForStage(stage, target),
+        artifactFamily,
         summary: stage.commandSummary,
         remediation: stage.remediation,
         script: nonSigningManifestScript(target === "library" ? [] : releasePlatformsForContext(context)),
@@ -594,7 +598,7 @@ const shellStage =
       }
       await runner.shell({
         stageId: stage.id,
-        artifactFamily: artifactFamilyForStage(stage, target),
+        artifactFamily,
         summary: "sign release checksum manifests",
         remediation: stage.remediation,
         script: manifestSigningScript(),
@@ -618,7 +622,7 @@ const shellStage =
 
     await runner.shell({
       stageId: stage.id,
-      artifactFamily: artifactFamilyForStage(stage, target),
+      artifactFamily,
       summary: stage.commandSummary,
       remediation: stage.remediation,
       script,
