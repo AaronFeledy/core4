@@ -936,3 +936,10 @@
 - Verification: typecheck, lint, focused release tests, full tests, and release manifest-stage smoke passed.
 - **Learnings for future iterations:** `LOCAL_REHEARSAL=1` narrows release platform selection to the host platform; use a non-local stage context with a temp dist when proving all configured release platforms participate in manifest generation without running the whole release pipeline.
 ---
+
+## 2026-06-16 20:27 CDT - US-256 Review
+- Reviewed Linux checksum-manifest signing (stages 11/12) against PRD-08 US-256 + §17.1/§17.5: all functional ACs hold — stage 11 emits SHA256SUMS/SHA512SUMS covering linux-x64 + linux-arm64 behind `test -f` guards then GPG sign+verify, and stage 12 keyless-cosign signs+verifies SHA256SUMS gated on GitHub OIDC request env (ACTIONS_ID_TOKEN_REQUEST_TOKEN/_URL), ordered before stage 13 publish. No in-scope code changes needed.
+- Review notes (rejected/deferred): cosign identity-regexp dot-escaping deferred again — same shared default constant as US-255, OIDC-issuer-pinned + anchored, negligible practical risk. Shell-quote helper for artifact paths and the dead static stage-11 `command:` field rejected as out-of-scope speculative hardening (paths derive from repo-controlled CI_PLATFORMS ids, not user input).
+- Verification: typecheck, lint (+deprecation), and focused release tests (35 pass) green. Full `bun test` shows a small, run-varying failure set (21→2→1 across identical runs; a parallel oracle observed a different 3) that ALL pass in isolation (dispatch-parity 57 pass, packed-install pass) and none touch scripts/release.ts — environmental parallel-suite flakiness, not a US-256 regression.
+- **Learnings for future iterations:** the full suite is flaky under parallel contention (real `bun pack`/install IO timeouts + compiled-binary dispatch-parity timing); confirm any suspected full-suite failure in isolation before treating it as a regression.
+---
