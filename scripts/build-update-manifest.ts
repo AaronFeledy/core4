@@ -28,18 +28,17 @@ export interface WriteUpdateManifestInput extends BuildUpdateManifestInput {
 
 const normalizeVersion = (version: string): string => (version.startsWith("v") ? version.slice(1) : version);
 
+const prereleaseChannelIdentifier = (version: string): string => {
+  const withoutBuild = normalizeVersion(version).split("+", 1)[0] ?? "";
+  const prereleaseIndex = withoutBuild.indexOf("-");
+  if (prereleaseIndex === -1) return "";
+  return withoutBuild.slice(prereleaseIndex + 1).split(".", 1)[0] ?? "";
+};
+
 export const updateChannelForReleaseVersion = (version: string): UpdateChannel => {
-  const normalized = normalizeVersion(version);
-  const prerelease = normalized.split("-")[1]?.split("+")[0] ?? "";
-  const prereleaseParts = prerelease.split(".").filter((part) => part.length > 0);
-  if (prereleaseParts.includes("dev") || prereleaseParts.includes("alpha")) return "dev";
-  if (
-    prereleaseParts.includes("next") ||
-    prereleaseParts.includes("beta") ||
-    prereleaseParts.includes("rc")
-  ) {
-    return "next";
-  }
+  const identifier = prereleaseChannelIdentifier(version);
+  if (identifier === "dev" || identifier === "alpha") return "dev";
+  if (identifier === "next" || identifier === "beta" || identifier === "rc") return "next";
   return "stable";
 };
 

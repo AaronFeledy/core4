@@ -187,7 +187,7 @@ describe("release orchestrator", () => {
     );
     expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
     expect(shellStages.some((entry) => entry.startsWith("11-manifest:mkdir -p dist"))).toBe(true);
-    expect(shellStages.some((entry) => entry.startsWith("11-manifest:gpg --batch"))).toBe(true);
+    expect(shellStages.some((entry) => entry.includes("gpg --batch"))).toBe(true);
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });
 
@@ -234,8 +234,10 @@ describe("release orchestrator", () => {
     expect(updateChannelForReleaseVersion("4.0.0-next.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-beta.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-rc.1")).toBe("next");
+    expect(updateChannelForReleaseVersion("v4.0.0-beta.2")).toBe("next");
     expect(updateChannelForReleaseVersion("4.0.0-development.1")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0-alphabet.1")).toBe("stable");
+    expect(updateChannelForReleaseVersion("4.0.0-preview.alpha.1")).toBe("stable");
     expect(updateChannelForReleaseVersion("4.0.0")).toBe("stable");
 
     await withReleaseFixtureRoot(async (root) => {
@@ -706,6 +708,9 @@ describe("release orchestrator", () => {
       expect(manifestScripts[0]?.script).toContain("build-update-manifest.ts");
       expect(manifestScripts[0]?.script).toContain("dist/update-manifest.json");
       expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
+      expect(manifestScripts[1]?.script).toContain("build-update-manifest.ts");
+      expect(manifestScripts[1]?.script).toContain("dist/update-manifest.json");
+      expect(manifestScripts[1]?.script).not.toContain("--allow-missing-binaries");
       expect(manifestScripts[1]?.script).toContain("gpg --batch --yes --armor --detach-sign dist/SHA512SUMS");
       expect(manifestScripts[1]?.script).toContain(
         "gpg --batch --verify dist/SHA256SUMS.asc dist/SHA256SUMS",
@@ -734,6 +739,33 @@ describe("release orchestrator", () => {
             manifestStage.run({
               target: "binary",
               env: {},
+              localRehearsal: false,
+              runner: {
+                spawn: async () => {},
+                shell: async ({ script }) => {
+                  await Bun.$`sh -euc ${script}`.quiet();
+                },
+              },
+              logger: () => {},
+              now: () => 0,
+            }),
+          ).rejects.toThrow();
+        });
+      });
+    });
+
+    test("signed update manifest refuses placeholder binary entries", async () => {
+      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
+      expect(manifestStage).toBeDefined();
+      if (manifestStage === undefined) throw new Error("missing manifest stage");
+
+      await withReleaseFixtureRoot(async (root) => {
+        await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+        await withFixtureCwd(root, async () => {
+          await expect(
+            manifestStage.run({
+              target: "binary",
+              env: { ...manifestSigningEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
               localRehearsal: false,
               runner: {
                 spawn: async () => {},
