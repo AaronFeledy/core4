@@ -7,6 +7,16 @@ tags: [beta, docs, release, acceptance]
 ---
 
 <Guide>
+  <Scenario id="release-pipeline-and-supply-chain" render={false} reason="Release orchestration, signing, SBOM, provenance, and manifest verification are proven by focused release-orchestrator and CI workflow tests without running live signing or publishing tools">
+    <Step name="criteria-1-9-harness">
+      <Variable name="harness" value="core/test/build/linux-acceptance-criteria-1-9.test.ts" display="The linux-x64 acceptance harness runs focused release and update spot checks that prove criteria 1-9 pass on the reference platform" />
+      <Variable name="criterion1" value="local rehearsal SHA256SUMS plus nightly distribution-rehearsal linux-x64 --version" display="Criterion 1: checksum-manifested release outputs and a compiled linux-x64 binary that launches and reports version" />
+      <Variable name="criterion2" value="CI timeouts plus release compile budget logging" display="Criterion 2: gated timing evidence for single-platform and matrix release budgets" />
+      <Variable name="criteria3to5" value="release.test.ts SHA256SUMS, SBOM, SLSA, cosign verify-blob" display="Criteria 3-5: linux-x64 signing policy, supply-chain artifacts, and cosign verification" />
+      <Variable name="criteria6to9" value="update-manifest.test.ts signature verify, self-update, launch-probe rollback, UpdatePermissionError" display="Criteria 6-9: signed manifest trust, lando update replacement, UpdateLaunchProbeError rollback, and EACCES without silent elevation" />
+    </Step>
+  </Scenario>
+
   <Scenario id="runtime-bytecode-aot" render={false} reason="Focused CLI/build tests prove these runtime and build contracts without starting live provider resources during guide generation">
     <Step name="criterion-15">
       <Variable name="fileSyncCreate" value="core/test/cli/start.scenario.test.ts" display="FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply" />
