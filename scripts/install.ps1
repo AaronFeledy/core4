@@ -173,6 +173,40 @@ function Verify-Checksum([string] $Sums, [string] $Binary, [string] $Artifact) {
   if ($actual -ne $expected.ToLowerInvariant()) { Fail "Checksum mismatch for $Artifact" }
 }
 
+$DefaultCosignTrustRoot = @'
+{"certificateIdentityRegexp":"^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$","certificateOidcIssuer":"https://token.actions.githubusercontent.com"}
+'@
+
+function Read-CosignTrustRoot {
+  $trustRootPath = EnvValue "LANDO_INSTALL_COSIGN_TRUST_ROOT"
+  try {
+    if (-not [string]::IsNullOrWhiteSpace($trustRootPath)) {
+      if (-not (Test-Path -LiteralPath $trustRootPath -PathType Leaf)) { Fail "Missing or malformed vendored cosign trust root" }
+      $trustRoot = Get-Content -Raw -LiteralPath $trustRootPath | ConvertFrom-Json
+    }
+    else {
+      $trustRoot = $DefaultCosignTrustRoot | ConvertFrom-Json
+    }
+  }
+  catch {
+    Fail "Missing or malformed vendored cosign trust root"
+  }
+
+  $identity = $trustRoot.PSObject.Properties["certificateIdentityRegexp"]
+  $issuer = $trustRoot.PSObject.Properties["certificateOidcIssuer"]
+  if ($null -eq $identity -or [string]::IsNullOrWhiteSpace([string] $identity.Value)) {
+    Fail "Missing or malformed vendored cosign trust root"
+  }
+  if ($null -eq $issuer -or [string]::IsNullOrWhiteSpace([string] $issuer.Value)) {
+    Fail "Missing or malformed vendored cosign trust root"
+  }
+
+  return @{
+    CertificateIdentityRegexp = [string] $identity.Value
+    CertificateOidcIssuer = [string] $issuer.Value
+  }
+}
+
 function Verify-ChecksumsSignature([string] $SignatureUrl, [string] $Sums, [string] $Signature, [string] $Tmp) {
   if (-not $SignatureUrl.EndsWith(".sig", [StringComparison]::OrdinalIgnoreCase)) {
     Fail "Windows installer requires a cosign SHA256SUMS.sig signature"
@@ -181,16 +215,11 @@ function Verify-ChecksumsSignature([string] $SignatureUrl, [string] $Sums, [stri
   Download-File (Get-CosignCertificateUrl $SignatureUrl) $certificate
   $cosign = EnvValue "LANDO_INSTALL_COSIGN"
   if ([string]::IsNullOrWhiteSpace($cosign)) { $cosign = "cosign" }
-  $certificateIdentity = EnvValue "LANDO_INSTALL_COSIGN_CERTIFICATE_IDENTITY_REGEXP"
-  if ([string]::IsNullOrWhiteSpace($certificateIdentity)) {
-    $certificateIdentity = "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$"
-  }
-  $certificateIssuer = EnvValue "LANDO_INSTALL_COSIGN_CERTIFICATE_OIDC_ISSUER"
-  if ([string]::IsNullOrWhiteSpace($certificateIssuer)) { $certificateIssuer = "https://token.actions.githubusercontent.com" }
+  $trustRoot = Read-CosignTrustRoot
 
   & $cosign verify-blob `
-    --certificate-identity-regexp $certificateIdentity `
-    --certificate-oidc-issuer $certificateIssuer `
+    --certificate-identity-regexp $trustRoot.CertificateIdentityRegexp `
+    --certificate-oidc-issuer $trustRoot.CertificateOidcIssuer `
     --signature $Signature `
     --certificate $certificate `
     $Sums *> $null

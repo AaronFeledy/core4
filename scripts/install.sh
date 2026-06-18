@@ -247,6 +247,48 @@ verify_checksum() {
   [ "$actual" = "$expected" ] || fail "Checksum mismatch for $artifact"
 }
 
+write_embedded_gpg_trust_root() {
+  cat <<'EOF'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mQENBGozgS4BCAC2HRH2E/2UB+QkeVPaVMyoHsXIUsXMB8U8AiX9e2xOZeT4Ys0m
+I+uEkpRuVZcRsdXYngNg/hE+SWNN9W9RAxA44jt1rqb3tdqdeN0/Rat36eBSbvPz
+rR6gdFuDZcleWz+Gg0ZfliEAp8Mh46hkIVQBzXqxxbQtqhyOWkYCk1cD18eMcgPW
+6GGauLZrSJdyL9o94FuHQzmAiZAy/wjt82Pq6+G0auqy00Ztji8WrlPd6j3UAvB+
+u60iORlxDOUNbkzs4NOJfS+mqBZ/2nxW4RdstBxR9vT0oMhcrlgahYdV33CEwdZq
+SBjiYOLVdte2iEMSyGe680XrutoVgthUU6uvABEBAAG0KUxhbmRvIFJlbGVhc2Ug
+U2lnbmluZyA8cmVsZWFzZUBsYW5kby5kZXY+iQFSBBMBCgA8FiEEhdZgEfIx0KVN
+RbSc0dVN1wVe5/8FAmozgS4DGy8EBQsJCAcCAiICBhUKCQgLAgQWAgMBAh4HAheA
+AAoJENHVTdcFXuf/ye8H/A47NJ1zGMfqgxex+zalMhCDX4X7V2fFlCTkBOF/cpUU
+LJVWIU5n2QWQ3PdBZPnC5THoEZ5PVE/1JfTFzNXqVkUJTD1VClY5/D/7jB2ou/N5
+aqSXVgtn8P4toXRCw0m7Y48ik4StpD7jKS41feN2piSW4jSk/+06H/j3PryDWm/H
+wjg07DNORONJja2VT4HjV7KuOtjDfwc285Rn+Ev3aZRXuiIHRCJqmvL+2qxI1hRX
+ijGCeQCsTMup5X6d9tUTJfJpq7J2x8KU5m8yOR5G4Gen9IGBI39GwUv8Gbl3I20M
+z3kzteWUtd5HdXZgbQBiSN5BknCw8HHNKmprCZb82Ss=
+=ZneC
+-----END PGP PUBLIC KEY BLOCK-----
+EOF
+}
+
+prepare_gpg_trust_root() {
+  gpg=$1
+  gpg_home=$tmp/gpg-home
+  trust_root=$tmp/lando-release-gpg.asc
+  mkdir -p "$gpg_home"
+  chmod 0700 "$gpg_home"
+
+  if [ -n "${LANDO_INSTALL_GPG_TRUST_ROOT:-}" ]; then
+    [ -r "$LANDO_INSTALL_GPG_TRUST_ROOT" ] || fail "Missing or malformed vendored GPG trust root"
+    cp "$LANDO_INSTALL_GPG_TRUST_ROOT" "$trust_root"
+  else
+    write_embedded_gpg_trust_root > "$trust_root"
+  fi
+
+  [ -s "$trust_root" ] || fail "Missing or malformed vendored GPG trust root"
+  "$gpg" --batch --homedir "$gpg_home" --import "$trust_root" >/dev/null 2>&1 || fail "Missing or malformed vendored GPG trust root"
+  printf '%s\n' "$gpg_home"
+}
+
 verify_checksums_signature() {
   signature_url=$1
   sums=$2
@@ -266,8 +308,18 @@ verify_checksums_signature() {
       ;;
     *)
       gpg=${LANDO_INSTALL_GPG:-gpg}
-      "$gpg" --batch --verify "$signature" "$sums" >/dev/null 2>&1 || fail "Signature verification failed for SHA256SUMS"
+      gpg_home=$(prepare_gpg_trust_root "$gpg")
+      "$gpg" --batch --homedir "$gpg_home" --verify "$signature" "$sums" >/dev/null 2>&1 || fail "Signature verification failed for SHA256SUMS"
       ;;
+  esac
+}
+
+posix_checksum_signature_url() {
+  sums_url=$1
+  manifest_signature_url=$2
+  case "$manifest_signature_url" in
+    *.asc) printf '%s\n' "$manifest_signature_url" ;;
+    *) printf '%s.asc\n' "$sums_url" ;;
   esac
 }
 
@@ -294,14 +346,14 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 
 manifest=$tmp/manifest.json
 sums=$tmp/SHA256SUMS
-signature=$tmp/SHA256SUMS.signature
 binary=$tmp/lando
 
 download "$manifest_url" "$manifest"
 binary_url=$(manifest_binary_field "$manifest" "$platform" "url")
 sums_url=$(manifest_checksum_field "$manifest" "url")
-signature_url=$(manifest_checksum_field "$manifest" "signature")
+signature_url=$(posix_checksum_signature_url "$sums_url" "$(manifest_checksum_field "$manifest" "signature")")
 artifact=$(basename_from_url "$binary_url")
+signature=$tmp/$(basename_from_url "$signature_url")
 
 download "$binary_url" "$binary"
 download "$sums_url" "$sums"

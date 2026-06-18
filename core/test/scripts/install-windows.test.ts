@@ -72,6 +72,15 @@ const createFakeCosign = async (root: string, exitCode = 0) => {
   return { cosignPath, logPath };
 };
 
+const writeCosignTrustRoot = async (
+  root: string,
+  trustRoot: { readonly certificateIdentityRegexp: string; readonly certificateOidcIssuer: string },
+): Promise<string> => {
+  const trustRootPath = join(root, "cosign-trust-root.json");
+  await writeFile(trustRootPath, `${JSON.stringify(trustRoot)}\n`);
+  return trustRootPath;
+};
+
 const runInstaller = async (
   env: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
@@ -113,6 +122,55 @@ describe("scripts/install.ps1", () => {
     expect(cosignLog).toContain("verify-blob");
     expect(cosignLog).toContain("SHA256SUMS.signature");
     expect(cosignLog).toContain("SHA256SUMS.crt");
+  });
+
+  powershellTest("uses the installer cosign trust root for checksum signature verification", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const trustRootPath = await writeCosignTrustRoot(root, {
+      certificateIdentityRegexp:
+        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
+      certificateOidcIssuer: "https://token.actions.githubusercontent.com",
+    });
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_COSIGN_TRUST_ROOT: trustRootPath,
+      LANDO_INSTALL_DIR: join(root, "install"),
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    const cosignLog = await Bun.file(logPath).text();
+    expect(cosignLog).toContain(
+      "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
+    );
+    expect(cosignLog).toContain("https://token.actions.githubusercontent.com");
+  });
+
+  powershellTest("fails closed when the cosign trust root is missing", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_COSIGN_TRUST_ROOT: join(root, "missing-cosign-trust-root.json"),
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Missing or malformed vendored cosign trust root");
+    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
+    expect(await Bun.file(logPath).exists()).toBe(false);
   });
 
   powershellTest("resolves stable, next, and dev manifests from the selected channel", async () => {

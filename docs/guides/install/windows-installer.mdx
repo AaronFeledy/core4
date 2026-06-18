@@ -19,7 +19,7 @@ tags: [beta, docs, installer]
     </Step>
     <Step name="verify-and-install">
       <Variable name="downloads" value="lando.exe + SHA256SUMS + SHA256SUMS.sig + SHA256SUMS.crt" display="The installer downloads the Windows binary, checksum manifest, and cosign checksum signature/certificate" />
-      <Variable name="verify" value="cosign verify-blob --signature SHA256SUMS.sig --certificate SHA256SUMS.crt SHA256SUMS" display="Checksum manifests must verify before lando.exe is trusted" />
+      <Variable name="verify" value="cosign verify-blob --certificate-identity-regexp &lt;installer-trust-root&gt; --certificate-oidc-issuer https://token.actions.githubusercontent.com" display="Checksum manifests must verify against the installer-vendored cosign trust root before lando.exe is trusted" />
       <Variable name="installDir" value="${LANDO_INSTALL_DIR:-&lt;userDataRoot&gt;\bin}\lando.exe" display="The verified binary installs to the chosen install dir, creating it when absent" />
       <Variable name="policy" value="Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" display="If PowerShell blocks script execution, the installer prints the exact CurrentUser remediation and one-shot Bypass invocation" />
     </Step>

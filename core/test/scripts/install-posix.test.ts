@@ -80,19 +80,9 @@ const createFakeGpg = async (root: string) => {
   const gpgPath = join(root, "fake-gpg.sh");
   await writeExecutable(
     gpgPath,
-    `#!/bin/sh\nprintf '%s\\n' "$*" > "$GPG_LOG"\ncase "$*" in *"--verify"*) exit 0 ;; *) exit 2 ;; esac\n`,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> "$GPG_LOG"\ncase "$*" in *"--import"*) exit 0 ;; *"--homedir"*"--verify"*) exit 0 ;; *) exit 2 ;; esac\n`,
   );
   return { gpgPath, logPath };
-};
-
-const createFakeCosign = async (root: string) => {
-  const logPath = join(root, "cosign.log");
-  const cosignPath = join(root, "fake-cosign.sh");
-  await writeExecutable(
-    cosignPath,
-    `#!/bin/sh\nprintf '%s\\n' "$*" > "$COSIGN_LOG"\ncase "$*" in *"verify-blob"*"--signature"*"--certificate"*) exit 0 ;; *) exit 2 ;; esac\n`,
-  );
-  return { cosignPath, logPath };
 };
 
 const runInstaller = async (
@@ -113,15 +103,15 @@ const runInstaller = async (
 };
 
 describe("scripts/install.sh", () => {
-  test("verifies cosign SHA256SUMS.sig signatures from the update manifest", async () => {
+  test("verifies SHA256SUMS.asc with the vendored GPG trust root", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { manifestSignatureStyle: "cosign" });
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -131,10 +121,9 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    const cosignLog = await Bun.file(logPath).text();
-    expect(cosignLog).toContain("verify-blob");
-    expect(cosignLog).toContain("SHA256SUMS.signature");
-    expect(cosignLog).toContain("SHA256SUMS.crt");
+    const gpgLog = await Bun.file(logPath).text();
+    expect(gpgLog).toContain("--verify");
+    expect(gpgLog).toContain("SHA256SUMS.asc");
     expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
   });
 
@@ -156,19 +145,45 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(await Bun.file(logPath).text()).toContain("--verify");
+    const gpgLog = await Bun.file(logPath).text();
+    expect(gpgLog).toContain("--homedir");
+    expect(gpgLog).toContain("--import");
+    expect(gpgLog).toContain("--verify");
     expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+  });
+
+  test("fails closed when the vendored GPG trust root is missing", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root, "stable", { manifestSignatureStyle: "gpg" });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_GPG_TRUST_ROOT: join(root, "missing-release-key.asc"),
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("Missing or malformed vendored GPG trust root");
+    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
+    expect(await Bun.file(logPath).exists()).toBe(false);
   });
 
   test("matches SHA256SUMS entries that use release-style ./dist/ path prefixes", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { sumsPathStyle: "release" });
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -184,12 +199,12 @@ describe("scripts/install.sh", () => {
   test("installs the verified linux-x64 binary into LANDO_INSTALL_DIR", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install dir with spaces");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -202,8 +217,8 @@ describe("scripts/install.sh", () => {
     expect(result.stdout).toContain(`installed: ${join(installDir, "lando")}`);
     expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
     expect(await Bun.$`${join(installDir, "lando")} version`.text()).toContain("lando 4.0.0-test");
-    expect(await Bun.file(logPath).text()).toContain("verify-blob");
-    expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.signature");
+    expect(await Bun.file(logPath).text()).toContain("--verify");
+    expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.asc");
   });
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
@@ -212,13 +227,13 @@ describe("scripts/install.sh", () => {
     for (const channel of ["stable", "next", "dev"] as const) {
       fixtures.push(await createReleaseFixture(root, channel));
     }
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
 
     for (const channel of ["stable", "next", "dev"] as const) {
       const installDir = join(root, channel, "install");
       const result = await runInstaller({
-        COSIGN_LOG: logPath,
-        LANDO_INSTALL_COSIGN: cosignPath,
+        GPG_LOG: logPath,
+        LANDO_INSTALL_GPG: gpgPath,
         LANDO_CHANNEL: channel,
         LANDO_INSTALL_BASE_URL: fileUrl(fixtures[0].channelRoot),
         LANDO_INSTALL_DIR: installDir,
@@ -237,12 +252,12 @@ describe("scripts/install.sh", () => {
   test("defaults to the configured user data bin directory when LANDO_INSTALL_DIR is unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const userDataRoot = join(root, "custom data root");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
       LANDO_INSTALL_ARCH: "x86_64",
@@ -260,15 +275,15 @@ describe("scripts/install.sh", () => {
   test("reads userDataRoot from config.yml when install env overrides are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const confRoot = join(root, "conf");
     const userDataRoot = join(root, "from-config-yml");
     await mkdir(confRoot, { recursive: true });
     await writeFile(join(confRoot, "config.yml"), `userDataRoot: ${userDataRoot}\n`);
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       HOME: root,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -287,12 +302,12 @@ describe("scripts/install.sh", () => {
   test("uses the CLI userDataRoot default on Darwin when config and install env are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { platform: "darwin-x64" });
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
+      GPG_LOG: logPath,
       HOME: root,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Darwin",
       LANDO_INSTALL_ARCH: "x86_64",
@@ -309,7 +324,7 @@ describe("scripts/install.sh", () => {
   test("matches minimal config parsing by using the last top-level string userDataRoot", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const confRoot = join(root, "conf");
     const firstRoot = join(root, "first-root");
     const finalRoot = join(root, "final-root");
@@ -324,9 +339,9 @@ userDataRoot: ${finalRoot}
     );
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
+      GPG_LOG: logPath,
       HOME: root,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
       LANDO_INSTALL_ARCH: "x86_64",
@@ -344,7 +359,7 @@ userDataRoot: ${finalRoot}
   test("falls back when config userDataRoot resolves to a non-string YAML value", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const confRoot = join(root, "conf");
     await mkdir(confRoot, { recursive: true });
     await writeFile(
@@ -355,9 +370,9 @@ userDataRoot: ${finalRoot}
     );
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
+      GPG_LOG: logPath,
       HOME: root,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
       LANDO_INSTALL_ARCH: "x86_64",
@@ -375,12 +390,12 @@ userDataRoot: ${finalRoot}
   test("maps Darwin x64 and verifies checksums with the portable shasum path", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { platform: "darwin-x64" });
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Darwin",
@@ -396,12 +411,12 @@ userDataRoot: ${finalRoot}
   test("fails closed when signature verification fails", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const cosignPath = join(root, "failing-cosign.sh");
-    await writeExecutable(cosignPath, "#!/bin/sh\nexit 1\n");
+    const gpgPath = join(root, "failing-gpg.sh");
+    await writeExecutable(gpgPath, '#!/bin/sh\ncase "$*" in *"--import"*) exit 0 ;; *) exit 1 ;; esac\n');
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -417,12 +432,12 @@ userDataRoot: ${finalRoot}
   test("fails closed when the downloaded binary does not match SHA256SUMS", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { checksum: "0".repeat(64) });
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
@@ -438,12 +453,12 @@ userDataRoot: ${finalRoot}
   test("rejects unsupported POSIX platform constraints before installing", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
     const installDir = join(root, "install");
 
     const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
       LANDO_INSTALL_DIR: installDir,
       LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
       LANDO_INSTALL_OS: "Linux",
