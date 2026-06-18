@@ -1,0 +1,4 @@
+-----BEGIN PUBLIC KEY-----
+Lando release installer cosign trust root placeholder for Beta 1 publication tests.
+Replace with the active project release public key before stable distribution.
+-----END PUBLIC KEY-----

@@ -1,0 +1,23 @@
+---
+id: verify-installer-scripts
+provider: test
+timeout: 60000
+tags: [beta, docs, installer]
+---
+
+<Guide>
+  <Scenario id="verify-installer-script-signatures" render={false} reason="Release-orchestrator tests assert installer script staging, detached cosign signatures, stable get.lando.dev verification commands, and fail-closed missing artifact behavior without publishing live installer URLs">
+    <Step name="published-urls">
+      <Variable name="posix" value="https://get.lando.dev/install.sh" display="The POSIX installer is published at the stable curl-pipe URL" />
+      <Variable name="windows" value="https://get.lando.dev/install.ps1" display="The Windows PowerShell installer is published at the stable curl-pipe URL" />
+    </Step>
+    <Step name="detached-signatures">
+      <Variable name="posixSignature" value="https://get.lando.dev/install.sh.sig" display="The POSIX installer signature is published next to the stable script URL" />
+      <Variable name="windowsSignature" value="https://get.lando.dev/install.ps1.sig" display="The Windows installer signature is published next to the stable script URL" />
+    </Step>
+    <Step name="verify-before-running">
+      <Variable name="command" value="cosign verify-blob --signature &lt;script&gt;.sig --certificate &lt;script&gt;.crt &lt;script&gt;" display="Release notes include the exact cosign verification command for each installer script" />
+      <Variable name="failure" value="missing installer script, signature, certificate, or trust root fails publication" display="Publication fails closed before release artifacts are generated if any required installer publication artifact is absent" />
+    </Step>
+  </Scenario>
+</Guide>

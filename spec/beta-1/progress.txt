@@ -1190,3 +1190,9 @@
 - Review feedback: none (no Bugbot/Cursor findings)
 - Merge: merged (squash)
 ---
+
+## 2026-06-17 23:18 CDT - US-271
+- Shipped installer script publication signing: release stage 12 now stages the POSIX and PowerShell installer scripts plus installer trust-root artifacts, keyless-cosign signs/verifies the staged scripts, writes stable `get.lando.dev` verification commands to release notes, and records installer/trust-root artifacts in the release SBOM/provenance manifest.
+- Verification: red/green release tests passed; adjacent installer script tests passed; guide lint/coverage and `dev:guides --once` for the new guide passed; typecheck and lint passed; manual stage-12 fixture QA verified installer/trust-root manifest entries and stable URL verification notes.
+- **Learnings for future iterations:** Installer publication artifacts should be staged into `dist/` before SBOM/provenance generation, then signed from the staged paths while release notes point users at the stable `https://get.lando.dev/install.{sh,ps1}` URLs.
+---
