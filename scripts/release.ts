@@ -606,15 +606,20 @@ const renderBinaryVerificationCommand = (
 const renderInstallerVerificationCommand = (
   env: ReleaseEnvironment,
   artifact: ReleaseInstallerArtifact,
-): string =>
-  [
+): string => {
+  const fileName = artifact.publishedPath.split("/").at(-1) ?? artifact.publishedPath;
+  return [
+    `curl -fsSLO ${markdownCommandQuote(artifact.stableUrl)}`,
+    `curl -fsSLO ${markdownCommandQuote(`${artifact.stableUrl}.sig`)}`,
+    `curl -fsSLO ${markdownCommandQuote(`${artifact.stableUrl}.crt`)}`,
     "cosign verify-blob \\",
     `  --certificate-identity-regexp ${markdownCommandQuote(cosignCertificateIdentityRegexp(env))} \\`,
     `  --certificate-oidc-issuer ${markdownCommandQuote(COSIGN_OIDC_ISSUER)} \\`,
-    `  --signature ${artifact.stableUrl}.sig \\`,
-    `  --certificate ${artifact.stableUrl}.crt \\`,
-    `  ${artifact.stableUrl}`,
+    `  --signature ${fileName}.sig \\`,
+    `  --certificate ${fileName}.crt \\`,
+    `  ${fileName}`,
   ].join("\n");
+};
 
 const releaseBinaryVerificationNotes = (
   env: ReleaseEnvironment,
