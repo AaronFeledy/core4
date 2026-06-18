@@ -1244,15 +1244,17 @@ describe("update signed manifest", () => {
   });
 
   test("rejects placeholder binary entries after signed manifest verification", async () => {
+    const manifest = manifestFor("stable");
+
     const tag = await failureTag(
       runUpdate({
         channel: "stable",
         currentVersion: "4.2.0",
         dryRun: true,
         fetchManifestBytes: fetcherForManifest({
-          ...manifestFor("stable"),
+          ...manifest,
           binaries: Object.fromEntries(
-            Object.entries(manifestFor("stable").binaries).map(([platformId, binary]) => [
+            Object.entries(manifest.binaries).map(([platformId, binary]) => [
               platformId,
               { ...binary, sha256: "0".repeat(64), size: 0 },
             ]),
