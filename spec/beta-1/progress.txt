@@ -1213,3 +1213,11 @@
 - **Learnings for future iterations:**
   - Treat `dist/release-artifacts.json` as the canonical handoff between SBOM/provenance generation and GitHub Release publication; Stage 13 should validate required families from that manifest instead of duplicating asset discovery.
 ---
+
+## 2026-06-18 01:05 CDT - US-269 Review
+- Reviewed installer vendored-trust-root verification against PRD-10 US-269: POSIX imports the embedded GPG key into an isolated `--homedir` and verifies `SHA256SUMS.asc` (derived beside the checksum URL, matching `scripts/release.ts`'s `gpg --detach-sign`), and Windows verifies the cosign `.sig` against an embedded identity-regexp/OIDC-issuer trust root; both fail closed on missing/malformed trust root, wrong signer, and tampered checksum/binary. Documented in AGENTS.md that the embedded GPG key and cosign identity/issuer are Beta-1 placeholders (no fingerprint pin in `release.ts`) to be replaced before stable distribution, matching the runtime-bundle placeholder discipline and the US-271 trust-artifact work.
+- Review notes (rejected): "Windows fail-open when cosign is missing/uninvocable (only `$LASTEXITCODE` checked)" — false positive: `install.ps1` sets `$ErrorActionPreference = "Stop"`, so a missing/erroring `cosign` throws `CommandNotFoundException` (not suppressed by `*> $null`) and exits non-zero (verified empirically); the pattern is also pre-existing from US-268.
+- Review notes (rejected): "`posix_checksum_signature_url` trusts a manifest-provided `.asc` URL" — not a bypass: the trust root is the embedded GPG key, so any signature file (manifest-pointed or derived) only validates if signed by that embedded key; the signature artifact itself is network-fetched by design, like the binary.
+- Review notes (deferred): explicit "expired trust root" fail-closed coverage is delegated to gpg/cosign's own validity checks rather than `--status-fd` parsing; adding bespoke expiry handling to the minimal installer was out of scope and would risk the verified happy path.
+- Verification: typecheck, lint passed; POSIX (15) and Windows (16) installer test files passed.
+---
