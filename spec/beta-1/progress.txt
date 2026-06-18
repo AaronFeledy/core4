@@ -1169,3 +1169,10 @@
 - Review feedback: none (no Bugbot/Cursor findings)
 - Merge: merged (squash)
 ---
+
+## 2026-06-17 22:22 CDT - US-265
+- Completed safe update permission handling: self-update permission failures now carry manual POSIX sudo or Windows administrator remediation for the detected install path, rollback EACCES/EPERM maps to `UpdatePermissionError`, and the update path still never invokes elevation hooks automatically.
+- Kept update telemetry category-only and redacted while publishing the update permission remediation guide.
+- Verification: typecheck, lint, focused update manifest and telemetry tests, guide lint/coverage/dev-guide checks, source CLI help smoke, permission-remediation driver, no-elevation source grep, and Oracle reviewer gate passed. `check:public-transcripts` still reports pre-existing missing generated artifacts for many shipped renderable guides; the new guide uses only `render={false}` scenarios and added no transcript requirement.
+- **Learnings for future iterations:** Permission failures during recovery/rollback need separate mapping from the primary failure; preserve generic rollback details on the original error, but classify rollback EACCES/EPERM as the permission failure so telemetry and remediation match the user's actionable problem.
+---
