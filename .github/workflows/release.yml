@@ -92,6 +92,7 @@ jobs:
           bun run --filter='@lando/provider-podman' build
           bun run --filter='@lando/service-lando' build
           bun run --filter='@lando/logger-pretty' build
+          bun run --filter='@lando/renderer-lando' build
           bun run --filter='@lando/file-sync-mutagen' build
           bun run --filter='@lando/proxy-traefik' build
           bun run --filter='@lando/template-handlebars' build
@@ -115,6 +116,7 @@ jobs:
           npm publish --workspace @lando/provider-podman --dry-run --access public --tag dev
           npm publish --workspace @lando/service-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/logger-pretty --dry-run --access public --tag dev
+          npm publish --workspace @lando/renderer-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/file-sync-mutagen --dry-run --access public --tag dev
           npm publish --workspace @lando/proxy-traefik --dry-run --access public --tag dev
           npm publish --workspace @lando/template-handlebars --dry-run --access public --tag dev
@@ -131,6 +133,7 @@ jobs:
           npm publish --workspace @lando/provider-podman --access public --tag dev --provenance
           npm publish --workspace @lando/service-lando --access public --tag dev --provenance
           npm publish --workspace @lando/logger-pretty --access public --tag dev --provenance
+          npm publish --workspace @lando/renderer-lando --access public --tag dev --provenance
           npm publish --workspace @lando/file-sync-mutagen --access public --tag dev --provenance
           npm publish --workspace @lando/proxy-traefik --access public --tag dev --provenance
           npm publish --workspace @lando/template-handlebars --access public --tag dev --provenance
