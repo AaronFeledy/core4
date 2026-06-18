@@ -124,16 +124,16 @@ const extractExtraTagFields = (
     if (promptName !== undefined) out.push(["promptName", promptName]);
   }
   if (tag === "UpdateLaunchProbeError") {
-    const platform = asString(record.platform);
-    if (platform !== undefined) out.push(["platform", platform]);
-    const attemptedVersion = asString(record.attemptedVersion);
-    if (attemptedVersion !== undefined) out.push(["attemptedVersion", attemptedVersion]);
-    const probeCommand = asString(record.probeCommand);
-    if (probeCommand !== undefined) out.push(["probeCommand", probeCommand]);
-    const outputSummary = asString(record.outputSummary);
-    if (outputSummary !== undefined) out.push(["outputSummary", outputSummary]);
-    const rollbackFailure = asString(record.rollbackFailure);
-    if (rollbackFailure !== undefined) out.push(["rollbackFailure", rollbackFailure]);
+    for (const key of [
+      "platform",
+      "attemptedVersion",
+      "probeCommand",
+      "outputSummary",
+      "rollbackFailure",
+    ] as const) {
+      const value = asString(record[key]);
+      if (value !== undefined) out.push([key, value]);
+    }
     const exitCode = record.exitCode;
     if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
   }
