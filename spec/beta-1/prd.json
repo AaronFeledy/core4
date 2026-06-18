@@ -1385,8 +1385,8 @@
         "Lint passes."
       ],
       "priority": 78,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Criteria 10-14 are green on linux-x64 via `core/test/build/linux-acceptance-criteria-10-14.test.ts` nested spot checks (POSIX installer GPG/shellenv, Windows harness platform-gated, compiled asset boundary, Mutagen manifest/download policy, setup file-sync order/proxy/CA/defer/native skip). Criterion 11 runs install.ps1 spot checks only on win32 hosts."
     },
     {
       "id": "US-278",

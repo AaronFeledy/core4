@@ -1,6 +1,7 @@
 ## Codebase Patterns
 - Curl-pipe installer post-install setup is env-driven for tests/non-interactive use: `LANDO_INSTALL_RUN_SETUP=1` opts into `lando setup --yes`; `LANDO_INSTALL_SKIP_SETUP=1` or `LANDO_INSTALL_NONINTERACTIVE=1` skips without prompting. Both installers should print the canonical `lando shellenv` command plus snippet after verified install.
 - §17.9 criteria 1-9 on linux-x64: `core/test/build/linux-acceptance-criteria-1-9.test.ts` is the runnable harness — it spawns nested `bun test -t "<filter>"` spot checks against `release.test.ts`, `update-manifest.test.ts`, `ci-workflow.test.ts`, and (on linux-x64) `compile.test.ts`; parent tests need ~180s timeouts.
+- §17.9 criteria 10-14 on linux-x64: `core/test/build/linux-acceptance-criteria-10-14.test.ts` nests `bun test ./<path> -t "<filter>"` spot checks; escape `+` and `(` in `-t` regex filters; use `./` path prefix for bun test file args.
 - Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
 - External installed plugin contribution modules must be resolved against the plugin package root and normalized to `file://` specifiers during registry discovery; later loaders import the manifest value directly, so validating without rewriting leaves relative modules resolved from core instead of the plugin package.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
@@ -1275,4 +1276,9 @@
 - Completed the linux-x64 §17.9 acceptance rehearsal coverage for criteria 1-9: the guide now records host-safe proof surfaces for local release output/version launch, CI timing evidence, Linux signing/checksum policy, SBOM/provenance/cosign verification, and self-update safety failures.
 - Verification: focused linux acceptance rehearsal test, guide lint, generated guide scenario check, guide coverage, typecheck, and lint passed.
 - **Learnings for future iterations:** Keep release acceptance rehearsal scenarios host-safe and render=false; document the exact focused tests/CI jobs/proof surfaces instead of running live release, signing, update, or provider-mutating work during guide generation.
+---
+
+## 2026-06-18 08:30 CDT - US-277
+- Shipped `core/test/build/linux-acceptance-criteria-10-14.test.ts` with nested spot checks for POSIX installer GPG/shellenv, Windows installer platform-gate, compiled asset boundary, Mutagen manifest/download policy, and setup file-sync order/proxy/CA/defer/native paths; marked `US-277` `passes: true`.
+- Verification: `bun run typecheck`, `bun run lint`, `linux-acceptance-criteria-10-14.test.ts`, and `linux-acceptance-rehearsal.test.ts` passed.
 ---
