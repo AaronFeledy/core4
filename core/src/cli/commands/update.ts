@@ -1077,9 +1077,7 @@ const applyPosixSelfUpdate = ({
         );
         // The candidate has been renamed into place, so the temp dir is empty. Remove
         // it now because a successful execve replaces the process before the finalizer runs.
-        yield* Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
-          Effect.catchAll(() => Effect.void),
-        );
+        yield* cleanupUpdateTempDir(tempDir);
         const execArgv = [executablePath, ...reexecUserArgv(selfUpdate.argv)];
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
@@ -1102,10 +1100,7 @@ const applyPosixSelfUpdate = ({
             ),
           );
       }),
-    (tempDir) =>
-      Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
-        Effect.catchAll(() => Effect.void),
-      ),
+    cleanupUpdateTempDir,
   );
 
 const applyWindowsSelfUpdate = ({

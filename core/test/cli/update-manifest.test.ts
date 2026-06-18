@@ -98,6 +98,30 @@ const manifestFor = (channel: UpdateChannel) => ({
   notes: "https://github.com/lando/lando/releases/tag/v4.2.0",
 });
 
+const manifestWithBinary = ({
+  binarySha,
+  binarySize,
+  platform,
+}: {
+  readonly binarySha: string;
+  readonly binarySize: number;
+  readonly platform: keyof ReturnType<typeof manifestFor>["binaries"];
+}) => {
+  const manifest = manifestFor("stable");
+  return {
+    ...manifest,
+    latest: "4.4.0",
+    binaries: {
+      ...manifest.binaries,
+      [platform]: {
+        ...manifest.binaries[platform],
+        sha256: binarySha,
+        size: binarySize,
+      },
+    },
+  };
+};
+
 const bytes = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(value));
 const textBytes = (value: string): Uint8Array => encoder.encode(value);
 const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
@@ -517,18 +541,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const execs: Array<{
       readonly path: string;
@@ -595,18 +612,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const execs: ReadonlyArray<string>[] = [];
 
     await Effect.runPromise(
@@ -646,18 +656,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-windows-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "windows-x64": {
-          ...manifestFor("stable").binaries["windows-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "windows-x64",
+    });
     const probes: string[] = [];
     const renames: Array<readonly [string, string]> = [];
     const replacements: Array<{
@@ -734,18 +737,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-windows-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "windows-x64": {
-          ...manifestFor("stable").binaries["windows-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "windows-x64",
+    });
 
     const failure = await failureValue(
       runUpdate({
@@ -854,18 +850,11 @@ describe("update signed manifest", () => {
     await writeFile(executablePath, "old-binary");
 
     const binaryBytes = textBytes("tampered-binary");
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: "b".repeat(64),
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha: "b".repeat(64),
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const processRunner = {
       run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
@@ -908,18 +897,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const processRunner = {
       run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
@@ -962,18 +944,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const renames: Array<readonly [string, string]> = [];
 
     const tag = await failureTag(
@@ -1013,18 +988,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
 
     const tag = await failureTag(
       runUpdate({
@@ -1057,18 +1025,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probes: string[] = [];
     const execs: string[] = [];
     const updateStatePath = join(root, "state.json");
@@ -1155,18 +1116,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     let probeCount = 0;
     const processRunner = {
       run: () =>
