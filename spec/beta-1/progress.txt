@@ -1135,3 +1135,10 @@
 - Fixed a real redaction regression found only in the compiled rollback scenario: mixed/lower-case secret assignments in launch-probe stdout/stderr (`token=...`, `PASSWORD=...`) now redact before rendering, with a focused regression test.
 - **Learnings for future iterations:** Launch-probe redaction fixtures must include mixed/lower-case secret assignment keys, not only uppercase env-style names; real compiled update rollback can be verified safely by running a copied `lando` binary against a sandbox-local HTTPS `update.lando.dev` endpoint with isolated cache/config roots.
 ---
+
+## 2026-06-17 19:53 CDT - Babysit
+- PR: #395 https://github.com/AaronFeledy/core4/pull/395
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium: enforceManifestFreshness/final manifest writes dropped cached lastFailure on retry; now spread cached state and refresh latest only, with regression test)
+- Merge: merged (squash)
+---
