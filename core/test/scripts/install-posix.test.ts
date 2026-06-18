@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { renderPosixShellenv } from "../../src/cli/commands/shellenv.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.sh");
 
@@ -26,6 +28,7 @@ const createReleaseFixture = async (
   root: string,
   channel = "stable",
   options: {
+    readonly binaryScript?: string;
     readonly checksum?: string;
     readonly platform?: "linux-x64" | "darwin-x64";
     readonly sumsPathStyle?: "bare" | "release";
@@ -37,7 +40,7 @@ const createReleaseFixture = async (
   await mkdir(releaseRoot, { recursive: true });
 
   const binaryPath = join(releaseRoot, `lando-${platform}`);
-  const binary = new TextEncoder().encode('#!/bin/sh\necho "lando 4.0.0-test"\n');
+  const binary = new TextEncoder().encode(options.binaryScript ?? '#!/bin/sh\necho "lando 4.0.0-test"\n');
   await writeFile(binaryPath, binary);
   await chmod(binaryPath, 0o755);
 
@@ -219,6 +222,84 @@ describe("scripts/install.sh", () => {
     expect(await Bun.$`${join(installDir, "lando")} version`.text()).toContain("lando 4.0.0-test");
     expect(await Bun.file(logPath).text()).toContain("--verify");
     expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.asc");
+  });
+
+  test("prints canonical shellenv PATH guidance after install", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const userDataRoot = join(root, "data root with spaces");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_NONINTERACTIVE: "1",
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+      LANDO_USER_DATA_ROOT: userDataRoot,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Run this command to add Lando to PATH:");
+    expect(result.stdout).toContain(`eval "$(\"${join(userDataRoot, "bin", "lando")}\" shellenv)"`);
+    expect(result.stdout).toContain(renderPosixShellenv(userDataRoot));
+  });
+
+  test("runs post-install setup when explicitly opted in", async () => {
+    const root = await makeTempRoot();
+    const setupLog = join(root, "setup.log");
+    const fixture = await createReleaseFixture(root, "stable", {
+      binaryScript: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n',
+    });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_RUN_SETUP: "1",
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+      LANDO_SETUP_LOG: setupLog,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("post-install setup: completed");
+    expect(await Bun.file(setupLog).text()).toBe("setup --yes\n");
+  });
+
+  test("skips post-install setup in non-interactive mode", async () => {
+    const root = await makeTempRoot();
+    const setupLog = join(root, "setup.log");
+    const fixture = await createReleaseFixture(root, "stable", {
+      binaryScript: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n',
+    });
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_NONINTERACTIVE: "1",
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+      LANDO_SETUP_LOG: setupLog,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("post-install setup: skipped");
+    expect(await Bun.file(setupLog).exists()).toBe(false);
   });
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
