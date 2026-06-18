@@ -1263,8 +1263,8 @@
         "Lint passes"
       ],
       "priority": 71,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "POSIX and PowerShell installers now print canonical lando shellenv PATH guidance after verified install, support explicit post-install setup via LANDO_INSTALL_RUN_SETUP=1, skip setup via LANDO_INSTALL_SKIP_SETUP=1 or LANDO_INSTALL_NONINTERACTIVE=1, and avoid prompting in non-interactive sessions. Installer tests cover PATH guidance, setup opt-in, and non-interactive skip for both scripts."
     },
     {
       "id": "US-271",

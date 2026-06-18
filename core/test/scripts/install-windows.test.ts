@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
+import { renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
 const powershellTestTimeoutMs = 15_000;
@@ -26,14 +28,15 @@ const sha256 = (bytes: Uint8Array): string => {
 const createReleaseFixture = async (
   root: string,
   channel = "stable",
-  options: { readonly checksum?: string } = {},
+  options: { readonly binaryScript?: string; readonly checksum?: string } = {},
 ) => {
   const releaseRoot = join(root, "release");
   await mkdir(releaseRoot, { recursive: true });
 
   const binaryPath = join(releaseRoot, "lando-windows-x64.exe");
-  const binary = new TextEncoder().encode("lando windows fixture\n");
+  const binary = new TextEncoder().encode(options.binaryScript ?? "lando windows fixture\n");
   await writeFile(binaryPath, binary);
+  await chmod(binaryPath, 0o755);
 
   const sumsPath = join(releaseRoot, "SHA256SUMS");
   const hash = options.checksum ?? sha256(binary);
@@ -122,6 +125,81 @@ describe("scripts/install.ps1", () => {
     expect(cosignLog).toContain("verify-blob");
     expect(cosignLog).toContain("SHA256SUMS.signature");
     expect(cosignLog).toContain("SHA256SUMS.crt");
+  });
+
+  powershellTest("prints canonical shellenv PATH guidance after install", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const userDataRoot = join(root, "data root with spaces");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_NONINTERACTIVE: "1",
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_DATA_ROOT: userDataRoot,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Run this command to add Lando to PATH:");
+    expect(result.stdout).toContain(
+      `& '${join(userDataRoot, "bin", "lando.exe")}' shellenv --shell=powershell`,
+    );
+    expect(result.stdout).toContain(renderPowerShellShellenv(userDataRoot));
+  });
+
+  powershellTest("runs post-install setup when explicitly opted in", async () => {
+    const root = await makeTempRoot();
+    const setupLog = join(root, "setup.log");
+    const fixture = await createReleaseFixture(root, "stable", {
+      binaryScript: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n',
+    });
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_RUN_SETUP: "1",
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_SETUP_LOG: setupLog,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("post-install setup: completed");
+    expect(await Bun.file(setupLog).text()).toBe("setup --yes\n");
+  });
+
+  powershellTest("skips post-install setup in non-interactive mode", async () => {
+    const root = await makeTempRoot();
+    const setupLog = join(root, "setup.log");
+    const fixture = await createReleaseFixture(root, "stable", {
+      binaryScript: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n',
+    });
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_NONINTERACTIVE: "1",
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_SETUP_LOG: setupLog,
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("post-install setup: skipped");
+    expect(await Bun.file(setupLog).exists()).toBe(false);
   });
 
   powershellTest("uses the installer cosign trust root for checksum signature verification", async () => {

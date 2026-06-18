@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Curl-pipe installer post-install setup is env-driven for tests/non-interactive use: `LANDO_INSTALL_RUN_SETUP=1` opts into `lando setup --yes`; `LANDO_INSTALL_SKIP_SETUP=1` or `LANDO_INSTALL_NONINTERACTIVE=1` skips without prompting. Both installers should print the canonical `lando shellenv` command plus snippet after verified install.
 - Linux release signing is manifest-layer, not Stage 9: Stage 11 writes binary-target SHA256SUMS/SHA512SUMS and GPG-signs/verifies them; Stage 12 keyless-cosign signs/verifies SHA256SUMS with complete GitHub OIDC request env; library-only releases keep manifest files but must not require linux binaries.
 - External installed plugin contribution modules must be resolved against the plugin package root and normalized to `file://` specifiers during registry discovery; later loaders import the manifest value directly, so validating without rewriting leaves relative modules resolved from core instead of the plugin package.
 - Windows release signing in Stage 9 is Authenticode first, then keyless cosign (`.sig` + `.crt`) using GitHub OIDC env; keyed cosign env belongs to manifest/signature stages, not the Windows binary signing gate.
@@ -32,6 +33,14 @@
 - Verification: typecheck, lint, guide lint/coverage, touched guide scenario checks, focused POSIX/Windows installer tests, and manual temp-fixture installer smokes passed.
 - **Learnings for future iterations:**
   - The shared update manifest keeps `SHA256SUMS.sig` for self-update and Windows, so POSIX `install.sh` must derive `SHA256SUMS.asc` from the checksum URL rather than trusting the manifest signature URL directly.
+---
+
+## 2026-06-18 01:46 CDT - US-270
+- Shipped installer PATH/setup follow-through: both curl-pipe installers now print canonical `lando shellenv` guidance after a verified install, support explicit post-install `lando setup --yes`, and skip setup cleanly in non-interactive mode without prompting.
+- Published the PATH/setup guide and marked its guide index row shipped.
+- Verification: typecheck, lint, guide coverage/lint, generated guide check, focused POSIX/Windows installer tests, and manual local-fixture installer smokes passed.
+- **Learnings for future iterations:**
+  - Keep installer setup choices environment-driven so curl-pipe, CI, and unit tests can prove opt-in and skip behavior without requiring a real TTY prompt.
 ---
 
 ## 2026-06-14 CDT - US-246

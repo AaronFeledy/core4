@@ -1,0 +1,20 @@
+---
+id: installer-path-and-setup
+provider: test
+timeout: 60000
+tags: [beta, docs, installer]
+---
+
+<Guide>
+  <Scenario id="installer-path-and-setup" render={false} reason="The installer unit tests drive scripts/install.sh and scripts/install.ps1 against local file:// release fixtures, fake signature verification, and fake post-install setup binaries so guide generation never downloads release artifacts or mutates the host">
+    <Step name="path-guidance">
+      <Variable name="posix" value="eval &quot;$(LANDO_USER_DATA_ROOT/bin/lando shellenv)&quot;" display="The POSIX installer prints the lando shellenv command and the canonical export LANDO_USER_DATA_ROOT / PATH snippet" />
+      <Variable name="powershell" value="&amp; 'LANDO_USER_DATA_ROOT/bin/lando.exe' shellenv --shell=powershell" display="The PowerShell installer prints the lando shellenv command and the canonical $Env:LANDO_USER_DATA_ROOT / $Env:PATH snippet" />
+    </Step>
+    <Step name="post-install-setup">
+      <Variable name="optIn" value="LANDO_INSTALL_RUN_SETUP=1" display="A user can opt into running lando setup immediately after the verified binary is installed" />
+      <Variable name="skip" value="LANDO_INSTALL_SKIP_SETUP=1" display="A user can explicitly skip post-install setup and run lando setup later" />
+      <Variable name="nonInteractive" value="LANDO_INSTALL_NONINTERACTIVE=1" display="Non-interactive installer mode skips post-install setup without prompting" />
+    </Step>
+  </Scenario>
+</Guide>

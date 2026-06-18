@@ -134,6 +134,47 @@ function Default-InstallDir {
   return (Join-Path (Default-UserDataRoot) "bin")
 }
 
+function Quote-PowerShellString([string] $Value) {
+  return "'$($Value.Replace("'", "''"))'"
+}
+
+function Write-PathGuidance([string] $InstallDir) {
+  $userDataRoot = Default-UserDataRoot
+  $installedPath = Join-Path $InstallDir "lando.exe"
+  Write-Output ""
+  Write-Output "Run this command to add Lando to PATH:"
+  Write-Output "& $(Quote-PowerShellString $installedPath) shellenv --shell=powershell"
+  Write-Output "The command prints:"
+  Write-Output "`$Env:LANDO_USER_DATA_ROOT = $(Quote-PowerShellString $userDataRoot)"
+  Write-Output '$Env:PATH = "$($Env:LANDO_USER_DATA_ROOT)/bin$([System.IO.Path]::PathSeparator)$Env:PATH"'
+}
+
+function Invoke-PostInstallSetup([string] $InstalledPath) {
+  if ((EnvValue "LANDO_INSTALL_RUN_SETUP") -eq "1") {
+    & $InstalledPath setup --yes
+    if ($LASTEXITCODE -ne 0) { Fail "Post-install setup failed" }
+    Write-Output "post-install setup: completed"
+    return
+  }
+
+  if ((EnvValue "LANDO_INSTALL_SKIP_SETUP") -eq "1" -or (EnvValue "LANDO_INSTALL_NONINTERACTIVE") -eq "1" -or [Console]::IsInputRedirected) {
+    Write-Output "post-install setup: skipped"
+    Write-Output "Run setup later with: $(Quote-PowerShellString $InstalledPath) setup"
+    return
+  }
+
+  $answer = Read-Host "Run lando setup now? [y/N]"
+  if ($answer -in @("y", "Y", "yes", "YES")) {
+    & $InstalledPath setup --yes
+    if ($LASTEXITCODE -ne 0) { Fail "Post-install setup failed" }
+    Write-Output "post-install setup: completed"
+  }
+  else {
+    Write-Output "post-install setup: skipped"
+    Write-Output "Run setup later with: $(Quote-PowerShellString $InstalledPath) setup"
+  }
+}
+
 function Default-UserDataRoot {
   $userDataRoot = EnvValue "LANDO_USER_DATA_ROOT"
   if (-not [string]::IsNullOrWhiteSpace($userDataRoot)) { return $userDataRoot }
@@ -270,6 +311,8 @@ try {
   Write-Output "channel: $channel"
   Write-Output "platform: $platform"
   Write-Output "installed: $installedPath"
+  Write-PathGuidance $installDir
+  Invoke-PostInstallSetup $installedPath
 }
 finally {
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

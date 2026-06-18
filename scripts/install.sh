@@ -210,6 +210,48 @@ default_install_dir() {
   printf '%s/bin\n' "$(default_user_data_root)"
 }
 
+posix_quote() {
+  printf "'"
+  printf '%s' "$1" | sed "s/'/'\"'\"'/g"
+  printf "'"
+}
+
+print_path_guidance() {
+  user_data_root=$(default_user_data_root)
+  printf '\nRun this command to add Lando to PATH:\n'
+  printf 'eval "$("%s/lando" shellenv)"\n' "$install_dir"
+  printf 'The command prints:\n'
+  printf 'export LANDO_USER_DATA_ROOT=%s\n' "$(posix_quote "$user_data_root")"
+  printf 'export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"\n'
+}
+
+run_post_install_setup() {
+  if [ "${LANDO_INSTALL_RUN_SETUP:-}" = "1" ]; then
+    "$install_dir/lando" setup --yes
+    printf 'post-install setup: completed\n'
+    return
+  fi
+
+  if [ "${LANDO_INSTALL_SKIP_SETUP:-}" = "1" ] || [ "${LANDO_INSTALL_NONINTERACTIVE:-}" = "1" ] || [ ! -t 0 ]; then
+    printf 'post-install setup: skipped\n'
+    printf 'Run setup later with: "%s/lando" setup\n' "$install_dir"
+    return
+  fi
+
+  printf 'Run lando setup now? [y/N] ' >&2
+  read -r answer || answer=
+  case "$answer" in
+    y|Y|yes|YES)
+      "$install_dir/lando" setup --yes
+      printf 'post-install setup: completed\n'
+      ;;
+    *)
+      printf 'post-install setup: skipped\n'
+      printf 'Run setup later with: "%s/lando" setup\n' "$install_dir"
+      ;;
+  esac
+}
+
 basename_from_url() {
   path=$1
   path=${path%%\?*}
@@ -369,3 +411,5 @@ chmod 0755 "$install_dir/lando"
 printf 'channel: %s\n' "$channel"
 printf 'platform: %s\n' "$platform"
 printf 'installed: %s\n' "$install_dir/lando"
+print_path_guidance
+run_post_install_setup
