@@ -24,6 +24,15 @@
 - Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
 - POSIX self-update launch safety uses two probes: first the temp artifact before replacement, then the installed executable after replacement; the second probe is the one that can restore `.bak` and attach rollback-failure details to `UpdateLaunchProbeError` without changing the error tag.
 - Windows self-update must never rename over the running `.exe` in-process; stage the verified binary beside the target, launch the delayed replacement helper with explicit backup/fallback paths, and let the current process exit.
+- Installer trust roots split by platform: `install.sh` derives/verifies `SHA256SUMS.asc` beside the checksum manifest with its embedded GPG key, while `install.ps1` verifies the manifest's cosign `.sig`/`.crt` using an embedded identity/issuer trust-root object; the update manifest's `checksums.signature` stays `.sig` for self-update and Windows.
+
+## 2026-06-18 00:34 CDT - US-269
+- Completed installer trust-root verification: POSIX installs now import an installer-vendored GPG key into an isolated temporary home and verify `SHA256SUMS.asc` before checksum/install; Windows installs now read an installer-owned cosign trust-root definition and fail closed when it is missing or malformed.
+- Updated the install guides to describe the GPG and cosign trust-root split, and marked the story complete in the PRD.
+- Verification: typecheck, lint, guide lint/coverage, touched guide scenario checks, focused POSIX/Windows installer tests, and manual temp-fixture installer smokes passed.
+- **Learnings for future iterations:**
+  - The shared update manifest keeps `SHA256SUMS.sig` for self-update and Windows, so POSIX `install.sh` must derive `SHA256SUMS.asc` from the checksum URL rather than trusting the manifest signature URL directly.
+---
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
