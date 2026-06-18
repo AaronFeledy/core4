@@ -1,0 +1,22 @@
+---
+id: github-releases
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, install, release]
+---
+
+<Guide>
+  <Scenario id="manual-release-download" render={false} reason="GitHub Release asset completeness is exercised by core/test/scripts/release.test.ts with fixture manifests, so guide generation never downloads live release artifacts">
+    <Step name="select-artifact">
+      <Variable name="platforms" value="linux-x64, linux-arm64, darwin-x64, darwin-arm64, windows-x64" display="Each Beta 1 platform target publishes a signed compiled binary asset" />
+      <Variable name="binaryOnly" value="compiled Lando binary embeds Bun" display="Manual binary installs do not require a separate Bun, Node, npm, yarn, or pnpm runtime" />
+      <Variable name="fileSync" value="Mutagen is acquired by lando setup" display="Mutagen host tools and agents are not embedded in the release binary" />
+    </Step>
+    <Step name="verify-artifact">
+      <Variable name="checksums" value="SHA256SUMS + SHA512SUMS + detached signatures" display="Checksum manifests and their GPG/cosign signatures publish beside the binaries" />
+      <Variable name="supplyChain" value="SBOM + SLSA provenance + signature/certificate sidecars" display="Each binary and library archive has linked CycloneDX SBOM and SLSA provenance assets" />
+      <Variable name="instructions" value="release-notes.md" display="Verification instructions are published with the release assets" />
+    </Step>
+  </Scenario>
+</Guide>

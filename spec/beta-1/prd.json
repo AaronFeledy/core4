@@ -1191,8 +1191,8 @@
         "Lint passes"
       ],
       "priority": 67,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "GitHub Release publication now validates dist/release-artifacts.json after SBOM/provenance generation and uploads the complete signed asset set: platform binaries, library archive, SBOMs, provenance attestations, checksum/update manifests, signatures/certificates, release-artifacts.json, and release-notes.md. Binary-only releases publish GitHub assets without npm package publication; library/all releases preserve npm publication."
     },
     {
       "id": "US-267",

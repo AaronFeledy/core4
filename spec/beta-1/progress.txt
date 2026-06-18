@@ -1197,3 +1197,10 @@
 - Verification: typecheck, lint, focused update manifest and telemetry tests, guide lint/coverage/dev-guide checks, source CLI help smoke, permission-remediation driver, no-elevation source grep, and Oracle reviewer gate passed. `check:public-transcripts` still reports pre-existing missing generated artifacts for many shipped renderable guides; the new guide uses only `render={false}` scenarios and added no transcript requirement.
 - **Learnings for future iterations:** Permission failures during recovery/rollback need separate mapping from the primary failure; preserve generic rollback details on the original error, but classify rollback EACCES/EPERM as the permission failure so telemetry and remediation match the user's actionable problem.
 ---
+## 2026-06-17 23:35 CDT - US-266
+- Shipped canonical GitHub Release asset publication from the release orchestrator: Stage 13 now validates the Stage 12 release artifact manifest and uploads the complete signed asset set, including platform binaries, the library archive, SBOMs, SLSA provenance, checksum/update manifests, signatures/certificates, release-artifacts.json, and release notes.
+- Added the manual GitHub Releases install guide and marked its guide index row Shipped; binary-only releases publish GitHub assets without npm package publication while library/all targets preserve npm publishing.
+- Verification: focused release orchestrator tests, guide lint, guide coverage, typecheck, lint, and manual release-stage fixture QA passed.
+- **Learnings for future iterations:**
+  - Treat `dist/release-artifacts.json` as the canonical handoff between SBOM/provenance generation and GitHub Release publication; Stage 13 should validate required families from that manifest instead of duplicating asset discovery.
+---
