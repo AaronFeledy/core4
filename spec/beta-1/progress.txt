@@ -1128,3 +1128,10 @@
 - Review notes (rejected/deferred): execution-policy remediation cannot be printed by a bare `install.ps1` when PowerShell blocks the file before the script body starts; the current deterministic in-script policy-block seam and guide remediation remain the US-268 coverage, while wrapper/publishing behavior belongs to later installer distribution work.
 - Verification: typecheck, lint, focused Windows installer tests, adjacent POSIX installer tests, and guide-drift check passed; TypeScript/Markdown LSP diagnostics were unavailable in this environment.
 ---
+
+## 2026-06-17 20:54 CDT - Babysit
+- PR: #396 https://github.com/AaronFeledy/core4/pull/396
+- CI outcome: pass
+- Review feedback: fixed (Bugbot findings for indented Windows `userDataRoot` parsing and WoW64 architecture detection, plus main-branch progress-log conflict resolution)
+- Merge: merged (squash)
+---
