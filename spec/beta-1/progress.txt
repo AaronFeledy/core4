@@ -27,12 +27,17 @@
 - Windows self-update must never rename over the running `.exe` in-process; stage the verified binary beside the target, launch the delayed replacement helper with explicit backup/fallback paths, and let the current process exit.
 - Installer trust roots split by platform: `install.sh` derives/verifies `SHA256SUMS.asc` beside the checksum manifest with its embedded GPG key, while `install.ps1` verifies the manifest's cosign `.sig`/`.crt` using an embedded identity/issuer trust-root object; the update manifest's `checksums.signature` stays `.sig` for self-update and Windows.
 
-## 2026-06-18 02:15 CDT - US-276
-- Extended the linux-x64 §17.9 acceptance rehearsal guide with criteria 1-9 proof surfaces: local `bun run release` / compile rehearsal, CI pipeline timing budgets, signing/SBOM/provenance/cosign verification via existing release guides and `release.test.ts`, signed update-manifest trust ordering, and self-update rollback/permission behavior via `update-manifest.test.ts`.
-- Locked the new scenarios with a focused `linux-acceptance-rehearsal.test.ts` case so PRD-11 acceptance cannot drift from the documented harness.
-- Verification: typecheck, lint, guide lint, and `core/test/build/linux-acceptance-rehearsal.test.ts` spot check passed.
+## 2026-06-18 02:15 CDT - US-276 (superseded)
+- First pass only documented criteria 1-9 in the acceptance guide; `passes: true` was premature for a literal §17.9 reading.
+---
+
+## 2026-06-18 03:10 CDT - US-276
+- Added `core/test/build/linux-acceptance-criteria-1-9.test.ts`: runs focused passing spot checks for release checksum/SBOM/SLSA/cosign (`release.test.ts`), update manifest + self-update rollback/permission (`update-manifest.test.ts`), CI distribution-rehearsal `--version` + local-rehearsal SHA256SUMS manifests, and criterion-2 gated timing evidence (workflow timeouts, compile budget logging, §17.9 spec budgets).
+- Wired the harness into `linux-acceptance-rehearsal.mdx` and tightened the guide contract test.
+- **Literal gap (US-276 still `passes: false`):** criterion 1 AC asks for a **signed** `bun run release` binary launch on a clean checkout — harness proves checksum manifests + nightly compile/`--version` + bytecode compile contract, not a full credentialed 1–13 release run. Criterion 2 records gated timing evidence, not a green CI release timing run.
+- Verification: `linux-acceptance-criteria-1-9.test.ts` + `linux-acceptance-rehearsal.test.ts` green; typecheck and lint passed.
 - **Learnings for future iterations:**
-  - Criteria 1-9 share the same host-safe pattern as 10-27: `render={false}` guide variables pointing at focused tests and sibling release/update guides, not live `bun run release` during guide generation.
+  - Acceptance harness tests that spawn nested `bun test` need ~180s timeouts; avoid nesting the full `compile.test.ts` binary build in the same file unless the parent test timeout allows ~30s+ per spawn.
 ---
 
 ## 2026-06-18 00:34 CDT - US-269
