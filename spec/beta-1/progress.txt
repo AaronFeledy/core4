@@ -1157,3 +1157,15 @@
 - Review notes (deferred): the helper's `rmdir /S /Q "%~dp0"` runs from its own cwd and may leave the `.lando-update-*` temp dir on a successful swap — an inherent Windows self-deletion limitation, already best-effort/suppressed; left for a future Windows-hardening pass.
 - Verification: typecheck, lint passed; `update-manifest`, `update-telemetry`, and `bug-report` test spot checks passed (55 tests).
 ---
+## 2026-06-17 21:21 CDT - US-264 Verify
+- Built the fresh compiled binary and ran `core/dist/lando setup --provider=lando --yes` inside `lando4-dev` with isolated data/cache roots, a checksum-pinned local provider-lando runtime-bundle manifest, and the live Podman socket; setup completed cleanly.
+- Smoked adjacent compiled update behavior in the sandbox: `lando --version` and `lando update --help` worked, while `lando update --dry-run --channel=stable` reached the real update metadata fetch path and failed closed with `UpdateNetworkError` because `https://update.lando.dev/v4/stable.json` is unavailable in this environment.
+- Platform blocker: the story's central locked running `.exe` delayed-swap behavior cannot be live-exercised on this Linux sandbox; focused self-update spot checks covering injected `platform: "win32"`, Windows replacement scheduling/fallback, adjacent POSIX rollback, telemetry, and bug-report rendering exited cleanly.
+- **Learnings for future iterations:** Windows self-update Verify needs either a Windows runner/sandbox or an explicit compiled-binary manifest override/local update endpoint; Linux can prove setup and adjacent compiled update wiring, but not a real locked `.exe` replacement.
+---
+## 2026-06-17 21:35 CDT - Babysit
+- PR: #397 https://github.com/AaronFeledy/core4/pull/397
+- CI outcome: pass
+- Review feedback: none (no Bugbot/Cursor findings)
+- Merge: merged (squash)
+---
