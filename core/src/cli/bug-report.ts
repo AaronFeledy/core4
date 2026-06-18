@@ -123,6 +123,20 @@ const extractExtraTagFields = (
     const promptName = asString(record.promptName);
     if (promptName !== undefined) out.push(["promptName", promptName]);
   }
+  if (tag === "UpdateLaunchProbeError") {
+    for (const key of [
+      "platform",
+      "attemptedVersion",
+      "probeCommand",
+      "outputSummary",
+      "rollbackFailure",
+    ] as const) {
+      const value = asString(record[key]);
+      if (value !== undefined) out.push([key, value]);
+    }
+    const exitCode = record.exitCode;
+    if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
+  }
   if (tag === "ServiceStartError" || tag === "ServiceExecError" || tag === "ServiceNotFoundError") {
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);

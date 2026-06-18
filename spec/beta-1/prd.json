@@ -1137,8 +1137,8 @@
         "Lint passes"
       ],
       "priority": 64,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Post-replacement POSIX launch-probe failures now restore the .bak binary before returning UpdateLaunchProbeError with platform, attempted version, redacted probe command/output summary, optional rollback failure detail, and category-only update cache state."
     },
     {
       "id": "US-264",

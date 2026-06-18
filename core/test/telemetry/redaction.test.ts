@@ -70,8 +70,15 @@ describe("scrubTelemetryValue", () => {
   });
 
   test("removes env-style secret assignments", () => {
-    const out = scrubTelemetryValue("DATABASE_PASSWORD=hunter2 in environment");
+    const out = scrubTelemetryValue(
+      "DATABASE_PASSWORD=hunter2 token=super-secret Api_Key=abc123 in environment",
+    );
     expect(out).not.toContain("hunter2");
+    expect(out).not.toContain("super-secret");
+    expect(out).not.toContain("abc123");
+    expect(out).toContain("DATABASE_PASSWORD=[redacted]");
+    expect(out).toContain("token=[redacted]");
+    expect(out).toContain("Api_Key=[redacted]");
   });
 
   test("does not over-redact safe semver, platform keys, or surface ids", () => {

@@ -22,6 +22,7 @@
 - Telemetry redaction is enforced in the transport's `record` (`core/src/telemetry/service.ts`) via `redactTelemetryData` BEFORE `Queue.offer`, so no disabled/failing/plugin sink ever sees a raw payload. The layer both allowlists known events to their inventory fields (constraining update telemetry) and scrubs free-string values; reuse `scrubTelemetryValue`/`redactTelemetryData` from `core/src/telemetry/redaction.ts` for any new event rather than scrubbing ad hoc at the call site.
 - Release supply-chain stages should generate artifact-specific SBOM manifest links first, then enforce that every manifest artifact has an SBOM; manifest artifact paths/SBOM links must stay POSIX-style `dist/...` regardless of host OS.
 - Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
+- POSIX self-update launch safety uses two probes: first the temp artifact before replacement, then the installed executable after replacement; the second probe is the one that can restore `.bak` and attach rollback-failure details to `UpdateLaunchProbeError` without changing the error tag.
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -1113,4 +1114,24 @@
 - Verified the compiled binary end-to-end in `lando4-dev`: rebuilt `core/dist/lando`, ran `lando setup --provider=lando --yes` with a checksum-verified local runtime-bundle manifest and live Podman socket, then drove a copied compiled binary through a local HTTPS `update.lando.dev` self-update scenario that verified manifest/checksum inputs, launch-probed the candidate, atomically replaced itself, preserved `.bak`, removed temp update dirs, and re-execed with argv/env intact. Adjacent dry-run update smoke confirmed no replacement, no `.bak`, and no temp-dir leak.
 - Fixed a compiled `$bunfs` re-exec argv blocker: POSIX self-update now drops Bun's internal compiled entrypoint from the argv passed to `execve`, preserving only the user command arguments.
 - **Learnings for future iterations:** Compiled Bun self-update can expose an extra `/$bunfs/...` argv entry during re-exec; real compiled verification should assert the post-update process sees only the user-facing command argv.
+---
+
+## 2026-06-17 19:24 CDT - US-263
+- Completed failed launch-probe rollback for POSIX self-update: the installed replacement is probed before re-exec, failed probes restore the `.bak` binary, rollback failures stay attached to `UpdateLaunchProbeError`, and rendered diagnostics expose only redacted probe details.
+- Update failure state now records the launch-probe failure category with target version and platform only, preserving replay freshness without storing paths, hostnames, or user identifiers.
+- Verification: typecheck and lint passed; focused update, telemetry, and bug-report spot checks passed; manual injected self-update QA restored the old binary and rendered redacted failure output; Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Keep the temp-artifact probe and installed-executable probe distinct: checksum/signature corruption stops before `.bak`, while installed-binary launch failure is the rollback path that should preserve the original `UpdateLaunchProbeError` tag.
+---
+
+## 2026-06-17 19:40 CDT - US-263 Review
+- Fixed a redaction-ordering leak in the launch-probe output summary: probe stdout/stderr/cause was truncated to 500 chars BEFORE scrubbing, so a path/URL/email/UUID/secret straddling the 500-char boundary could be split and slip past `scrubTelemetryValue`. Now scrubs the full joined summary first, then truncates the redacted text — directly upholding the US-263 "redacted output summary / no stored paths or identifiers" criteria.
+- Review notes: rollback composition, separate `rollbackFailure` attachment, category-only failure cache, and temp-dir/`.bak` handling all verified correct. The trailing success-path `writeUpdateManifestState` is redundant with `enforceManifestFreshness` (and unreachable in production after `execve`) but is harmless dead code, not a bug — left as-is to keep the review diff minimal.
+- Verification: typecheck, lint passed; `core/test/cli/update-manifest.test.ts` spot check passed (26/26).
+- **Learnings for future iterations:** When redacting then bounding the size of free-text diagnostics, always scrub BEFORE truncating; truncating first can sever a sensitive pattern so the redactor no longer matches it.
+---
+## 2026-06-17 19:46 CDT - US-263 Verify
+- Verified compiled `lando setup` in `lando4-dev` with a local verified provider-lando runtime-bundle manifest and live Podman socket, then exercised compiled `lando update` against a local signed-manifest HTTPS endpoint: a checksum-valid but non-launching replacement restored the original binary, returned `UpdateLaunchProbeError`, recorded only the `launch_probe_failure` category/platform/version, and left no scenario artifacts behind.
+- Fixed a real redaction regression found only in the compiled rollback scenario: mixed/lower-case secret assignments in launch-probe stdout/stderr (`token=...`, `PASSWORD=...`) now redact before rendering, with a focused regression test.
+- **Learnings for future iterations:** Launch-probe redaction fixtures must include mixed/lower-case secret assignment keys, not only uppercase env-style names; real compiled update rollback can be verified safely by running a copied `lando` binary against a sandbox-local HTTPS `update.lando.dev` endpoint with isolated cache/config roots.
 ---
