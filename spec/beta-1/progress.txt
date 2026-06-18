@@ -1117,6 +1117,14 @@
 - **Learnings for future iterations:** Compiled Bun self-update can expose an extra `/$bunfs/...` argv entry during re-exec; real compiled verification should assert the post-update process sees only the user-facing command argv.
 ---
 
+## 2026-06-17 19:12 CDT - US-268
+- Shipped the Windows PowerShell installer: it maps Windows x64 hosts to the windows-x64 artifact, resolves stable/next/dev channel manifests, verifies the cosign-signed checksum manifest plus binary checksum, installs the verified lando.exe to the selected install directory or resolved Windows userDataRoot bin, and prints execution-policy remediation through the tested policy-block branch.
+- Verification: red/green Windows installer tests passed; adjacent POSIX installer tests passed; guide coverage/lint and the Windows guide scenario generation passed; typecheck and lint passed; direct pwsh QA verified explicit, default, config-derived, and policy-remediation surfaces; reviewer gate passed after fixing default-path coverage.
+- **Learnings for future iterations:**
+  - Windows curl-pipe installer tests need the same default-path coverage as POSIX: explicit install dir, env/config userDataRoot, and the platform default `%LOCALAPPDATA%/Lando/Data/bin`.
+  - A real PowerShell execution-policy block prevents the script body from running, so custom remediation must be documented and exercised through a deterministic script/test seam unless a future wrapper/publishing story owns pre-execution handling.
+---
+
 ## 2026-06-17 19:24 CDT - US-263
 - Completed failed launch-probe rollback for POSIX self-update: the installed replacement is probed before re-exec, failed probes restore the `.bak` binary, rollback failures stay attached to `UpdateLaunchProbeError`, and rendered diagnostics expose only redacted probe details.
 - Update failure state now records the launch-probe failure category with target version and platform only, preserving replay freshness without storing paths, hostnames, or user identifiers.
@@ -1144,11 +1152,24 @@
 - Merge: merged (squash)
 ---
 
+## 2026-06-17 20:09 CDT - US-268 Review
+- Fixed review blockers in the Windows installer story: the fake cosign test fixture now runs as PowerShell with portable file URLs, and PRD-10 guide-drift input now tracks `scripts/install.ps1` so future Windows installer changes stay coupled to installer guide coverage.
+- Review notes (rejected/deferred): execution-policy remediation cannot be printed by a bare `install.ps1` when PowerShell blocks the file before the script body starts; the current deterministic in-script policy-block seam and guide remediation remain the US-268 coverage, while wrapper/publishing behavior belongs to later installer distribution work.
+- Verification: typecheck, lint, focused Windows installer tests, adjacent POSIX installer tests, and guide-drift check passed; TypeScript/Markdown LSP diagnostics were unavailable in this environment.
+---
+
 ## 2026-06-17 20:51 CDT - US-264
 - Completed Windows-safe self-update replacement: verified Windows binaries now stage beside the running `.exe`, avoid direct in-process overwrite, schedule a delayed replacement helper with rollback backup paths, and surface exact manual fallback instructions if scheduling fails.
 - Verification: typecheck, lint, focused update manifest tests, adjacent update telemetry tests, Windows self-update spot checks, and source CLI update help QA passed.
 - **Learnings for future iterations:**
   - Windows update testing should inject `platform: "win32"`/`arch: "x64"` through the self-update seam rather than mutating `process.platform`; keep direct rename assertions at zero so locked-exe safety stays explicit.
+---
+
+## 2026-06-17 20:54 CDT - Babysit
+- PR: #396 https://github.com/AaronFeledy/core4/pull/396
+- CI outcome: pass
+- Review feedback: fixed (Bugbot findings for indented Windows `userDataRoot` parsing and WoW64 architecture detection, plus main-branch progress-log conflict resolution)
+- Merge: merged (squash)
 ---
 
 ## 2026-06-17 21:09 CDT - US-264 Review
