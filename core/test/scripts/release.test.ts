@@ -1248,8 +1248,8 @@ describe("release orchestrator", () => {
       expect(notes).toContain("Stable URL: `https://get.lando.dev/install.sh`");
       expect(notes).toContain("Signature: `https://get.lando.dev/install.sh.sig`");
       expect(notes).toContain("Certificate: `https://get.lando.dev/install.sh.crt`");
-      expect(notes).toContain("curl -fsSLO https://get.lando.dev/install.ps1");
-      expect(notes).toContain("curl -fsSLO https://get.lando.dev/install.ps1.sig");
+      expect(notes).toContain('curl -fsSLO "https://get.lando.dev/install.ps1"');
+      expect(notes).toContain('curl -fsSLO "https://get.lando.dev/install.ps1.sig"');
       expect(notes).toContain("--signature install.ps1.sig \\");
       expect(notes).toContain("  install.ps1");
     });
