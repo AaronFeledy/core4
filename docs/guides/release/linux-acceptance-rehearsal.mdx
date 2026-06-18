@@ -19,7 +19,7 @@ tags: [beta, docs, release, acceptance]
     </Step>
   </Scenario>
 
-  <Scenario id="signing-and-supply-chain" render={false} reason="Focused release-stage tests prove linux-x64 signing, checksum, SBOM, provenance, and cosign verification commands without requiring live release credentials locally">
+  <Scenario id="signing-and-supply-chain" render={false} reason="Release-stage tests prove linux-x64 signing, checksum, SBOM, provenance, and cosign verification commands without requiring live release credentials locally">
     <Step name="criteria-3-5">
       <Variable name="linuxSigning" value="scripts/release.ts stage 11" display="Linux binaries are covered by GPG-signed SHA256SUMS and SHA512SUMS manifests" />
       <Variable name="sbom" value="scripts/release-sbom.ts" display="CycloneDX SBOM artifacts are generated and linked for each publishable release artifact" />
@@ -37,7 +37,7 @@ tags: [beta, docs, release, acceptance]
     </Step>
   </Scenario>
 
-  <Scenario id="runtime-bytecode-aot" render={false} reason="Focused CLI/build tests prove these runtime and build contracts without starting live provider resources during guide generation">
+  <Scenario id="runtime-bytecode-aot" render={false} reason="CLI/build tests prove runtime and build contracts without starting live provider resources during guide generation">
     <Step name="criterion-15">
       <Variable name="fileSyncCreate" value="core/test/cli/start.scenario.test.ts" display="FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply" />
       <Variable name="fileSyncReuse" value="core/test/cli/start.scenario.test.ts" display="repeat app:start invocations reuse existing file-sync sessions instead of re-creating them" />
