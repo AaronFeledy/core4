@@ -19,4 +19,12 @@ tags: [beta, docs, plugins, authoring]
       <Variable name="docs" value="README.md and strict tsconfig.json" display="The scaffold is ready for authoring without hand-creating project boilerplate" />
     </Step>
   </Scenario>
+
+  <Scenario id="renderer-plugin-example" render={false} reason="Bundled renderer metadata is covered by plugin registry and renderer visual-language tests, so this guide documents the authoring pointer without generating an interactive TTY fixture">
+    <Step name="first-party-example">
+      <Variable name="plugin" value="@lando/renderer-lando" display="Use the bundled Lando renderer plugin as the maintained first-party example for renderer authors" />
+      <Variable name="manifest" value="contributes.renderers: [lando]" display="Renderer plugins declare their renderer ids through the manifest contribution surface" />
+      <Variable name="layer" value="renderer Layer export" display="The plugin exports a renderer layer while core preserves plain, json, and verbose fallback modes" />
+    </Step>
+  </Scenario>
 </Guide>

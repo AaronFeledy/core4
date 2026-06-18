@@ -8,13 +8,10 @@ import { PaintBannerEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/oclif/pre-renderer.ts";
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { renderJsonLine, renderPlainLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import {
-  makeJsonRendererLive,
-  makeLandoRendererLive,
-  makePlainRendererLive,
-} from "../../src/cli/renderer/runtime.ts";
+import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const ESC = String.fromCharCode(27);
@@ -218,7 +215,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");

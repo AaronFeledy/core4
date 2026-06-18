@@ -1,15 +1,6 @@
-export interface RendererIO {
-  readonly writeStdout: (chunk: string) => void;
-  readonly writeStderr: (chunk: string) => void;
-  /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
-  readonly isTTY?: boolean;
-  /** Terminal width used by the TTY tail to account for wrapped rows. */
-  readonly terminalColumns?: number | undefined;
-  /** Terminal height used to bound the expanded task-detail tail. */
-  readonly terminalRows?: number | undefined;
-  /** Subscribe to raw keypress chunks; returns an unsubscribe that restores input state. */
-  readonly subscribeInput?: (onKey: (raw: string) => void) => () => void;
-}
+import type { RendererIO } from "@lando/sdk/renderer";
+
+export type { RendererIO } from "@lando/sdk/renderer";
 
 export const createStdioRendererIO = (
   stdout: NodeJS.WriteStream = process.stdout,

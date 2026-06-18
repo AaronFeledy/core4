@@ -10,12 +10,11 @@ import {
   type ResolveRendererModeResult,
   resolveRendererMode,
 } from "./renderer-selection.ts";
+import { landoRenderer } from "./renderer/bundled-renderers.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
   makeJsonRendererLive,
   makeJsonRendererServiceLive,
-  makeLandoRendererLive,
-  makeLandoRendererServiceLive,
   makePlainRendererLive,
   makePlainRendererServiceLive,
   makePlainTaskDetailRendererLive,
@@ -35,7 +34,7 @@ export const makeRendererServiceLiveForMode = (
     case "verbose":
       return makeVerboseRendererServiceLive(io);
     case "lando":
-      return makeLandoRendererServiceLive(io);
+      return landoRenderer.makeService(io);
   }
 };
 
@@ -58,7 +57,7 @@ export const makeRendererEventConsumerLiveForMode = (
     case "verbose":
       return makeVerboseRendererLive(io);
     case "lando":
-      return makeLandoRendererLive(io);
+      return landoRenderer.makeEventConsumer(io);
   }
 };
 

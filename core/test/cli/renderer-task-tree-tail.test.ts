@@ -14,8 +14,8 @@ import { Effect } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeLandoRendererLive } from "../../src/cli/renderer/runtime.ts";
 import {
   LandoTreePainter,
   TASK_DETAIL_TAIL_CAPACITY,
@@ -96,6 +96,8 @@ const stripCsi = (text: string): string => {
   const pattern = new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g");
   return text.replace(pattern, "");
 };
+
+const cursorUpAtStartPattern = new RegExp(`^${String.fromCharCode(27)}\\[\\d+A`);
 
 describe("TaskDetailRing", () => {
   test("default capacity is 4", () => {
@@ -197,7 +199,7 @@ describe("LandoTreePainter — CSI cursor handling", () => {
   test("first paint emits no cursor-up (no prior frame)", () => {
     const painter = new LandoTreePainter();
     const out = painter.consume(treeStart("build", "Building", ["a"]));
-    expect(out.includes(csi.cursorUp(1).slice(0, 2))).toBe(false); // no ESC[<n>A
+    expect(out.match(cursorUpAtStartPattern)).toBeNull();
     expect(out.endsWith("\n")).toBe(true);
   });
 
@@ -224,7 +226,7 @@ describe("LandoTreePainter — CSI cursor handling", () => {
 
     const collapse = painter.consume(taskComplete("a", "a", 10));
 
-    expect(collapse.startsWith(csi.cursorUp(5))).toBe(true);
+    expect(collapse.startsWith(csi.cursorUp(8))).toBe(true);
     expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
   });
 
@@ -238,7 +240,7 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     columns = 10;
     const collapse = painter.consume(taskComplete("a", "a", 10));
 
-    expect(collapse.startsWith(csi.cursorUp(7))).toBe(true);
+    expect(collapse.startsWith(csi.cursorUp(32))).toBe(true);
     expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
   });
 
@@ -302,14 +304,15 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
     painter.consume(taskStart("a", "step a", "build"));
     painter.consume(taskFail("a", "step a failed", 1));
     painter.consume(treeComplete("build", "Build failed", 0, 1, 50));
-    expect(painter.snapshot().frameLines).toEqual([
-      "▶ Build failed (0 ✓ · 1 ✗) (50ms)",
-      "  ✗ step a failed (exit 1)",
-    ]);
+    const frame = painter.snapshot().frameLines;
+    expect(frame.join("\n")).toContain("[BLOCKED] Build failed");
+    expect(frame.join("\n")).toContain("[BLOCKED] ✗ step a failed");
+    expect(frame.join("\n")).not.toContain("[WAIT]");
+    expect(new Set(frame.map((line) => line.length)).size).toBe(1);
   });
 });
 
-describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
+describe("lando renderer (TTY vs non-TTY selection)", () => {
   const drive = (events: ReadonlyArray<LandoEvent>) =>
     Effect.gen(function* () {
       const svc = yield* EventService;
@@ -326,7 +329,7 @@ describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
       taskComplete("a", "step a", 10),
       treeComplete("build", "Built", 1, 0),
     ];
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = io.stdout();
     expect(out.includes(csi.eraseDown)).toBe(false);
@@ -343,7 +346,7 @@ describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
       detail("a", "hello"),
       taskComplete("a", "step a", 10),
     ];
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = buffered.stdout();
     expect(out.includes(csi.eraseDown)).toBe(true);

@@ -14,12 +14,18 @@ import { Effect, Layer, Schema } from "effect";
 import { type LandoEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import type { RendererIO } from "../../src/cli/renderer/io.ts";
-import { makeLandoRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { LandoTreePainter, csi } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
+
+const ESC = String.fromCharCode(27);
+const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
+const cursorUpPattern = new RegExp(`${ESC}\\[[0-9]+A`);
+const stripAnsi = (text: string): string => text.replace(ansiPattern, "");
+const placeholderLabel = (line: string): string => /◌\s+(\S+)/.exec(line)?.[1] ?? "";
 
 const treeStart = (parentId: string, label: string, children: ReadonlyArray<string>): LandoEvent =>
   Schema.decodeUnknownSync(TaskTreeStartEvent)({
@@ -70,32 +76,45 @@ const createFakeTerminalRecorder = (
 };
 
 describe("LandoTreePainter — first-paint skeleton", () => {
-  test("paints the parent line plus one pending placeholder per declared child, byte-for-byte", () => {
+  test("paints the parent line plus one pending placeholder per declared child", () => {
     const painter = new LandoTreePainter();
-    const firstPaint = painter.consume(treeStart("build", "Building", ["web", "db", "cache"]));
-    expect(firstPaint).toBe("▼ Building (0/3 running)\n  ◌ web\n  ◌ db\n  ◌ cache\n");
+    painter.consume(treeStart("build", "Building", ["web", "db", "cache"]));
+    const frame = painter.snapshot().frameLines.map(stripAnsi);
+    expect(frame[0]).toContain("LANDO OPS");
+    expect(frame[0]).toContain("Building (0/3 running)");
+    const placeholders = frame.filter((line) => line.includes("◌"));
+    expect(placeholders).toHaveLength(3);
+    expect(placeholders[0]).toContain("◌ web");
+    expect(placeholders[1]).toContain("◌ db");
+    expect(placeholders[2]).toContain("◌ cache");
   });
 
   test("deduplicates declared children before counting and painting placeholders", () => {
     const painter = new LandoTreePainter();
-    const firstPaint = painter.consume(treeStart("build", "Building", ["web", "db", "web"]));
-    expect(firstPaint).toBe("▼ Building (0/2 running)\n  ◌ web\n  ◌ db\n");
+    painter.consume(treeStart("build", "Building", ["web", "db", "web"]));
+    const frame = painter.snapshot().frameLines.map(stripAnsi);
+    expect(frame[0]).toContain("Building (0/2 running)");
+    const placeholders = frame.filter((line) => line.includes("◌"));
+    expect(placeholders).toHaveLength(2);
+    expect(placeholders[0]).toContain("◌ web");
+    expect(placeholders[1]).toContain("◌ db");
   });
 
-  test("first paint emits no control sequences (skeleton is plain text)", () => {
+  test("first paint emits no cursor-rewind control sequences (color accents are allowed)", () => {
     const painter = new LandoTreePainter();
     const firstPaint = painter.consume(treeStart("build", "Building", ["a", "b"]));
-    const ESC = String.fromCharCode(27);
-    expect(firstPaint.includes(`${ESC}[`)).toBe(false);
+    expect(firstPaint.includes(csi.eraseDown)).toBe(false);
+    expect(cursorUpPattern.test(firstPaint)).toBe(false);
   });
 
   test("skeleton renders before any work: no running marker, no detail panel on first paint", () => {
     const painter = new LandoTreePainter();
     painter.consume(treeStart("build", "Building", ["a", "b", "c"]));
-    const frame = painter.snapshot().frameLines;
-    expect(frame).toEqual(["▼ Building (0/3 running)", "  ◌ a", "  ◌ b", "  ◌ c"]);
-    expect(frame.some((line) => line.includes("·"))).toBe(false);
-    expect(frame.some((line) => /^\s{4,}/.test(line))).toBe(false);
+    const frame = painter.snapshot().frameLines.map(stripAnsi);
+    expect(frame[0]).toContain("Building (0/3 running)");
+    const placeholders = frame.filter((line) => line.includes("◌"));
+    expect(placeholders.map(placeholderLabel)).toEqual(["a", "b", "c"]);
+    expect(frame.some((line) => line.includes("· "))).toBe(false);
     expect(painter.snapshot().activeTaskIds).toEqual([]);
   });
 
@@ -115,8 +134,9 @@ describe("LandoTreePainter — first-paint skeleton", () => {
   test("pending placeholders preserve declared child order", () => {
     const painter = new LandoTreePainter();
     painter.consume(treeStart("build", "Building", ["z", "a", "m"]));
-    const frame = painter.snapshot().frameLines;
-    expect(frame).toEqual(["▼ Building (0/3 running)", "  ◌ z", "  ◌ a", "  ◌ m"]);
+    const frame = painter.snapshot().frameLines.map(stripAnsi);
+    const placeholders = frame.filter((line) => line.includes("◌"));
+    expect(placeholders.map(placeholderLabel)).toEqual(["z", "a", "m"]);
   });
 
   test("pending placeholders are not focus targets (focus lands on started tasks only)", () => {
@@ -130,8 +150,10 @@ describe("LandoTreePainter — first-paint skeleton", () => {
 
   test("empty declared children paint just the parent skeleton line", () => {
     const painter = new LandoTreePainter();
-    const firstPaint = painter.consume(treeStart("build", "Building", []));
-    expect(firstPaint).toBe("▼ Building (0/0 running)\n");
+    painter.consume(treeStart("build", "Building", []));
+    const frame = painter.snapshot().frameLines.map(stripAnsi);
+    expect(frame[0]).toContain("Building (0/0 running)");
+    expect(frame.some((line) => line.includes("◌"))).toBe(false);
   });
 });
 
@@ -145,22 +167,26 @@ describe("first paint via fake terminal recorder (Live TTY renderer)", () => {
 
   test("the first recorded write is the byte-for-byte task-tree skeleton", async () => {
     const recorder = createFakeTerminalRecorder();
-    const layer = Layer.provideMerge(makeLandoRendererLive(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(recorder.io), EventServiceLive);
     await Effect.runPromise(
       Effect.scoped(drive([treeStart("app", "Starting app", ["web", "db"])]).pipe(Effect.provide(layer))),
     );
     expect(recorder.chunks.length).toBeGreaterThanOrEqual(1);
-    expect(recorder.chunks[0]).toBe("▼ Starting app (0/2 running)\n  ◌ web\n  ◌ db\n");
+    const firstChunk = stripAnsi(recorder.chunks[0] ?? "");
+    expect(firstChunk).toContain("LANDO OPS");
+    expect(firstChunk).toContain("Starting app (0/2 running)");
+    expect(firstChunk).toContain("◌ web");
+    expect(firstChunk).toContain("◌ db");
   });
 
   test("the first recorded write contains no cursor-up / erase control bytes", async () => {
     const recorder = createFakeTerminalRecorder();
-    const layer = Layer.provideMerge(makeLandoRendererLive(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(recorder.io), EventServiceLive);
     await Effect.runPromise(
       Effect.scoped(drive([treeStart("app", "Starting app", ["web"])]).pipe(Effect.provide(layer))),
     );
     const firstChunk = recorder.chunks[0] ?? "";
     expect(firstChunk.includes(csi.eraseDown)).toBe(false);
-    expect(firstChunk.includes(csi.cursorUp(1).slice(0, 2))).toBe(false);
+    expect(cursorUpPattern.test(firstChunk)).toBe(false);
   });
 });

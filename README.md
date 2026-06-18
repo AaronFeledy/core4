@@ -125,6 +125,8 @@ bun test
 
 CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
 Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
+Installing an alpha build or filing bug reports? See [alpha install and bug
+reports](./docs/alpha-install-and-bug-reports.md).
 
 ## CLI surface
 
