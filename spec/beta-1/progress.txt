@@ -1220,6 +1220,6 @@
 ## 2026-06-18 00:05 CDT - Babysit
 - PR: #399 https://github.com/AaronFeledy/core4/pull/399
 - CI outcome: pass
-- Review feedback: fixed (Bugbot High: release-note installer verification now downloads the script, signature, and certificate before running cosign against local paths; merge conflict with main resolved)
+- Review feedback: fixed (Bugbot High findings: release-note installer verification now downloads script/signature/certificate before local cosign verification, and Stage 13 release-manifest reading accepts installer/trust-root artifact kinds; merge conflicts with main resolved)
 - Merge: merged (squash)
 ---
