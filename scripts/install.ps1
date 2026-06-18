@@ -112,14 +112,15 @@ function Read-ConfigUserDataRoot([string] $ConfRoot) {
       $rootStack[$depth] = $false
       continue
     }
-    if (-not $parentIsRoot -or $key -ne "userDataRoot") { continue }
 
-    if (($candidate.StartsWith('"') -and $candidate.EndsWith('"')) -or ($candidate.StartsWith("'") -and $candidate.EndsWith("'"))) {
-      $candidate = $candidate.Substring(1, $candidate.Length - 2)
-    }
-    if ([string]::IsNullOrWhiteSpace($candidate)) { $value = $null; continue }
-    if ($candidate -in @("null", "true", "false")) { $value = $null; continue }
-    if ($candidate.StartsWith("[") -or $candidate.StartsWith("{")) { $value = $null; continue }
+    $isQuoted = ($candidate.StartsWith('"') -and $candidate.EndsWith('"')) -or ($candidate.StartsWith("'") -and $candidate.EndsWith("'"))
+    $isString = $true
+    if (-not $isQuoted -and $candidate -in @("null", "true", "false")) { $isString = $false }
+    elseif (-not $isQuoted -and ($candidate.StartsWith("[") -or $candidate.StartsWith("{"))) { return $null }
+    elseif ($isQuoted) { $candidate = $candidate.Substring(1, $candidate.Length - 2) }
+
+    if (-not $parentIsRoot -or $key -ne "userDataRoot") { continue }
+    if (-not $isString -or [string]::IsNullOrWhiteSpace($candidate)) { $value = $null; continue }
     $value = $candidate
   }
 

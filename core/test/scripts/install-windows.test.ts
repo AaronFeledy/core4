@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -262,6 +262,73 @@ userDataRoot: null
     expect(result.stdout).toContain(`installed: ${installedPath}`);
     expect(await Bun.file(installedPath).exists()).toBe(true);
     expect(await Bun.file(join(staleRoot, "bin", "lando.exe")).exists()).toBe(false);
+  });
+
+  powershellTest("falls back when config.yml contains an unsupported flow scalar", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const confRoot = join(root, "conf");
+    const ignoredRoot = join(root, "ignored-root");
+    const localAppData = join(root, "LocalAppData");
+    await mkdir(confRoot, { recursive: true });
+    await writeFile(
+      join(confRoot, "config.yml"),
+      `plugins: ["unsupported"]
+userDataRoot: ${ignoredRoot}
+`,
+    );
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: confRoot,
+      LANDO_USER_DATA_ROOT: "",
+      LOCALAPPDATA: localAppData,
+    });
+
+    const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect(await Bun.file(join(ignoredRoot, "bin", "lando.exe")).exists()).toBe(false);
+  });
+
+  powershellTest("treats quoted YAML keywords as string userDataRoot values", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+
+    for (const keyword of ["null", "true", "false"] as const) {
+      const confRoot = join(root, `conf-${keyword}`);
+      await mkdir(confRoot, { recursive: true });
+      await writeFile(join(confRoot, "config.yml"), `userDataRoot: "${keyword}"\n`);
+
+      try {
+        const result = await runInstaller({
+          COSIGN_LOG: logPath,
+          LANDO_INSTALL_COSIGN: cosignPath,
+          LANDO_INSTALL_DIR: "",
+          LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+          LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+          LANDO_USER_CONF_ROOT: confRoot,
+          LANDO_USER_DATA_ROOT: "",
+          LOCALAPPDATA: join(root, "LocalAppData"),
+        });
+
+        const installedPath = join(keyword, "bin", "lando.exe");
+        expect(result.stderr).toBe("");
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain(`installed: ${installedPath}`);
+        expect(await Bun.file(join(repoRoot, installedPath)).exists()).toBe(true);
+      } finally {
+        await rm(join(repoRoot, keyword), { recursive: true, force: true });
+      }
+    }
   });
 
   powershellTest("detects the x64 host architecture from 32-bit PowerShell sessions", async () => {
