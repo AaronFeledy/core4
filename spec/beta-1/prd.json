@@ -1367,8 +1367,8 @@
         "Lint passes."
       ],
       "priority": 77,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Criteria 1-9 are green on linux-x64 via `core/test/build/linux-acceptance-criteria-1-9.test.ts` nested spot checks (release manifests/signing/SBOM/SLSA/cosign, update manifest/self-update safety, CI distribution-rehearsal --version, gated timing evidence). Criterion 1 local signing remains credential-conditional per §17.9; criterion 2 uses gated timing evidence per story AC."
     },
     {
       "id": "US-277",
