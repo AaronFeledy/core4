@@ -1150,3 +1150,10 @@
 - **Learnings for future iterations:**
   - Windows update testing should inject `platform: "win32"`/`arch: "x64"` through the self-update seam rather than mutating `process.platform`; keep direct rename assertions at zero so locked-exe safety stays explicit.
 ---
+
+## 2026-06-17 21:09 CDT - US-264 Review
+- Reviewed Windows-safe self-update against the PRD: all five acceptance criteria hold — the running `.exe` is never overwritten in-process (Windows dispatches to `applyWindowsSelfUpdate`, zero in-process renames of the target), the staged binary is signature/checksum-verified and launch-probed before any swap is scheduled, scheduling failure surfaces `UpdatePermissionError` carrying the exact manual fallback, and the batch helper restores the `.bak` on install failure. No in-scope code changes were needed.
+- Review notes (rejected): an independent reviewer FAILed on "cmd.exe /c command-injection via metacharacter install paths / restart argv." Rejected as a non-blocking defense-in-depth note, not a story blocker: the only remote vector (manifest/binary bytes) is closed by signature+checksum verification before the script is ever written, and the residual inputs (`process.execPath` install dir, the user's own argv) are local/self-trusted with no privilege boundary crossed. A speculative batch-escaping rewrite is untestable on a non-Windows host and would risk breaking the verified happy-path script assertions, so it was not applied.
+- Review notes (deferred): the helper's `rmdir /S /Q "%~dp0"` runs from its own cwd and may leave the `.lando-update-*` temp dir on a successful swap — an inherent Windows self-deletion limitation, already best-effort/suppressed; left for a future Windows-hardening pass.
+- Verification: typecheck, lint passed; `update-manifest`, `update-telemetry`, and `bug-report` test spot checks passed (55 tests).
+---
