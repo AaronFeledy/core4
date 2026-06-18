@@ -1173,8 +1173,8 @@
         "Lint passes"
       ],
       "priority": 66,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Update permission failures now surface manual sudo/UAC remediation without silent elevation; rollback EACCES/EPERM maps to UpdatePermissionError, update telemetry remains category-only/redacted, and the permission remediation guide is shipped."
     },
     {
       "id": "US-266",

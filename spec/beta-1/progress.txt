@@ -1191,6 +1191,13 @@
 - Merge: merged (squash)
 ---
 
+## 2026-06-17 22:22 CDT - US-265
+- Completed safe update permission handling: self-update permission failures now carry manual POSIX sudo or Windows administrator remediation for the detected install path, rollback EACCES/EPERM maps to `UpdatePermissionError`, and the update path still never invokes elevation hooks automatically.
+- Kept update telemetry category-only and redacted while publishing the update permission remediation guide.
+- Verification: typecheck, lint, focused update manifest and telemetry tests, guide lint/coverage/dev-guide checks, source CLI help smoke, permission-remediation driver, no-elevation source grep, and Oracle reviewer gate passed. `check:public-transcripts` still reports pre-existing missing generated artifacts for many shipped renderable guides; the new guide uses only `render={false}` scenarios and added no transcript requirement.
+- **Learnings for future iterations:** Permission failures during recovery/rollback need separate mapping from the primary failure; preserve generic rollback details on the original error, but classify rollback EACCES/EPERM as the permission failure so telemetry and remediation match the user's actionable problem.
+---
+
 ## 2026-06-17 23:18 CDT - US-271
 - Shipped installer script publication signing: release stage 12 now stages the POSIX and PowerShell installer scripts plus installer trust-root artifacts, keyless-cosign signs/verifies the staged scripts, writes stable `get.lando.dev` verification commands to release notes, and records installer/trust-root artifacts in the release SBOM/provenance manifest.
 - Verification: red/green release tests passed; adjacent installer script tests passed; guide lint/coverage and `dev:guides --once` for the new guide passed; typecheck and lint passed; manual stage-12 fixture QA verified installer/trust-root manifest entries and stable URL verification notes.

@@ -769,6 +769,7 @@ describe("update signed manifest", () => {
     if (failure instanceof UpdatePermissionError) {
       expect(failure.message).toContain("Failed to schedule Windows Lando replacement");
       expect(failure.remediation).toContain("Close every running Lando process");
+      expect(failure.remediation).toContain("PowerShell as Administrator");
       expect(failure.remediation).toContain("lando.exe.bak");
       const report = buildBugReport({
         error: failure,
@@ -951,7 +952,7 @@ describe("update signed manifest", () => {
     });
     const renames: Array<readonly [string, string]> = [];
 
-    const tag = await failureTag(
+    const failure = await failureValue(
       runUpdate({
         channel: "stable",
         currentVersion: "4.2.0",
@@ -975,7 +976,14 @@ describe("update signed manifest", () => {
       }),
     );
 
-    expect(tag).toBe("UpdatePermissionError");
+    expect(failure).toBeInstanceOf(UpdatePermissionError);
+    if (failure instanceof UpdatePermissionError) {
+      expect(failure.path).toBe(executablePath);
+      expect(failure.remediation).toContain("Lando will not run sudo automatically");
+      expect(failure.remediation).toContain(
+        `sudo install -m 755 <downloaded-lando-binary> ${executablePath}`,
+      );
+    }
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
     await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
     expect(renames.map(([, to]) => to)).toEqual([`${executablePath}.bak`, executablePath, executablePath]);
@@ -1171,16 +1179,82 @@ describe("update signed manifest", () => {
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
   });
 
+  test("POSIX self-update reports rollback EACCES as UpdatePermissionError", async () => {
+    const root = await makeTempRoot("lando-self-update-probe-rollback-eacces-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
+    let probeCount = 0;
+    const processRunner = {
+      run: () =>
+        Effect.sync(() => {
+          probeCount += 1;
+          return probeCount === 1
+            ? { exitCode: 0, stdout: "", stderr: "" }
+            : { exitCode: 126, stdout: "", stderr: "broken loader" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const failure = await failureValue(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          execve: () => Effect.void,
+          rename: async (from, to) => {
+            if (from === `${executablePath}.bak` && to === executablePath) {
+              const error = new Error("EACCES: permission denied, rename");
+              (error as Error & { code: string }).code = "EACCES";
+              throw error;
+            }
+            await rename(from, to);
+          },
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(failure).toBeInstanceOf(UpdatePermissionError);
+    if (failure instanceof UpdatePermissionError) {
+      expect(failure.path).toBe(executablePath);
+      expect(failure.message).toContain("Failed to restore backup");
+      expect(failure.remediation).toContain("Lando will not run sudo automatically");
+    }
+    expect(await readFile(executablePath, "utf8")).toBe("new-binary");
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
+  });
+
   test("rejects placeholder binary entries after signed manifest verification", async () => {
+    const manifest = manifestFor("stable");
+
     const tag = await failureTag(
       runUpdate({
         channel: "stable",
         currentVersion: "4.2.0",
         dryRun: true,
         fetchManifestBytes: fetcherForManifest({
-          ...manifestFor("stable"),
+          ...manifest,
           binaries: Object.fromEntries(
-            Object.entries(manifestFor("stable").binaries).map(([platformId, binary]) => [
+            Object.entries(manifest.binaries).map(([platformId, binary]) => [
               platformId,
               { ...binary, sha256: "0".repeat(64), size: 0 },
             ]),

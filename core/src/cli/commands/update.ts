@@ -812,7 +812,26 @@ const windowsManualFallback = ({
   executablePath,
   stagedBinaryPath,
 }: Pick<UpdateWindowsReplacementInput, "backupPath" | "executablePath" | "stagedBinaryPath">): string =>
-  `Close every running Lando process, move ${executablePath} to ${backupPath}, then move ${stagedBinaryPath} to ${executablePath}. If replacement fails, move ${backupPath} back to ${executablePath}.`;
+  `Close every running Lando process, move ${executablePath} to ${backupPath}, then move ${stagedBinaryPath} to ${executablePath}. If replacement fails, move ${backupPath} back to ${executablePath}. If Windows requires elevation, open PowerShell as Administrator and run the same moves manually; Lando will not request UAC automatically.`;
+
+const windowsPermissionRemediation = (executablePath: string): string =>
+  `Lando will not request UAC automatically. If this install path is correct, open PowerShell as Administrator and replace ${executablePath} manually with the downloaded Lando binary, or reinstall Lando into a user-writable directory.`;
+
+const posixPermissionRemediation = (executablePath: string): string =>
+  `Lando will not run sudo automatically. Fix write permissions for ${dirname(executablePath)}, reinstall Lando into a user-writable directory, or download the matching Lando binary from GitHub Releases and run: sudo install -m 755 <downloaded-lando-binary> ${executablePath}`;
+
+const permissionErrorCodes = new Set(["EACCES", "EPERM"]);
+
+const errorCodeFrom = (cause: unknown): string | undefined => {
+  if (typeof cause !== "object" || cause === null) return undefined;
+  const code = (cause as { readonly code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+};
+
+const isPermissionCause = (cause: unknown): boolean => {
+  const code = errorCodeFrom(cause);
+  return code !== undefined && permissionErrorCodes.has(code);
+};
 
 export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInput): string => {
   const restartArgs = input.argv.slice(1).map(windowsCommandArg).join(" ");
@@ -898,7 +917,12 @@ const resolveSelfUpdateOptions = (
   };
 };
 
-const writeDownloadedBinary = (path: string, bytes: Uint8Array): Effect.Effect<void, UpdatePermissionError> =>
+const writeDownloadedBinary = (
+  path: string,
+  bytes: Uint8Array,
+  permissionPath = path,
+  remediation = posixPermissionRemediation(permissionPath),
+): Effect.Effect<void, UpdatePermissionError> =>
   Effect.tryPromise({
     try: async () => {
       await writeFile(path, bytes);
@@ -907,7 +931,8 @@ const writeDownloadedBinary = (path: string, bytes: Uint8Array): Effect.Effect<v
     catch: (cause) =>
       new UpdatePermissionError({
         message: `Failed to write executable update artifact at ${path}.`,
-        path,
+        path: permissionPath,
+        remediation,
         cause,
       }),
   });
@@ -1006,13 +1031,15 @@ const renameForUpdate = (
   renamePath: UpdateRename,
   from: string,
   to: string,
+  permissionPath = to,
 ): Effect.Effect<void, UpdatePermissionError> =>
   Effect.tryPromise({
     try: () => renamePath(from, to),
     catch: (cause) =>
       new UpdatePermissionError({
         message: `Failed to rename ${from} to ${to}.`,
-        path: to,
+        path: permissionPath,
+        remediation: posixPermissionRemediation(permissionPath),
         cause,
       }),
   });
@@ -1045,6 +1072,7 @@ const applyPosixSelfUpdate = ({
         new UpdatePermissionError({
           message: `Failed to create update temp directory next to ${executablePath}.`,
           path: executablePath,
+          remediation: posixPermissionRemediation(executablePath),
           cause,
         }),
     }),
@@ -1053,12 +1081,12 @@ const applyPosixSelfUpdate = ({
         const tempBinaryPath = join(tempDir, basename(executablePath));
         const backupPath = `${executablePath}.bak`;
         const platformId = updatePlatformId(selfUpdate);
-        yield* writeDownloadedBinary(tempBinaryPath, binaryBytes);
+        yield* writeDownloadedBinary(tempBinaryPath, binaryBytes, executablePath);
         yield* runLaunchProbe(tempBinaryPath, attemptedVersion, platformId);
-        yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath);
-        yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath).pipe(
+        yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
+        yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
           Effect.catchAll((error) =>
-            renameForUpdate(selfUpdate.rename, backupPath, executablePath).pipe(
+            renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
               Effect.catchAll(() => Effect.void),
               Effect.flatMap(() => Effect.fail(error)),
             ),
@@ -1068,11 +1096,16 @@ const applyPosixSelfUpdate = ({
           Effect.catchAll((error) =>
             Effect.tryPromise({
               try: () => selfUpdate.rename(backupPath, executablePath),
-              catch: (cause) => cause,
-            }).pipe(
-              Effect.catchAll((rollbackFailure) => Effect.fail(withRollbackFailure(error, rollbackFailure))),
-              Effect.flatMap(() => Effect.fail(error)),
-            ),
+              catch: (rollbackFailure) =>
+                isPermissionCause(rollbackFailure)
+                  ? new UpdatePermissionError({
+                      message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
+                      path: executablePath,
+                      remediation: posixPermissionRemediation(executablePath),
+                      cause: rollbackFailure,
+                    })
+                  : withRollbackFailure(error, rollbackFailure),
+            }).pipe(Effect.flatMap(() => Effect.fail(error))),
           ),
         );
         // The candidate has been renamed into place, so the temp dir is empty. Remove
@@ -1087,6 +1120,7 @@ const applyPosixSelfUpdate = ({
                 new UpdatePermissionError({
                   message: `Failed to exec updated Lando binary at ${executablePath}.`,
                   path: executablePath,
+                  remediation: posixPermissionRemediation(executablePath),
                   cause,
                 }),
             ),
@@ -1121,6 +1155,7 @@ const applyWindowsSelfUpdate = ({
         new UpdatePermissionError({
           message: `Failed to create update temp directory next to ${executablePath}.`,
           path: executablePath,
+          remediation: windowsPermissionRemediation(executablePath),
           cause,
         }),
     });
@@ -1137,7 +1172,7 @@ const applyWindowsSelfUpdate = ({
       manualFallback,
     };
 
-    yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes).pipe(
+    yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes, executablePath, manualFallback).pipe(
       Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
     );
     yield* runLaunchProbe(stagedBinaryPath, attemptedVersion, updatePlatformId(selfUpdate)).pipe(
