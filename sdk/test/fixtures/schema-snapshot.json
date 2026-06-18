@@ -131,6 +131,23 @@
       "manifest": {
         "api": 4,
         "contributes": {
+          "renderers": ["lando"]
+        },
+        "description": "Bundled default Lando Renderer plugin.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/renderer-lando",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
+        "version": "0.0.0"
+      },
+      "name": "@lando/renderer-lando"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
           "globalServices": [
             {
               "enabledByDefault": true,
@@ -1635,6 +1652,7 @@
       "@lando/provider-lando",
       "@lando/provider-podman",
       "@lando/proxy-traefik",
+      "@lando/renderer-lando",
       "@lando/service-lando",
       "@lando/template-handlebars",
       "@lando/template-mustache"
