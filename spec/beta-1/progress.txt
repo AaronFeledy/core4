@@ -1248,3 +1248,9 @@
 - Review notes (deferred): explicit "expired trust root" fail-closed coverage is delegated to gpg/cosign's own validity checks rather than `--status-fd` parsing; adding bespoke expiry handling to the minimal installer was out of scope and would risk the verified happy path.
 - Verification: typecheck, lint passed; POSIX (15) and Windows (16) installer test files passed.
 ---
+
+## 2026-06-18 02:58 CDT - US-276
+- Completed the linux-x64 §17.9 acceptance rehearsal coverage for criteria 1-9: the guide now records host-safe proof surfaces for local release output/version launch, CI timing evidence, Linux signing/checksum policy, SBOM/provenance/cosign verification, and self-update safety failures.
+- Verification: focused linux acceptance rehearsal test, guide lint, generated guide scenario check, guide coverage, typecheck, and lint passed.
+- **Learnings for future iterations:** Keep release acceptance rehearsal scenarios host-safe and render=false; document the exact focused tests/CI jobs/proof surfaces instead of running live release, signing, update, or provider-mutating work during guide generation.
+---

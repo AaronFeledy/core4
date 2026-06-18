@@ -52,4 +52,27 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain("level-none invocations do not import @oclif/core");
     expect(guide).toContain("Context.Service");
   });
+
+  test("documents criteria 1-9 proof surfaces without running host-mutating release work", async () => {
+    const guide = await readFile(guidePath, "utf8");
+
+    expect(guide).toContain('Scenario id="release-local-and-timing" render={false}');
+    expect(guide).toContain("bun run release");
+    expect(guide).toContain("local binary launches and reports version");
+    expect(guide).toContain("single-platform release under 30 minutes");
+    expect(guide).toContain("full-matrix release under 60 minutes");
+
+    expect(guide).toContain('Scenario id="signing-and-supply-chain" render={false}');
+    expect(guide).toContain("Linux binaries are covered by GPG-signed SHA256SUMS");
+    expect(guide).toContain("CycloneDX SBOM artifacts");
+    expect(guide).toContain("SLSA v1.0 provenance attestations");
+    expect(guide).toContain("cosign verify-blob");
+
+    expect(guide).toContain('Scenario id="self-update-safety" render={false}');
+    expect(guide).toContain("signed update manifest verification");
+    expect(guide).toContain("snapshot replacement and re-exec");
+    expect(guide).toContain("UpdateLaunchProbeError");
+    expect(guide).toContain("UpdatePermissionError");
+    expect(guide).toContain("no silent elevation");
+  });
 });

@@ -7,6 +7,36 @@ tags: [beta, docs, release, acceptance]
 ---
 
 <Guide>
+  <Scenario id="release-local-and-timing" render={false} reason="Release orchestration tests and CI timing evidence prove the local release and runtime budget contracts without running a live release during guide generation">
+    <Step name="criterion-1">
+      <Variable name="release" value="bun run release" display="A clean checkout release run produces the local target artifact set" />
+      <Variable name="binary" value="dist/lando-linux-x64" display="The local binary launches and reports version after checksum-manifested release output is produced" />
+      <Variable name="manifest" value="dist/SHA256SUMS + dist/SHA512SUMS" display="The release run writes checksum manifests for the local binary target" />
+    </Step>
+    <Step name="criterion-2">
+      <Variable name="singlePlatform" value="release-linux-x64" display="CI records gated timing evidence for a single-platform release under 30 minutes" />
+      <Variable name="fullMatrix" value="release matrix" display="CI records gated timing evidence for the full-matrix release under 60 minutes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="signing-and-supply-chain" render={false} reason="Focused release-stage tests prove linux-x64 signing, checksum, SBOM, provenance, and cosign verification commands without requiring live release credentials locally">
+    <Step name="criteria-3-5">
+      <Variable name="linuxSigning" value="scripts/release.ts stage 11" display="Linux binaries are covered by GPG-signed SHA256SUMS and SHA512SUMS manifests" />
+      <Variable name="sbom" value="scripts/release-sbom.ts" display="CycloneDX SBOM artifacts are generated and linked for each publishable release artifact" />
+      <Variable name="provenance" value="scripts/release-provenance.ts" display="SLSA v1.0 provenance attestations are generated and linked for each publishable release artifact" />
+      <Variable name="cosign" value="cosign verify-blob" display="The same cosign verify-blob command is generated for CI verification and release notes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="self-update-safety" render={false} reason="Self-update tests use signed local manifests and temporary binaries to prove replacement, rollback, and permission errors without mutating the host install">
+    <Step name="criteria-6-9">
+      <Variable name="manifest" value="core/test/cli/update*.test.ts" display="signed update manifest verification runs before trusting manifest JSON" />
+      <Variable name="replacement" value="lando update --channel=next" display="snapshot replacement and re-exec replace the binary only after verification succeeds" />
+      <Variable name="rollback" value="UpdateLaunchProbeError" display="A failed installed-binary launch probe restores the prior .bak binary and surfaces UpdateLaunchProbeError" />
+      <Variable name="permission" value="UpdatePermissionError" display="EACCES replacement and rollback paths surface UpdatePermissionError with remediation and no silent elevation" />
+    </Step>
+  </Scenario>
+
   <Scenario id="runtime-bytecode-aot" render={false} reason="Focused CLI/build tests prove these runtime and build contracts without starting live provider resources during guide generation">
     <Step name="criterion-15">
       <Variable name="fileSyncCreate" value="core/test/cli/start.scenario.test.ts" display="FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply" />

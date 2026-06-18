@@ -1367,8 +1367,8 @@
         "Lint passes."
       ],
       "priority": 77,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Criteria 1-9 are covered in the linux-x64 acceptance rehearsal guide with host-safe proof surfaces: local release/checksum-manifest launch proof, CI timing evidence, Linux checksum/signing policy, CycloneDX SBOM, SLSA provenance, cosign verify-blob, signed update manifest verification, update replacement/re-exec, launch-probe rollback, and permission-error/no-elevation behavior."
     },
     {
       "id": "US-277",
