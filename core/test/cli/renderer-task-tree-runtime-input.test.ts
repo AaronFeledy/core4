@@ -4,8 +4,8 @@ import { Effect, Layer, Queue, Schema } from "effect";
 import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeLandoRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
@@ -42,7 +42,7 @@ const stripCsi = (text: string): string => {
   return text.replace(new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g"), "");
 };
 
-describe("makeLandoRendererLive — TTY keybindings", () => {
+describe("lando renderer (TTY keybindings)", () => {
   test("Enter expands the focused task and publishes task.detail.expand; Esc collapses and publishes task.detail.collapse", async () => {
     const io = createBufferedRendererIO({ isTTY: true, terminalRows: 40 });
 
@@ -69,7 +69,7 @@ describe("makeLandoRendererLive — TTY keybindings", () => {
       return { afterExpand, afterCollapse, published: [...drained] };
     });
 
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     const { afterExpand, afterCollapse, published } = await Effect.runPromise(
       Effect.scoped(program.pipe(Effect.provide(layer))),
     );

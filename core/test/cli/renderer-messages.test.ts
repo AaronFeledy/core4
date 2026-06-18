@@ -4,13 +4,10 @@ import { Effect, Layer, Schema } from "effect";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { renderJsonLine, renderPlainLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import {
-  makeJsonRendererLive,
-  makeLandoRendererLive,
-  makePlainRendererLive,
-} from "../../src/cli/renderer/runtime.ts";
+import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
@@ -113,7 +110,7 @@ describe("json renderer: message events", () => {
 });
 
 describe("lando renderer: message events (currently plain-aliased)", () => {
-  test("makeLandoRendererLive renders message events to stdout via the plain formatter", async () => {
+  test("lando renderer renders message events to stdout via the plain formatter", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const events = yield* EventService;
@@ -122,7 +119,7 @@ describe("lando renderer: message events (currently plain-aliased)", () => {
       yield* events.publish(errorEventWithRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stdoutLines();

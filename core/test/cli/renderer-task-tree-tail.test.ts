@@ -14,8 +14,8 @@ import { Effect } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeLandoRendererLive } from "../../src/cli/renderer/runtime.ts";
 import {
   LandoTreePainter,
   TASK_DETAIL_TAIL_CAPACITY,
@@ -312,7 +312,7 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
   });
 });
 
-describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
+describe("lando renderer (TTY vs non-TTY selection)", () => {
   const drive = (events: ReadonlyArray<LandoEvent>) =>
     Effect.gen(function* () {
       const svc = yield* EventService;
@@ -329,7 +329,7 @@ describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
       taskComplete("a", "step a", 10),
       treeComplete("build", "Built", 1, 0),
     ];
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = io.stdout();
     expect(out.includes(csi.eraseDown)).toBe(false);
@@ -346,7 +346,7 @@ describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {
       detail("a", "hello"),
       taskComplete("a", "step a", 10),
     ];
-    const layer = Layer.provideMerge(makeLandoRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = buffered.stdout();
     expect(out.includes(csi.eraseDown)).toBe(true);

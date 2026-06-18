@@ -99,7 +99,7 @@ describe("LandoTreePainter — expand / collapse", () => {
     const painter = new LandoTreePainter();
     seed(painter, "a", 10);
     expect(painter.expandedTaskId).toBeUndefined();
-    const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
+    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
     expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
@@ -118,7 +118,7 @@ describe("LandoTreePainter — expand / collapse", () => {
     seed(painter, "a", 10);
     painter.expandTask("a");
     expect(painter.expandedTaskId).toBe("a");
-    const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
+    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(true);
     expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
@@ -128,7 +128,7 @@ describe("LandoTreePainter — expand / collapse", () => {
     const painter = new LandoTreePainter({ terminalRows: 6 });
     seed(painter, "a", 30);
     painter.expandTask("a");
-    const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
+    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBeLessThanOrEqual(6);
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-29"))).toBe(true);
@@ -140,7 +140,7 @@ describe("LandoTreePainter — expand / collapse", () => {
     painter.expandTask("a");
     painter.collapse();
     expect(painter.expandedTaskId).toBeUndefined();
-    const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
+    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
   });

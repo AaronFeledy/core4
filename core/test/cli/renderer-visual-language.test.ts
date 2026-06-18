@@ -6,6 +6,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import {
   type LandoEvent,
+  MessageWarnEvent,
   TaskCompleteEvent,
   TaskDetailEvent,
   TaskFailEvent,
@@ -15,8 +16,9 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeLandoRendererLive, renderPlain } from "../../src/cli/renderer/runtime.ts";
+import { makeJsonRendererLive, renderPlain } from "../../src/cli/renderer/runtime.ts";
 import { LandoTreePainter } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
@@ -133,6 +135,18 @@ const longLabelEvents = (): ReadonlyArray<LandoEvent> => [
   taskTreeComplete("Lando runtime ready after validating proxy and CA configuration", 1, 0),
 ];
 
+const messageWarn = (body: string): LandoEvent =>
+  Schema.decodeUnknownSync(MessageWarnEvent)({ _tag: "message.warn", body, timestamp: ts });
+
+const successEvents = (): ReadonlyArray<LandoEvent> => [
+  taskTreeStart("Starting app", ["appserver", "database"]),
+  taskStart("appserver", "appserver"),
+  taskComplete("appserver", "appserver online", 820),
+  taskStart("database", "database"),
+  taskComplete("database", "database online", 540),
+  taskTreeComplete("App online", 2, 0),
+];
+
 const drivePainter = (events: ReadonlyArray<LandoEvent>, columns: number): ReadonlyArray<string> => {
   const painter = new LandoTreePainter({ terminalColumns: columns });
   for (const event of events) painter.consume(event);
@@ -194,7 +208,9 @@ describe("lando renderer visual language", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(Effect.provide(Layer.provideMerge(makeLandoRendererLive(tty), EventServiceLive))),
+        program.pipe(
+          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(tty), EventServiceLive)),
+        ),
       ),
     );
     expect(tty.stdout()).toContain(`${escapeChar}[`);
@@ -204,6 +220,66 @@ describe("lando renderer visual language", () => {
     renderPlain(plain, events);
     expect(plain.stdout()).not.toContain("LANDO OPS");
     expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+  });
+
+  test("renders an all-online success summary with text status, never color alone", () => {
+    for (const columns of [80, 100, 120]) {
+      const frame = drivePainter(successEvents(), columns);
+      const joined = frame.join("\n");
+      expect(joined).toContain("LANDO OPS");
+      expect(joined).toContain("[ONLINE]");
+      expect(joined).toContain("(2 ✓ · 0 ✗)");
+      expect(joined).not.toContain("[BLOCKED]");
+      expect(maxFrameWidth(frame)).toBeLessThanOrEqual(columns);
+    }
+  });
+
+  test("warnings carry a text glyph in TTY output and stay plain in non-TTY fallback", async () => {
+    const events = [...successEvents(), messageWarn("runtime bundle checksum is using a placeholder")];
+
+    const tty = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+    const program = Effect.gen(function* () {
+      const service = yield* EventService;
+      for (const event of events) yield* service.publish(event);
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(tty), EventServiceLive)),
+        ),
+      ),
+    );
+    expect(stripAnsi(tty.stdout())).toContain("⚠ runtime bundle checksum is using a placeholder");
+
+    const plain = createBufferedRendererIO();
+    renderPlain(plain, events);
+    expect(plain.stdout()).toContain("⚠ runtime bundle checksum is using a placeholder");
+    expect(plain.stdout()).not.toContain(`${escapeChar}[`);
+  });
+
+  test("json renderer stays undecorated NDJSON with no spaceship styling", async () => {
+    const events = failureEvents();
+    const io = createBufferedRendererIO();
+    const program = Effect.gen(function* () {
+      const service = yield* EventService;
+      for (const event of events) yield* service.publish(event);
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive))),
+      ),
+    );
+    const lines = io.stderrLines();
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+      expect(line).not.toContain("LANDO OPS");
+      expect(line).not.toContain("╭─");
+      expect(line).not.toContain(escapeChar);
+    }
+    expect(io.stdout()).toBe("");
   });
 });
 

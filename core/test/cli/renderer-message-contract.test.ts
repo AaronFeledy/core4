@@ -3,17 +3,20 @@ import { Effect } from "effect";
 
 import { Renderer } from "@lando/sdk/services";
 
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import type { RendererIO } from "../../src/cli/renderer/io.ts";
 import {
   makeJsonRenderer,
   makeJsonRendererServiceLive,
-  makeLandoRenderer,
-  makeLandoRendererServiceLive,
   makePlainRenderer,
   makePlainRendererServiceLive,
   makeVerboseRenderer,
   makeVerboseRendererServiceLive,
 } from "../../src/cli/renderer/runtime.ts";
+
+const landoService = (io: RendererIO) =>
+  Effect.runSync(Renderer.pipe(Effect.provide(landoRenderer.makeService(io))));
 
 const firstLine = (lines: ReadonlyArray<string>): string => {
   const value = lines[0];
@@ -64,12 +67,12 @@ describe("Renderer message contract: plain", () => {
 
 describe("Renderer message contract: lando (plain-aliased)", () => {
   test("reports the lando id", () => {
-    expect(makeLandoRenderer(createBufferedRendererIO()).id).toBe("lando");
+    expect(landoService(createBufferedRendererIO()).id).toBe("lando");
   });
 
   test("renders each severity to stdout via the plain formatter", () => {
     const io = createBufferedRendererIO();
-    const renderer = makeLandoRenderer(io);
+    const renderer = landoService(io);
     Effect.runSync(renderer.message.info("a"));
     Effect.runSync(renderer.message.warn("b"));
     Effect.runSync(renderer.message.error("c", "fix"));
@@ -207,7 +210,7 @@ describe("Renderer service tag exposure", () => {
     const landoId = await Effect.runPromise(
       Effect.gen(function* () {
         return (yield* Renderer).id;
-      }).pipe(Effect.provide(makeLandoRendererServiceLive(landoIo))),
+      }).pipe(Effect.provide(landoRenderer.makeService(landoIo))),
     );
     expect(verboseId).toBe("verbose");
     expect(landoId).toBe("lando");

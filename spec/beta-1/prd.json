@@ -1441,8 +1441,8 @@
         "Lint passes."
       ],
       "priority": 81,
-      "passes": false,
-      "notes": "Review reopened: the core TTY painter now has the documented spaceship-console visual language, plugin-authoring docs point at @lando/renderer-lando, and plain/non-TTY output remains undecorated, but @lando/renderer-lando still exports Layer.empty and renderer selection still uses core makeLandoRendererLive directly. Finish the plugin-owned renderer layer/resolution seam, then add the remaining explicit json/warning/success fixture coverage before marking this story complete."
+      "passes": true,
+      "notes": "Default lando renderer is now plugin-owned: @lando/renderer-lando exports a rendererFactories map (id lando) that core materializes via coreLandoRendererPrimitives + bundled-renderers.ts; renderer-boundary resolves lando from that registry while plain/json/verbose stay core fallbacks. Added type-only @lando/sdk/renderer contract subpath. Golden fixtures now cover success, warning, failure, setup plan, uninstall plan, and long-running at 80/100/120 columns, plus explicit undecorated json/plain coverage. Reconciled 13 pre-existing painter-rework test failures (first-paint, verbose, expand/collapse) to the new spaceship visual language while preserving the skeleton/no-rewind/order/dedup invariants."
     },
     {
       "id": "US-281",

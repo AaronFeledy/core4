@@ -156,8 +156,9 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     expect(logical).toContain('"_tag":"task.tree.start"');
     expect(logical).toContain('"_tag":"task.start"');
     expect(logical).toContain('"_tag":"task.detail"');
-    expect(logical).toContain("▼ Building (1/1 running)");
-    expect(logical).toContain("  · step a");
-    expect(logical).toContain("      hello");
+    expect(logical).toContain("LANDO OPS");
+    expect(logical).toContain("Building (1/1 running)");
+    expect(logical).toContain("· step a");
+    expect(logical).toContain("hello");
   });
 });

@@ -1,19 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { Renderer } from "@lando/sdk/services";
+
+import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import type { RendererIO } from "../../src/cli/renderer/io.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import {
-  makeJsonRenderer,
-  makeLandoRenderer,
-  makePlainRenderer,
-  makeVerboseRenderer,
-} from "../../src/cli/renderer/runtime.ts";
+import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "../../src/cli/renderer/runtime.ts";
+
+const makeLandoService = (io: RendererIO) =>
+  Effect.runSync(Renderer.pipe(Effect.provide(landoRenderer.makeService(io))));
 
 const makers = {
   plain: makePlainRenderer,
   json: makeJsonRenderer,
   verbose: makeVerboseRenderer,
-  lando: makeLandoRenderer,
+  lando: makeLandoService,
 } as const;
 
 describe("renderer raw output channel", () => {
