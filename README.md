@@ -1,5 +1,11 @@
 # Lando Core v4
 
+> **Experimental proof of concept.** This repository is a ground-up, from-scratch
+> reimagining of [Lando](https://lando.dev) Core for v4 — an experiment in
+> rebuilding the tool on Bun + Effect. It is not an official release and is not
+> production-ready. Treat it as a research prototype, not the Lando you install
+> today.
+
 Lando v4 is a local development environment and DevOps tool that defines your
 whole stack — services, proxy, certificates, file sync, and tooling — from a
 single `.lando.yml` Landofile, then realizes it on a container runtime you
@@ -12,14 +18,9 @@ contract is an Effect Schema. Plugins are the unit of extension — providers,
 services, the proxy, the certificate authority, file sync, loggers, renderers,
 and template engines all ship as separate packages.
 
-> **Status: Alpha.** The Alpha 3 "full breadth" milestone is complete — the
-> provider matrix, the canonical service catalog, file sync, the subsystems,
-> the global app, scratch apps, recipes, the full Landofile schema, the wired
-> renderer, the tooling hot path, plugin install + library API, executable
-> guides, and the 5-platform CI matrix are all shipped. Alpha builds publish to
-> npm on the `dev` tag as `4.0.0-alpha.N`. A handful of command surfaces remain
-> deferred and throw `NotImplementedError` until their story lands — see
-> [Known limitations](#known-limitations).
+> **Work in progress.** This codebase is actively changing and unstable. APIs,
+> command behavior, generated artifacts, and install flows may change without
+> migration support while the experiment is still being shaped.
 
 ## Layout
 
@@ -39,8 +40,8 @@ and template engines all ship as separate packages.
 │   ├── template-handlebars/  # Handlebars whole-file Landofile template engine
 │   ├── template-mustache/    # Mustache whole-file Landofile template engine
 │   ├── logger-pretty/        # pretty-printed Logger
-│   └── renderer-listr/       # Listr-style interactive Renderer
-├── recipes/           # Bundled recipes (e.g. lamp)
+│   └── renderer-lando/       # bundled default Lando Renderer plugin
+├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
 ├── scripts/           # Codegen, release orchestrator, guide/scenario + CI workflow tooling
 ├── docs/              # CI runbook, install guide, embedding guide, executable guides (MDX)
 ├── test/              # Cross-package and generated scenario tests
@@ -120,13 +121,10 @@ bun test
 | `bun run lint:guides` | Lint executable-guide MDX |
 | `bun run check:renderer-boundary` | Renderer-boundary gate — no direct `console.*` / `process.std*.write` under `core/src/**`, `plugins/**` |
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
-| `bun run release` | Release orchestrator (see [Known limitations](#known-limitations)) |
+| `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
 
 CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
-Testers can follow the [install and bug report guide](./docs/alpha-install-and-bug-reports.md)
-for supported install paths, checksum verification, diagnostics, and report
-artifacts. Embedding `@lando/core` as a library? See the
-[embedding guide](./docs/embedding.md).
+Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
 
 ## CLI surface
 
@@ -137,9 +135,12 @@ The CLI is grouped into app, multi-app, scratch, and meta namespaces. A sample:
   `includes:update`, `includes:verify`, `cache:refresh`
 - **Multi-app:** `lando init`, `apps:list`, `apps:poweroff`
 - **Scratch apps:** `lando scratch start`/`stop`/`list`/`info`/`logs`/`destroy`/`gc`
-- **Meta:** `lando doctor`, `meta:config`, `meta:bun`, plugin management
-  (`plugin:add`/`remove`/`trust`), and the global app lifecycle
-  (`meta:global:install`/`start`/`stop`/`status`/`config`/`destroy`/`uninstall`)
+- **Host integration:** `lando setup`, `lando uninstall`, `lando shellenv`,
+  `lando update`, `lando doctor`
+- **Meta:** `meta:config` (incl. `config telemetry`), `meta:bun`, `meta:x`,
+  plugin management (`plugin:add`/`remove`/`trust`) plus the authoring toolkit
+  (`plugin:new`/`test`/`build`/`link`/`unlink`/`publish`), and the global app
+  lifecycle (`meta:global:install`/`start`/`stop`/`status`/`config`/`destroy`/`uninstall`)
 
 All command output flows through the `Renderer` service; pick a mode with
 `--renderer=lando|json|plain|verbose` (default `lando`; precedence: flag >
@@ -164,25 +165,27 @@ live in [`AGENTS.md`](./AGENTS.md) and the per-package `AGENTS.md` files.
 
 ## Known limitations
 
-Tracked items remaining before GA:
+This repository is unstable by design. A few practical caveats:
 
+- **The default provider's runtime bundle is a placeholder.** `@lando/provider-lando`
+  resolves its Podman runtime bundle from a per-platform manifest whose committed
+  entries are placeholders (404 URLs + zeroed checksums). End-to-end
+  default-provider `lando setup` cannot complete against real bundles yet; build a local bundle with
+  `scripts/build-runtime-bundle.ts` and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at
+  it to exercise the path.
+- **Installer trust roots are placeholders.** The embedded GPG public key
+  and cosign identity/issuer used by the installers are verification-test
+  placeholders, not production release keys.
 - **`tsconfig.skipLibCheck: true`.** `@types/bun` and `@types/node` currently
   conflict on `stream/web` and a few other globals. Revisit once Bun's type
   packaging stabilizes.
-- **`scripts/release.ts` is a partial orchestrator.** Codegen, typecheck, lint,
-  test, library-bundle, compile, and **publish** stages run for real; the
-  schema-artifacts, strip, sign, notarize, installer-manifest, and SLSA
-  provenance stages are still stubs that exit successfully without real work.
-  Signing/notarization, SBOM, provenance, and the `curl | sh` installer manifest
-  land alongside the release-secrets infrastructure.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
-  version `0.0.0` in the working tree; the alpha publish pipeline
+  version `0.0.0` in the working tree; the publish pipeline
   (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
-  versions and `workspace:*` ranges and publishes the full workspace surface to
-  the npm `dev` tag as `4.0.0-alpha.N`.
-- **Some command surfaces are deferred.** A subset of commands still throw
-  `NotImplementedError`/`Effect.die` until their story lands; deferred ids are
-  tracked in `core/src/cli/deferred-commands.ts`.
+  versions and `workspace:*` ranges before publishing.
+- **Some command surfaces are not implemented.** A subset of commands still
+  throw `NotImplementedError`/`Effect.die`; deferred ids are tracked in
+  `core/src/cli/deferred-commands.ts`.
 
 ## License
 

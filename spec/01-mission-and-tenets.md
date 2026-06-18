@@ -87,7 +87,7 @@ Reference bundle (subject to change in §14):
 | CA / certs | `@lando/ca-mkcert` | Optional |
 | Service base | `@lando/service-lando` | Required for `type: lando` |
 | Logger | `@lando/logger-pretty` | Optional (Effect default `Logger.pretty` is built in) |
-| Renderer | `@lando/renderer-listr` | Optional |
+| Renderer | `@lando/renderer-lando` | Bundled default (plugin-contributed) |
 | Template engine (Handlebars) | `@lando/template-handlebars` | Optional (bundled by default; configured with `noEscape: true` and `strict: true`; §7.3.2) |
 | Template engine (Mustache) | `@lando/template-mustache` | Optional (bundled by default; logic-less; §7.3.2) |
 | File-sync engine (Mutagen) | `@lando/file-sync-mutagen` | Optional (bundled by default; the planner auto-selects it on providers reporting `bindMountPerformance: "slow"`; passive on Linux-native and OrbStack; §4.2, §10.6) |

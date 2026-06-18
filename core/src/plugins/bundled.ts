@@ -18,15 +18,16 @@ import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 import type { TemplateEngine } from "@lando/sdk/template";
 
-import * as plugin5 from "@lando/file-sync-mutagen";
+import * as plugin6 from "@lando/file-sync-mutagen";
 import * as plugin4 from "@lando/logger-pretty";
 import * as plugin1 from "@lando/provider-docker";
 import * as plugin0 from "@lando/provider-lando";
 import * as plugin2 from "@lando/provider-podman";
-import * as plugin6 from "@lando/proxy-traefik";
+import * as plugin7 from "@lando/proxy-traefik";
+import * as plugin5 from "@lando/renderer-lando";
 import * as plugin3 from "@lando/service-lando";
-import * as plugin7 from "@lando/template-handlebars";
-import * as plugin8 from "@lando/template-mustache";
+import * as plugin8 from "@lando/template-handlebars";
+import * as plugin9 from "@lando/template-mustache";
 interface BundledPluginModule {
   readonly [key: string]: unknown;
 }
@@ -126,35 +127,43 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...templateEnginesFrom({ ...plugin4 }),
   },
   {
-    name: "@lando/file-sync-mutagen",
-    layer: plugin5.engine,
+    name: "@lando/renderer-lando",
+    layer: plugin5.renderer,
     manifest: plugin5.manifest,
     ...serviceTypesFrom({ ...plugin5 }),
     ...globalServicesFrom({ ...plugin5 }),
     ...templateEnginesFrom({ ...plugin5 }),
   },
   {
-    name: "@lando/proxy-traefik",
-    layer: plugin6.proxy,
+    name: "@lando/file-sync-mutagen",
+    layer: plugin6.engine,
     manifest: plugin6.manifest,
     ...serviceTypesFrom({ ...plugin6 }),
     ...globalServicesFrom({ ...plugin6 }),
     ...templateEnginesFrom({ ...plugin6 }),
   },
   {
-    name: "@lando/template-handlebars",
-    layer: plugin7.templateEngine,
+    name: "@lando/proxy-traefik",
+    layer: plugin7.proxy,
     manifest: plugin7.manifest,
     ...serviceTypesFrom({ ...plugin7 }),
     ...globalServicesFrom({ ...plugin7 }),
     ...templateEnginesFrom({ ...plugin7 }),
   },
   {
-    name: "@lando/template-mustache",
+    name: "@lando/template-handlebars",
     layer: plugin8.templateEngine,
     manifest: plugin8.manifest,
     ...serviceTypesFrom({ ...plugin8 }),
     ...globalServicesFrom({ ...plugin8 }),
     ...templateEnginesFrom({ ...plugin8 }),
+  },
+  {
+    name: "@lando/template-mustache",
+    layer: plugin9.templateEngine,
+    manifest: plugin9.manifest,
+    ...serviceTypesFrom({ ...plugin9 }),
+    ...globalServicesFrom({ ...plugin9 }),
+    ...templateEnginesFrom({ ...plugin9 }),
   },
 ];

@@ -109,8 +109,8 @@
         "effect": "^3.21.2",
       },
     },
-    "plugins/renderer-listr": {
-      "name": "@lando/renderer-listr",
+    "plugins/renderer-lando": {
+      "name": "@lando/renderer-lando",
       "version": "0.0.0",
       "dependencies": {
         "@lando/sdk": "workspace:*",
@@ -308,7 +308,7 @@
 
     "@lando/proxy-traefik": ["@lando/proxy-traefik@workspace:plugins/proxy-traefik"],
 
-    "@lando/renderer-listr": ["@lando/renderer-listr@workspace:plugins/renderer-listr"],
+    "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
 
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
 

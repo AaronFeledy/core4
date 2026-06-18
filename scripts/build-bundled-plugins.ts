@@ -154,10 +154,11 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
 
 const layerExportFor = (
   entry: (typeof buildConfig.bundledPlugins)[number],
-): "provider" | "services" | "logger" | "engine" | "proxy" | "templateEngine" => {
+): "provider" | "services" | "logger" | "renderer" | "engine" | "proxy" | "templateEngine" => {
   if (entry.contributes?.providers !== undefined) return "provider";
   if (entry.contributes?.serviceTypes !== undefined) return "services";
   if (entry.contributes?.loggers !== undefined) return "logger";
+  if (entry.contributes?.renderers !== undefined) return "renderer";
   if (entry.contributes?.fileSyncEngines !== undefined) return "engine";
   if (entry.contributes?.proxies !== undefined) return "proxy";
   if (entry.contributes?.templateEngines !== undefined) return "templateEngine";

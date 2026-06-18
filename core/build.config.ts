@@ -22,6 +22,7 @@ export interface BundledPluginEntry {
     readonly providers?: ReadonlyArray<string>;
     readonly serviceTypes?: ReadonlyArray<string>;
     readonly loggers?: ReadonlyArray<string>;
+    readonly renderers?: ReadonlyArray<string>;
     readonly fileSyncEngines?: ReadonlyArray<string>;
     readonly proxies?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
@@ -64,6 +65,7 @@ export const buildConfig: BuildConfig = {
       contributes: { serviceTypes: ["node:lts", "postgres"], globalServices: ["mailpit"] },
     },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
+    { name: "@lando/renderer-lando", path: "plugins/renderer-lando", contributes: { renderers: ["lando"] } },
     {
       name: "@lando/file-sync-mutagen",
       path: "plugins/file-sync-mutagen",

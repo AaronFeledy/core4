@@ -10,8 +10,8 @@
  *   - `table.row`, `table.end`
  *   - `prompt.start`, `prompt.complete`
  *
- * Default renderer is the Lando renderer (interactive, colorful,
- * listr-style). Plugins may ship `json`, `plain`, `verbose`.
+ * Default renderer is the bundled `@lando/renderer-lando` plugin.
+ * Core keeps stable `json`, `plain`, and `verbose` fallback modes.
  *
  * Renderer selection: `--renderer=` → `LANDO_RENDERER` → global `renderer:`
  * → TTY/CI auto-detection (`json` for non-TTY/CI, default otherwise).

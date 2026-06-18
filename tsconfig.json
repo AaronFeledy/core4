@@ -33,7 +33,7 @@
       "path": "./plugins/logger-pretty"
     },
     {
-      "path": "./plugins/renderer-listr"
+      "path": "./plugins/renderer-lando"
     },
     {
       "path": "./plugins/file-sync-mutagen"

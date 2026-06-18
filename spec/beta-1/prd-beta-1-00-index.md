@@ -8,9 +8,9 @@ Phase 4 of [`spec/ROADMAP.md`](../ROADMAP.md) turns the breadth-complete Alpha 3
 
 > The governance contracts go live, the open decisions in §14.2 are closed, and the **remaining `lando setup` / `lando uninstall` functionality** is completed — this is the final phase that adds feature surface.
 
-Alpha 3 closed the breadth surface (every canonical service type, both providers on every platform, the global app, scratch apps, full recipes, full Landofile schema, renderer wiring, tooling hot path, plugin install, 5-platform CI). **Beta 1 lands the last feature surface**: the full `lando setup` / `lando uninstall` lifecycle, the §14.2 open-decision closures (Bun floor, OCLIF lock, auto-setup level, Compose subset documentation, `sshAgent.sidecar` opt-out, plugin trust model), deprecation governance, schema publication, the plugin authoring toolkit, telemetry, the full executable-guides pipeline, and the §17 release machinery (signing, supply chain, self-update, installers). At the end of Beta 1 the first signed `4.0.0-beta.N` ships from CI on the `next` channel and **feature freeze is entered**.
+Alpha 3 closed the breadth surface (every canonical service type, both providers on every platform, the global app, scratch apps, full recipes, full Landofile schema, renderer wiring, tooling hot path, plugin install, 5-platform CI). **Beta 1 lands the last feature surface**: the full `lando setup` / `lando uninstall` lifecycle, the §14.2 open-decision closures (Bun floor, OCLIF lock, auto-setup level, Compose subset documentation, `sshAgent.sidecar` opt-out, plugin trust model), deprecation governance, schema publication, the plugin authoring toolkit, telemetry, the full executable-guides pipeline, the §17 release machinery (signing, supply chain, self-update, installers), and a bite-size terminal UI polish pass that moves the shipped renderer behind the bundled `@lando/renderer-lando` plugin and brings it up to the spec's interactive, colorful intent without adding new command semantics. At the end of Beta 1 the first signed `4.0.0-beta.N` ships from CI on the `next` channel and **feature freeze is entered**.
 
-This PRD set picks up at **US-200** (Alpha 3 ended at US-199) and runs through **US-279**.
+This PRD set picks up at **US-200** (Alpha 3 ended at US-199) and runs through **US-284**.
 
 ## How to use this set of PRDs
 
@@ -51,6 +51,7 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
 | 09 | [Supply chain & self-update](./prd-beta-1-09-supply-chain-and-self-update.md)           | CycloneDX SBOM, SLSA v1.0 provenance, cosign keyless, `cosign verify-blob`, signed update manifest, atomic re-exec, rollback     | US-258..US-265  | PRD-08                  |
 | 10 | [Installers & distribution channels](./prd-beta-1-10-installers-and-channels.md)        | GitHub Releases artifact set, `get.lando.dev/install.{sh,ps1}`, vendored trust roots, `LANDO_INSTALL_DIR`, signed installers    | US-266..US-271  | PRD-09                  |
 | 11 | [Library API stability & §17.9 acceptance](./prd-beta-1-11-library-and-acceptance.md)   | `@lando/core/testing` stable on `next`, full §16.2 contract suite, plugin SDK `^4.0.0`, §17.9 27-criteria acceptance on linux-x64 | US-272..US-279  | PRD-01 through PRD-10    |
+| 12 | [Terminal UI polish](./prd-beta-1-12-terminal-ui-polish.md)                              | bundled `@lando/renderer-lando` seam, default renderer visual language, OpenTUI-backed prompts, task-tree polish, visual QA       | US-280..US-284  | PRD-01, PRD-07, PRD-11  |
 
 ## Dependency graph
 
@@ -132,10 +133,11 @@ The following items were explicitly deferred to Beta 1 by prior PRDs, the ROADMA
 | Installers (§17.7) — GitHub Releases + curl-pipe installers                                     | Alpha 3 (release-eng) | PRD-10 US-266..US-271     |
 | `@lando/core/testing` stable on `next` + full §16.2 library contract suite                      | Alpha 3 PRD-11        | PRD-11 US-272..US-275     |
 | §17.9 binary acceptance machinery green on the reference platform (linux-x64)                   | ROADMAP Beta 1, §17.9 | PRD-11 US-276..US-279     |
+| Bundled default renderer plugin and terminal UI polish without changing CLI semantics            | §8.9 renderer contract | PRD-12 US-280..US-284     |
 
 ## Exit criteria for Beta 1
 
-Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
+Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface and the terminal UI polish pass, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
 
 ## Cross-cutting conventions
 
