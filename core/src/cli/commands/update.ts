@@ -635,7 +635,7 @@ const enforceManifestFreshness = (
 
     yield* writeUpdateManifestState(statePath, {
       ...state,
-      [manifest.channel]: { latest: manifest.latest },
+      [manifest.channel]: { ...cached, latest: manifest.latest },
     });
   });
 
@@ -1091,9 +1091,11 @@ const defaultUpdate = (
       );
     }
     if (!options.dryRun) {
+      const state = yield* readUpdateManifestState(options.updateStatePath);
+      const cached = state[manifest.channel];
       yield* writeUpdateManifestState(options.updateStatePath, {
-        ...(yield* readUpdateManifestState(options.updateStatePath)),
-        [manifest.channel]: { latest: manifest.latest },
+        ...state,
+        [manifest.channel]: { ...cached, latest: manifest.latest },
       });
     }
     return {

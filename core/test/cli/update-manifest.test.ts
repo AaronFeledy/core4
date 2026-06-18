@@ -461,6 +461,50 @@ describe("update signed manifest", () => {
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
   });
 
+  test("normal update verification preserves the previous failure while refreshing replay state", async () => {
+    const updateStatePath = join(updateStateRoot, "normal-state-with-failure.json");
+    await writeFile(
+      updateStatePath,
+      `${JSON.stringify(
+        {
+          stable: {
+            latest: "4.3.0",
+            lastFailure: {
+              category: "launch_probe_failure",
+              targetVersion: "4.3.0",
+              platform: "linux-x64",
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await Effect.runPromise(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        dryRun: false,
+        fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+        updateStatePath,
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(result.updatedCore).toBe(true);
+    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
+      stable: {
+        latest: "4.4.0",
+        lastFailure: {
+          category: "launch_probe_failure",
+          targetVersion: "4.3.0",
+          platform: "linux-x64",
+        },
+      },
+    });
+  });
+
   test("POSIX self-update replaces the binary atomically and re-execs with preserved argv and env", async () => {
     const root = await makeTempRoot("lando-self-update-");
     const executablePath = join(root, "lando");
