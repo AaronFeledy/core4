@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 
 import { $ } from "bun";
@@ -30,6 +31,7 @@ export interface ReleaseSpawnCommand extends ReleaseCommand {
 
 export interface ReleaseShellCommand extends ReleaseCommand {
   readonly script: string;
+  readonly prepareNpmAlphaPackages?: boolean;
 }
 
 export interface ReleaseRunner {
@@ -280,6 +282,9 @@ const provenanceCredentials: CredentialRequirement = {
 };
 const libraryPublishCredentials: CredentialRequirement = {
   anyOf: [["LANDO_RELEASE_NPM_TOKEN", "NPM_TOKEN"]],
+};
+const githubReleaseCredentials: CredentialRequirement = {
+  anyOf: [["GH_TOKEN", "GITHUB_TOKEN"]],
 };
 
 const credentialSkipRequirements: Record<
@@ -674,6 +679,195 @@ const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
+type ReleaseManifestArtifactKind = "binary" | "library";
+
+interface ReleaseManifestFileEntry {
+  readonly path: string;
+  readonly sha256: string;
+}
+
+interface ReleaseManifestArtifactEntry {
+  readonly kind: ReleaseManifestArtifactKind;
+  readonly path: string;
+  readonly sha256: string;
+  readonly sbom?: ReleaseManifestFileEntry;
+  readonly provenance?: ReleaseManifestFileEntry;
+}
+
+interface ReleaseManifest {
+  readonly schemaVersion: 1;
+  readonly artifacts: Record<string, ReleaseManifestArtifactEntry>;
+}
+
+const assertObjectRecord = (value: unknown, label: string): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const releaseManifestFileEntry = (value: unknown, label: string): ReleaseManifestFileEntry | undefined => {
+  if (value === undefined) return undefined;
+  const entry = assertObjectRecord(value, label);
+  const path = entry.path;
+  const sha256 = entry.sha256;
+  if (typeof path !== "string" || path === "" || typeof sha256 !== "string" || sha256 === "") {
+    throw new Error(`${label} is not a release manifest file entry`);
+  }
+  return { path, sha256 };
+};
+
+const readReleaseManifest = async (
+  manifestPath = "dist/release-artifacts.json",
+): Promise<ReleaseManifest> => {
+  const root = assertObjectRecord(JSON.parse(await readFile(manifestPath, "utf8")), "release manifest");
+  const artifactsValue = root.artifacts;
+  const artifactRecords = artifactsValue === undefined ? {} : assertObjectRecord(artifactsValue, "artifacts");
+  const artifacts: Record<string, ReleaseManifestArtifactEntry> = {};
+
+  for (const [name, value] of Object.entries(artifactRecords)) {
+    const entry = assertObjectRecord(value, `artifact ${name}`);
+    const kind = entry.kind;
+    const path = entry.path;
+    const sha256 = entry.sha256;
+    if ((kind !== "binary" && kind !== "library") || typeof path !== "string" || typeof sha256 !== "string") {
+      throw new Error(`artifact ${name} is not a release manifest artifact entry`);
+    }
+    const sbom = releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`);
+    const provenance = releaseManifestFileEntry(entry.provenance, `artifact ${name} provenance`);
+    artifacts[name] = {
+      kind,
+      path,
+      sha256,
+      ...(sbom === undefined ? {} : { sbom }),
+      ...(provenance === undefined ? {} : { provenance }),
+    };
+  }
+
+  return { schemaVersion: 1, artifacts };
+};
+
+const releaseManifestEntryForPath = (
+  manifest: ReleaseManifest,
+  path: string,
+): readonly [string, ReleaseManifestArtifactEntry] | undefined => {
+  const normalizedPath = normalizeReleaseArtifactPath(path);
+  return Object.entries(manifest.artifacts).find(([, entry]) => entry.path === normalizedPath);
+};
+
+const requireReleaseManifestArtifact = (
+  manifest: ReleaseManifest,
+  path: string,
+  kind: ReleaseManifestArtifactKind,
+): readonly [string, ReleaseManifestArtifactEntry] => {
+  const normalizedPath = normalizeReleaseArtifactPath(path);
+  const match = releaseManifestEntryForPath(manifest, path);
+  if (match === undefined)
+    throw new Error(`Release manifest missing required ${kind} artifact: ${normalizedPath}`);
+  const [name, entry] = match;
+  if (entry.kind !== kind) {
+    throw new Error(`Release manifest artifact ${name} has kind ${entry.kind}, expected ${kind}`);
+  }
+  return match;
+};
+
+const requireReleaseManifestLinkedFile = (
+  name: string,
+  entry: ReleaseManifestArtifactEntry,
+  field: "sbom" | "provenance",
+): ReleaseManifestFileEntry => {
+  const linked = entry[field];
+  if (linked !== undefined) return linked;
+  const label = field === "sbom" ? "SBOM" : "SLSA provenance attestation";
+  throw new Error(`Release manifest artifact ${name} lacks a matching ${label}`);
+};
+
+const uniqueAssetPaths = (assets: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const seen = new Set<string>();
+  const unique: Array<string> = [];
+  for (const asset of assets) {
+    const normalized = normalizeReleaseArtifactPath(asset);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+};
+
+const releaseGitHubAssetPaths = async (context: ReleaseStageContext): Promise<ReadonlyArray<string>> => {
+  const version = releaseVersion(context.env);
+  const manifest = await readReleaseManifest();
+  const assets: Array<string> = [];
+
+  if (context.target !== "library") {
+    for (const platform of releasePlatformsForContext(context)) {
+      const [name, entry] = requireReleaseManifestArtifact(manifest, releaseBinaryPath(platform), "binary");
+      const sbom = requireReleaseManifestLinkedFile(name, entry, "sbom");
+      const provenance = requireReleaseManifestLinkedFile(name, entry, "provenance");
+      assets.push(entry.path, `${entry.path}.sig`, `${entry.path}.crt`, sbom.path, provenance.path);
+      assets.push(`${provenance.path}.sig`, `${provenance.path}.crt`);
+    }
+  }
+
+  if (context.target !== "binary") {
+    const [name, entry] = requireReleaseManifestArtifact(
+      manifest,
+      releaseLibraryArchivePath(version),
+      "library",
+    );
+    const sbom = requireReleaseManifestLinkedFile(name, entry, "sbom");
+    const provenance = requireReleaseManifestLinkedFile(name, entry, "provenance");
+    assets.push(entry.path, sbom.path, provenance.path, `${provenance.path}.sig`, `${provenance.path}.crt`);
+  }
+
+  assets.push(
+    "dist/SHA256SUMS",
+    "dist/SHA256SUMS.asc",
+    "dist/SHA256SUMS.sig",
+    "dist/SHA256SUMS.crt",
+    "dist/SHA512SUMS",
+    "dist/SHA512SUMS.asc",
+    "dist/release-artifacts.json",
+  );
+  if (context.target !== "library") {
+    assets.push(
+      "dist/update-manifest.json",
+      "dist/update-manifest.json.sig",
+      "dist/update-manifest.json.crt",
+      "dist/release-notes.md",
+    );
+  }
+
+  return uniqueAssetPaths(assets);
+};
+
+const releaseTag = (env: ReleaseEnvironment): string =>
+  envValue(env, "LANDO_RELEASE_TAG") ?? `v${releaseVersion(env)}`;
+
+const releaseTitle = (env: ReleaseEnvironment): string =>
+  envValue(env, "LANDO_RELEASE_TITLE") ?? `Lando ${releaseVersion(env)}`;
+
+const githubReleaseScript = (env: ReleaseEnvironment, assets: ReadonlyArray<string>): string => {
+  const version = releaseVersion(env);
+  const targetSha = envValue(env, "GITHUB_SHA");
+  const createArgs = [
+    "gh",
+    "release",
+    "create",
+    releaseTag(env),
+    ...assets,
+    "--title",
+    releaseTitle(env),
+    ...(version.includes("-") ? ["--prerelease"] : []),
+    ...(assets.includes("dist/release-notes.md") ? ["--notes-file", "dist/release-notes.md"] : []),
+    ...(targetSha === undefined ? [] : ["--target", targetSha]),
+  ];
+  return [
+    ...assets.map((asset) => `test -f ${shellQuote(asset)}`),
+    createArgs.map(shellQuote).join(" "),
+  ].join("\n");
+};
+
 const releaseSbomArtifacts = (context: ReleaseStageContext, version: string): ReadonlyArray<string> => {
   const artifacts: Array<string> = [];
   if (context.target !== "library") {
@@ -920,15 +1114,30 @@ const shellStage =
     }
 
     if (stage.id === "13-publish") {
-      if (!credentialGate(stage.id, "publish credentials", libraryPublishCredentials, context)) return;
+      if (
+        target !== "binary" &&
+        !credentialGate(stage.id, "publish credentials", libraryPublishCredentials, context)
+      ) {
+        return;
+      }
+      if (!credentialGate(stage.id, "GitHub Releases credentials", githubReleaseCredentials, context)) return;
       if (context.localRehearsal) {
         context.logger(
           "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
         );
         return;
       }
+
+      await runner.shell({
+        stageId: stage.id,
+        artifactFamily,
+        summary: "publish GitHub Releases assets",
+        remediation: stage.remediation,
+        script: githubReleaseScript(context.env, await releaseGitHubAssetPaths(context)),
+      });
+
       if (target === "binary") {
-        context.logger("[release] skip 13-publish (binary release target)");
+        context.logger("[release] skip 13-publish npm packages (binary release target)");
         return;
       }
     }
@@ -939,6 +1148,7 @@ const shellStage =
       summary: stage.commandSummary,
       remediation: stage.remediation,
       script,
+      prepareNpmAlphaPackages: stage.id === "13-publish",
     });
   };
 
@@ -1284,8 +1494,8 @@ const defaultRunner: ReleaseRunner = {
     const exitCode = await proc.exited;
     if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${redactReleaseCommand(cmd)}`);
   },
-  shell: async ({ stageId, script }) => {
-    if (stageId === "13-publish") await prepareNpmAlphaPackages();
+  shell: async ({ prepareNpmAlphaPackages: shouldPrepareNpmAlphaPackages = false, script }) => {
+    if (shouldPrepareNpmAlphaPackages) await prepareNpmAlphaPackages();
     await $`sh -euc ${script}`;
   },
 };

@@ -749,9 +749,7 @@ describe("release orchestrator", () => {
     });
 
     test("checksum manifest generation fails when a required Linux binary is missing", async () => {
-      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-      expect(manifestStage).toBeDefined();
-      if (manifestStage === undefined) throw new Error("missing manifest stage");
+      const manifestStage = releaseStage("11-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await mkdir(join(root, "dist"), { recursive: true });
@@ -777,9 +775,7 @@ describe("release orchestrator", () => {
     });
 
     test("signed update manifest refuses placeholder binary entries", async () => {
-      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-      expect(manifestStage).toBeDefined();
-      if (manifestStage === undefined) throw new Error("missing manifest stage");
+      const manifestStage = releaseStage("11-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
@@ -803,14 +799,14 @@ describe("release orchestrator", () => {
       });
     });
 
-    test("cosign-signs and verifies SHA256SUMS in the provenance stage before publish", async () => {
+    test("cosign-signs and verifies SHA256SUMS in the provenance stage", async () => {
       const events: Array<string> = [];
       const provenanceCommands: Array<ReadonlyArray<string>> = [];
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
         target: "all",
-        throughStage: "13-publish",
+        throughStage: "12-provenance-sbom",
         env: {
           ...macosSigningEnv,
           ...windowsSigningEnv,
@@ -859,9 +855,7 @@ describe("release orchestrator", () => {
       const verifyIndex = events.findIndex((event) =>
         event.includes("12-provenance-sbom:cosign verify-blob"),
       );
-      const publishIndex = events.findIndex((event) => event.startsWith("13-publish:before_latest"));
       expect(verifyIndex).toBeGreaterThanOrEqual(0);
-      expect(publishIndex).toBeGreaterThan(verifyIndex);
     });
 
     test("local rehearsal warning-skips incomplete provenance credentials", async () => {
@@ -1854,7 +1848,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       target: "library",
       throughStage: "13-publish",
-      env: { LOCAL_REHEARSAL: "1", ...manifestSigningEnv, ...libraryPublishEnv },
+      env: { LOCAL_REHEARSAL: "1", GH_TOKEN: "github-token", ...manifestSigningEnv, ...libraryPublishEnv },
       runner: {
         spawn: async () => {},
         shell: async ({ stageId, script }) => {
@@ -1873,11 +1867,8 @@ describe("release orchestrator", () => {
 
   test("credential gates accept manifest alternatives but keep Windows signing scoped", async () => {
     const shellStages: Array<{ stageId: string; script: string }> = [];
-    const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-    const signingStage = RELEASE_STAGES.find((stage) => stage.id === "9-sign");
-    expect(manifestStage).toBeDefined();
-    expect(signingStage).toBeDefined();
-    if (manifestStage === undefined || signingStage === undefined) throw new Error("missing release stage");
+    const manifestStage = releaseStage("11-manifest");
+    const signingStage = releaseStage("9-sign");
 
     await expect(
       manifestStage.run({
@@ -1931,45 +1922,267 @@ describe("release orchestrator", () => {
     ).rejects.toThrow("Missing Windows signing credentials");
   });
 
-  test("publish runs for the all target but skips binary-only releases", async () => {
-    const publishStage = RELEASE_STAGES.find((stage) => stage.id === "13-publish");
-    const shellStages: Array<{ stageId: string; script: string }> = [];
+  test("binary GitHub Release publishing skips npm package publication", async () => {
+    const publishStage = releaseStage("13-publish");
+    const shellStages: Array<{
+      readonly stageId: string;
+      readonly script: string;
+      readonly prepareNpmAlphaPackages?: boolean;
+    }> = [];
     const logs: Array<string> = [];
-    expect(publishStage).toBeDefined();
-    if (publishStage === undefined) throw new Error("missing publish stage");
 
-    await publishStage.run({
-      target: "all",
-      env: libraryPublishEnv,
-      localRehearsal: false,
-      runner: {
-        spawn: async () => {},
-        shell: async ({ stageId, script }) => {
-          shellStages.push({ stageId, script });
-        },
-      },
-      logger: (line) => logs.push(line),
-      now: () => 0,
-    });
+    await withReleaseFixtureRoot(async (root) => {
+      const artifactName = "lando-linux-x64";
+      const sbomPath = `dist/${artifactName}-4.0.0-beta.1-sbom.cdx.json`;
+      const provenancePath = `dist/${artifactName}-4.0.0-beta.1-provenance.slsa.json`;
+      for (const path of [
+        `dist/${artifactName}`,
+        `dist/${artifactName}.sig`,
+        `dist/${artifactName}.crt`,
+        sbomPath,
+        provenancePath,
+        `${provenancePath}.sig`,
+        `${provenancePath}.crt`,
+        "dist/SHA256SUMS",
+        "dist/SHA256SUMS.asc",
+        "dist/SHA256SUMS.sig",
+        "dist/SHA256SUMS.crt",
+        "dist/SHA512SUMS",
+        "dist/SHA512SUMS.asc",
+        "dist/update-manifest.json",
+        "dist/update-manifest.json.sig",
+        "dist/update-manifest.json.crt",
+        "dist/release-notes.md",
+      ]) {
+        await writeFixtureFile(root, path, path);
+      }
+      await writeFixtureFile(
+        root,
+        "dist/release-artifacts.json",
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            artifacts: {
+              [artifactName]: {
+                kind: "binary",
+                path: `dist/${artifactName}`,
+                sha256: sha256Text(`dist/${artifactName}`),
+                sbom: { path: sbomPath, sha256: sha256Text(sbomPath) },
+                provenance: { path: provenancePath, sha256: sha256Text(provenancePath) },
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
 
-    await publishStage.run({
-      target: "binary",
-      env: libraryPublishEnv,
-      localRehearsal: false,
-      runner: {
-        spawn: async () => {},
-        shell: async ({ stageId, script }) => {
-          shellStages.push({ stageId, script });
-        },
-      },
-      logger: (line) => logs.push(line),
-      now: () => 0,
+      await withFixtureCwd(root, async () => {
+        await publishStage.run({
+          target: "binary",
+          env: {
+            GH_TOKEN: "github-token",
+            LANDO_RELEASE_PLATFORM: "linux-x64",
+            LANDO_RELEASE_VERSION: "4.0.0-beta.1",
+          },
+          localRehearsal: false,
+          runner: {
+            spawn: async () => {},
+            shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
+              shellStages.push({ stageId, script, prepareNpmAlphaPackages });
+            },
+          },
+          logger: (line) => logs.push(line),
+          now: () => 0,
+        });
+      });
     });
 
     expect(
-      shellStages.filter(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
-    ).toHaveLength(1);
-    expect(logs).toContain("[release] skip 13-publish (binary release target)");
+      shellStages.some(
+        ({ stageId, script }) => stageId === "13-publish" && script.includes("'gh' 'release' 'create'"),
+      ),
+    ).toBe(true);
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+    ).toBe(false);
+    expect(shellStages.some(({ prepareNpmAlphaPackages }) => prepareNpmAlphaPackages === true)).toBe(false);
+    expect(logs).toContain("[release] skip 13-publish npm packages (binary release target)");
+  });
+
+  test("publishes the complete GitHub Releases asset set from the release manifest", async () => {
+    const publishStage = releaseStage("13-publish");
+    const shellStages: Array<{
+      readonly stageId: string;
+      readonly script: string;
+      readonly prepareNpmAlphaPackages?: boolean;
+    }> = [];
+
+    await withReleaseFixtureRoot(async (root) => {
+      const artifactEntries: Record<string, unknown> = {};
+      const writeArtifactEntry = async (name: string, kind: "binary" | "library"): Promise<void> => {
+        const path = `dist/${name}`;
+        const stem = name.endsWith(".exe")
+          ? name.slice(0, -".exe".length)
+          : name.endsWith(".tgz")
+            ? name.slice(0, -".tgz".length)
+            : name;
+        const versionedStem = stem.endsWith("-4.0.0-beta.1") ? stem : `${stem}-4.0.0-beta.1`;
+        const sbomPath = `dist/${versionedStem}-sbom.cdx.json`;
+        const provenancePath = `dist/${versionedStem}-provenance.slsa.json`;
+        await writeFixtureFile(root, path, `${name} artifact`);
+        await writeFixtureFile(root, sbomPath, `${name} sbom`);
+        await writeFixtureFile(root, provenancePath, `${name} provenance`);
+        await writeFixtureFile(root, `${provenancePath}.sig`, `${name} provenance signature`);
+        await writeFixtureFile(root, `${provenancePath}.crt`, `${name} provenance certificate`);
+        if (kind === "binary") {
+          await writeFixtureFile(root, `${path}.sig`, `${name} signature`);
+          await writeFixtureFile(root, `${path}.crt`, `${name} certificate`);
+        }
+        artifactEntries[name] = {
+          kind,
+          path,
+          sha256: sha256Text(`${name} artifact`),
+          sbom: { path: sbomPath, sha256: sha256Text(`${name} sbom`) },
+          provenance: { path: provenancePath, sha256: sha256Text(`${name} provenance`) },
+        };
+      };
+
+      for (const platform of CI_PLATFORMS) {
+        await writeArtifactEntry(
+          `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`,
+          "binary",
+        );
+      }
+      await writeArtifactEntry("lando-library-4.0.0-beta.1.tgz", "library");
+      for (const path of [
+        "dist/SHA256SUMS",
+        "dist/SHA256SUMS.asc",
+        "dist/SHA256SUMS.sig",
+        "dist/SHA256SUMS.crt",
+        "dist/SHA512SUMS",
+        "dist/SHA512SUMS.asc",
+        "dist/update-manifest.json",
+        "dist/update-manifest.json.sig",
+        "dist/update-manifest.json.crt",
+        "dist/release-notes.md",
+      ]) {
+        await writeFixtureFile(root, path, path);
+      }
+      await writeFixtureFile(
+        root,
+        "dist/release-artifacts.json",
+        `${JSON.stringify({ schemaVersion: 1, artifacts: artifactEntries }, null, 2)}\n`,
+      );
+
+      await withFixtureCwd(root, async () => {
+        await publishStage.run({
+          target: "all",
+          env: {
+            ...libraryPublishEnv,
+            GH_TOKEN: "github-token",
+            GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+            LANDO_RELEASE_VERSION: "4.0.0-beta.1",
+          },
+          localRehearsal: false,
+          runner: {
+            spawn: async () => {},
+            shell: async ({ stageId, script, prepareNpmAlphaPackages }) => {
+              shellStages.push({ stageId, script, prepareNpmAlphaPackages });
+            },
+          },
+          logger: () => {},
+          now: () => 0,
+        });
+      });
+    });
+
+    const githubScript = shellStages.find(
+      ({ stageId, script }) => stageId === "13-publish" && script.includes("'gh' 'release' 'create'"),
+    )?.script;
+    expect(githubScript).toContain("'gh' 'release' 'create' 'v4.0.0-beta.1'");
+    expect(githubScript).toContain("'--target' '0123456789abcdef0123456789abcdef01234567'");
+    expect(githubScript).toContain("'--notes-file' 'dist/release-notes.md'");
+    for (const platform of CI_PLATFORMS) {
+      const binaryName = `lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
+      const binaryStem = binaryName.endsWith(".exe") ? binaryName.slice(0, -".exe".length) : binaryName;
+      expect(githubScript).toContain(`'dist/${binaryName}'`);
+      expect(githubScript).toContain(`'dist/${binaryName}.sig'`);
+      expect(githubScript).toContain(`'dist/${binaryName}.crt'`);
+      expect(githubScript).toContain(`'dist/${binaryStem}-4.0.0-beta.1-sbom.cdx.json'`);
+      expect(githubScript).toContain(`'dist/${binaryStem}-4.0.0-beta.1-provenance.slsa.json'`);
+      expect(githubScript).toContain(`'dist/${binaryStem}-4.0.0-beta.1-provenance.slsa.json.sig'`);
+      expect(githubScript).toContain(`'dist/${binaryStem}-4.0.0-beta.1-provenance.slsa.json.crt'`);
+    }
+    expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1.tgz'");
+    expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-sbom.cdx.json'");
+    expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-provenance.slsa.json'");
+    expect(githubScript).toContain("'dist/SHA256SUMS'");
+    expect(githubScript).toContain("'dist/SHA256SUMS.asc'");
+    expect(githubScript).toContain("'dist/SHA256SUMS.sig'");
+    expect(githubScript).toContain("'dist/SHA256SUMS.crt'");
+    expect(githubScript).toContain("'dist/SHA512SUMS'");
+    expect(githubScript).toContain("'dist/SHA512SUMS.asc'");
+    expect(githubScript).toContain("'dist/update-manifest.json'");
+    expect(githubScript).toContain("'dist/update-manifest.json.sig'");
+    expect(githubScript).toContain("'dist/update-manifest.json.crt'");
+    expect(githubScript).toContain("'dist/release-artifacts.json'");
+    expect(githubScript).toContain("'dist/release-notes.md'");
+    expect(
+      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+    ).toBe(true);
+    expect(
+      shellStages.some(
+        ({ script, prepareNpmAlphaPackages }) =>
+          script.includes("npm publish") && prepareNpmAlphaPackages === true,
+      ),
+    ).toBe(true);
+  });
+
+  test("GitHub Release publication fails when a required manifest family is missing", async () => {
+    const publishStage = releaseStage("13-publish");
+
+    await withReleaseFixtureRoot(async (root) => {
+      await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
+      await writeFixtureFile(
+        root,
+        "dist/release-artifacts.json",
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            artifacts: {
+              "lando-linux-x64": {
+                kind: "binary",
+                path: "dist/lando-linux-x64",
+                sha256: sha256Text("linux-x64 artifact"),
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      await withFixtureCwd(root, async () => {
+        await expect(
+          publishStage.run({
+            target: "binary",
+            env: {
+              GH_TOKEN: "github-token",
+              LANDO_RELEASE_PLATFORM: "linux-x64",
+              LANDO_RELEASE_VERSION: "4.0.0-beta.1",
+            },
+            localRehearsal: false,
+            runner: {
+              spawn: async () => {},
+              shell: async () => {},
+            },
+            logger: () => {},
+            now: () => 0,
+          }),
+        ).rejects.toThrow("Release manifest artifact lando-linux-x64 lacks a matching SBOM");
+      });
+    });
   });
 
   test("local rehearsal compiles the Windows release artifact before signing", async () => {
