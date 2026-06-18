@@ -8,8 +8,10 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { buildBugReport } from "../../src/cli/bug-report.ts";
 import {
   type UpdateChecksumSignatureVerifier,
+  UpdateLaunchProbeError,
   type UpdateManifestFetcher,
   type UpdateManifestSignatureVerifier,
   UpdateMinimumVersionError,
@@ -151,6 +153,13 @@ const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<stri
   return typeof value === "object" && value !== null && "_tag" in value
     ? String((value as { readonly _tag: unknown })._tag)
     : undefined;
+};
+
+const failureValue = async (effect: Effect.Effect<unknown, unknown>): Promise<unknown> => {
+  const exit = await Effect.runPromiseExit(effect);
+  if (!Exit.isFailure(exit)) return undefined;
+  const failure = Cause.failureOption(exit.cause);
+  return failure._tag === "Some" ? failure.value : undefined;
 };
 
 describe("update signed manifest", () => {
@@ -452,6 +461,50 @@ describe("update signed manifest", () => {
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
   });
 
+  test("normal update verification preserves the previous failure while refreshing replay state", async () => {
+    const updateStatePath = join(updateStateRoot, "normal-state-with-failure.json");
+    await writeFile(
+      updateStatePath,
+      `${JSON.stringify(
+        {
+          stable: {
+            latest: "4.3.0",
+            lastFailure: {
+              category: "launch_probe_failure",
+              targetVersion: "4.3.0",
+              platform: "linux-x64",
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await Effect.runPromise(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        dryRun: false,
+        fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+        updateStatePath,
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(result.updatedCore).toBe(true);
+    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
+      stable: {
+        latest: "4.4.0",
+        lastFailure: {
+          category: "launch_probe_failure",
+          targetVersion: "4.3.0",
+          platform: "linux-x64",
+        },
+      },
+    });
+  });
+
   test("POSIX self-update replaces the binary atomically and re-execs with preserved argv and env", async () => {
     const root = await makeTempRoot("lando-self-update-");
     const executablePath = join(root, "lando");
@@ -517,9 +570,10 @@ describe("update signed manifest", () => {
     expect(result).toEqual({ updatedCore: true, updatedPlugins: [] });
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
-    expect(probeCommands).toHaveLength(1);
+    expect(probeCommands).toHaveLength(2);
     expect(dirname(dirname(probeCommands[0] ?? ""))).toBe(root);
     expect(basename(dirname(probeCommands[0] ?? ""))).toStartWith(".lando-update-");
+    expect(probeCommands[1]).toBe(executablePath);
     expect(execs).toEqual([
       {
         path: executablePath,
@@ -781,6 +835,173 @@ describe("update signed manifest", () => {
     expect(tag).toBe("UpdatePermissionError");
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
     await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+  });
+
+  test("POSIX self-update restores the backup when the replaced binary fails its launch probe", async () => {
+    const root = await makeTempRoot("lando-self-update-probe-rollback-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const probes: string[] = [];
+    const execs: string[] = [];
+    const updateStatePath = join(root, "state.json");
+    const processRunner = {
+      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+        Effect.sync(() => {
+          probes.push(input.cmd);
+          return probes.length === 1
+            ? { exitCode: 0, stdout: "", stderr: "" }
+            : {
+                exitCode: 126,
+                stdout: "hello from /home/alice and https://example.invalid/build",
+                stderr: "contact alice@example.invalid with TOKEN=secret",
+              };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const failure = await failureValue(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          execve: (input) =>
+            Effect.sync(() => {
+              execs.push(input.path);
+            }),
+        },
+        updateStatePath,
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(failure).toBeInstanceOf(UpdateLaunchProbeError);
+    if (failure instanceof UpdateLaunchProbeError) {
+      expect(failure.platform).toBe(`${process.platform}-${process.arch}`);
+      expect(failure.attemptedVersion).toBe("4.4.0");
+      expect(failure.probeCommand).toContain("--version");
+      expect(failure.outputSummary).toContain("[path]");
+      expect(failure.outputSummary).toContain("[url]");
+      expect(failure.outputSummary).not.toContain("alice");
+      expect(failure.outputSummary).not.toContain("example.invalid");
+      const report = buildBugReport({
+        error: failure,
+        context: { commandId: "meta:update", cacheRoot: root },
+      });
+      expect(report.body).not.toContain(root);
+      expect(report.extra).toContainEqual(["attemptedVersion", "4.4.0"]);
+      expect(report.extra.some(([key]) => key === "outputSummary")).toBe(true);
+    }
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(execs).toEqual([]);
+    expect(probes).toHaveLength(2);
+    const updateState = JSON.parse(await readFile(updateStatePath, "utf8"));
+    expect(updateState).toEqual({
+      stable: {
+        latest: "4.4.0",
+        lastFailure: {
+          category: "launch_probe_failure",
+          targetVersion: "4.4.0",
+          platform: `${process.platform}-${process.arch}`,
+        },
+      },
+    });
+    expect(JSON.stringify(updateState)).not.toContain(root);
+    expect(JSON.stringify(updateState)).not.toContain("alice");
+  });
+
+  test("POSIX self-update reports rollback failure without hiding the launch probe error", async () => {
+    const root = await makeTempRoot("lando-self-update-probe-rollback-fail-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    let probeCount = 0;
+    const processRunner = {
+      run: () =>
+        Effect.sync(() => {
+          probeCount += 1;
+          return probeCount === 1
+            ? { exitCode: 0, stdout: "", stderr: "" }
+            : { exitCode: 126, stdout: "", stderr: "broken loader" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const failure = await failureValue(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          execve: () => Effect.void,
+          rename: async (from, to) => {
+            if (from === `${executablePath}.bak` && to === executablePath) {
+              throw new Error("rollback rename failed at /home/alice/lando");
+            }
+            await rename(from, to);
+          },
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(failure).toBeInstanceOf(UpdateLaunchProbeError);
+    if (failure instanceof UpdateLaunchProbeError) {
+      expect(failure.outputSummary).toContain("broken loader");
+      expect(failure.rollbackFailure).toContain("rollback rename failed");
+      expect(failure.rollbackFailure).not.toContain("/home/alice");
+    }
+    expect(await readFile(executablePath, "utf8")).toBe("new-binary");
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
   });
 
   test("rejects placeholder binary entries after signed manifest verification", async () => {
