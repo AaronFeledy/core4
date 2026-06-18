@@ -1,0 +1,14 @@
+name: "@lando/renderer-lando"
+version: "0.0.0"
+api: 4
+description: "Bundled default Lando Renderer plugin."
+enabled: true
+updateable: true
+entry: ./src/index.ts
+
+contributes:
+  renderers:
+    - lando
+
+requires:
+  "@lando/core": "^4.0.0"
