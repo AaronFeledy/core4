@@ -150,29 +150,26 @@ function Write-PathGuidance([string] $InstallDir) {
 }
 
 function Invoke-PostInstallSetup([string] $InstalledPath) {
-  if ((EnvValue "LANDO_INSTALL_RUN_SETUP") -eq "1") {
+  $shouldRunSetup = (EnvValue "LANDO_INSTALL_RUN_SETUP") -eq "1"
+  if (-not $shouldRunSetup) {
+    $shouldSkipPrompt = (EnvValue "LANDO_INSTALL_SKIP_SETUP") -eq "1"
+    if (-not $shouldSkipPrompt) { $shouldSkipPrompt = (EnvValue "LANDO_INSTALL_NONINTERACTIVE") -eq "1" }
+    if (-not $shouldSkipPrompt) { $shouldSkipPrompt = [Console]::IsInputRedirected }
+    if (-not $shouldSkipPrompt) {
+      $answer = Read-Host "Run lando setup now? [y/N]"
+      $shouldRunSetup = $answer -in @("y", "Y", "yes", "YES")
+    }
+  }
+
+  if ($shouldRunSetup) {
     & $InstalledPath setup --yes
     if ($LASTEXITCODE -ne 0) { Fail "Post-install setup failed" }
     Write-Output "post-install setup: completed"
     return
   }
 
-  if ((EnvValue "LANDO_INSTALL_SKIP_SETUP") -eq "1" -or (EnvValue "LANDO_INSTALL_NONINTERACTIVE") -eq "1" -or [Console]::IsInputRedirected) {
-    Write-Output "post-install setup: skipped"
-    Write-Output "Run setup later with: $(Quote-PowerShellString $InstalledPath) setup"
-    return
-  }
-
-  $answer = Read-Host "Run lando setup now? [y/N]"
-  if ($answer -in @("y", "Y", "yes", "YES")) {
-    & $InstalledPath setup --yes
-    if ($LASTEXITCODE -ne 0) { Fail "Post-install setup failed" }
-    Write-Output "post-install setup: completed"
-  }
-  else {
-    Write-Output "post-install setup: skipped"
-    Write-Output "Run setup later with: $(Quote-PowerShellString $InstalledPath) setup"
-  }
+  Write-Output "post-install setup: skipped"
+  Write-Output "Run setup later with: $(Quote-PowerShellString $InstalledPath) setup"
 }
 
 function Default-UserDataRoot {

@@ -225,6 +225,11 @@ print_path_guidance() {
   printf 'export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"\n'
 }
 
+print_setup_skipped() {
+  printf 'post-install setup: skipped\n'
+  printf 'Run setup later with: "%s/lando" setup\n' "$install_dir"
+}
+
 run_post_install_setup() {
   if [ "${LANDO_INSTALL_RUN_SETUP:-}" = "1" ]; then
     "$install_dir/lando" setup --yes
@@ -233,8 +238,7 @@ run_post_install_setup() {
   fi
 
   if [ "${LANDO_INSTALL_SKIP_SETUP:-}" = "1" ] || [ "${LANDO_INSTALL_NONINTERACTIVE:-}" = "1" ] || [ ! -t 0 ]; then
-    printf 'post-install setup: skipped\n'
-    printf 'Run setup later with: "%s/lando" setup\n' "$install_dir"
+    print_setup_skipped
     return
   fi
 
@@ -246,8 +250,7 @@ run_post_install_setup() {
       printf 'post-install setup: completed\n'
       ;;
     *)
-      printf 'post-install setup: skipped\n'
-      printf 'Run setup later with: "%s/lando" setup\n' "$install_dir"
+      print_setup_skipped
       ;;
   esac
 }
