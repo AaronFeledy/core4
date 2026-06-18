@@ -227,7 +227,7 @@ core/
 │   ├── proxy-traefik/
 │   ├── ca-mkcert/
 │   ├── logger-pretty/
-│   └── renderer-listr/
+│   └── renderer-lando/
 ├── sdk/                             # @lando/sdk — what plugins import
 │   └── src/
 │       ├── index.ts                 # Schemas + tags + types only

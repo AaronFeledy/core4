@@ -1311,11 +1311,11 @@ Built-in render events:
 - `prompt.start`, `prompt.complete`
 - `paint.banner` — emitted by the pre-bootstrap fast path (see below).
 
-**Default renderer** is the Lando renderer (interactive, colorful, listr-style). Plugins may ship:
+**Default renderer** is the bundled `@lando/renderer-lando` plugin (interactive, colorful, and selected as `lando`). Core keeps stable built-in fallback modes for machine and debug output, and plugins may ship additional renderer ids:
 
-- `json` — line-delimited JSON for CI/automation.
-- `plain` — minimal text, no colors, no spinners.
-- `verbose` — full debug output inline with task progress.
+- `json` - line-delimited JSON for CI/automation.
+- `plain` - minimal text, no colors, no spinners.
+- `verbose` - full debug output inline with task progress.
 
 **Renderer selection:** `--renderer=` → `LANDO_RENDERER` → global `renderer:` → TTY/CI auto-detection (`json` for non-TTY/CI, default otherwise).
 
