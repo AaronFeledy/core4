@@ -23,6 +23,7 @@
 - Release supply-chain stages should generate artifact-specific SBOM manifest links first, then enforce that every manifest artifact has an SBOM; manifest artifact paths/SBOM links must stay POSIX-style `dist/...` regardless of host OS.
 - Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
 - POSIX self-update launch safety uses two probes: first the temp artifact before replacement, then the installed executable after replacement; the second probe is the one that can restore `.bak` and attach rollback-failure details to `UpdateLaunchProbeError` without changing the error tag.
+- Windows self-update must never rename over the running `.exe` in-process; stage the verified binary beside the target, launch the delayed replacement helper with explicit backup/fallback paths, and let the current process exit.
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -1141,4 +1142,18 @@
 - CI outcome: pass
 - Review feedback: fixed (Bugbot Medium: enforceManifestFreshness/final manifest writes dropped cached lastFailure on retry; now spread cached state and refresh latest only, with regression test)
 - Merge: merged (squash)
+---
+
+## 2026-06-17 20:51 CDT - US-264
+- Completed Windows-safe self-update replacement: verified Windows binaries now stage beside the running `.exe`, avoid direct in-process overwrite, schedule a delayed replacement helper with rollback backup paths, and surface exact manual fallback instructions if scheduling fails.
+- Verification: typecheck, lint, focused update manifest tests, adjacent update telemetry tests, Windows self-update spot checks, and source CLI update help QA passed.
+- **Learnings for future iterations:**
+  - Windows update testing should inject `platform: "win32"`/`arch: "x64"` through the self-update seam rather than mutating `process.platform`; keep direct rename assertions at zero so locked-exe safety stays explicit.
+---
+
+## 2026-06-17 21:09 CDT - US-264 Review
+- Reviewed Windows-safe self-update against the PRD: all five acceptance criteria hold — the running `.exe` is never overwritten in-process (Windows dispatches to `applyWindowsSelfUpdate`, zero in-process renames of the target), the staged binary is signature/checksum-verified and launch-probed before any swap is scheduled, scheduling failure surfaces `UpdatePermissionError` carrying the exact manual fallback, and the batch helper restores the `.bak` on install failure. No in-scope code changes were needed.
+- Review notes (rejected): an independent reviewer FAILed on "cmd.exe /c command-injection via metacharacter install paths / restart argv." Rejected as a non-blocking defense-in-depth note, not a story blocker: the only remote vector (manifest/binary bytes) is closed by signature+checksum verification before the script is ever written, and the residual inputs (`process.execPath` install dir, the user's own argv) are local/self-trusted with no privilege boundary crossed. A speculative batch-escaping rewrite is untestable on a non-Windows host and would risk breaking the verified happy-path script assertions, so it was not applied.
+- Review notes (deferred): the helper's `rmdir /S /Q "%~dp0"` runs from its own cwd and may leave the `.lando-update-*` temp dir on a successful swap — an inherent Windows self-deletion limitation, already best-effort/suppressed; left for a future Windows-hardening pass.
+- Verification: typecheck, lint passed; `update-manifest`, `update-telemetry`, and `bug-report` test spot checks passed (55 tests).
 ---
