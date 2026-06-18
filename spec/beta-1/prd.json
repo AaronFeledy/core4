@@ -1227,8 +1227,8 @@
         "Lint passes"
       ],
       "priority": 69,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "PowerShell install.ps1 now maps Windows x64 architectures to the windows-x64 release artifact, resolves stable/next/dev manifests, downloads lando.exe plus SHA256SUMS/signature/certificate artifacts, verifies the cosign-signed checksum manifest and binary checksum before installing to LANDO_INSTALL_DIR or the Windows user-data bin default, and prints exact execution-policy remediation when blocked."
     },
     {
       "id": "US-269",

@@ -1095,3 +1095,11 @@
 - Review feedback: fixed (resolved CONFLICTING merge with main; Bugbot 3 findings — installer now cosign-verifies SHA256SUMS.sig, Darwin default aligned to ~/.local/share/lando, config.yml parser mirrors minimal-YAML subset)
 - Merge: merged (squash)
 ---
+
+## 2026-06-17 19:12 CDT - US-268
+- Shipped the Windows PowerShell installer: it maps Windows x64 hosts to the windows-x64 artifact, resolves stable/next/dev channel manifests, verifies the cosign-signed checksum manifest plus binary checksum, installs the verified lando.exe to the selected install directory or resolved Windows userDataRoot bin, and prints execution-policy remediation through the tested policy-block branch.
+- Verification: red/green Windows installer tests passed; adjacent POSIX installer tests passed; guide coverage/lint and the Windows guide scenario generation passed; typecheck and lint passed; direct pwsh QA verified explicit, default, config-derived, and policy-remediation surfaces; reviewer gate passed after fixing default-path coverage.
+- **Learnings for future iterations:**
+  - Windows curl-pipe installer tests need the same default-path coverage as POSIX: explicit install dir, env/config userDataRoot, and the platform default `%LOCALAPPDATA%/Lando/Data/bin`.
+  - A real PowerShell execution-policy block prevents the script body from running, so custom remediation must be documented and exercised through a deterministic script/test seam unless a future wrapper/publishing story owns pre-execution handling.
+---
