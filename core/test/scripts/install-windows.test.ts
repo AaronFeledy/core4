@@ -7,6 +7,11 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
+const powershellTestTimeoutMs = 15_000;
+
+const powershellTest = (name: string, fn: () => void | Promise<void>): void => {
+  test(name, fn, powershellTestTimeoutMs);
+};
 
 const fileUrl = (path: string): string => pathToFileURL(path).href;
 
@@ -85,7 +90,7 @@ const runInstaller = async (
 };
 
 describe("scripts/install.ps1", () => {
-  test("installs the verified windows-x64 binary into LANDO_INSTALL_DIR", async () => {
+  powershellTest("installs the verified windows-x64 binary into LANDO_INSTALL_DIR", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -110,7 +115,7 @@ describe("scripts/install.ps1", () => {
     expect(cosignLog).toContain("SHA256SUMS.crt");
   });
 
-  test("resolves stable, next, and dev manifests from the selected channel", async () => {
+  powershellTest("resolves stable, next, and dev manifests from the selected channel", async () => {
     const root = await makeTempRoot();
     const fixtures = [];
     for (const channel of ["stable", "next", "dev"] as const) {
@@ -134,33 +139,36 @@ describe("scripts/install.ps1", () => {
       expect(result.stdout).toContain(`channel: ${channel}`);
       expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(true);
     }
-  }, 15_000);
-
-  test("defaults to the Windows user data bin directory when LANDO_INSTALL_DIR is unset", async () => {
-    const root = await makeTempRoot();
-    const fixture = await createReleaseFixture(root);
-    const { cosignPath, logPath } = await createFakeCosign(root);
-    const localAppData = join(root, "LocalAppData");
-
-    const result = await runInstaller({
-      COSIGN_LOG: logPath,
-      LANDO_INSTALL_COSIGN: cosignPath,
-      LANDO_INSTALL_DIR: "",
-      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
-      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
-      LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
-      LANDO_USER_DATA_ROOT: "",
-      LOCALAPPDATA: localAppData,
-    });
-
-    const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
-    expect(result.stderr).toBe("");
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
   });
 
-  test("reads userDataRoot from config.yml when install env overrides are unset", async () => {
+  powershellTest(
+    "defaults to the Windows user data bin directory when LANDO_INSTALL_DIR is unset",
+    async () => {
+      const root = await makeTempRoot();
+      const fixture = await createReleaseFixture(root);
+      const { cosignPath, logPath } = await createFakeCosign(root);
+      const localAppData = join(root, "LocalAppData");
+
+      const result = await runInstaller({
+        COSIGN_LOG: logPath,
+        LANDO_INSTALL_COSIGN: cosignPath,
+        LANDO_INSTALL_DIR: "",
+        LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+        LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+        LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
+        LANDO_USER_DATA_ROOT: "",
+        LOCALAPPDATA: localAppData,
+      });
+
+      const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`installed: ${installedPath}`);
+      expect(await Bun.file(installedPath).exists()).toBe(true);
+    },
+  );
+
+  powershellTest("reads userDataRoot from config.yml when install env overrides are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -187,7 +195,7 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(installedPath).exists()).toBe(true);
   });
 
-  test("matches minimal config parsing for indented top-level userDataRoot", async () => {
+  powershellTest("matches minimal config parsing for indented top-level userDataRoot", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -222,7 +230,7 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(installedPath).exists()).toBe(true);
   });
 
-  test("detects the x64 host architecture from 32-bit PowerShell sessions", async () => {
+  powershellTest("detects the x64 host architecture from 32-bit PowerShell sessions", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -244,7 +252,7 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(true);
   });
 
-  test("fails closed when signature verification fails", async () => {
+  powershellTest("fails closed when signature verification fails", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath } = await createFakeCosign(root, 1);
@@ -262,7 +270,7 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
   });
 
-  test("rejects unsupported Windows architectures before installing", async () => {
+  powershellTest("rejects unsupported Windows architectures before installing", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -282,7 +290,7 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(logPath).exists()).toBe(false);
   });
 
-  test("prints execution policy remediation when PowerShell blocks the installer", async () => {
+  powershellTest("prints execution policy remediation when PowerShell blocks the installer", async () => {
     const root = await makeTempRoot();
     const installDir = join(root, "install");
 
