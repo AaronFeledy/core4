@@ -1103,3 +1103,9 @@
   - Windows curl-pipe installer tests need the same default-path coverage as POSIX: explicit install dir, env/config userDataRoot, and the platform default `%LOCALAPPDATA%/Lando/Data/bin`.
   - A real PowerShell execution-policy block prevents the script body from running, so custom remediation must be documented and exercised through a deterministic script/test seam unless a future wrapper/publishing story owns pre-execution handling.
 ---
+
+## 2026-06-17 20:09 CDT - US-268 Review
+- Fixed review blockers in the Windows installer story: the fake cosign test fixture now runs as PowerShell with portable file URLs, and PRD-10 guide-drift input now tracks `scripts/install.ps1` so future Windows installer changes stay coupled to installer guide coverage.
+- Review notes (rejected/deferred): execution-policy remediation cannot be printed by a bare `install.ps1` when PowerShell blocks the file before the script body starts; the current deterministic in-script policy-block seam and guide remediation remain the US-268 coverage, while wrapper/publishing behavior belongs to later installer distribution work.
+- Verification: typecheck, lint, focused Windows installer tests, adjacent POSIX installer tests, and guide-drift check passed; TypeScript/Markdown LSP diagnostics were unavailable in this environment.
+---

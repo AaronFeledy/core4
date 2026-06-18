@@ -166,6 +166,7 @@ Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide con
 **CLI / source surface paths covered (drift gate input):**
 
 - `scripts/install.sh`
+- `scripts/install.ps1`
 - `scripts/install/**`
 - `scripts/release.ts`
 - `scripts/release/**`

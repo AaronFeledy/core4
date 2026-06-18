@@ -1,13 +1,14 @@
 import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
 
-const fileUrl = (path: string): string => `file://${path}`;
+const fileUrl = (path: string): string => pathToFileURL(path).href;
 
 const makeTempRoot = (): Promise<string> => mkdtemp(join(tmpdir(), "lando-install-windows-"));
 
@@ -57,10 +58,10 @@ const createReleaseFixture = async (
 
 const createFakeCosign = async (root: string, exitCode = 0) => {
   const logPath = join(root, "cosign.log");
-  const cosignPath = join(root, "fake-cosign.sh");
+  const cosignPath = join(root, "fake-cosign.ps1");
   await writeFile(
     cosignPath,
-    `#!/bin/sh\n[ -n "${"$"}COSIGN_LOG" ] && printf '%s\n' "${"$"}*" > "${"$"}COSIGN_LOG"\nexit ${exitCode}\n`,
+    `$ErrorActionPreference = "Stop"\nif ($env:COSIGN_LOG) { Set-Content -LiteralPath $env:COSIGN_LOG -Value ($args -join " ") }\nexit ${exitCode}\n`,
   );
   await chmod(cosignPath, 0o755);
   return { cosignPath, logPath };
