@@ -24,6 +24,7 @@ import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../../telemetry/events.ts";
+import { scrubTelemetryValue } from "../../telemetry/redaction.ts";
 import { CORE_VERSION } from "../../version.ts";
 
 export class UpdateNetworkError extends Schema.TaggedError<UpdateNetworkError>()("UpdateNetworkError", {
@@ -93,10 +94,12 @@ export class UpdateLaunchProbeError extends Schema.TaggedError<UpdateLaunchProbe
   "UpdateLaunchProbeError",
   {
     message: Schema.String,
-    path: Schema.String,
-    stdout: Schema.optional(Schema.String),
-    stderr: Schema.optional(Schema.String),
+    platform: Schema.String,
+    attemptedVersion: Schema.String,
+    probeCommand: Schema.String,
+    outputSummary: Schema.String,
     exitCode: Schema.Number,
+    rollbackFailure: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -482,10 +485,50 @@ const enforceNoDowngrade = (
         }),
       );
 
-const UpdateManifestStateSchema = Schema.partial(
-  Schema.Record({ key: UpdateChannelSchema, value: Schema.Struct({ latest: Schema.String }) }),
+const UpdateFailureCategorySchema = Schema.Literal(
+  "signature_failure",
+  "launch_probe_failure",
+  "permission_failure",
+  "network_failure",
 );
-type UpdateManifestState = typeof UpdateManifestStateSchema.Type;
+type UpdateFailureCategory = typeof UpdateFailureCategorySchema.Type;
+
+interface UpdateManifestStateEntry {
+  readonly latest: string;
+  readonly lastFailure?:
+    | {
+        readonly category: UpdateFailureCategory;
+        readonly targetVersion: string;
+        readonly platform: string;
+      }
+    | undefined;
+}
+
+const UpdateManifestStateSchema = Schema.partial(
+  Schema.Record({
+    key: UpdateChannelSchema,
+    value: Schema.Struct({
+      latest: Schema.String,
+      lastFailure: Schema.optional(
+        Schema.Struct({
+          category: UpdateFailureCategorySchema,
+          targetVersion: Schema.String,
+          platform: Schema.String,
+        }),
+      ),
+    }),
+  }),
+);
+type DecodedUpdateManifestState = typeof UpdateManifestStateSchema.Type;
+type UpdateManifestState = Partial<Record<UpdateChannel, UpdateManifestStateEntry>>;
+
+const normalizeUpdateManifestState = (state: DecodedUpdateManifestState): UpdateManifestState => ({
+  ...(state.stable === undefined ? {} : { stable: state.stable }),
+  ...(state.next === undefined ? {} : { next: state.next }),
+  ...(state.dev === undefined ? {} : { dev: state.dev }),
+});
+
+const emptyUpdateManifestState: UpdateManifestState = {};
 
 const readUpdateManifestState = (path: string): Effect.Effect<UpdateManifestState, UpdateNetworkError> =>
   Effect.tryPromise({
@@ -510,7 +553,7 @@ const readUpdateManifestState = (path: string): Effect.Effect<UpdateManifestStat
         onExcessProperty: "error",
       });
       return Either.isRight(decoded)
-        ? Effect.succeed(decoded.right)
+        ? Effect.succeed(normalizeUpdateManifestState(decoded.right))
         : Effect.fail(
             new UpdateNetworkError({
               message: `Update manifest freshness state at ${path} failed schema validation.`,
@@ -534,6 +577,40 @@ const writeUpdateManifestState = (
         cause,
       }),
   });
+
+const writeUpdateFailureState = ({
+  category,
+  channel,
+  path,
+  platform,
+  targetVersion,
+}: {
+  readonly path: string;
+  readonly channel: UpdateChannel;
+  readonly category: Exclude<ReturnType<typeof updateOutcomeFromError>, "success">;
+  readonly targetVersion: string;
+  readonly platform: string;
+}): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    const state = yield* readUpdateManifestState(path).pipe(
+      Effect.catchAll(() => Effect.succeed(emptyUpdateManifestState)),
+    );
+    const current = state[channel];
+    yield* writeUpdateManifestState(path, {
+      ...state,
+      [channel]: {
+        latest: current?.latest ?? targetVersion,
+        lastFailure: { category, targetVersion, platform },
+      },
+    }).pipe(Effect.catchAll(() => Effect.void));
+  });
+
+const failureOutcomeFromError = (
+  error: unknown,
+): Exclude<ReturnType<typeof updateOutcomeFromError>, "success"> => {
+  const outcome = updateOutcomeFromError(error);
+  return outcome === "success" ? "network_failure" : outcome;
+};
 
 const enforceManifestFreshness = (
   manifest: UpdateManifest,
@@ -729,25 +806,81 @@ const writeDownloadedBinary = (path: string, bytes: Uint8Array): Effect.Effect<v
       }),
   });
 
-const runLaunchProbe = (path: string): Effect.Effect<void, UpdateLaunchProbeError, ProcessRunner> =>
+const probeCommandSummary = (path: string): string => `${scrubTelemetryValue(path)} --version`;
+
+const probeOutputSummary = (input: {
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly cause?: unknown;
+}): string => {
+  const parts: string[] = [];
+  const stdout = input.stdout?.trim();
+  if (stdout !== undefined && stdout.length > 0) parts.push(`stdout: ${stdout}`);
+  const stderr = input.stderr?.trim();
+  if (stderr !== undefined && stderr.length > 0) parts.push(`stderr: ${stderr}`);
+  if (input.cause !== undefined) {
+    const cause = input.cause instanceof Error ? input.cause.message : String(input.cause);
+    if (cause.length > 0) parts.push(`cause: ${cause}`);
+  }
+  return scrubTelemetryValue(parts.join("\n").slice(0, 500));
+};
+
+const launchProbeError = ({
+  attemptedVersion,
+  cause,
+  exitCode,
+  path,
+  stderr,
+  stdout,
+}: {
+  readonly path: string;
+  readonly attemptedVersion: string;
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly exitCode: number;
+  readonly cause?: unknown;
+}): UpdateLaunchProbeError => {
+  const outputInput: { stdout?: string; stderr?: string; cause?: unknown } = {};
+  if (stdout !== undefined) outputInput.stdout = stdout;
+  if (stderr !== undefined) outputInput.stderr = stderr;
+  if (cause !== undefined) outputInput.cause = cause;
+  return new UpdateLaunchProbeError({
+    message: `Downloaded Lando ${attemptedVersion} failed its launch probe on ${platform()}.`,
+    platform: platform(),
+    attemptedVersion,
+    probeCommand: probeCommandSummary(path),
+    outputSummary: probeOutputSummary(outputInput),
+    exitCode,
+    cause,
+  });
+};
+
+const withRollbackFailure = (error: UpdateLaunchProbeError, cause: unknown): UpdateLaunchProbeError =>
+  new UpdateLaunchProbeError({
+    message: error.message,
+    platform: error.platform,
+    attemptedVersion: error.attemptedVersion,
+    probeCommand: error.probeCommand,
+    outputSummary: error.outputSummary,
+    exitCode: error.exitCode,
+    rollbackFailure: scrubTelemetryValue(cause instanceof Error ? cause.message : String(cause)),
+    cause: error.cause,
+  });
+
+const runLaunchProbe = (
+  path: string,
+  attemptedVersion: string,
+): Effect.Effect<void, UpdateLaunchProbeError, ProcessRunner> =>
   Effect.gen(function* () {
     const processRunner = yield* ProcessRunner;
-    const result = yield* processRunner.run({ cmd: path, args: ["--version"], timeoutMs: 15_000 }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new UpdateLaunchProbeError({
-            message: `Downloaded update artifact could not run its launch probe at ${path}.`,
-            path,
-            exitCode: -1,
-            cause,
-          }),
-      ),
-    );
+    const result = yield* processRunner
+      .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
+      .pipe(Effect.mapError((cause) => launchProbeError({ path, attemptedVersion, exitCode: -1, cause })));
     if (result.exitCode === 0) return;
     return yield* Effect.fail(
-      new UpdateLaunchProbeError({
-        message: `Downloaded update artifact failed its launch probe at ${path}.`,
+      launchProbeError({
         path,
+        attemptedVersion,
         stdout: result.stdout,
         stderr: result.stderr,
         exitCode: result.exitCode,
@@ -776,10 +909,12 @@ const reexecUserArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
 };
 
 const applyPosixSelfUpdate = ({
+  attemptedVersion,
   binaryBytes,
   executablePath,
   selfUpdate,
 }: {
+  readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: Required<Pick<UpdateSelfUpdateOptions, "argv" | "env" | "execve" | "rename">>;
@@ -799,12 +934,23 @@ const applyPosixSelfUpdate = ({
         const tempBinaryPath = join(tempDir, basename(executablePath));
         const backupPath = `${executablePath}.bak`;
         yield* writeDownloadedBinary(tempBinaryPath, binaryBytes);
-        yield* runLaunchProbe(tempBinaryPath);
+        yield* runLaunchProbe(tempBinaryPath, attemptedVersion);
         yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath);
         yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath).pipe(
           Effect.catchAll((error) =>
             renameForUpdate(selfUpdate.rename, backupPath, executablePath).pipe(
               Effect.catchAll(() => Effect.void),
+              Effect.flatMap(() => Effect.fail(error)),
+            ),
+          ),
+        );
+        yield* runLaunchProbe(executablePath, attemptedVersion).pipe(
+          Effect.catchAll((error) =>
+            Effect.tryPromise({
+              try: () => selfUpdate.rename(backupPath, executablePath),
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catchAll((rollbackFailure) => Effect.fail(withRollbackFailure(error, rollbackFailure))),
               Effect.flatMap(() => Effect.fail(error)),
             ),
           ),
@@ -928,9 +1074,26 @@ const defaultUpdate = (
         manifestSha256: binary.sha256,
       });
       yield* applyPosixSelfUpdate({
+        attemptedVersion: manifest.latest,
         binaryBytes,
         executablePath: selfUpdate.executablePath,
         selfUpdate,
+      }).pipe(
+        Effect.tapError((error) =>
+          writeUpdateFailureState({
+            path: options.updateStatePath,
+            channel: options.channel,
+            category: failureOutcomeFromError(error),
+            targetVersion: manifest.latest,
+            platform: platform(),
+          }),
+        ),
+      );
+    }
+    if (!options.dryRun) {
+      yield* writeUpdateManifestState(options.updateStatePath, {
+        ...(yield* readUpdateManifestState(options.updateStatePath)),
+        [manifest.channel]: { latest: manifest.latest },
       });
     }
     return {

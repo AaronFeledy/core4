@@ -123,6 +123,20 @@ const extractExtraTagFields = (
     const promptName = asString(record.promptName);
     if (promptName !== undefined) out.push(["promptName", promptName]);
   }
+  if (tag === "UpdateLaunchProbeError") {
+    const platform = asString(record.platform);
+    if (platform !== undefined) out.push(["platform", platform]);
+    const attemptedVersion = asString(record.attemptedVersion);
+    if (attemptedVersion !== undefined) out.push(["attemptedVersion", attemptedVersion]);
+    const probeCommand = asString(record.probeCommand);
+    if (probeCommand !== undefined) out.push(["probeCommand", probeCommand]);
+    const outputSummary = asString(record.outputSummary);
+    if (outputSummary !== undefined) out.push(["outputSummary", outputSummary]);
+    const rollbackFailure = asString(record.rollbackFailure);
+    if (rollbackFailure !== undefined) out.push(["rollbackFailure", rollbackFailure]);
+    const exitCode = record.exitCode;
+    if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
+  }
   if (tag === "ServiceStartError" || tag === "ServiceExecError" || tag === "ServiceNotFoundError") {
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);
