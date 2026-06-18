@@ -1281,8 +1281,8 @@
         "Lint passes"
       ],
       "priority": 72,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Stage 12 now stages install.sh/install.ps1 plus installer trust-root artifacts, signs and verifies the staged installer scripts with keyless cosign, writes stable get.lando.dev verification commands to release notes, and includes installer/trust-root artifacts in the release SBOM/provenance manifest. Publication fails closed when a required installer script or trust-root artifact is missing."
     },
     {
       "id": "US-272",

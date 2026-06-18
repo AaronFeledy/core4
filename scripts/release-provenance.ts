@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path/posix";
 
-export type ReleaseProvenanceArtifactKind = "binary" | "library";
+export type ReleaseProvenanceArtifactKind = "binary" | "library" | "installer" | "trust-root";
 
 export interface ReleaseProvenanceArtifactInput {
   readonly kind: ReleaseProvenanceArtifactKind;
@@ -81,7 +81,7 @@ const readManifest = async (manifestPath: string): Promise<ReleaseManifest> => {
       const path = entry.path;
       const sha256 = entry.sha256;
       if (
-        (kind !== "binary" && kind !== "library") ||
+        (kind !== "binary" && kind !== "library" && kind !== "installer" && kind !== "trust-root") ||
         typeof path !== "string" ||
         typeof sha256 !== "string"
       ) {
@@ -304,7 +304,12 @@ const parseArtifact = (value: string): ReleaseProvenanceArtifactInput => {
   if (separator === -1) throw new Error(artifactFormatError);
   const kind = value.slice(0, separator);
   const path = value.slice(separator + 1);
-  if ((kind !== "binary" && kind !== "library") || path === "") throw new Error(artifactFormatError);
+  if (
+    (kind !== "binary" && kind !== "library" && kind !== "installer" && kind !== "trust-root") ||
+    path === ""
+  ) {
+    throw new Error(artifactFormatError);
+  }
   return { kind, path };
 };
 

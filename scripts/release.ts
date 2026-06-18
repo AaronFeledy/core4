@@ -518,6 +518,17 @@ interface ReleaseBinarySignatureArtifact {
   readonly certificatePath: string;
 }
 
+interface ReleaseInstallerArtifact {
+  readonly sourcePath: string;
+  readonly publishedPath: string;
+  readonly stableUrl: string;
+}
+
+interface ReleaseTrustRootArtifact {
+  readonly sourcePath: string;
+  readonly publishedPath: string;
+}
+
 const normalizeReleaseArtifactPath = (path: string): string => path.replace(/^\.\//, "");
 
 const releaseBinarySignatureArtifact = (path: string): ReleaseBinarySignatureArtifact => {
@@ -533,6 +544,43 @@ const releaseBinarySignatureArtifacts = (
     releaseBinarySignatureArtifact(releaseBinaryPath(platform)),
   );
 };
+
+const installerArtifacts: ReadonlyArray<ReleaseInstallerArtifact> = [
+  {
+    sourcePath: "scripts/install.sh",
+    publishedPath: "dist/install.sh",
+    stableUrl: "https://get.lando.dev/install.sh",
+  },
+  {
+    sourcePath: "scripts/install.ps1",
+    publishedPath: "dist/install.ps1",
+    stableUrl: "https://get.lando.dev/install.ps1",
+  },
+];
+
+const installerTrustRootArtifacts: ReadonlyArray<ReleaseTrustRootArtifact> = [
+  { sourcePath: "scripts/install/trust/lando-release-gpg.asc", publishedPath: "dist/lando-release-gpg.asc" },
+  {
+    sourcePath: "scripts/install/trust/lando-release-cosign.pub",
+    publishedPath: "dist/lando-release-cosign.pub",
+  },
+];
+
+const releaseInstallerSignatureArtifacts = (): ReadonlyArray<ReleaseBinarySignatureArtifact> =>
+  installerArtifacts.map((artifact) => releaseBinarySignatureArtifact(artifact.publishedPath));
+
+const installerArtifactStagingScript = (): string =>
+  [
+    "mkdir -p dist",
+    ...installerArtifacts.flatMap((artifact) => [
+      `test -f ${shellQuote(artifact.sourcePath)}`,
+      `cp ${shellQuote(artifact.sourcePath)} ${shellQuote(artifact.publishedPath)}`,
+    ]),
+    ...installerTrustRootArtifacts.flatMap((artifact) => [
+      `test -f ${shellQuote(artifact.sourcePath)}`,
+      `cp ${shellQuote(artifact.sourcePath)} ${shellQuote(artifact.publishedPath)}`,
+    ]),
+  ].join("\n");
 
 const binaryCosignCommands = (
   env: ReleaseEnvironment,
@@ -560,6 +608,24 @@ const renderBinaryVerificationCommand = (
     `  ${artifact.binaryPath}`,
   ].join("\n");
 
+const renderInstallerVerificationCommand = (
+  env: ReleaseEnvironment,
+  artifact: ReleaseInstallerArtifact,
+): string => {
+  const fileName = artifact.publishedPath.split("/").at(-1) ?? artifact.publishedPath;
+  return [
+    `curl -fsSLO ${markdownCommandQuote(artifact.stableUrl)}`,
+    `curl -fsSLO ${markdownCommandQuote(`${artifact.stableUrl}.sig`)}`,
+    `curl -fsSLO ${markdownCommandQuote(`${artifact.stableUrl}.crt`)}`,
+    "cosign verify-blob \\",
+    `  --certificate-identity-regexp ${markdownCommandQuote(cosignCertificateIdentityRegexp(env))} \\`,
+    `  --certificate-oidc-issuer ${markdownCommandQuote(COSIGN_OIDC_ISSUER)} \\`,
+    `  --signature ${fileName}.sig \\`,
+    `  --certificate ${fileName}.crt \\`,
+    `  ${fileName}`,
+  ].join("\n");
+};
+
 const releaseBinaryVerificationNotes = (
   env: ReleaseEnvironment,
   artifacts: ReadonlyArray<ReleaseBinarySignatureArtifact>,
@@ -580,6 +646,22 @@ const releaseBinaryVerificationNotes = (
       "```",
       "",
     ]),
+    "## Installer Script Verification",
+    "",
+    "The curl-pipe installer scripts are keyless-signed with detached signatures at the stable get.lando.dev URLs.",
+    "",
+    ...installerArtifacts.flatMap((artifact) => [
+      `### ${artifact.publishedPath.split("/").at(-1)}`,
+      "",
+      `Stable URL: \`${artifact.stableUrl}\``,
+      `Signature: \`${artifact.stableUrl}.sig\``,
+      `Certificate: \`${artifact.stableUrl}.crt\``,
+      "",
+      "```bash",
+      renderInstallerVerificationCommand(env, artifact),
+      "```",
+      "",
+    ]),
   ].join("\n");
 
 const releaseBinaryVerificationNotesScript = (
@@ -597,7 +679,7 @@ const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
-type ReleaseManifestArtifactKind = "binary" | "library";
+type ReleaseManifestArtifactKind = "binary" | "library" | "installer" | "trust-root";
 
 interface ReleaseManifestFileEntry {
   readonly path: string;
@@ -635,6 +717,9 @@ const releaseManifestFileEntry = (value: unknown, label: string): ReleaseManifes
   return { path, sha256 };
 };
 
+const isReleaseManifestArtifactKind = (value: unknown): value is ReleaseManifestArtifactKind =>
+  value === "binary" || value === "library" || value === "installer" || value === "trust-root";
+
 const readReleaseManifest = async (
   manifestPath = "dist/release-artifacts.json",
 ): Promise<ReleaseManifest> => {
@@ -648,7 +733,7 @@ const readReleaseManifest = async (
     const kind = entry.kind;
     const path = entry.path;
     const sha256 = entry.sha256;
-    if ((kind !== "binary" && kind !== "library") || typeof path !== "string" || typeof sha256 !== "string") {
+    if (!isReleaseManifestArtifactKind(kind) || typeof path !== "string" || typeof sha256 !== "string") {
       throw new Error(`artifact ${name} is not a release manifest artifact entry`);
     }
     const sbom = releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`);
@@ -791,6 +876,8 @@ const releaseSbomArtifacts = (context: ReleaseStageContext, version: string): Re
   if (context.target !== "library") {
     artifacts.push(
       ...releasePlatformsForContext(context).map((platform) => `binary:${releaseBinaryPath(platform)}`),
+      ...installerArtifacts.map((artifact) => `installer:${artifact.publishedPath}`),
+      ...installerTrustRootArtifacts.map((artifact) => `trust-root:${artifact.publishedPath}`),
     );
   }
   if (context.target !== "binary") artifacts.push(`library:${releaseLibraryArchivePath(version)}`);
@@ -1192,6 +1279,8 @@ const provenanceSbomStage: ReleaseStage = {
 
     const artifactFamily = artifactFamilyForStage(provenanceSbomStage, context.target);
     const binarySignatureArtifacts = releaseBinarySignatureArtifacts(context);
+    const installerSignatureArtifacts =
+      context.target === "library" ? [] : releaseInstallerSignatureArtifacts();
 
     await spawnCommands(
       context.runner,
@@ -1221,6 +1310,25 @@ const provenanceSbomStage: ReleaseStage = {
         remediation: provenanceSbomStage.remediation,
         script: releaseBinaryVerificationNotesScript(context.env, binarySignatureArtifacts),
       });
+    }
+    if (installerSignatureArtifacts.length > 0) {
+      await context.runner.shell({
+        stageId: "12-provenance-sbom",
+        artifactFamily,
+        summary: "stage installer scripts and trust roots",
+        remediation: provenanceSbomStage.remediation,
+        script: installerArtifactStagingScript(),
+      });
+      await spawnCommands(
+        context.runner,
+        {
+          stageId: "12-provenance-sbom",
+          artifactFamily,
+          summary: "cosign-sign and verify installer scripts",
+          remediation: provenanceSbomStage.remediation,
+        },
+        binaryCosignCommands(context.env, installerSignatureArtifacts),
+      );
     }
     await context.runner.shell({
       stageId: "12-provenance-sbom",
