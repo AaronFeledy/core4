@@ -1441,8 +1441,8 @@
         "Lint passes."
       ],
       "priority": 81,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Default TTY lando renderer now ships a documented spaceship-console visual language with boxed LANDO OPS frames, textual status chips, ANSI accents in TTY mode only, wrapped 80/100/120-column fixtures, and plugin-authoring docs pointing renderer authors at @lando/renderer-lando. Plain/json/non-TTY output remains undecorated."
     },
     {
       "id": "US-281",

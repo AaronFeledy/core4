@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Default TTY renderer visual tests should drive `LandoTreePainter` directly for deterministic 80/100/120-column frames, then use tmux + visual-qa `tui-check` for the real terminal surface; keep plain/json/non-TTY regression assertions beside any TTY polish.
 - Curl-pipe installer post-install setup is env-driven for tests/non-interactive use: `LANDO_INSTALL_RUN_SETUP=1` opts into `lando setup --yes`; `LANDO_INSTALL_SKIP_SETUP=1` or `LANDO_INSTALL_NONINTERACTIVE=1` skips without prompting. Both installers should print the canonical `lando shellenv` command plus snippet after verified install.
 - §17.9 criteria 1-9 on linux-x64: `core/test/build/linux-acceptance-criteria-1-9.test.ts` is the runnable harness — it spawns nested `bun test -t "<filter>"` spot checks against `release.test.ts`, `update-manifest.test.ts`, `ci-workflow.test.ts`, and (on linux-x64) `compile.test.ts`; parent tests need ~180s timeouts.
 - §17.9 criteria 10-14 on linux-x64: `core/test/build/linux-acceptance-criteria-10-14.test.ts` nests `bun test ./<path> -t "<filter>"` spot checks; escape `+` and `(` in `-t` regex filters; use `./` path prefix for bun test file args.
@@ -1281,4 +1282,12 @@
 ## 2026-06-18 08:30 CDT - US-277
 - Shipped `core/test/build/linux-acceptance-criteria-10-14.test.ts` with nested spot checks for POSIX installer GPG/shellenv, Windows installer platform-gate, compiled asset boundary, Mutagen manifest/download policy, and setup file-sync order/proxy/CA/defer/native paths; marked `US-277` `passes: true`.
 - Verification: `bun run typecheck`, `bun run lint`, `linux-acceptance-criteria-10-14.test.ts`, and `linux-acceptance-rehearsal.test.ts` passed.
+---
+
+## 2026-06-18 13:45 CDT - US-280
+- Shipped the default TTY renderer visual-language pass: `lando` now renders boxed `LANDO OPS` terminal frames with textual status chips, ANSI accents only in TTY mode, aligned panel borders, width-bounded cap lines, and hanging-indented detail wraps while preserving plain/json/non-TTY output.
+- Published the terminal UI polish guide, marked it shipped in the guide index, and pointed plugin authors at `@lando/renderer-lando` as the first-party renderer contribution example.
+- Verification: red/green renderer visual tests, focused renderer regression suites, typecheck, lint, guide lint/coverage, `dev:guides --once`, tmux TTY capture with visual-qa `tui-check`, and dual Oracle visual-QA verdicts passed; `check:public-transcripts` remains blocked by pre-existing missing gitignored transcript artifacts for unrelated shipped guides.
+- **Learnings for future iterations:**
+  - Box-drawing terminal QA treats every box glyph line as a frame line, so TTY frames need both left and right borders at a consistent width; trailing spaces alone do not survive `tmux capture-pane`.
 ---

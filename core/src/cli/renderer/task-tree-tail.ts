@@ -53,6 +53,12 @@ export const csi = {
   dim: `${ESC}[2m`,
   /** Reset faint / dim text (`ESC[22m`). */
   dimReset: `${ESC}[22m`,
+  bold: `${ESC}[1m`,
+  reset: `${ESC}[0m`,
+  cyan: `${ESC}[36m`,
+  green: `${ESC}[32m`,
+  amber: `${ESC}[33m`,
+  red: `${ESC}[31m`,
 } as const;
 
 /**
@@ -131,9 +137,6 @@ export interface LandoTreePainterSnapshot {
   readonly activeTaskIds: ReadonlyArray<string>;
 }
 
-const CHILD_INDENT = "  ";
-const PANEL_INDENT = "      ";
-
 /** Marker for a declared-but-not-yet-started child in the first-paint skeleton. */
 const PENDING_MARKER = "◌";
 
@@ -143,8 +146,81 @@ const visibleLength = (line: string): number => line.replace(ansiPattern, "").le
 
 const DEFAULT_TERMINAL_COLUMNS = 80;
 
+type VisualStatus = "WAIT" | "RUNNING" | "ONLINE" | "BLOCKED";
+
+const statusChip = (status: VisualStatus): string => `[${status}]`;
+
 const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
   terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
+
+const splitContentToWidth = (content: string, width: number): ReadonlyArray<string> => {
+  if (visibleLength(content) <= width) return [content];
+  const words = content.split(/(\s+)/).filter((part) => part.length > 0);
+  const lines: string[] = [];
+  let current = "";
+  const budget = Math.max(1, width);
+
+  const pushCurrent = (): void => {
+    if (current.length === 0) return;
+    lines.push(current.trimEnd());
+    current = "";
+  };
+
+  for (const word of words) {
+    if (visibleLength(current) + visibleLength(word) <= budget) {
+      current += word;
+      continue;
+    }
+    if (current.trim().length > 0) pushCurrent();
+    let remaining = word.trimStart();
+    while (visibleLength(current) + visibleLength(remaining) > budget) {
+      const available = Math.max(1, budget - visibleLength(current));
+      current += remaining.slice(0, available);
+      remaining = remaining.slice(available);
+      pushCurrent();
+    }
+    current += remaining;
+  }
+
+  if (current.trim().length > 0) lines.push(current.trimEnd());
+  return lines.length === 0 ? [content.slice(0, width)] : lines;
+};
+
+const capLine = (left: string, text: string, right: string, width: number): string => {
+  const maxTextWidth = Math.max(1, width - visibleLength(left) - visibleLength(right) - 2);
+  const fittedText =
+    visibleLength(text) <= maxTextWidth ? text : `${text.slice(0, Math.max(1, maxTextWidth - 1))}…`;
+  const prefix = `${left} ${fittedText} `;
+  const fill = Math.max(0, width - visibleLength(prefix) - visibleLength(right));
+  return `${prefix}${"─".repeat(fill)}${right}`;
+};
+
+const bodyLine = (text: string, width: number): string => {
+  const bodyWidth = Math.max(1, width - 4);
+  const padding = Math.max(0, bodyWidth - visibleLength(text));
+  return `│ ${text}${" ".repeat(padding)} │`;
+};
+
+const wrapFrameLines = (
+  lines: ReadonlyArray<string>,
+  terminalColumns: number | undefined,
+): ReadonlyArray<string> => {
+  const columns = normalizeTerminalColumns(terminalColumns);
+  if (columns < 60) return lines;
+  return lines.flatMap((line) => {
+    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
+    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
+    if (line.startsWith("│")) {
+      const hangingIndent = line.startsWith("│    ") ? "  " : "";
+      const content = line.slice(1).trimStart();
+      const contentWidth = Math.max(1, columns - 4 - visibleLength(hangingIndent));
+      return splitContentToWidth(content, contentWidth).map((segment) =>
+        bodyLine(`${hangingIndent}${segment}`, columns),
+      );
+    }
+    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
+  });
+};
 
 const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
   const columns = normalizeTerminalColumns(terminalColumns);
@@ -367,18 +443,19 @@ export class LandoTreePainter {
     if (tree === undefined) return undefined;
     if (tree.done) {
       const label = tree.summary ?? tree.label;
-      return `▶ ${label} (${tree.succeeded} ✓ · ${tree.failed} ✗)${formatDurationSuffix(tree.durationMs)}`;
+      const status: VisualStatus = tree.failed > 0 ? "BLOCKED" : "ONLINE";
+      return `╭─ LANDO OPS ${statusChip(status)} ${label} (${tree.succeeded} ✓ · ${tree.failed} ✗)${formatDurationSuffix(tree.durationMs)}`;
     }
-    return `▼ ${tree.label} (${this.#runningCount()}/${tree.childCount} running)`;
+    return `╭─ LANDO OPS ${statusChip("RUNNING")} ${tree.label} (${this.#runningCount()}/${tree.childCount} running)`;
   }
 
   #childSummaryLine(task: TaskState): string {
     const label = task.summary ?? task.label;
     if (task.status === "done") {
-      return `${CHILD_INDENT}✓ ${label}${formatDurationSuffix(task.durationMs)}`;
+      return `│ ${statusChip("ONLINE")} ✓ ${label}${formatDurationSuffix(task.durationMs)}`;
     }
     const exitSuffix = task.exitCode === undefined ? "" : ` (exit ${task.exitCode})`;
-    return `${CHILD_INDENT}✗ ${label}${exitSuffix}${formatDurationSuffix(task.durationMs)}`;
+    return `│ ${statusChip("BLOCKED")} ✗ ${label}${exitSuffix}${formatDurationSuffix(task.durationMs)}`;
   }
 
   #expandedRunningTask(): TaskState | undefined {
@@ -400,17 +477,31 @@ export class LandoTreePainter {
   }
 
   #renderExpandedFrame(task: TaskState): ReadonlyArray<string> {
-    const lines: string[] = [`${CHILD_INDENT}· ${task.label}`];
+    const lines: string[] = [
+      `╭─ LANDO OPS ${statusChip("RUNNING")} expanded task tail`,
+      `│ ${statusChip("RUNNING")} · ${task.label}`,
+    ];
     for (const detail of this.#expandedPanelLines(task)) {
-      lines.push(`${PANEL_INDENT}${detail}`);
+      lines.push(`│    ${detail}`);
     }
+    lines.push("╰─ telemetry tail online");
     return lines;
+  }
+
+  #footerLine(): string | undefined {
+    const tree = this.#tree;
+    if (tree === undefined) return undefined;
+    if (tree.done) {
+      return `╰─ telemetry ${tree.succeeded} ONLINE · ${tree.failed} BLOCKED${formatDurationSuffix(tree.durationMs)}`;
+    }
+    return `╰─ telemetry ${this.#runningCount()}/${tree.childCount} RUNNING`;
   }
 
   // Logical frame: human content, no control bytes.
   #renderLogicalFrame(): ReadonlyArray<string> {
     const expanded = this.#expandedRunningTask();
-    if (expanded !== undefined) return this.#renderExpandedFrame(expanded);
+    if (expanded !== undefined)
+      return wrapFrameLines(this.#renderExpandedFrame(expanded), this.#currentTerminalColumns());
     const lines: string[] = [];
     const parent = this.#parentLine();
     if (parent !== undefined) lines.push(parent);
@@ -419,28 +510,39 @@ export class LandoTreePainter {
       if (task === undefined) continue;
       if (task.status === "pending") {
         if (this.#tree?.done === true) continue;
-        lines.push(`${CHILD_INDENT}${PENDING_MARKER} ${task.label}`);
+        lines.push(`│ ${statusChip("WAIT")} ${PENDING_MARKER} ${task.label}`);
         continue;
       }
       if (task.status === "running") {
-        lines.push(`${CHILD_INDENT}· ${task.label}`);
+        lines.push(`│ ${statusChip("RUNNING")} · ${task.label}`);
         for (const detail of task.ring.lines()) {
-          lines.push(`${PANEL_INDENT}${detail}`);
+          lines.push(`│    ${detail}`);
         }
         continue;
       }
       lines.push(this.#childSummaryLine(task));
       if (task.status === "failed" && task.remediation !== undefined) {
-        lines.push(`${PANEL_INDENT}↳ ${task.remediation}`);
+        lines.push(`│    ↳ ${task.remediation}`);
       }
     }
-    return lines;
+    const footer = this.#footerLine();
+    if (footer !== undefined) lines.push(footer);
+    return wrapFrameLines(lines, this.#currentTerminalColumns());
   }
 
   // Styled frame: dims the indented detail panel rows.
   #renderFrame(): ReadonlyArray<string> {
     const logical = this.#renderLogicalFrame();
-    return logical.map((line) => (line.startsWith(PANEL_INDENT) ? `${csi.dim}${line}${csi.dimReset}` : line));
+    return logical.map((line) => {
+      if (line.startsWith("╭─")) return `${csi.bold}${csi.cyan}${line}${csi.reset}`;
+      if (line.startsWith("╰─")) return `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
+      if (line.includes(statusChip("BLOCKED"))) return `${csi.red}${line}${csi.reset}`;
+      if (line.includes(statusChip("ONLINE"))) return `${csi.green}${line}${csi.reset}`;
+      if (line.includes(statusChip("WAIT"))) return `${csi.amber}${line}${csi.reset}`;
+      if (line.includes(statusChip("RUNNING"))) return `${csi.cyan}${line}${csi.reset}`;
+      if (line.startsWith("│")) return `${csi.dim}${line}${csi.dimReset}${csi.reset}`;
+      return line;
+    });
   }
 
   #currentTerminalColumns(): number | undefined {

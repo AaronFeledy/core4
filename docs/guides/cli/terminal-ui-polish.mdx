@@ -1,0 +1,28 @@
+---
+id: terminal-ui-polish
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, renderer]
+---
+
+<Guide>
+  <Scenario id="spaceship-console-language" render={false} reason="Renderer unit tests drive deterministic task-event fixtures at 80, 100, and 120 columns, so guide generation does not need to spawn an interactive TTY">
+    <Step name="direction">
+      <Variable name="tone" value="compact spaceship operations console" display="The default lando renderer presents task progress like mission-control telemetry, not generic colorful logs" />
+      <Variable name="palette" value="deep-space base, cyan/teal telemetry accents, amber warning, red blocked, green online" display="Color creates hierarchy, but every status also carries text so status is never color-only" />
+      <Variable name="borders" value="LANDO OPS panel separators" display="Frames use quiet panel separators, cockpit-style section headers, and dimmed detail tails rather than dense ASCII art" />
+    </Step>
+    <Step name="status-chips">
+      <Variable name="running" value="[RUNNING]" display="Active tasks and parent frames use a scanner/progress state with a text chip" />
+      <Variable name="online" value="[ONLINE]" display="Completed work renders with an explicit online chip plus the existing success glyph" />
+      <Variable name="blocked" value="[BLOCKED]" display="Failures render with a blocked chip, exit/remediation text, and a red accent in TTY mode" />
+      <Variable name="wait" value="[WAIT]" display="Declared-but-not-started children stay visible as wait-state rows" />
+    </Step>
+    <Step name="widths-and-fallbacks">
+      <Variable name="fixtures" value="80 columns, 100 columns, 120 columns" display="Golden fixtures prove common terminal widths stay readable, with long paths wrapped inside the panel rhythm" />
+      <Variable name="machineModes" value="plain, json, non-TTY, and CI output stay undecorated" display="Machine-readable and non-interactive paths keep stable parseable output; decorative ANSI belongs only to TTY lando frames" />
+      <Variable name="example" value="@lando/renderer-lando contributes.renderers: [lando]" display="Renderer authors can inspect the bundled first-party plugin as the maintained example for renderer contribution metadata" />
+    </Step>
+  </Scenario>
+</Guide>
