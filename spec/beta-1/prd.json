@@ -1368,7 +1368,7 @@
       ],
       "priority": 77,
       "passes": true,
-      "notes": "Criteria 1-9 are covered in the linux-x64 acceptance rehearsal guide with host-safe proof surfaces: local release/checksum-manifest launch proof, CI timing evidence, Linux checksum/signing policy, CycloneDX SBOM, SLSA provenance, cosign verify-blob, signed update manifest verification, update replacement/re-exec, launch-probe rollback, and permission-error/no-elevation behavior."
+      "notes": "Criteria 1-9 are green on linux-x64 via `core/test/build/linux-acceptance-criteria-1-9.test.ts` nested spot checks and the linux-x64 acceptance rehearsal guide's host-safe proof surfaces: local release/checksum-manifest launch proof, CI/nightly timing evidence, Linux checksum/signing policy, CycloneDX SBOM, SLSA provenance, cosign verify-blob, signed update manifest verification, update replacement/re-exec, launch-probe rollback, and permission-error/no-elevation behavior. Criterion 1 local signing remains credential-conditional per §17.9; criterion 2 uses gated timing evidence per story AC."
     },
     {
       "id": "US-277",

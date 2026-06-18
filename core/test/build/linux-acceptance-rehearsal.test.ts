@@ -21,6 +21,17 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain("id: release-linux-acceptance-rehearsal");
   });
 
+  test("documents criteria 1-9 proof surfaces without running host-mutating release work", async () => {
+    const guide = await readFile(guidePath, "utf8");
+
+    expect(guide).toContain('Scenario id="release-pipeline-and-supply-chain" render={false}');
+    expect(guide).toContain("core/test/build/linux-acceptance-criteria-1-9.test.ts");
+    expect(guide).toContain("criteria 1-9 pass on the reference platform");
+    expect(guide).toContain("SHA256SUMS, SBOM, SLSA, cosign verify-blob");
+    expect(guide).toContain("UpdateLaunchProbeError rollback");
+    expect(guide).toContain("UpdatePermissionError");
+  });
+
   test("documents criteria 20-27 proof surfaces without running host-mutating release work", async () => {
     const guide = await readFile(guidePath, "utf8");
 
