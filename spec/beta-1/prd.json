@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, and build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform — then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-279); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform, and move the default terminal UI behind the bundled @lando/renderer-lando plugin and polish it without changing CLI semantics — then enter feature freeze. Stories follow the 12-PRD breakdown in `spec/beta-1/prd-beta-1-{01..12}-*.md` (US-200..US-284); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -1422,6 +1422,98 @@
       "priority": 80,
       "passes": true,
       "notes": "External plugin acceptance harness now covers ESM file:// package roots, Bun-native TypeScript entries, package-root dependency resolution, in-root contribution module normalization to file:// URLs, escaping-module PluginLoadError isolation, codegen:check, bundled artifact codegen, and canonical recipe codegen guide surface."
+    },
+    {
+      "id": "US-280",
+      "title": "Bundled renderer plugin seam and visual language",
+      "description": "As a plugin author and CLI user, I can see the default Lando renderer shipped as a bundled internal plugin and get a recognizable spaceship-console terminal style instead of generic flat text.",
+      "acceptanceCriteria": [
+        "A renderer visual-language document defines the spaceship-console direction: palette, status colors, icons, spacing, borders, dimming, headings, progress rails, panel separators, and narrow-terminal wrapping rules for the default `lando` renderer.",
+        "The old `@lando/renderer-listr` stub is replaced by `@lando/renderer-lando`, with a current-schema manifest declaring `contributes.renderers: [\"lando\"]` and a `renderer` layer export that becomes the default TTY renderer implementation.",
+        "Bundled-plugin codegen and renderer resolution can load the `lando` renderer from the bundled plugin while preserving core `plain`, `json`, and `verbose` fallback modes for CI, non-TTY, and debug output.",
+        "Plugin authoring docs and examples point renderer authors at `@lando/renderer-lando` as the first-party example rather than a separate Listr-themed stub.",
+        "Golden terminal fixtures cover success, warning, failure, setup plan, uninstall plan, and long-running task states at common widths (80, 100, 120 columns).",
+        "The visual language preserves accessibility basics: status is never color-only, icons have text fallbacks where needed, and narrow terminals remain readable.",
+        "The visual language rejects generic CLI styling: no undifferentiated rainbow logs, no default SaaS-purple gradients, no dense ASCII art that harms scanability, and no decorative motion unrelated to live state.",
+        "`plain`, `json`, non-TTY, and CI output are explicitly excluded from decorative changes except where the existing spec already requires stable prefixes.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 81,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-281",
+      "title": "Beautiful task-tree progress for builds and setup",
+      "description": "As a user waiting on setup, builds, file sync, or release checks, I can immediately see what is running, what is cached, what failed, and where to expand for detail.",
+      "acceptanceCriteria": [
+        "The default TTY renderer implements the §8.9.2 task-tree layout with cockpit-style parent headers, child rows, scanner/progress states, cached/skipped badges, failure hints, and dimmed four-line detail tails.",
+        "Keyboard focus, `Enter` expand, and `Esc` collapse behavior remain scoped to TTY mode and still publish `task.detail.expand` / `task.detail.collapse` events.",
+        "OpenTUI layout primitives may be used for the TTY task-tree pane, but task publishers continue to emit only the existing `task.*` render events.",
+        "Non-TTY output keeps the stable `[<stepId>]` detail-line prefix and no alt-screen behavior.",
+        "Perf-budget tests still satisfy first-paint, spinner-threshold, and completion-line latency rules.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 82,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-282",
+      "title": "OpenTUI-backed prompts for setup, init, and trust decisions",
+      "description": "As a user answering interactive prompts, I get readable fields, selects, multi-selects, and confirmations with helpful descriptions and validation feedback.",
+      "acceptanceCriteria": [
+        "The renderer prompt seam can render TTY prompts through OpenTUI `input`, `textarea`, `select`, and `tab-select` style controls with the same spaceship-console palette and panel rhythm, without changing prompt schemas or command inputs.",
+        "`apps:init` recipe prompts, `lando setup` provider choices, and plugin trust decisions share the same prompt visual treatment.",
+        "`--yes`, `--no-interactive`, `--answer`, `--answers`, env-driven installer setup, and CI/non-TTY paths bypass OpenTUI and preserve current deterministic behavior.",
+        "Validation errors are shown inline in TTY prompts and still surface as tagged errors with remediation in non-interactive paths.",
+        "Prompt tests cover keyboard navigation, cancellation, validation failure, defaults, and terminal resize.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 83,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-283",
+      "title": "Polished summaries for plans, info, and diagnostics",
+      "description": "As a user reading command results, I can scan plans and diagnostics through clear grouped summaries instead of dense unstructured lines.",
+      "acceptanceCriteria": [
+        "Setup readiness, uninstall dry-run, `app:info`, scratch/global list output, and deprecation/doctor summaries render as grouped spaceship-console sections with consistent headings, status chips, aligned telemetry labels, and actionable next steps in the default TTY renderer.",
+        "The rendering is driven by typed result/message records and existing table/message render events, not by command-specific stdout writes.",
+        "The same data still renders to `json`, `plain`, and non-TTY modes without decorative layout artifacts.",
+        "Summary fixtures include long paths, long service names, CJK/wide characters, hidden secrets/redaction markers, and small terminal widths.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 84,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-284",
+      "title": "Visual QA gate for the terminal renderer",
+      "description": "As a maintainer, I can review renderer changes with objective terminal snapshots so the UI does not regress back to drab or unreadable output.",
+      "acceptanceCriteria": [
+        "A terminal-renderer visual QA harness captures deterministic TTY frames for the fixtures owned by US-280 through US-283.",
+        "Visual QA fixtures include explicit spaceship-console reference frames so reviewers can reject output that is technically structured but visually drab.",
+        "Snapshot diffs are readable in CI and include enough context to identify spacing, color-token, truncation, and wide-character regressions.",
+        "The harness runs without a real provider, network, signing credentials, or host mutation by using `TestRuntimeProvider` and injected renderer events.",
+        "The visual QA gate is focused on renderer output only and does not snapshot `json`, `plain`, or non-TTY logs except for regression fixtures that prove they remain undecorated.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 85,
+      "passes": false,
+      "notes": ""
     }
   ]
 }
