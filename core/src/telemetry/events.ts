@@ -14,7 +14,6 @@ export const UPDATE_OUTCOMES = [
 ] as const;
 export type UpdateOutcome = (typeof UPDATE_OUTCOMES)[number];
 
-// Re-export the inventory object so callers share the same source of truth.
 export const TELEMETRY_EVENT_INVENTORY = TELEMETRY_EVENT_FIELD_NAMES;
 
 export interface UpdateOutcomeTelemetryInput {
@@ -40,6 +39,8 @@ export const updateOutcomeFromError = (error: unknown): UpdateOutcome => {
   const tag = tagFrom(error) ?? tagFrom(causeFrom(error));
   switch (tag) {
     case "UpdateSignatureVerificationError":
+    case "UpdateChecksumSignatureVerificationError":
+    case "UpdateChecksumVerificationError":
       return "signature_failure";
     case "UpdateLaunchProbeError":
       return "launch_probe_failure";
