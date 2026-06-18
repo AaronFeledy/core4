@@ -21,6 +21,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-podman",
   "@lando/service-lando",
   "@lando/logger-pretty",
+  "@lando/renderer-lando",
   "@lando/file-sync-mutagen",
   "@lando/proxy-traefik",
   "@lando/template-handlebars",

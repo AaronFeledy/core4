@@ -99,8 +99,8 @@ process.on("exit", () => {
       "plugins/ca-mkcert/.tsbuildinfo",
       "plugins/logger-pretty/dist/.tsbuildinfo",
       "plugins/logger-pretty/.tsbuildinfo",
-      "plugins/renderer-listr/dist/.tsbuildinfo",
-      "plugins/renderer-listr/.tsbuildinfo",
+      "plugins/renderer-lando/dist/.tsbuildinfo",
+      "plugins/renderer-lando/.tsbuildinfo",
     ].map((path) => resolve(repoRoot, path));
 
     await Promise.all(artifacts.map(writeArtifact));

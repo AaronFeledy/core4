@@ -11,6 +11,7 @@ import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
+import * as rendererLando from "@lando/renderer-lando";
 import * as serviceLando from "@lando/service-lando";
 import * as templateHandlebars from "@lando/template-handlebars";
 import * as templateMustache from "@lando/template-mustache";
@@ -26,6 +27,7 @@ const EXPECTED_BUNDLED_PLUGINS = [
   { name: "@lando/provider-podman", layer: providerPodman.provider, manifest: providerPodman.manifest },
   { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
   { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
+  { name: "@lando/renderer-lando", layer: rendererLando.renderer, manifest: rendererLando.manifest },
   {
     name: "@lando/file-sync-mutagen",
     layer: fileSyncMutagen.engine,
@@ -49,7 +51,7 @@ const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundl
 
 describe("BUNDLED_PLUGINS", () => {
   test("exports all bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(9);
+    expect(BUNDLED_PLUGINS).toHaveLength(10);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );
