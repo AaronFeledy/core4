@@ -651,16 +651,14 @@ const readReleaseManifest = async (
     if ((kind !== "binary" && kind !== "library") || typeof path !== "string" || typeof sha256 !== "string") {
       throw new Error(`artifact ${name} is not a release manifest artifact entry`);
     }
+    const sbom = releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`);
+    const provenance = releaseManifestFileEntry(entry.provenance, `artifact ${name} provenance`);
     artifacts[name] = {
       kind,
       path,
       sha256,
-      ...(releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`) === undefined
-        ? {}
-        : { sbom: releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`) }),
-      ...(releaseManifestFileEntry(entry.provenance, `artifact ${name} provenance`) === undefined
-        ? {}
-        : { provenance: releaseManifestFileEntry(entry.provenance, `artifact ${name} provenance`) }),
+      ...(sbom === undefined ? {} : { sbom }),
+      ...(provenance === undefined ? {} : { provenance }),
     };
   }
 
@@ -769,6 +767,7 @@ const releaseTitle = (env: ReleaseEnvironment): string =>
 
 const githubReleaseScript = (env: ReleaseEnvironment, assets: ReadonlyArray<string>): string => {
   const version = releaseVersion(env);
+  const targetSha = envValue(env, "GITHUB_SHA");
   const createArgs = [
     "gh",
     "release",
@@ -779,7 +778,7 @@ const githubReleaseScript = (env: ReleaseEnvironment, assets: ReadonlyArray<stri
     releaseTitle(env),
     ...(version.includes("-") ? ["--prerelease"] : []),
     ...(assets.includes("dist/release-notes.md") ? ["--notes-file", "dist/release-notes.md"] : []),
-    ...(envValue(env, "GITHUB_SHA") === undefined ? [] : ["--target", envValue(env, "GITHUB_SHA") ?? ""]),
+    ...(targetSha === undefined ? [] : ["--target", targetSha]),
   ];
   return [
     ...assets.map((asset) => `test -f ${shellQuote(asset)}`),
@@ -1053,9 +1052,10 @@ const shellStage =
         script: githubReleaseScript(context.env, await releaseGitHubAssetPaths(context)),
       });
 
-      if (target === "binary")
+      if (target === "binary") {
         context.logger("[release] skip 13-publish npm packages (binary release target)");
-      if (target === "binary") return;
+        return;
+      }
     }
 
     await runner.shell({

@@ -742,9 +742,7 @@ describe("release orchestrator", () => {
     });
 
     test("checksum manifest generation fails when a required Linux binary is missing", async () => {
-      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-      expect(manifestStage).toBeDefined();
-      if (manifestStage === undefined) throw new Error("missing manifest stage");
+      const manifestStage = releaseStage("11-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await mkdir(join(root, "dist"), { recursive: true });
@@ -770,9 +768,7 @@ describe("release orchestrator", () => {
     });
 
     test("signed update manifest refuses placeholder binary entries", async () => {
-      const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-      expect(manifestStage).toBeDefined();
-      if (manifestStage === undefined) throw new Error("missing manifest stage");
+      const manifestStage = releaseStage("11-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
@@ -1652,11 +1648,8 @@ describe("release orchestrator", () => {
 
   test("credential gates accept manifest alternatives but keep Windows signing scoped", async () => {
     const shellStages: Array<{ stageId: string; script: string }> = [];
-    const manifestStage = RELEASE_STAGES.find((stage) => stage.id === "11-manifest");
-    const signingStage = RELEASE_STAGES.find((stage) => stage.id === "9-sign");
-    expect(manifestStage).toBeDefined();
-    expect(signingStage).toBeDefined();
-    if (manifestStage === undefined || signingStage === undefined) throw new Error("missing release stage");
+    const manifestStage = releaseStage("11-manifest");
+    const signingStage = releaseStage("9-sign");
 
     await expect(
       manifestStage.run({
@@ -1711,15 +1704,13 @@ describe("release orchestrator", () => {
   });
 
   test("binary GitHub Release publishing skips npm package publication", async () => {
-    const publishStage = RELEASE_STAGES.find((stage) => stage.id === "13-publish");
+    const publishStage = releaseStage("13-publish");
     const shellStages: Array<{
       readonly stageId: string;
       readonly script: string;
       readonly prepareNpmAlphaPackages?: boolean;
     }> = [];
     const logs: Array<string> = [];
-    expect(publishStage).toBeDefined();
-    if (publishStage === undefined) throw new Error("missing publish stage");
 
     await withReleaseFixtureRoot(async (root) => {
       const artifactName = "lando-linux-x64";
