@@ -822,7 +822,7 @@ const probeOutputSummary = (input: {
     const cause = input.cause instanceof Error ? input.cause.message : String(input.cause);
     if (cause.length > 0) parts.push(`cause: ${cause}`);
   }
-  return scrubTelemetryValue(parts.join("\n").slice(0, 500));
+  return scrubTelemetryValue(parts.join("\n")).slice(0, 500);
 };
 
 const launchProbeError = ({

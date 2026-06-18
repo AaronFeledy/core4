@@ -1123,3 +1123,10 @@
 - **Learnings for future iterations:**
   - Keep the temp-artifact probe and installed-executable probe distinct: checksum/signature corruption stops before `.bak`, while installed-binary launch failure is the rollback path that should preserve the original `UpdateLaunchProbeError` tag.
 ---
+
+## 2026-06-17 19:40 CDT - US-263 Review
+- Fixed a redaction-ordering leak in the launch-probe output summary: probe stdout/stderr/cause was truncated to 500 chars BEFORE scrubbing, so a path/URL/email/UUID/secret straddling the 500-char boundary could be split and slip past `scrubTelemetryValue`. Now scrubs the full joined summary first, then truncates the redacted text — directly upholding the US-263 "redacted output summary / no stored paths or identifiers" criteria.
+- Review notes: rollback composition, separate `rollbackFailure` attachment, category-only failure cache, and temp-dir/`.bak` handling all verified correct. The trailing success-path `writeUpdateManifestState` is redundant with `enforceManifestFreshness` (and unreachable in production after `execve`) but is harmless dead code, not a bug — left as-is to keep the review diff minimal.
+- Verification: typecheck, lint passed; `core/test/cli/update-manifest.test.ts` spot check passed (26/26).
+- **Learnings for future iterations:** When redacting then bounding the size of free-text diagnostics, always scrub BEFORE truncating; truncating first can sever a sensitive pattern so the redactor no longer matches it.
+---
