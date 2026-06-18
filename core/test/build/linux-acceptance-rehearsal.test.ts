@@ -21,6 +21,32 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain("id: release-linux-acceptance-rehearsal");
   });
 
+  test("documents criteria 1-9 proof surfaces without running host-mutating release work", async () => {
+    const guide = await readFile(guidePath, "utf8");
+
+    expect(guide).toContain('Scenario id="release-pipeline-and-supply-chain" render={false}');
+    expect(guide).toContain("bun run release");
+    expect(guide).toContain(
+      "LOCAL_REHEARSAL=1 bun run scripts/release.ts --binary --through-stage=7-compile",
+    );
+    expect(guide).toContain("under 30 minutes single-platform");
+    expect(guide).toContain("under 60 minutes full matrix");
+    expect(guide).toContain("docs/guides/release/signing-artifacts.mdx");
+    expect(guide).toContain("docs/guides/release/verify-supply-chain-artifacts.mdx");
+    expect(guide).toContain("cosign verify-blob");
+    expect(guide).toContain("core/test/scripts/release.test.ts");
+    expect(guide).toContain("docs/guides/update/channels-and-manifests.mdx");
+    expect(guide).toContain("verify before JSON parse/schema trust");
+    expect(guide).toContain("UpdateSignatureVerificationError");
+
+    expect(guide).toContain('Scenario id="self-update-safety" render={false}');
+    expect(guide).toContain("core/test/cli/update-manifest.test.ts");
+    expect(guide).toContain("UpdateLaunchProbeError");
+    expect(guide).toContain("restores the backup when the replaced binary fails its launch probe");
+    expect(guide).toContain("UpdatePermissionError");
+    expect(guide).toContain("does not silently elevate");
+  });
+
   test("documents criteria 20-27 proof surfaces without running host-mutating release work", async () => {
     const guide = await readFile(guidePath, "utf8");
 

@@ -7,6 +7,45 @@ tags: [beta, docs, release, acceptance]
 ---
 
 <Guide>
+  <Scenario id="release-pipeline-and-supply-chain" render={false} reason="Release orchestration, signing, SBOM, provenance, and manifest verification are proven by focused release-orchestrator and CI workflow tests without running live signing or publishing tools">
+    <Step name="criterion-1">
+      <Variable name="release" value="bun run release" display="A clean checkout can run the release entrypoint for the local platform and produce a checksum-manifested binary that launches and reports version when credentials are present" />
+      <Variable name="localRehearsal" value="LOCAL_REHEARSAL=1 bun run scripts/release.ts --binary --through-stage=7-compile" display="Local rehearsal reaches compile and version smoke without requiring production signing credentials" />
+      <Variable name="versionSmoke" value="dist/lando version" display="The produced linux-x64 binary answers version on the reference platform" />
+    </Step>
+    <Step name="criterion-2">
+      <Variable name="releaseWorkflow" value=".github/workflows/release.yml" display="The full 1-13 release pipeline runs in CI with recorded stage timing evidence" />
+      <Variable name="singlePlatformBudget" value="under 30 minutes single-platform" display="Single-platform release jobs are budgeted for sub-30-minute completion in CI" />
+      <Variable name="matrixBudget" value="under 60 minutes full matrix" display="Full-matrix release runs are budgeted for sub-60-minute completion in CI" />
+    </Step>
+    <Step name="criteria-3-5">
+      <Variable name="signing" value="docs/guides/release/signing-artifacts.mdx" display="Platform signing policy covers macOS Developer ID, Windows Authenticode plus cosign, and Linux GPG-signed SHA256SUMS plus cosign verify-blob" />
+      <Variable name="sbom" value="docs/guides/release/verify-supply-chain-artifacts.mdx" display="Stage 12 emits CycloneDX SBOM and SLSA v1.0 provenance attestations linked from the release artifact manifest" />
+      <Variable name="cosignBlob" value="cosign verify-blob" display="Published linux-x64 binaries and SHA256SUMS are verified with identity- and issuer-pinned cosign verify-blob commands before release notes ship" />
+      <Variable name="releaseTests" value="core/test/scripts/release.test.ts" display="Release orchestrator tests assert signing order, checksum manifest coverage, SBOM linkage, and cosign verification argv without live credentials" />
+    </Step>
+    <Step name="criterion-6">
+      <Variable name="manifestTrust" value="docs/guides/update/channels-and-manifests.mdx" display="Update manifests at update.lando.dev are verified against embedded trust roots before any artifact URL is trusted" />
+      <Variable name="verifyOrdering" value="verify before JSON parse/schema trust" display="Manifest signature verification runs before schema decoding or binary download" />
+      <Variable name="signatureErrors" value="UpdateSignatureVerificationError" display="Invalid manifest signatures stop the updater before artifact bytes are fetched" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="self-update-safety" render={false} reason="Self-update replacement, launch-probe rollback, and permission failures are covered by injected filesystem tests in core/test/cli/update-manifest.test.ts">
+    <Step name="criterion-7">
+      <Variable name="selfUpdate" value="core/test/cli/update-manifest.test.ts" display="lando update verifies signed manifests, replaces the installed binary, and re-execs with preserved argv on linux-x64" />
+      <Variable name="checksumGate" value="binary checksum does not match" display="Replacement is refused before probe or rename when the downloaded artifact fails checksum verification" />
+    </Step>
+    <Step name="criterion-8">
+      <Variable name="launchProbe" value="UpdateLaunchProbeError" display="A failed launch probe after replacement rolls back to the prior .bak binary and surfaces remediation" />
+      <Variable name="rollback" value="restores the backup when the replaced binary fails its launch probe" display="Rollback restores the previous binary when the post-replacement launch probe fails" />
+    </Step>
+    <Step name="criterion-9">
+      <Variable name="permission" value="UpdatePermissionError" display="EACCES install paths exit with UpdatePermissionError and print sudo remediation without silent elevation" />
+      <Variable name="noElevation" value="does not silently elevate" display="The updater never escalates privileges implicitly when replacement or rollback hits permission errors" />
+    </Step>
+  </Scenario>
+
   <Scenario id="runtime-bytecode-aot" render={false} reason="Focused CLI/build tests prove these runtime and build contracts without starting live provider resources during guide generation">
     <Step name="criterion-15">
       <Variable name="fileSyncCreate" value="core/test/cli/start.scenario.test.ts" display="FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply" />
