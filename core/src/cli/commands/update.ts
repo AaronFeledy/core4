@@ -109,6 +109,7 @@ export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionEr
   {
     message: Schema.String,
     path: Schema.optional(Schema.String),
+    remediation: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -167,15 +168,39 @@ export interface UpdateExecveInput {
   readonly env: Record<string, string>;
 }
 
+export interface UpdateWindowsReplacementInput {
+  readonly executablePath: string;
+  readonly stagedBinaryPath: string;
+  readonly backupPath: string;
+  readonly attemptedVersion: string;
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Record<string, string>;
+  readonly manualFallback: string;
+}
+
 export type UpdateExecve = (input: UpdateExecveInput) => Effect.Effect<void, unknown, never>;
 export type UpdateRename = (from: string, to: string) => Promise<void>;
+export type UpdateWindowsReplacement = (
+  input: UpdateWindowsReplacementInput,
+) => Effect.Effect<void, unknown, never>;
+
+export interface UpdateWindowsReplacementSpawnInput {
+  readonly cmd: ReadonlyArray<string>;
+  readonly cwd: string;
+  readonly detached: boolean;
+}
+
+export type UpdateWindowsReplacementSpawner = (input: UpdateWindowsReplacementSpawnInput) => void;
 
 export interface UpdateSelfUpdateOptions {
   readonly executablePath?: string;
+  readonly platform?: string;
+  readonly arch?: string;
   readonly argv?: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly execve?: UpdateExecve;
   readonly rename?: UpdateRename;
+  readonly replaceWindows?: UpdateWindowsReplacement;
 }
 
 export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
@@ -214,10 +239,15 @@ export const updateChannelForVersion = (version: string): UpdateChannel => {
 
 const platform = (): string => `${process.platform}-${process.arch}`;
 
-const updateManifestPlatform = (): keyof UpdateManifest["binaries"] =>
-  process.platform === "win32"
-    ? "windows-x64"
-    : (`${process.platform}-${process.arch}` as keyof UpdateManifest["binaries"]);
+interface UpdateHostPlatform {
+  readonly platform: string;
+  readonly arch: string;
+}
+
+const updatePlatformId = (host: UpdateHostPlatform): string => `${host.platform}-${host.arch}`;
+
+const updateManifestPlatform = (host: UpdateHostPlatform = process): keyof UpdateManifest["binaries"] =>
+  host.platform === "win32" ? "windows-x64" : (updatePlatformId(host) as keyof UpdateManifest["binaries"]);
 
 const isPlaceholderBinary = (binary: UpdateManifest["binaries"][keyof UpdateManifest["binaries"]]): boolean =>
   binary.size === 0 || binary.sha256 === "" || /^0+$/u.test(binary.sha256);
@@ -770,25 +800,101 @@ const defaultExecve: UpdateExecve = (input) =>
 
 const isLikelyLandoExecutable = (path: string): boolean => basename(path).startsWith("lando");
 
-const defaultSelfUpdateExecutablePath = (): string | undefined => {
-  if (process.platform === "win32") return undefined;
-  return isLikelyLandoExecutable(process.execPath) ? process.execPath : undefined;
+const defaultSelfUpdateExecutablePath = (): string | undefined =>
+  isLikelyLandoExecutable(process.execPath) ? process.execPath : undefined;
+
+const windowsBatchValue = (value: string): string => value.replaceAll("%", "%%").replaceAll('"', '""');
+
+const windowsCommandArg = (value: string): string => `"${value.replaceAll('"', '\\"')}"`;
+
+const windowsManualFallback = ({
+  backupPath,
+  executablePath,
+  stagedBinaryPath,
+}: Pick<UpdateWindowsReplacementInput, "backupPath" | "executablePath" | "stagedBinaryPath">): string =>
+  `Close every running Lando process, move ${executablePath} to ${backupPath}, then move ${stagedBinaryPath} to ${executablePath}. If replacement fails, move ${backupPath} back to ${executablePath}.`;
+
+export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInput): string => {
+  const restartArgs = input.argv.slice(1).map(windowsCommandArg).join(" ");
+  return [
+    "@echo off",
+    "setlocal",
+    `set "TARGET=${windowsBatchValue(input.executablePath)}"`,
+    `set "CANDIDATE=${windowsBatchValue(input.stagedBinaryPath)}"`,
+    `set "BACKUP=${windowsBatchValue(input.backupPath)}"`,
+    ":wait",
+    'move /Y "%TARGET%" "%BACKUP%" >nul 2>nul',
+    "if not errorlevel 1 goto install",
+    "timeout /t 1 /nobreak >nul 2>nul",
+    "goto wait",
+    ":install",
+    'move /Y "%CANDIDATE%" "%TARGET%" >nul 2>nul',
+    "if errorlevel 1 (",
+    '  move /Y "%BACKUP%" "%TARGET%" >nul 2>nul',
+    "  exit /b 1",
+    ")",
+    `start "" "%TARGET%"${restartArgs.length === 0 ? "" : ` ${restartArgs}`}`,
+    'rmdir /S /Q "%~dp0" >nul 2>nul',
+    "endlocal",
+  ].join("\r\n");
 };
+
+const defaultWindowsReplacementSpawner: UpdateWindowsReplacementSpawner = (input) => {
+  const proc = Bun.spawn([...input.cmd], {
+    cwd: input.cwd,
+    stdout: "ignore",
+    stderr: "ignore",
+    detached: input.detached,
+  });
+  const detachable = proc as { readonly unref?: () => void };
+  detachable.unref?.();
+};
+
+export const scheduleWindowsReplacement = (
+  input: UpdateWindowsReplacementInput,
+  spawner: UpdateWindowsReplacementSpawner = defaultWindowsReplacementSpawner,
+): Effect.Effect<void, unknown, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const scriptPath = join(dirname(input.stagedBinaryPath), "replace-lando.cmd");
+      await writeFile(scriptPath, buildWindowsReplacementScript(input));
+      spawner({
+        cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
+        cwd: dirname(input.stagedBinaryPath),
+        detached: true,
+      });
+    },
+    catch: (cause) => cause,
+  });
+
+const defaultWindowsReplacement: UpdateWindowsReplacement = (input) => scheduleWindowsReplacement(input);
+
+interface ResolvedSelfUpdateOptions {
+  readonly executablePath: string;
+  readonly platform: string;
+  readonly arch: string;
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly execve: UpdateExecve;
+  readonly rename: UpdateRename;
+  readonly replaceWindows: UpdateWindowsReplacement;
+}
 
 const resolveSelfUpdateOptions = (
   input: false | UpdateSelfUpdateOptions | undefined,
-):
-  | Required<Pick<UpdateSelfUpdateOptions, "executablePath" | "argv" | "env" | "execve" | "rename">>
-  | undefined => {
-  if (input === false || process.platform === "win32") return undefined;
+): ResolvedSelfUpdateOptions | undefined => {
+  if (input === false) return undefined;
   const executablePath = input?.executablePath ?? defaultSelfUpdateExecutablePath();
   if (executablePath === undefined) return undefined;
   return {
     executablePath,
+    platform: input?.platform ?? process.platform,
+    arch: input?.arch ?? process.arch,
     argv: input?.argv ?? process.argv,
     env: input?.env ?? process.env,
     execve: input?.execve ?? defaultExecve,
     rename: input?.rename ?? rename,
+    replaceWindows: input?.replaceWindows ?? defaultWindowsReplacement,
   };
 };
 
@@ -830,10 +936,12 @@ const launchProbeError = ({
   cause,
   exitCode,
   path,
+  platformId,
   stderr,
   stdout,
 }: {
   readonly path: string;
+  readonly platformId: string;
   readonly attemptedVersion: string;
   readonly stdout?: string;
   readonly stderr?: string;
@@ -845,8 +953,8 @@ const launchProbeError = ({
   if (stderr !== undefined) outputInput.stderr = stderr;
   if (cause !== undefined) outputInput.cause = cause;
   return new UpdateLaunchProbeError({
-    message: `Downloaded Lando ${attemptedVersion} failed its launch probe on ${platform()}.`,
-    platform: platform(),
+    message: `Downloaded Lando ${attemptedVersion} failed its launch probe on ${platformId}.`,
+    platform: platformId,
     attemptedVersion,
     probeCommand: probeCommandSummary(path),
     outputSummary: probeOutputSummary(outputInput),
@@ -870,16 +978,22 @@ const withRollbackFailure = (error: UpdateLaunchProbeError, cause: unknown): Upd
 const runLaunchProbe = (
   path: string,
   attemptedVersion: string,
+  platformId: string,
 ): Effect.Effect<void, UpdateLaunchProbeError, ProcessRunner> =>
   Effect.gen(function* () {
     const processRunner = yield* ProcessRunner;
     const result = yield* processRunner
       .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
-      .pipe(Effect.mapError((cause) => launchProbeError({ path, attemptedVersion, exitCode: -1, cause })));
+      .pipe(
+        Effect.mapError((cause) =>
+          launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause }),
+        ),
+      );
     if (result.exitCode === 0) return;
     return yield* Effect.fail(
       launchProbeError({
         path,
+        platformId,
         attemptedVersion,
         stdout: result.stdout,
         stderr: result.stderr,
@@ -903,6 +1017,11 @@ const renameForUpdate = (
       }),
   });
 
+const cleanupUpdateTempDir = (tempDir: string): Effect.Effect<void> =>
+  Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
+    Effect.catchAll(() => Effect.void),
+  );
+
 const reexecUserArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
   const userArgv = argv.slice(1);
   return userArgv[0]?.startsWith("/$bunfs/") === true ? userArgv.slice(1) : userArgv;
@@ -917,7 +1036,7 @@ const applyPosixSelfUpdate = ({
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
-  readonly selfUpdate: Required<Pick<UpdateSelfUpdateOptions, "argv" | "env" | "execve" | "rename">>;
+  readonly selfUpdate: ResolvedSelfUpdateOptions;
 }): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
   Effect.acquireUseRelease(
     Effect.tryPromise({
@@ -933,8 +1052,9 @@ const applyPosixSelfUpdate = ({
       Effect.gen(function* () {
         const tempBinaryPath = join(tempDir, basename(executablePath));
         const backupPath = `${executablePath}.bak`;
+        const platformId = updatePlatformId(selfUpdate);
         yield* writeDownloadedBinary(tempBinaryPath, binaryBytes);
-        yield* runLaunchProbe(tempBinaryPath, attemptedVersion);
+        yield* runLaunchProbe(tempBinaryPath, attemptedVersion, platformId);
         yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath);
         yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath).pipe(
           Effect.catchAll((error) =>
@@ -944,7 +1064,7 @@ const applyPosixSelfUpdate = ({
             ),
           ),
         );
-        yield* runLaunchProbe(executablePath, attemptedVersion).pipe(
+        yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
           Effect.catchAll((error) =>
             Effect.tryPromise({
               try: () => selfUpdate.rename(backupPath, executablePath),
@@ -988,6 +1108,75 @@ const applyPosixSelfUpdate = ({
       ),
   );
 
+const applyWindowsSelfUpdate = ({
+  attemptedVersion,
+  binaryBytes,
+  executablePath,
+  selfUpdate,
+}: {
+  readonly attemptedVersion: string;
+  readonly binaryBytes: Uint8Array;
+  readonly executablePath: string;
+  readonly selfUpdate: ResolvedSelfUpdateOptions;
+}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  Effect.gen(function* () {
+    const tempDir = yield* Effect.tryPromise({
+      try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
+      catch: (cause) =>
+        new UpdatePermissionError({
+          message: `Failed to create update temp directory next to ${executablePath}.`,
+          path: executablePath,
+          cause,
+        }),
+    });
+    const stagedBinaryPath = join(tempDir, basename(executablePath));
+    const backupPath = `${executablePath}.bak`;
+    const manualFallback = windowsManualFallback({ executablePath, stagedBinaryPath, backupPath });
+    const replacementInput: UpdateWindowsReplacementInput = {
+      executablePath,
+      stagedBinaryPath,
+      backupPath,
+      attemptedVersion,
+      argv: [executablePath, ...reexecUserArgv(selfUpdate.argv)],
+      env: stringEnv(selfUpdate.env),
+      manualFallback,
+    };
+
+    yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes).pipe(
+      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
+    );
+    yield* runLaunchProbe(stagedBinaryPath, attemptedVersion, updatePlatformId(selfUpdate)).pipe(
+      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
+    );
+    yield* selfUpdate.replaceWindows(replacementInput).pipe(
+      Effect.mapError(
+        (cause) =>
+          new UpdatePermissionError({
+            message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
+            path: executablePath,
+            remediation: manualFallback,
+            cause,
+          }),
+      ),
+      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
+    );
+  });
+
+const applySelfUpdate = ({
+  attemptedVersion,
+  binaryBytes,
+  executablePath,
+  selfUpdate,
+}: {
+  readonly attemptedVersion: string;
+  readonly binaryBytes: Uint8Array;
+  readonly executablePath: string;
+  readonly selfUpdate: ResolvedSelfUpdateOptions;
+}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  selfUpdate.platform === "win32"
+    ? applyWindowsSelfUpdate({ attemptedVersion, binaryBytes, executablePath, selfUpdate })
+    : applyPosixSelfUpdate({ attemptedVersion, binaryBytes, executablePath, selfUpdate });
+
 interface DefaultUpdateSuccess {
   readonly manifest: UpdateManifest;
   readonly result: UpdateResult;
@@ -1024,7 +1213,8 @@ const defaultUpdate = (
         }),
       );
     }
-    const manifestPlatform = updateManifestPlatform();
+    const selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
+    const manifestPlatform = updateManifestPlatform(selfUpdate);
     const binary = manifest.binaries[manifestPlatform];
     if (binary === undefined) {
       return yield* Effect.fail(
@@ -1049,7 +1239,6 @@ const defaultUpdate = (
     yield* enforceMinimumVersion(manifest, options.currentVersion);
     yield* enforceNoDowngrade(manifest, options.currentVersion);
     yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
-    const selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
     const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
     if (!options.dryRun && selfUpdate !== undefined && hasNewCoreVersion) {
       const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
@@ -1073,7 +1262,7 @@ const defaultUpdate = (
         checksumsBytes,
         manifestSha256: binary.sha256,
       });
-      yield* applyPosixSelfUpdate({
+      yield* applySelfUpdate({
         attemptedVersion: manifest.latest,
         binaryBytes,
         executablePath: selfUpdate.executablePath,
