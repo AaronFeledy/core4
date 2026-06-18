@@ -1441,8 +1441,8 @@
         "Lint passes."
       ],
       "priority": 81,
-      "passes": true,
-      "notes": "Default TTY lando renderer now ships a documented spaceship-console visual language with boxed LANDO OPS frames, textual status chips, ANSI accents in TTY mode only, wrapped 80/100/120-column fixtures, and plugin-authoring docs pointing renderer authors at @lando/renderer-lando. Plain/json/non-TTY output remains undecorated."
+      "passes": false,
+      "notes": "Review reopened: the core TTY painter now has the documented spaceship-console visual language, plugin-authoring docs point at @lando/renderer-lando, and plain/non-TTY output remains undecorated, but @lando/renderer-lando still exports Layer.empty and renderer selection still uses core makeLandoRendererLive directly. Finish the plugin-owned renderer layer/resolution seam, then add the remaining explicit json/warning/success fixture coverage before marking this story complete."
     },
     {
       "id": "US-281",

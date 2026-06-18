@@ -1291,3 +1291,10 @@
 - **Learnings for future iterations:**
   - Box-drawing terminal QA treats every box glyph line as a frame line, so TTY frames need both left and right borders at a consistent width; trailing spaces alone do not survive `tmux capture-pane`.
 ---
+
+## 2026-06-18 13:44 CDT - US-280 Review
+- Reopened US-280 after review: the visual-language polish is real, but the story is not complete because `@lando/renderer-lando` still exports `Layer.empty` and renderer selection still uses core `makeLandoRendererLive` directly instead of loading the default TTY implementation from the bundled renderer plugin.
+- Review notes (deferred/rejected): terminal escape sanitization is inherited task-detail behavior, not introduced by this story; sub-60-column wrapping and stale tail-depth assertion are non-blocking polish/test-hardening follow-ups compared with the plugin-seam blocker.
+- Verification: `bun run typecheck`, `bun run lint`, focused renderer tests, guide lint, guide coverage, and `dev:guides docs/guides/cli/terminal-ui-polish.mdx --once` passed; LSP diagnostics could not run because the TypeScript LSP is not installed in this harness.
+- **Learnings for future iterations:** A bundled renderer manifest is not enough for US-280; the default `lando` TTY renderer must be provided through the `@lando/renderer-lando` layer/resolution seam, while `plain`, `json`, and `verbose` remain core fallback modes.
+---
