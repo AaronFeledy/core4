@@ -1245,8 +1245,8 @@
         "Lint passes"
       ],
       "priority": 70,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "POSIX install.sh now verifies SHA256SUMS.asc with an embedded vendored GPG trust root before checksum install, deriving the .asc URL beside SHA256SUMS even when the shared update manifest points self-update at SHA256SUMS.sig. Windows install.ps1 now verifies checksum signatures with an installer-owned cosign trust-root definition (certificate identity regexp + OIDC issuer) and fails closed when that trust root is missing or malformed."
     },
     {
       "id": "US-270",

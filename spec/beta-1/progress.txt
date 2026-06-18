@@ -24,6 +24,15 @@
 - Binary cosign verification commands should be generated from one release-stage helper and reused for both CI `cosign verify-blob` execution and `dist/release-notes.md`, so published instructions cannot drift from the command CI proved.
 - POSIX self-update launch safety uses two probes: first the temp artifact before replacement, then the installed executable after replacement; the second probe is the one that can restore `.bak` and attach rollback-failure details to `UpdateLaunchProbeError` without changing the error tag.
 - Windows self-update must never rename over the running `.exe` in-process; stage the verified binary beside the target, launch the delayed replacement helper with explicit backup/fallback paths, and let the current process exit.
+- Installer trust roots split by platform: `install.sh` derives/verifies `SHA256SUMS.asc` beside the checksum manifest with its embedded GPG key, while `install.ps1` verifies the manifest's cosign `.sig`/`.crt` using an embedded identity/issuer trust-root object; the update manifest's `checksums.signature` stays `.sig` for self-update and Windows.
+
+## 2026-06-18 00:34 CDT - US-269
+- Completed installer trust-root verification: POSIX installs now import an installer-vendored GPG key into an isolated temporary home and verify `SHA256SUMS.asc` before checksum/install; Windows installs now read an installer-owned cosign trust-root definition and fail closed when it is missing or malformed.
+- Updated the install guides to describe the GPG and cosign trust-root split, and marked the story complete in the PRD.
+- Verification: typecheck, lint, guide lint/coverage, touched guide scenario checks, focused POSIX/Windows installer tests, and manual temp-fixture installer smokes passed.
+- **Learnings for future iterations:**
+  - The shared update manifest keeps `SHA256SUMS.sig` for self-update and Windows, so POSIX `install.sh` must derive `SHA256SUMS.asc` from the checksum URL rather than trusting the manifest signature URL directly.
+---
 
 ## 2026-06-14 CDT - US-246
 - Enabled e2e guide scenarios end-to-end: SDK frontmatter and `<Scenario>` props now accept `"e2e"`, generated MDX tests route through `ScenarioContextFactory.e2e`, generated test names include `@smoke`/`[e2e]` for subset selection, and local runs skip with an explicit live-provider gate message when the provider gate is absent.
@@ -1222,4 +1231,11 @@
 - CI outcome: pass
 - Review feedback: fixed (Bugbot High findings: release-note installer verification now downloads script/signature/certificate before local cosign verification, and Stage 13 release-manifest reading accepts installer/trust-root artifact kinds; merge conflicts with main resolved)
 - Merge: merged (squash)
+
+## 2026-06-18 01:05 CDT - US-269 Review
+- Reviewed installer vendored-trust-root verification against PRD-10 US-269: POSIX imports the embedded GPG key into an isolated `--homedir` and verifies `SHA256SUMS.asc` (derived beside the checksum URL, matching `scripts/release.ts`'s `gpg --detach-sign`), and Windows verifies the cosign `.sig` against an embedded identity-regexp/OIDC-issuer trust root; both fail closed on missing/malformed trust root, wrong signer, and tampered checksum/binary. Documented in AGENTS.md that the embedded GPG key and cosign identity/issuer are Beta-1 placeholders (no fingerprint pin in `release.ts`) to be replaced before stable distribution, matching the runtime-bundle placeholder discipline and the US-271 trust-artifact work.
+- Review notes (rejected): "Windows fail-open when cosign is missing/uninvocable (only `$LASTEXITCODE` checked)" — false positive: `install.ps1` sets `$ErrorActionPreference = "Stop"`, so a missing/erroring `cosign` throws `CommandNotFoundException` (not suppressed by `*> $null`) and exits non-zero (verified empirically); the pattern is also pre-existing from US-268.
+- Review notes (rejected): "`posix_checksum_signature_url` trusts a manifest-provided `.asc` URL" — not a bypass: the trust root is the embedded GPG key, so any signature file (manifest-pointed or derived) only validates if signed by that embedded key; the signature artifact itself is network-fetched by design, like the binary.
+- Review notes (deferred): explicit "expired trust root" fail-closed coverage is delegated to gpg/cosign's own validity checks rather than `--status-fd` parsing; adding bespoke expiry handling to the minimal installer was out of scope and would risk the verified happy path.
+- Verification: typecheck, lint passed; POSIX (15) and Windows (16) installer test files passed.
 ---
