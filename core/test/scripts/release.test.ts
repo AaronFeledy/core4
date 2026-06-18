@@ -1252,6 +1252,44 @@ describe("release orchestrator", () => {
       expect(notes).toContain("https://get.lando.dev/install.ps1");
     });
 
+    test("installer script verification fails closed when an installer signature is missing", async () => {
+      let installerVerifyAttempted = false;
+
+      await expect(
+        runRelease({
+          deprecationGate: passingDeprecationGate,
+          target: "binary",
+          throughStage: "12-provenance-sbom",
+          env: {
+            ...manifestSigningEnv,
+            ...provenanceSigningEnv,
+            LANDO_RELEASE_PLATFORM: "linux-x64",
+          },
+          runner: {
+            spawn: async ({ stageId, summary, cmd }) => {
+              if (
+                stageId === "12-provenance-sbom" &&
+                summary === "cosign-sign and verify installer scripts" &&
+                cmd[1] === "verify-blob" &&
+                cmd.at(-1) === "dist/install.sh"
+              ) {
+                installerVerifyAttempted = true;
+                throw new Error("missing installer signature");
+              }
+            },
+            shell: async () => {},
+          },
+          logger: () => {},
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ReleaseStageError",
+        stageId: "12-provenance-sbom",
+        artifactFamily: "binary",
+        commandSummary: "generate provenance and SBOM artifacts",
+      });
+      expect(installerVerifyAttempted).toBe(true);
+    });
+
     test("installer artifact staging fails closed when a trust root is missing", async () => {
       const provenanceStage = releaseStage("12-provenance-sbom");
 
