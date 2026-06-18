@@ -1,0 +1,27 @@
+---
+id: windows-installer
+provider: test
+platforms: [win32]
+timeout: 60000
+tags: [beta, docs, installer]
+---
+
+<Guide>
+  <Scenario id="install-windows-binary" render={false} reason="The installer unit tests drive scripts/install.ps1 against local file:// release fixtures with fake signature verification, so guide generation never downloads release artifacts or mutates the host">
+    <Step name="detect-platform">
+      <Variable name="windowsX64" value="AMD64 -> windows-x64" display="The PowerShell installer maps a Windows x64 host to the windows-x64 release artifact" />
+      <Variable name="unsupportedArch" value="Unsupported Windows architecture: ARM64" display="Unsupported Windows architectures fail before any binary is downloaded or installed" />
+    </Step>
+    <Step name="resolve-channel">
+      <Variable name="stable" value="https://update.lando.dev/v4/stable.json" display="stable is the default channel manifest" />
+      <Variable name="next" value="LANDO_CHANNEL=next" display="next resolves to the next channel manifest" />
+      <Variable name="dev" value="LANDO_CHANNEL=dev" display="dev resolves to the dev channel manifest" />
+    </Step>
+    <Step name="verify-and-install">
+      <Variable name="downloads" value="lando.exe + SHA256SUMS + SHA256SUMS.sig + SHA256SUMS.crt" display="The installer downloads the Windows binary, checksum manifest, and cosign checksum signature/certificate" />
+      <Variable name="verify" value="cosign verify-blob --signature SHA256SUMS.sig --certificate SHA256SUMS.crt SHA256SUMS" display="Checksum manifests must verify before lando.exe is trusted" />
+      <Variable name="installDir" value="${LANDO_INSTALL_DIR:-&lt;userDataRoot&gt;\bin}\lando.exe" display="The verified binary installs to the chosen install dir, creating it when absent" />
+      <Variable name="policy" value="Set-ExecutionPolicy -Scope CurrentUser RemoteSigned" display="If PowerShell blocks script execution, the installer prints the exact CurrentUser remediation and one-shot Bypass invocation" />
+    </Step>
+  </Scenario>
+</Guide>
