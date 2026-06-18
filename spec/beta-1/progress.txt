@@ -1095,6 +1095,25 @@
 - Review feedback: fixed (resolved CONFLICTING merge with main; Bugbot 3 findings — installer now cosign-verifies SHA256SUMS.sig, Darwin default aligned to ~/.local/share/lando, config.yml parser mirrors minimal-YAML subset)
 - Merge: merged (squash)
 ---
+## 2026-06-17 16:44 CDT - US-262
+- Completed POSIX self-update replacement: `lando update` now verifies signed checksum data and the downloaded binary before launch probing, stages the candidate beside the target executable, preserves a `.bak` rollback file, installs via rename, rolls back on install/re-exec failure, and re-execs with preserved argv/env.
+- Verification: typecheck, lint, build, focused update/telemetry tests, narrow update dispatch-parity spot check, and source CLI invalid-channel smoke passed; TypeScript LSP diagnostics were unavailable because the LSP server is not installed and was previously declined.
+- **Learnings for future iterations:**
+  - Self-update replacement needs rollback around both rename phases and failed re-exec; otherwise a failed install can leave the executable path missing or leave the process running after replacing itself.
+---
+
+## 2026-06-17 17:55 CDT - US-262 Review
+- Made the POSIX self-update execve-failure rollback atomic (restore `.bak` over the installed binary with a single `rename(2)` instead of `rm`+`rename`, which left the executable path briefly absent), and removed the now-empty update temp dir before execve so a successful re-exec does not leak a `.lando-update-*` directory beside the binary.
+- Added the missing `UpdateChecksumVerificationError` -> `signature_failure` row to the update telemetry mapping test (the tag was already mapped in `events.ts` but untested).
+- Review notes (deferred): swallowed restore-failure on both rollback branches and absent fsync-before-rename are pre-existing robustness gaps consistent with the install-rename branch and not introduced regressions; left as-is to keep the diff focused.
+- Verification: typecheck, lint, and focused update-manifest/update-telemetry tests passed (29 tests).
+- **Learnings for future iterations:** Self-update rollback must rely on atomic `rename(2)` overwrite, never `rm`-then-`rename`; and any cleanup that must survive a successful `execve` has to run before the exec call because the process image is replaced before scoped finalizers fire.
+---
+## 2026-06-17 18:40 CDT - US-262 Verify
+- Verified the compiled binary end-to-end in `lando4-dev`: rebuilt `core/dist/lando`, ran `lando setup --provider=lando --yes` with a checksum-verified local runtime-bundle manifest and live Podman socket, then drove a copied compiled binary through a local HTTPS `update.lando.dev` self-update scenario that verified manifest/checksum inputs, launch-probed the candidate, atomically replaced itself, preserved `.bak`, removed temp update dirs, and re-execed with argv/env intact. Adjacent dry-run update smoke confirmed no replacement, no `.bak`, and no temp-dir leak.
+- Fixed a compiled `$bunfs` re-exec argv blocker: POSIX self-update now drops Bun's internal compiled entrypoint from the argv passed to `execve`, preserving only the user command arguments.
+- **Learnings for future iterations:** Compiled Bun self-update can expose an extra `/$bunfs/...` argv entry during re-exec; real compiled verification should assert the post-update process sees only the user-facing command argv.
+---
 
 ## 2026-06-17 19:12 CDT - US-268
 - Shipped the Windows PowerShell installer: it maps Windows x64 hosts to the windows-x64 artifact, resolves stable/next/dev channel manifests, verifies the cosign-signed checksum manifest plus binary checksum, installs the verified lando.exe to the selected install directory or resolved Windows userDataRoot bin, and prints execution-policy remediation through the tested policy-block branch.

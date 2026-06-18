@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
@@ -8,6 +9,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import {
+  type UpdateChecksumSignatureVerifier,
   type UpdateManifestFetcher,
   type UpdateManifestSignatureVerifier,
   UpdateMinimumVersionError,
@@ -34,6 +36,7 @@ const noopProcessRunner = {
 
 const hex = "a".repeat(64);
 let updateStateRoot = "";
+const tempRoots: string[] = [];
 
 beforeEach(async () => {
   updateStateRoot = await mkdtemp(join(tmpdir(), "lando-update-manifest-test-"));
@@ -41,7 +44,14 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(updateStateRoot, { recursive: true, force: true });
+  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
+
+const makeTempRoot = async (prefix: string): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  tempRoots.push(root);
+  return root;
+};
 
 const manifestFor = (channel: UpdateChannel) => ({
   channel,
@@ -83,6 +93,8 @@ const manifestFor = (channel: UpdateChannel) => ({
 });
 
 const bytes = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(value));
+const textBytes = (value: string): Uint8Array => encoder.encode(value);
+const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
 
 const fetcherForManifest =
   (manifest: ReturnType<typeof manifestFor>, seen: string[] = []): UpdateManifestFetcher =>
@@ -96,20 +108,33 @@ const fetcherForManifest =
 const fetcherFor = (channel: UpdateChannel, seen: string[] = []): UpdateManifestFetcher =>
   fetcherForManifest(manifestFor(channel), seen);
 
-const verifierFor =
-  (seen: string[] = []): UpdateManifestSignatureVerifier =>
-  (input) =>
-    Effect.sync(() => {
-      seen.push(
-        [
-          input.manifestUrl,
-          input.signatureUrl,
-          new TextDecoder().decode(input.signatureBytes),
-          input.certificateUrl,
-          new TextDecoder().decode(input.certificateBytes),
-        ].join("|"),
-      );
-    });
+const verifierFor = (): UpdateManifestSignatureVerifier => () => Effect.void;
+
+const checksumVerifierFor = (): UpdateChecksumSignatureVerifier => () => Effect.void;
+
+const fetcherForSelfUpdate =
+  ({
+    binaryBytes,
+    checksumsText,
+    manifest,
+    seen = [],
+  }: {
+    readonly manifest: ReturnType<typeof manifestFor>;
+    readonly binaryBytes: Uint8Array;
+    readonly checksumsText: string;
+    readonly seen?: string[];
+  }): UpdateManifestFetcher =>
+  async (url) => {
+    seen.push(url);
+    if (url.endsWith(".json")) return bytes(manifest);
+    if (url.endsWith(".json.sig")) return textBytes("manifest-signature");
+    if (url.endsWith(".json.crt")) return textBytes("manifest-certificate");
+    if (url.endsWith("SHA256SUMS")) return textBytes(checksumsText);
+    if (url.endsWith("SHA256SUMS.sig")) return textBytes("checksums-signature");
+    if (url.endsWith("SHA256SUMS.crt")) return textBytes("checksums-certificate");
+    if (url === manifest.binaries["linux-x64"].url) return binaryBytes;
+    throw new Error(`unexpected fetch: ${url}`);
+  };
 
 const runUpdate = (options: Parameters<typeof update>[0]) =>
   update({ updateStatePath: join(updateStateRoot, "state.json"), ...options }).pipe(
@@ -425,6 +450,337 @@ describe("update signed manifest", () => {
 
     expect(result.updatedCore).toBe(true);
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
+  });
+
+  test("POSIX self-update replaces the binary atomically and re-execs with preserved argv and env", async () => {
+    const root = await makeTempRoot("lando-self-update-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+    await chmod(executablePath, 0o755);
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const probeCommands: string[] = [];
+    const execs: Array<{
+      readonly path: string;
+      readonly argv: ReadonlyArray<string>;
+      readonly env: Record<string, string>;
+    }> = [];
+    const processRunner = {
+      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+        Effect.sync(() => {
+          probeCommands.push(input.cmd);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const result = await Effect.runPromise(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          argv: ["/previous/lando", "update", "--channel=stable"],
+          env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
+          execve: (input) =>
+            Effect.sync(() => {
+              execs.push(input);
+            }),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(result).toEqual({ updatedCore: true, updatedPlugins: [] });
+    expect(await readFile(executablePath, "utf8")).toBe("new-binary");
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
+    expect(probeCommands).toHaveLength(1);
+    expect(dirname(dirname(probeCommands[0] ?? ""))).toBe(root);
+    expect(basename(dirname(probeCommands[0] ?? ""))).toStartWith(".lando-update-");
+    expect(execs).toEqual([
+      {
+        path: executablePath,
+        argv: [executablePath, "update", "--channel=stable"],
+        env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
+      },
+    ]);
+  });
+
+  test("POSIX self-update drops Bun's compiled entrypoint from re-exec argv", async () => {
+    const root = await makeTempRoot("lando-self-update-bunfs-argv-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+    await chmod(executablePath, 0o755);
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const execs: ReadonlyArray<string>[] = [];
+
+    await Effect.runPromise(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          argv: [executablePath, "/$bunfs/root/lando", "update", "--channel", "stable"],
+          env: {},
+          execve: (input) =>
+            Effect.sync(() => {
+              execs.push(input.argv);
+            }),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(execs).toEqual([[executablePath, "update", "--channel", "stable"]]);
+  });
+
+  test("POSIX self-update fails before probe or rename when the binary checksum does not match", async () => {
+    const root = await makeTempRoot("lando-self-update-checksum-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("tampered-binary");
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: "b".repeat(64),
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const probeCommands: string[] = [];
+    const processRunner = {
+      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+        Effect.sync(() => {
+          probeCommands.push(input.cmd);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const tag = await failureTag(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${"a".repeat(64)}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: { executablePath, execve: () => Effect.void },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(tag).toBe("UpdateChecksumVerificationError");
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(probeCommands).toEqual([]);
+  });
+
+  test("POSIX self-update fails before probe or rename when checksum signature verification fails", async () => {
+    const root = await makeTempRoot("lando-self-update-signature-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const probeCommands: string[] = [];
+    const processRunner = {
+      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+        Effect.sync(() => {
+          probeCommands.push(input.cmd);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const tag = await failureTag(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: { executablePath, execve: () => Effect.void },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: () => Effect.fail(new Error("bad signature")),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(tag).toBe("UpdateChecksumSignatureVerificationError");
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(probeCommands).toEqual([]);
+  });
+
+  test("POSIX self-update restores the backup when installing the probed binary fails", async () => {
+    const root = await makeTempRoot("lando-self-update-rename-rollback-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+    const renames: Array<readonly [string, string]> = [];
+
+    const tag = await failureTag(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          execve: () => Effect.void,
+          rename: async (from, to) => {
+            renames.push([from, to]);
+            if (to === executablePath && renames.length === 2) throw new Error("install rename failed");
+            await rename(from, to);
+          },
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(tag).toBe("UpdatePermissionError");
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(renames.map(([, to]) => to)).toEqual([`${executablePath}.bak`, executablePath, executablePath]);
+  });
+
+  test("POSIX self-update restores the backup when re-exec fails after replacement", async () => {
+    const root = await makeTempRoot("lando-self-update-exec-rollback-");
+    const executablePath = join(root, "lando");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = {
+      ...manifestFor("stable"),
+      latest: "4.4.0",
+      binaries: {
+        ...manifestFor("stable").binaries,
+        "linux-x64": {
+          ...manifestFor("stable").binaries["linux-x64"],
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+        },
+      },
+    };
+
+    const tag = await failureTag(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          execve: () => Effect.fail(new Error("execve failed")),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(tag).toBe("UpdatePermissionError");
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
   });
 
   test("rejects placeholder binary entries after signed manifest verification", async () => {
