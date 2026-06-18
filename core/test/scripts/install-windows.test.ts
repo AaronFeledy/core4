@@ -187,6 +187,63 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(installedPath).exists()).toBe(true);
   });
 
+  test("matches minimal config parsing for indented top-level userDataRoot", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const confRoot = join(root, "conf");
+    const firstRoot = join(root, "first-root");
+    const finalRoot = join(root, "final-root");
+    await mkdir(confRoot, { recursive: true });
+    await writeFile(
+      join(confRoot, "config.yml"),
+      `  userDataRoot: ${firstRoot}
+  nested:
+    userDataRoot: ${join(root, "nested-root")}
+  userDataRoot: ${finalRoot}
+`,
+    );
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: confRoot,
+      LANDO_USER_DATA_ROOT: "",
+      LOCALAPPDATA: join(root, "LocalAppData"),
+    });
+
+    const installedPath = join(finalRoot, "bin", "lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
+
+  test("detects the x64 host architecture from 32-bit PowerShell sessions", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const installDir = join(root, "install");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "",
+      PROCESSOR_ARCHITECTURE: "x86",
+      PROCESSOR_ARCHITEW6432: "AMD64",
+    });
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("platform: windows-x64");
+    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(true);
+  });
+
   test("fails closed when signature verification fails", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);

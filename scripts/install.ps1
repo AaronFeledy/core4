@@ -57,7 +57,11 @@ function Get-CosignCertificateUrl([string] $SignatureUrl) {
 
 function Detect-Platform {
   $arch = EnvValue "LANDO_INSTALL_WINDOWS_ARCH"
-  if ([string]::IsNullOrWhiteSpace($arch)) { $arch = EnvValue "PROCESSOR_ARCHITECTURE" }
+  if ([string]::IsNullOrWhiteSpace($arch)) {
+    $arch = EnvValue "PROCESSOR_ARCHITECTURE"
+    $hostArch = EnvValue "PROCESSOR_ARCHITEW6432"
+    if ([string]::IsNullOrWhiteSpace($arch) -or $arch -eq "x86") { $arch = $hostArch }
+  }
   switch -Regex ($arch) {
     "^(AMD64|x86_64|x64)$" { return "windows-x64" }
     default { Fail "Unsupported Windows architecture: $arch" }
@@ -82,12 +86,34 @@ function Read-ConfigUserDataRoot([string] $ConfRoot) {
   if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return $null }
 
   $value = $null
+  $depth = 0
+  $indentStack = New-Object 'int[]' 64
+  $rootStack = New-Object 'bool[]' 64
+  $indentStack[0] = -1
+  $rootStack[0] = $true
   foreach ($rawLine in Get-Content -LiteralPath $config) {
     $line = ($rawLine -replace "[ \t]+#.*$", "").TrimEnd()
-    if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#") -or $line -match "^\s") { continue }
-    if ($line -notmatch "^userDataRoot\s*:\s*(.*)$") { continue }
+    $trimmedLine = $line.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith("#")) { continue }
+    if ($trimmedLine -notmatch "^([A-Za-z0-9_-]+)\s*:\s*(.*)$") { return $null }
 
-    $candidate = $Matches[1].Trim()
+    $indentMatch = [regex]::Match($line, "[^ ]")
+    $indent = if ($indentMatch.Success) { $indentMatch.Index } else { 0 }
+    while ($depth -gt 0 -and $indent -le $indentStack[$depth]) { $depth-- }
+    if ($indent -le $indentStack[$depth]) { return $null }
+
+    $key = $Matches[1]
+    $parentIsRoot = $rootStack[$depth]
+    $candidate = $Matches[2].Trim()
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+      if ($parentIsRoot -and $key -eq "userDataRoot") { $value = $null }
+      $depth++
+      $indentStack[$depth] = $indent
+      $rootStack[$depth] = $false
+      continue
+    }
+    if (-not $parentIsRoot -or $key -ne "userDataRoot") { continue }
+
     if (($candidate.StartsWith('"') -and $candidate.EndsWith('"')) -or ($candidate.StartsWith("'") -and $candidate.EndsWith("'"))) {
       $candidate = $candidate.Substring(1, $candidate.Length - 2)
     }
