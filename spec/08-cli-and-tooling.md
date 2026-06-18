@@ -70,6 +70,8 @@ The `global:` top-level alias prefix is **reserved** for the `meta:global:*` nam
 
 The `scratch:` top-level alias prefix and the bare `scratch` top-level alias are **reserved** for the `apps:scratch:*` namespace (§21.10.2). The bare `scratch` alias maps to `apps:scratch:start` (analogous to the bare `init` alias mapping to `apps:init`), and every other `scratch:<verb>` alias maps to its `apps:scratch:<verb>` canonical id. Plugin- and tooling-contributed top-level aliases that begin with `scratch:` or that are exactly `scratch` collide with the built-ins and are rejected with `CommandAliasConflictError`. A user override via `commandAliases.custom:` MAY remap a `scratch:*` alias inside an app context (the underlying `apps:scratch:*` canonical id remains callable directly).
 
+The `ambient:` top-level alias prefix and the bare `ambient` top-level alias are **reserved** for the `meta:ambient:*` namespace (§8.2.5). The bare `ambient` alias maps to `meta:ambient:status`, and every other `ambient:<verb>` alias maps to its `meta:ambient:<verb>` canonical id. Plugin- and tooling-contributed top-level aliases that begin with `ambient:` or that are exactly `ambient` collide with the built-ins and are rejected with `CommandAliasConflictError`. A user override via `commandAliases.custom:` MAY remap an `ambient:*` alias inside an app context (the underlying `meta:ambient:*` canonical id remains callable directly).
+
 **User override.** Top-level aliases are configurable in global config (§7.5) and at the Landofile level (§7.4). Landofile entries take precedence inside the app context.
 
 ```yaml
@@ -115,16 +117,25 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:config:translate` | *(none)* | `app` | Run config translators and optionally apply generated Landofile fragments (§8.2.1) |
 | `app:destroy` | `destroy` | `app` | Destroy the current app's resources |
 | `app:exec` | `exec` | `app` | Execute a command inside a service |
+| `app:hooks:install` | *(none)* | `minimal` | Install Git-hook dispatchers for declared `hooks:` checks (§8.2.7, §7.9) |
+| `app:hooks:list` | *(none)* | `minimal` | List declared `hooks:` checks and their install state (§8.2.7, §7.9) |
+| `app:hooks:run` | *(none)* | `app` | Execute a hook stage's check plan through `CheckRunner` (§8.2.7, §10.11) |
+| `app:hooks:uninstall` | *(none)* | `minimal` | Remove Lando-owned Git-hook dispatchers (§8.2.7, §12.7) |
 | `app:includes:update` | *(none)* | `minimal` | Refresh one or more `includes:` lockfile entries (§7.7.4); with no arguments, refreshes all |
 | `app:includes:verify` | *(none)* | `minimal` | Re-check every `includes:` checksum without updating; succeeds without network access on a warm cache (§7.7.4, §15.C) |
 | `app:info` | `info` | `app` | Print app/service runtime information |
 | `app:logs` | `logs` | `app` | Stream service logs |
+| `app:processes:list` | *(none)* | `minimal` | List declared and currently supervised host processes (§8.2.8, §7.10) |
+| `app:processes:logs` | *(none)* | `app` | Stream captured stdout/stderr for declared processes (§8.2.8, §10.13) |
+| `app:processes:start` | *(none)* | `app` | Start declared foreground host processes under `ProcessSupervisor` (§8.2.8, §10.13) |
+| `app:processes:stop` | *(none)* | `app` | Stop foreground processes owned by the current command session (§8.2.8, §10.13) |
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
 | `app:restart` | `restart` | `app` | Stop then start the app |
 | `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |
+| `app:test` | `test` | `app` | Run the app's `test:` check set and service healthchecks (§8.2.9, §7.12) |
 | `apps:init` | `init` | `minimal` | Generate a new Lando app (§8.8) |
 | `apps:list` | `list` | `minimal` | List apps known to Lando |
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
@@ -150,6 +161,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `meta:global:start` | `global:start` | `global` | Start the global app; `--service <id>` (repeatable) starts a subset (§20.7) |
 | `meta:global:stop` | `global:stop` | `global` | Stop the global app's services |
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's `globalServices:` contributions and stop affected services (§20.7) |
+| `meta:mcp` | `mcp` | `plugins` | Start the Lando MCP server exposing agent-safe commands and read-only project context (§8.2.10, §10.14) |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install a plugin |
 | `meta:plugin:build` | *(none)* | `minimal` | Build the current plugin source via `BunSelfRunner.buildLib` (§9.10). Authoring command. |
 | `meta:plugin:link` | *(none)* | `plugins` | Symlink the current plugin into the user-global plugin store via `BunSelfRunner` `link` semantics (§9.10). Authoring command. |
@@ -163,8 +175,13 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `meta:recipes:describe` | *(none)* | `minimal` | Print a recipe's prompts and metadata without running it (§8.8.11) |
 | `meta:recipes:list` | `recipes` | `none` | List canonical recipes shipped with the binary; served from compile-time embedded recipe registry, no Effect runtime constructed (§3.2) |
 | `meta:recipes:validate` | *(none)* | `minimal` | Validate a `recipe.yml` against the published schema (§8.8.11) |
+| `meta:ambient:allow` | `ambient:allow` | `minimal` | Trust the current app for ambient mode so the shell integration may export its env and tooling shims (§8.2.5) |
+| `meta:ambient:deny` | `ambient:deny` | `minimal` | Revoke ambient-mode trust for an app (§8.2.5) |
+| `meta:ambient:export` | *(none — hidden)* | `none` | Emit the shell-dialect env diff for the current directory; called by the shell-integration hook every prompt, never by users (§8.2.5) |
+| `meta:ambient:list` | `ambient:list` | `minimal` | List the apps trusted for ambient mode (§8.2.5) |
+| `meta:ambient:status` | `ambient`, `ambient:status` | `minimal` | Show ambient-mode state for the current shell and app (§8.2.5) |
 | `meta:setup` | `setup` | `provider` | Run host setup (provider, CA, proxy, shell integration) |
-| `meta:shellenv` | `shellenv` | `none` | Print shell-profile snippets from compile-time embedded templates; no Effect runtime constructed (§3.2) |
+| `meta:shellenv` | `shellenv` | `none` | Print shell-profile snippets from compile-time embedded templates; `--hook <shell>` emits the shell-integration hook that drives ambient mode (§8.2.5); no Effect runtime constructed (§3.2) |
 | `meta:uninstall` | `uninstall` | `minimal` | Remove Lando-owned installed files after confirmation (§17.7) |
 | `meta:update` | `update` | `plugins` | Update Lando core and plugins |
 | `meta:version` | `version` | `none` | Print Lando version information; served from compile-time embedded constant, no Effect runtime constructed (§3.2) |
@@ -176,6 +193,9 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.json`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
 - `app:includes:update [<source>...]` resolves the named include sources fresh, writes new `<appRoot>/.lando.lock.yml` entries with refreshed refs and checksums, and invalidates the app plan cache. With no positional arguments, refreshes every entry. Supports `--no-network` to fail fast when a refresh would require network and `--check` to report would-be drift without writing. Network access is required by definition.
 - `app:includes:verify` re-reads every entry in `.lando.lock.yml` and re-computes the checksum of the cached fragment under `<userCacheRoot>/includes/`. Succeeds without network access when every entry resolves from the warm cache. Reports drift, missing cache entries, or checksum mismatches as a non-zero exit with `IncludeLockError` and remediation pointing at `app:includes:update`. Supports `--format json|table`.
+- `app:hooks:install`, `app:hooks:uninstall`, `app:hooks:list`, and `app:hooks:run` are the Git-hook lifecycle commands for Landofile `hooks:` (§7.9). Their detailed contract is §8.2.7.
+- `app:processes:start`, `app:processes:stop`, `app:processes:list`, and `app:processes:logs` are the host-process lifecycle commands for Landofile `processes:` (§7.10). Their detailed contract is §8.2.8.
+- `app:test` runs the user app's declared `test:` check set (§7.12) plus service healthchecks (§6.7) through `CheckRunner` (§10.11); it is distinct from §19 executable-guide scenario tests. Detailed contract: §8.2.9.
 - `apps:list` works inside and outside an app context, supports `--all`, filters, `--path`, JSON, table.
 - `app:logs` streams app logs and supports `--service`, `--follow`, `--tail`, `--since`.
 - `app:stop` stops the current app.
@@ -185,6 +205,9 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:shell` requires a TTY; with `--no-interactive` it errors with `ShellRequiresTtyError`. Defaults to host mode (a `Bun.$`-backed REPL via `ShellRunner`) so ad-hoc commands run cross-platform without leaving the project's env; `--service <name>` runs the REPL inside a service via provider exec instead. Behavioral details in §8.2.3.
 - `app:destroy` requires confirmation unless `--yes` is passed.
 - `meta:events:follow` supports `--follow`, `--format json|table`, repeated `--event`, `--scope`, and `--since`; it reads the EventService trace sink used by diagnostics/e2e and does not subscribe to plugin events itself.
+- `meta:ambient:export <shell>` reads only binary caches — the `cwd-app-map` cache (§12.1) and the resolved app's binary `ambient-state.bin` (§12.1), which carries the precomputed trust bit and host-wide enable/mode flags — and prints the shell-dialect env diff to stdout; it MUST NOT parse Landofiles, read the `ambient-trust.yml` ledger or global-config YAML, contact the provider, or construct the Effect runtime, and it joins the level-`none` pre-OCLIF fast-path set (§3.2) so the per-prompt cost stays within the §12.5 hot-path read budget. It prints nothing and exits 0 when the cwd is outside every app, when the resolved app's precomputed trust bit is unset (§8.2.5), or when ambient mode is disabled at any layer (§7.4/§7.5) — all of which are reflected in `ambient-state.bin` so the decision needs no YAML read.
+- `meta:ambient:allow` records the resolved app root in the ambient trust ledger (§12.4) and is the required opt-in before any app activates; `meta:ambient:deny <id|path>` (alias-less revoke also accepts the current app with no argument) removes it. Both validate that an app exists in scope and are no-ops that report clearly when ambient mode is disabled by config.
+- `meta:ambient:list --format json` is the canonical machine-readable shape of "which apps are trusted for ambient mode on this host". `meta:ambient:status` reports, for the current shell, whether the hook is installed, whether the cwd app is trusted, the active mode (`env` or `shims`), and the env keys and shim count that would be exported.
 - `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, removes the binary when Lando owns the install path, removes `<userDataRoot>` and `<userCacheRoot>`, and leaves provider-owned runtime resources to provider-specific cleanup docs.
 - `--clear` is accepted at any level and purges relevant caches.
 - `app:start` and `app:rebuild` materialize app-declared Lando dependencies when needed: app-scoped plugins from `plugins:`, remote includes without warm cache entries, provider artifacts, and provider/runtime metadata. After a successful materialization/build, repeating `app:start` for the same app MUST NOT require network access unless a declared source is missing from the cache, the lockfile changed, or the app's own build/tooling commands require network.
@@ -193,6 +216,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `apps:poweroff` ALSO stops every running scratch Lando app by default; `--keep-scratch` opts out and reports "kept N scratch app(s) running" in the renderer's final summary (§21.6.3, §21.10). `--keep-global` and `--keep-scratch` compose: `apps:poweroff --keep-global --keep-scratch` stops only user apps.
 - `meta:global:start` (and the auto-start path triggered by user-app `AppFeature.requires.globalServices`, §20.6.3) refuses to run when no `globalServices:` contributions are installed; the user is told to install at least one plugin that contributes a global service or to run `meta:setup`.
 - `meta:global:list --format json` is the canonical machine-readable shape of "what's available in the global app on this host"; embedding hosts and CI scripts MUST use it instead of parsing the rendered table.
+- `meta:mcp` (alias `lando mcp`) starts the stdio MCP server described in §8.2.10/§10.14. It exposes only commands opted into `InvocationPolicy.exposure.agent` (§8.3) and a read-only `ProjectContext` (§8.2.6.1).
 - `apps:scratch:start` requires either `--fork` (use the cwd-walk Landofile as the source) or `--from <recipe-ref>` (render a recipe into the scratch root); passing both, or neither, fails fast with `ScratchSourceUnresolvedError`. The default is foreground; `--detach` registers the scratch in `<userCacheRoot>/scratch/registry.bin` and exits 0 (§21.10.1, §21.11).
 - `apps:scratch:start --fork` materializes the scratch by content-copying the resolved source app root, honoring `scratch.fork.excludes:` plus repeated `--exclude <pattern>` (§21.4.1). The default isolation is `--isolate=full` (the appMount binds the scratch's copy); `--mount-cwd` is sugar for `--isolate=cwd` and overrides the safer default (§21.7).
 - `apps:scratch:start --from <recipe-ref>` runs the recipe pipeline against the scratch root and SKIPS the recipe's `postInit:` actions by default; `--run-post-init` opts back in. The default isolation is `--isolate=baked` (no appMount; an empty `/app` inside the container); `--mount-cwd` switches to bind-mounting the host cwd at the appMount destination (§21.4.2, §21.7).
@@ -311,6 +335,230 @@ Behaviors:
 - **Offline mode.** When the user's effective configuration declares `offline: true` (§7.5), `meta:x` refuses uncached packages with `BunSelfOfflineError` and suggests `lando bun add <pkg>` (which writes the user's lockfile and lets the next `lando x` hit the cache). `meta:bun` passes the offline flag through to the embedded Bun unchanged.
 - **Errors.** Non-zero embedded Bun exit produces `BunSelfExecError` with the redacted argv and the embedded Bun's stderr. The Lando exit code matches the embedded Bun's exit code so CI scripts can assert on it identically to a real `bun …` invocation.
 
+#### 8.2.5 Shell integration and ambient mode
+
+**Shell integration** is the host-side mechanism by which a user's interactive shell automatically *adopts the current app's context* as they move between directories. **Ambient mode** is the resulting behavior: when the shell is inside a trusted Lando app, that app's environment — and, optionally, its tooling as bare commands — is *ambiently present* without the user typing `lando` or opening `lando app shell` (§8.2.3). The two terms are kept distinct on purpose: "shell integration" is the plumbing the user installs once; "ambient mode" is the per-directory effect it produces. Neither term is "activation"; ambient mode never starts or stops services (that remains `app:start` / `app:stop`), it only changes what the shell knows about an app that the user starts and stops explicitly.
+
+This is the cross-platform, container-aware analogue of the `direnv`/`mise` directory-hook pattern. Because Lando services run inside containers rather than on the host, ambient mode does not place native binaries on `PATH`; it exports the app's host-facing environment and, in shim mode, installs thin dispatchers that re-enter `lando app exec` (see "Modes" below).
+
+**Two halves, two modes.**
+
+| Mode | What the shell gets on entry | Default? |
+|---|---|---|
+| `env` | The app's host-facing environment variables (a host-appropriate subset of the §6.9 `LANDO_*` contract plus any Landofile `ambient.env:` and `env:` values) exported into the current shell. | Yes |
+| `shims` | Everything `env` provides, plus a per-app shim directory prepended to `PATH` so the app's tooling tasks (§8.5) and service binaries run as bare commands (`composer …` rather than `lando composer …`). | Opt-in |
+
+`env` mode is the safe, latency-free default: it gives editors, language servers, and host tools the right environment by inheritance without any per-command Lando overhead. `shims` mode adds the prefix-free ergonomics but each shimmed call pays Lando's hot-path cost plus a provider-exec round trip (§8.7); it is therefore opt-in per app via `ambient.shims: true` (§7.4) or globally via `ambient.shims: true` (§7.5). The deferred persistent agent (§14.2) is the mechanism that would bring shimmed-call latency into the native-feeling range; until it ships, `shims` mode is documented as "convenient, not native-speed".
+
+**Setup (the shell-integration hook).** `lando shellenv --hook <shell>` prints a one-time hook the user adds to their shell profile, exactly as they already add `eval "$(lando shellenv)"` for `PATH`. The supported shells at v4.0 are **bash, zsh, fish, and PowerShell** (Tier 1); the hook snippet and the env-diff dialect are the only per-shell-specific pieces. `nushell` and `elvish` are Tier 2 (a `nushell`-native record path is required because its environment is structured, not string-`eval`'d). Classic Windows `cmd.exe` is unsupported because it exposes no per-prompt hook; those users keep using explicit `lando` commands or PowerShell. `lando setup` offers to install the hook as part of host integration (§10.8); installing the hook alone changes nothing observable until an app is trusted.
+
+**The per-prompt path (runtime-free).** The installed hook calls `lando meta ambient export <shell>` on each prompt (bash/zsh/PowerShell) or on each `PWD` change (fish/nushell). That command is a level-`none` fast-path member (§3.2): it reads only **binary** caches — the `cwd-app-map` cache (§12.1) to resolve "which app, if any, am I in", and that app's binary **ambient state cache** `<userCacheRoot>/apps/<app-id>/ambient-state.bin` (§12.1), which already folds in the precomputed trust decision and the host-wide enable/mode flags. It constructs no Effect runtime, parses no Landofile or YAML, reads no trust ledger or global-config file, and contacts no provider, so the steady-state per-prompt cost is one-or-two binary cache reads within the §12.5 budget. Crossing into an app prints the export; crossing out prints the matching unset to restore the prior shell state. The diff the hook applied is stashed in a shell-local variable (an `EnvDiff`; the reverse-on-leave stash mirrors `direnv`'s `DIRENV_DIFF`) so leaving a directory cleanly reverts `PATH` and every exported key. Ambient mode only ever mutates the current interactive shell; it writes nothing to the user's system, so removing the hook fully reverts the user on their next shell.
+
+> **Why binary, and why no YAML on this path.** Level `none` has no Effect runtime — it is embedded-data/direct-print territory (§3.2). Reading `ambient-trust.yml` or `config.yml` per prompt would parse YAML on the hottest path Lando has. Instead, the trust decision and the host-wide `ambient.enabled` / `ambient.shims` flags are **precomputed into `ambient-state.bin`** whenever they change: `lando ambient allow`/`deny` (which write the §12.4 trust ledger) and `meta config` writes that touch `ambient.*` both re-emit the affected apps' `ambient-state.bin`. The per-prompt reader therefore never consults the YAML ledger or global config at all — it reads the already-decided binary state. The human-readable `ambient.json` (§12.1) remains only as a debug mirror (useful to `cat`), never on the per-prompt read path. The per-shell `LANDO_NO_AMBIENT=1` escape hatch is an env check inside the hook itself, requiring no file read.
+
+**The generation path (amortized).** The ambient state cache and shim directory are not computed per prompt — they are produced as a side effect of `app:start` and `app:cache:refresh`, the same commands that already build the app plan and the `<userCacheRoot>/apps/<app-id>/commands.json` index. Those commands call `EnvironmentProjection.project()` (§8.2.6), encode the resulting `HostEnvProjection` into the binary `<userCacheRoot>/apps/<app-id>/ambient-state.bin` (the env to export, the full shim inventory, the shim-dir path, the precomputed trust+mode flags) — writing the `ambient.json` debug mirror alongside — and **always** materialize `<userCacheRoot>/apps/<app-id>/bin/` from the app command index, one executable dispatcher per tooling task (§12.4). The shim directory is materialized regardless of the active mode (it is cheap and keeps the cache valid across a later `ambient.shims` flip); whether it is prepended to `PATH` is decided per prompt from the flags in `ambient-state.bin`. The per-prompt `meta:ambient:export` is therefore a pure read of pre-built binary artifacts: it loads the state, computes the `EnvDiff` against the shell's current state, and renders it into the target shell's dialect.
+
+**Trust (default-deny).** A freshly cloned repo never activates silently. The first time the shell enters an app with ambient state, the hook emits a single informational line pointing at `lando ambient allow`; nothing is exported until the user runs it once. Trust is recorded in the ambient trust ledger at `<userConfRoot>/ambient-trust.yml` (§12.4) keyed on the resolved absolute app root, is non-expiring until revoked, and reuses the trust-ledger discipline of the plugin-trust model (§14.2); the ledger is the authoritative source, but it is read only by `ambient allow`/`deny`/`list` and by the generation path — **never on the per-prompt path**, which sees only the precomputed trust bit baked into `ambient-state.bin`. `lando ambient deny` revokes a single app; `lando ambient list` audits all trusted roots; `lando ambient status` reports the current shell's state. Trust gates `shims` mode in particular, because a shim executes a container command — the same threat surface the host-proxy allowlist guards (§10.10).
+
+**Opt-out matrix.** Ambient mode reuses the layered enable/disable precedence of `commandAliases:` (§7.4/§7.5) so there is no new configuration concept:
+
+| Intent | Mechanism |
+|---|---|
+| Never use it | Don't install the hook (decline in `lando setup`, or omit the `shellenv --hook` line). Zero footprint. |
+| Off globally, hook installed | `ambient.enabled: false` in global config (§7.5). |
+| On, but only where I allow | Default behavior — `lando ambient allow` per app. |
+| Hard-off for one app (committed) | `ambient: false` in the app's canonical Landofile (§7.4); overrides any local `allow`. |
+| Off for me only, uncommitted | `ambient: false` in `.lando.local.yml`. |
+| One shell session only | `export LANDO_NO_AMBIENT=1`; the hook no-ops for that session. |
+| Revoke a previously trusted app | `lando ambient deny`. |
+
+A Landofile `ambient: false` is the strongest signal and wins over a host-level `allow`, so a team can ship "this project must never run ambiently" in the repo. Setting `ambient.enabled: false` in global config disables the feature host-wide while leaving the hook installed.
+
+**`hostProxyAllowed: false`.** None of the `meta:ambient:*` commands are on the in-container `lando` shim allowlist (§10.10); shell integration is a host-only concern and has no meaning inside a service.
+
+#### 8.2.6 The `HostEnvProjection` primitive
+
+Shell integration (§8.2.5) is the first consumer of a reusable primitive, not a bespoke feature. Factoring it out now keeps ambient mode small and gives later *host-environment* surfaces a single, typed source of truth instead of each one re-deriving "what environment does this app expose to a host?" from the `AppPlan`.
+
+**Scope boundary (read this first).** This primitive is deliberately narrow: it projects a plan into **host-facing environment + tooling shims + path anchors**, and nothing else. It is *not* a general "project context" document. Surfaces that need a service topology, a command catalog, live runtime status, or image/build references — the deferred MCP server, a devcontainer/Codespaces generator, the deferred VSCode extension — are **not** host-env consumers and MUST NOT be served by widening this schema. Those belong to a separate, later `ProjectContext` document (§8.2.6.1) that *composes* a `HostEnvProjection` alongside the command registry (§8.3), `ServiceInfo` (§6.10), and provider topology. Keeping the two apart is what lets `HostEnvProjection` freeze early with a stable shape; conflating them would freeze a schema we cannot yet get right.
+
+**`HostEnvProjection` (SDK schema).** The provider-neutral projection of a resolved `AppPlan` into the shape a *host* environment consumer needs: the host-facing environment, the tooling that can be exposed as bare commands, and app identity/paths. It is deliberately distinct from the in-container `LANDO_*` contract (§6.9) — values here are host-side (e.g. host paths, host-reachable URLs), and secrets are carried as unresolved `${secret:…}` references (§7.3.1), never decrypted, so a projection is safe to write to a host-side artifact (the ambient state cache, a `.env` file, a CI exporter).
+
+```ts
+// illustrative; canonical schema published from @lando/sdk (§7.8, §13.2)
+export const HostEnvEntry = Schema.Struct({
+  key: Schema.String,
+  value: Schema.String,                 // may contain unresolved ${secret:…} references
+  secret: Schema.optional(Schema.Boolean),
+});
+
+export const HostEnvShim = Schema.Struct({
+  name: Schema.String,                  // bare command name, e.g. "composer"
+  canonicalId: Schema.String,           // the tooling task / command id it dispatches to
+});
+
+export const HostEnvProjection = Schema.Struct({
+  app: AppRef,                          // identity (kind/name/root); §11.2
+  env: Schema.Array(HostEnvEntry),
+  shims: Schema.Array(HostEnvShim),     // ALWAYS the full inventory; mode-independent (see below)
+  paths: Schema.Struct({                // host-side anchors
+    appRoot: PortablePath,
+    shimDir: Schema.optional(PortablePath),
+  }),
+});
+```
+
+**Mode-independent shim inventory.** `shims` is always the complete inventory of shimmable tooling for the app — it is **not** gated on whether `shims` ambient mode is active. Whether to *prepend* the shim dir to `PATH` is a per-consumer decision made at consumption time (ambient mode reads the global/app `ambient.shims` setting; a different consumer may ignore it). Baking the active mode into the projection would make a cached projection go stale the moment `ambient.shims` flips in global config (§7.5) without an app-cache rebuild; an always-complete inventory never does.
+
+**`EnvDiff` (core-private, NOT an SDK schema at v4.0).** A serializable, *reversible* set of environment mutations — the unit the shell-integration hook applies on directory entry and reverses on exit (the analogue of `direnv`'s `DIRENV_DIFF` stash). It records prior values so the hook can restore the shell exactly on leave. `EnvDiff` is **shell-hook mechanics, not a public contract**: it is computed by core from two `HostEnvProjection`s (current vs. target) and rendered into a shell dialect, and it is intentionally **not** published from `@lando/sdk` at v4.0. It stays core-private until a second, non-shell consumer proves the shape (the §8.2.6 discipline mirrors the SDK freeze rule — publish only what has a proven, stable shape).
+
+```ts
+// core-internal type (core/src/...), NOT @lando/sdk
+interface EnvDiff {
+  readonly set: ReadonlyArray<HostEnvEntry>;          // keys to set (with values)
+  readonly unset: ReadonlyArray<string>;              // keys to remove
+  readonly prependPath?: ReadonlyArray<PortablePath>; // PATH segments to prepend (shims mode)
+  readonly previous: ReadonlyArray<{                  // prior state, for exact reversal
+    readonly key: string;
+    readonly value?: string;                          // absent ⇒ key was unset before
+  }>;
+}
+```
+
+**`EnvironmentProjection` (core service, §3.4).** Produces a `HostEnvProjection` from a resolved `AppPlan`. It is the only code that knows how to read host-facing env out of a plan; every host-env consumer reads its output.
+
+```ts
+export class EnvironmentProjection extends Context.Service<EnvironmentProjection, {
+  readonly project: (plan: AppPlan, opts: ProjectionOptions) => Effect.Effect<HostEnvProjection, ProjectionError>;
+  readonly diff:    (from: HostEnvProjection | null, to: HostEnvProjection | null) => EnvDiff;  // core-internal EnvDiff
+}>()("@lando/core/EnvironmentProjection") {}
+```
+
+**Consumers at v4.0.** Shell integration is the only consumer: `app:cache:refresh` and `app:start` call `project()` and persist the result to the binary ambient state cache (§12.1), and `meta:ambient:export` reads that cache and emits an `EnvDiff` rendered into the target shell's dialect. The two *additional* host-env surfaces that legitimately share this projection — a `.env`/dotenv exporter and a CI exporter (`--format github-actions`) — are deferred, but when they ship they consume `HostEnvProjection` rather than re-reading the plan. Project-context surfaces (MCP, devcontainer, VSCode) do **not** appear here by design; see the scope boundary above and §8.2.6.1.
+
+**Plugin surface — host-env renderers stay core-private at v4.0.** The per-shell dialect renderers ambient mode uses (`bash`/`zsh`/`fish`/`powershell`), the `EnvDiff` apply/reverse logic, the shim materializer, and the ambient trust state remain **core-private mechanisms** at v4.0 — they are not plugin contribution surfaces. A future "host-env render target" plugin seam (so a plugin can add "Lando app → my host format" without re-deriving env) is a candidate once a second in-tree renderer exists; it is not frozen now.
+
+**SDK-stability discipline.** Per the §13.2 schema gate and the SDK freeze rule, **`HostEnvProjection` (with `HostEnvEntry` and `HostEnvShim`) is the only new SDK schema this feature adds.** It is chosen because it has a proven, stable shape and at least two prospective consumers (ambient mode plus the deferred `.env`/CI exporters). `EnvDiff` and the render-target seam are explicitly held back as core-private until a second consumer proves them. `EnvironmentProjection`'s service tag is exported from `@lando/core/services` (§16.2) for embedding hosts. Adding the schema follows the §7.8 publication path and the four-place SDK lockstep.
+
+#### 8.2.6.1 The `ProjectContext` document (deferred composition seam)
+
+`ProjectContext` is the *named home* for the surfaces that §8.2.6 deliberately excludes. It is **not shipped at v4.0**; it becomes an SDK-published document in the phase that specifies the MCP/devcontainer surfaces around it. Reserving the shape here keeps future work compositional: `HostEnvProjection` stays the narrow host-env contract, while `ProjectContext` is the broader, read-only app-context document.
+
+A `ProjectContext` document is produced for one resolved app and has four top-level concerns:
+
+```ts
+// illustrative; canonical schema is published from @lando/sdk only when ProjectContext ships
+export const ProjectContext = Schema.Struct({
+  app: AppRef,
+  host: HostEnvProjection,             // §8.2.6; composed, not widened
+  commands: Schema.Array(Schema.Struct({
+    id: Schema.String,
+    summary: Schema.String,
+    flags: Schema.Array(FlagSpec),
+    args: Schema.Array(ArgSpec),
+    invocation: InvocationPolicy,       // §8.3; required in this catalog view
+  })),
+  services: Schema.Array(ServiceInfo),  // §6.10, including live status when available
+  topology: Schema.Struct({
+    provider: Schema.String,
+    routes: Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+    networks: Schema.Array(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  }),
+});
+```
+
+The document is **read-only**. It never carries decrypted secret values; command entries that may read secrets declare that through `InvocationPolicy.secretAccess` (§8.3), and consumers decide whether to expose those commands. Live status is a snapshot from the same service-info surface users see through `app:info` (§6.10); absence of a provider or an offline provider degrades status fields rather than turning `ProjectContext` into a lifecycle operation.
+
+Consumers are intentionally few and capability-gated. The MCP server (§10.14) exposes `ProjectContext` as a read-only resource so agents can inspect the app before choosing an allowed command. A future devcontainer/Codespaces generator reads the same document for service topology, image/build references, and host path anchors. The deferred VSCode extension reads it for command affordances and status. None of those consumers may ask `HostEnvProjection` to grow command-catalog, status, image, or topology fields; no surface may smuggle those fields into the host-env projection as a shortcut.
+
+When `ProjectContext` is specified, it is published from `@lando/sdk` on its own merits and follows the §13.2 freeze discipline. That publication does **not** retroactively make `EnvDiff` (§8.2.6) or MCP internals public; only the named `ProjectContext` schema and the schemas it explicitly references are frozen.
+
+#### 8.2.7 The `app hooks` commands
+
+The `app hooks` commands are the Git-hook lifecycle for Landofile `hooks:` (§7.9). They are a user-app tooling surface, not a new plugin system: hook bodies compile into `CheckPlan`s and execute through the same tooling engine described in §8.5/§8.6, including explicit `:host` execution versus service execution. The trigger source recorded for these runs is `git:<stage>` (§10.12).
+
+```text
+lando app hooks install [--stage <stage>] [--force]
+lando app hooks uninstall [--stage <stage>]
+lando app hooks list [--format table|json]
+lando app hooks run [<stage>] [--all-files] [--format table|json|junit]
+```
+
+Behaviors:
+
+- **Install.** `app:hooks:install` materializes dispatcher files under `.git/hooks/<stage>` for every declared `hooks.<stage>` entry (or the selected stage). The files are Lando-owned host artifacts recorded in `OwnedHostArtifactRegistry` (§12.7), default-deny on first install, and idempotent when the recorded dispatcher already matches. A user-modified hook is never overwritten silently; `--force` replaces it only after the ownership ledger records that Lando is reclaiming that path.
+- **Uninstall.** `app:hooks:uninstall` reaps only dispatcher files owned by Lando according to `OwnedHostArtifactRegistry` (§12.7). A missing hook or a user-modified hook reports clearly and leaves the file in place unless `--force` is added in a later phase; v4.1 keeps uninstall conservative.
+- **List.** `app:hooks:list` shows every declared `hooks:` stage (§7.9), the check ids attached to it, whether a dispatcher is installed, and whether the installed dispatcher still matches the registry's recorded checksum. `--format json` is the machine-readable shape for editor integrations and CI audits.
+- **Run.** `app:hooks:run [<stage>]` is the executor the installed Git hook invokes. It builds the selected stage's `CheckPlan` from `hooks.<stage>`, passes the staged/changed-file set from Git (or all app files with `--all-files`), runs the plan through `CheckRunner` (§10.11), and returns `CheckResult[]`. Any `failed` result makes the command fail; the renderer sets `process.exitCode` rather than throwing after rendering so table, JSON, and JUnit output remain complete.
+- **Formats.** `--format table|json|junit` is accepted on `run`; `list` accepts `table|json`. JSON returns the frozen `CheckResult[]` shape from §10.11. JUnit is for CI systems that reuse hook checks as pre-merge checks.
+- **Bootstrap.** `install`, `uninstall`, and `list` run at `minimal` because they inspect the Landofile and the ownership ledger but do not need the provider. `run` runs at `app` because a hook check may execute in a service.
+
+The hook dispatcher is intentionally small: it re-enters `lando app hooks run <stage>` and lets the normal CLI path handle trust, rendering, redaction, service execution, and cancellation. Hooks are phased for 4.1 with `git:<stage>` triggers; `watch:<glob>` triggers reuse the same `CheckRunner` pipeline in 4.2, and `schedule:<cron>` is deferred to 4.3 (§10.12).
+
+#### 8.2.8 The `app processes` commands
+
+The `app processes` commands run Landofile `processes:` (§7.10) as foreground, scope-bound host processes. They are for development companions such as file watchers, frontend dev servers, or local daemons that belong to the app session but are not provider services. They use `ProcessSupervisor` and `ProcessRegistry` (§10.13), with readiness detected through `HealthcheckRunner` / `UrlScanner` (§10.5).
+
+```text
+lando app processes start [<name>...] [--detach]
+lando app processes stop [<name>...]
+lando app processes list [--format table|json]
+lando app processes logs [<name>] [--follow] [--tail <n>]
+```
+
+Behaviors:
+
+- **Start.** `app:processes:start [<name>...]` supervises the selected declared processes, or every default process when no name is supplied. Startup ordering follows `dependsOn`; a dependent process does not start until every dependency reports ready. The command runs under `Effect.scoped`: `SIGINT` interrupts the scope, and finalizers stop every child process that was started by that invocation.
+- **Readiness.** Readiness is explicit. A process with a URL or healthcheck waits through `HealthcheckRunner` / `UrlScanner` (§10.5); a process with no healthcheck is considered ready after spawn. Failed readiness aborts dependents and tears down already-started processes in reverse start order.
+- **Stop.** `app:processes:stop [<name>...]` stops foreground processes owned by the current command session. Until the 4.3 persistent agent exists, this command cannot discover an unrelated terminal's foreground children; it is a session-control command, not a host daemon controller.
+- **List.** `app:processes:list` shows declared processes, dependency edges, configured readiness, and any processes currently registered in this CLI session. It runs at `minimal` so users can audit declarations without starting the app.
+- **Logs.** `app:processes:logs [<name>]` streams captured stdout/stderr from the supervised process registry. Output is redacted through the same redaction path as tooling and shell execution.
+- **Detached mode.** `--detach` and detached process supervision are **reserved but deferred to 4.3** because they require the persistent agent (§14.2). Passing `--detach` before that phase fails with the catalog's deferred-feature `NotImplementedError`, with remediation pointing at foreground `app:processes:start`.
+- **Bootstrap.** `start`, `stop`, and `logs` run at `app`; `list` runs at `minimal`. The process backend is HOST-only when this surface is introduced; service-side long-running companions belong in provider services or tooling tasks, not `processes:`.
+
+The command publishes the process lifecycle events named in §3: `pre-process-start`, `post-process-start`, and `process-exit`. Event payloads are defined with the lifecycle event catalog, not here.
+
+#### 8.2.9 The `app test` command
+
+`lando app test` (default top-level alias `lando test`) is the CI-oriented user-app test runner. It runs the Landofile `test:` check set (§7.12) plus service healthchecks (§6.7) through `CheckRunner` (§10.11), aggregates the resulting frozen `CheckResult[]`, and renders a complete partial-success report.
+
+```text
+lando app test [--format table|json|junit] [--filter <pattern>] [--bail]
+```
+
+Behaviors:
+
+- **Inputs.** The command plans the app, collects service healthchecks (§6.7), resolves `test:` checks (§7.12), applies repeated `--filter <pattern>` to check ids, and builds one `CheckPlan` for `CheckRunner` (§10.11). Checks may run through provider execution or the host tooling engine according to their declarations; `app:test` does not invent a third execution path.
+- **Results.** The output is an ordered `CheckResult[]` with `passed`, `failed`, `skipped`, and `fixed` statuses. A failed early dependency can therefore produce a mix of `failed` and `skipped` results instead of a single opaque error.
+- **Exit code.** Any `failed` result makes the command non-zero. The renderer sets `process.exitCode`, mirroring the `renderConfigLintResult` pattern, so `--format table|json|junit` still receives the full result set. `--bail` stops scheduling new checks after the first failure but still renders every completed/skipped result.
+- **Formats.** `--format table|json|junit` is required to be stable enough for CI. JSON returns `CheckResult[]`; JUnit maps each check id to a testcase.
+- **Scope.** `app:test` is user-app-facing. It does not replace or alias the §19 executable-guide scenario tests that run under `bun test`; those are dev-facing tests for the Lando repository and generated guides, while `app:test` is what a Lando user runs inside their own app.
+- **Bootstrap.** `app:test` runs at `app` because healthchecks and service-targeted checks require the app plan and provider.
+
+The command participates in the check lifecycle events named in §3 (`check-start`, `check-complete`, `check-fail`) but does not define their payloads here.
+
+#### 8.2.10 The `meta mcp` command
+
+`lando meta mcp` (default top-level alias `lando mcp`) starts Lando's Model Context Protocol server (§10.14). The v4.0 transport is stdio; network transports are intentionally not part of the initial surface. The server is core-private implementation that consumes the command registry, not a plugin contribution point.
+
+```text
+lando meta mcp
+```
+
+The server exposes two things:
+
+- **Agent-safe commands.** Every command whose `InvocationPolicy.exposure.agent` is set (§8.3) becomes an MCP tool. Calls dispatch through `@lando/core/cli` (§16.7), so source and compiled dispatch, renderers, redaction, lifecycle events, and command validation stay on the normal path. The MCP tool manifest is generated from each command's `flags`, `args`, and `resultSchema` metadata.
+- **Read-only project context.** The current app's `ProjectContext` (§8.2.6.1) is exposed as a read-only MCP resource. Agents inspect it to discover command affordances, service status, host env anchors, and topology before deciding whether to call an allowed tool.
+
+Security model:
+
+- Only commands with `mutability: "read"` are exposed by default. `write`, `lifecycle`, and `host-mutation` commands require explicit per-command `exposure.agent: true` **and** `requiresConfirmation: true`.
+- Commands that can read secrets declare `secretAccess: "read"` and are gated separately; the default MCP manifest omits them unless the command explicitly opts in to agent exposure and the host policy allows secret access for that agent session.
+- Filesystem and network affordances come from `InvocationPolicy.filesystemScope` and `InvocationPolicy.networkAccess`; the MCP server does not infer them from command names.
+- The MCP allowlist follows the same capability-gating discipline as the in-container host-proxy allowlist (§10.10). MCP is the AI-agent analogue of that host-proxy surface: a constrained caller gets only the commands the registry explicitly marked safe for that caller.
+
+The command runs at bootstrap level `plugins` so plugin-contributed commands and their metadata are present before the tool manifest is generated. MCP calls publish `pre-mcp-call` and `post-mcp-call` lifecycle events (§3); event payloads are defined with the lifecycle catalog.
+
 ### 8.3 Command contract
 
 Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The OCLIF adapter compiles this into an OCLIF `Command` subclass.
@@ -337,6 +585,7 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly deprecated?: DeprecationNotice;               // command-wide deprecation; see §18
   readonly recipePostInitAllowed?: boolean;              // true only for commands in the generated recipe allowlist (§8.8.8)
   readonly hostProxyAllowed?: boolean;                   // true only for commands safe to invoke from inside a container via the in-container `lando` shim (§10.10)
+  readonly invocation?: InvocationPolicy;                // canonical invocation/exposure descriptor (frozen SDK schema)
   readonly docs?: CommandDocsMetadata;
   readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
   readonly run: (input: CommandInput) => Effect.Effect<A, E, LandoCommandRequirements>;
@@ -350,6 +599,42 @@ export interface CommandInput {
   readonly stdout: Sink.Sink<unknown, Uint8Array>;
   readonly stderr: Sink.Sink<unknown, Uint8Array>;
 }
+
+export const InvocationPolicy = Schema.Struct({
+  exposure: Schema.optional(Schema.Struct({
+    hostProxy: Schema.optional(Schema.Boolean),          // in-container host-proxy allowlist (§10.10)
+    recipePostInit: Schema.optional(Schema.Boolean),     // recipe post-init command allowlist (§8.8.8)
+    agent: Schema.optional(Schema.Boolean),              // MCP / agent exposure (§10.14)
+  })),
+  mutability: Schema.Literal("read", "write", "lifecycle", "host-mutation"),
+  secretAccess: Schema.optional(Schema.Literal("none", "read")),
+  filesystemScope: Schema.optional(Schema.Literal("none", "app", "host")),
+  networkAccess: Schema.optional(Schema.Boolean),
+  requiresConfirmation: Schema.optional(Schema.Boolean),
+  requiresTty: Schema.optional(Schema.Boolean),
+  timeoutMs: Schema.optional(Schema.Number),
+  resultSchema: Schema.optional(Schema.String),          // schema registry ref, when the command returns structured data
+});
+```
+
+`InvocationPolicy` is a FROZEN SDK schema. Its encoded shape is:
+
+```ts
+type InvocationPolicy = {
+  exposure?: {
+    hostProxy?: boolean;
+    recipePostInit?: boolean;
+    agent?: boolean;
+  };
+  mutability: "read" | "write" | "lifecycle" | "host-mutation";
+  secretAccess?: "none" | "read";
+  filesystemScope?: "none" | "app" | "host";
+  networkAccess?: boolean;
+  requiresConfirmation?: boolean;
+  requiresTty?: boolean;
+  timeoutMs?: number;
+  resultSchema?: string;
+};
 ```
 
 Rules:
@@ -362,6 +647,8 @@ Rules:
 - `FlagSpec.deprecated?` and `ArgSpec.deprecated?` declare `DeprecationNotice`s scoped to the flag or arg. Using a deprecated flag/arg records `kind: "flag"` / `kind: "arg"` with `id: "<canonical-id>.<flag-or-arg-name>"`.
 - `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
 - `hostProxyAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **host-proxy `runLando` allowlist** (§10.10) — the set of canonical command ids the in-container `lando` shim is permitted to forward to the host. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT set this true; they would self-destruct the container that issued the call. Read-only and laterally-scoped commands (`app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:list`, `meta:version`, `meta:doctor`, `meta:events:follow`, `app:config get|view`) are the typical opt-ins. The flag generates the `host-proxy-allowlist` cache (§12.1); the host-side `HostProxyService` rejects any `runLando` request whose canonical id is not in that cache with `HostProxyCommandNotAllowedError`.
+- `invocation` is the canonical descriptor for every place a command can be exposed outside direct human CLI invocation. `invocation.exposure.hostProxy` powers the host-proxy allowlist (§10.10), `invocation.exposure.recipePostInit` powers the recipe post-init allowlist (§8.8.8), and `invocation.exposure.agent` powers MCP agent exposure (§10.14). The older `hostProxyAllowed?` and `recipePostInitAllowed?` booleans are retained because they are frozen fields; they are compatibility shorthands for `invocation.exposure.hostProxy` and `invocation.exposure.recipePostInit`. If both the boolean and `invocation` are set, the boolean wins for that one exposure bit so existing command metadata remains authoritative during migration; all other policy fields still come from `invocation`.
+- `InvocationPolicy.mutability` is required for any command that sets any `exposure` bit. The §13 governance gate validates that exposed commands declare mutability, that `host-mutation` and `lifecycle` exposures require confirmation where appropriate, and that command result schemas referenced by `resultSchema` exist in the schema registry.
 - `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.

@@ -271,6 +271,12 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `Renderer` | CLI output strategy | `RendererLive` (default Lando renderer; `Layer.suspend`-wrapped, with a pre-bootstrap direct-write fallback for first-paint banners; §8.9) |
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
 | `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
+| `EnvironmentProjection` | Projects a resolved `AppPlan` into a `HostEnvProjection` (§8.2.6): the **host-facing env** keys/values, the mode-independent tooling-shim inventory, and app identity/paths — and nothing else. It is the single source for host-*environment* surfaces (the shell-integration `ambient-state.bin` cache (§8.2.5), and the deferred `.env`/CI exporters) instead of each re-deriving env from the plan. It is NOT a project-context document: command-catalog/status/topology surfaces (MCP, devcontainer, VSCode) compose a future `ProjectContext` (§8.2.6.1), not this projection | `EnvironmentProjectionLive` (constructed at level `app`; its output is encoded to the binary `ambient-state.bin`, so the per-prompt `meta:ambient:export` path reads that cache, never this service) |
+| `OwnedHostArtifactRegistry` | Ownership/cleanup ledger for files Lando writes into **user-visible, user-owned** locations — the shell-profile hook line, the ambient `bin/` shim dir, generated `.git/hooks/` scripts, generated `.env`/devcontainer/cert files, host-side `files:` outputs. Records owner/scope/hashes/mode/cleanup-policy; refuses to reap a user-modified file without `--force`; realpath-contained; the authoritative source for `meta:uninstall`'s "what did Lando write" preview (§12.7). Delegates rendering to `TemplateRenderer` and atomic IO to `CacheService` — it is a ledger, not a content engine | `OwnedHostArtifactRegistryLive` (constructed at level `minimal`; ledger persisted to `<userDataRoot>/owned-host-artifacts.bin`, never purged by `--clear`) |
+| `CheckRunner` | Runs a core-private `CheckPlan` (named checks with `dependsOn`, a `skipIf` up-to-date predicate, and a `failFast`/`continue` policy) and returns the frozen `CheckResult[]` (§10.11). Invokes tooling tasks (§8.5) and healthchecks (§10.5); has **no** provider build semantics — it is a separate lightweight runner from `BuildOrchestrator`, sharing only the structured-result idea. Backs `app:hooks:run` (§8.2.7) and `app:test` (§8.2.9); emits `check-start`/`check-complete`/`check-fail` (§11.2) | `CheckRunnerLive` (constructed at level `app`; `Layer.suspend`-wrapped — only built when a hook/test command runs) |
+| `ProcessSupervisor` | Acquires a long-running **host** process in an Effect `Scope` (via `ProcessRunner`), with a readiness probe reusing `HealthcheckRunner`/`UrlScanner` (§10.5), a `no`/`on-failure`/`always` restart policy, captured+redacted stdout/stderr, and `dependsOn` startup ordering (§10.13). Host backend only at v4.0; foreground/scope-bound only. Backs `processes:` (§7.10) / `app:processes:*` (§8.2.8); emits `pre-process-start`/`post-process-start`/`process-exit` (§11.2) | `ProcessSupervisorLive` (constructed at level `app`; `Layer.suspend`-wrapped) |
+| `ProcessRegistry` | Tracks running supervised processes for an app (§10.13). At v4.0 this is **foreground/scope-bound** in-process state only; the detached/background registry is deferred to a 4.x minor (it recreates the post-v4.0 persistent agent, §14.2) | `ProcessRegistryLive` (constructed at level `app`; `Layer.suspend`-wrapped) |
+| `SecretStoreRegistry` | Resolves `${secret:<backend>:<ref>}` references (§7.3.1) against named `SecretStore` backends with selection precedence (per-reference backend > `secrets.defaultStore` global). Ships the `env` backend at v4.0; `keyring`/`1password`/`sops` are future plugin-contributed backends (§4.2). Enforces the §7.3.1 redaction guarantees — decrypted values never enter caches/logs/telemetry/`LANDO_INFO` | `SecretStoreRegistryLive` (constructed at level `minimal`; backends register at level `plugins`) |
 | `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
 | `ScratchAppService` | Scratch apps (§21): acquires, starts, stops, destroys, lists, and reaps short-lived Lando apps whose lifetime is bound to an Effect `Scope`. Owns materialization of the scratch root under `<userCacheRoot>/scratch/<id>/`, the scratch registry at `<userCacheRoot>/scratch/registry.bin`, and the orphan-reap protocol that combines the registry walk with a provider-label scan (`dev.lando.scratch: "TRUE"`). Reuses every other core service a normal user app uses — `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `ProxyService`, `CertificateAuthority` — with the §21.7–§21.9 plan-time transformations applied (mount isolation, `scope: global` shadowing, hostname auto-suffix). | `ScratchAppServiceLive` (constructed at level `scratch`; `Layer.suspend`-wrapped — `lando info` against a user app pays zero `ScratchAppService` cost) |
@@ -473,6 +479,10 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
 | Build | `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-complete`, `build-step-skip`, `build-step-fail` (published by `BuildOrchestrator` for every node in the `BuildPlan` DAG; §6.13) |
+| Check | `check-start`, `check-complete`, `check-fail` (published by `CheckRunner` for every check it runs on behalf of `app:hooks:run` and `app:test`; §10.11) |
+| Hook | `pre-hook-run`, `post-hook-run` (published around a git-stage hook invocation driven by the `git:` `TriggerSource`; §10.12, §8.2.7) |
+| Process | `pre-process-start`, `post-process-start`, `process-exit` (published by `ProcessSupervisor` for every supervised long-running host process; distinct from the one-shot `pre-process-exec`/`post-process-exec` above; §10.13) |
+| MCP | `pre-mcp-call`, `post-mcp-call` (published by the MCP server for every agent-dispatched command or `ProjectContext` read; §10.14) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
 | Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` (published by `GlobalAppService` for every state transition of the global app and every plugin-contribution-driven `dist` regeneration; §20.6.2) |
@@ -810,6 +820,55 @@ export type FileSyncProgressEvent = Schema.Schema.Type<typeof FileSyncProgressEv
 ```
 
 The `FileSyncEngine` Live Layer is responsible for translating engine-native progress streams (Mutagen's `Synchronization.List` watch stream, in the bundled implementation) into these events; the Renderer consumes them through the standard `EventService.subscribe` path so accelerated mounts get the same first-paint and spinner treatment as any other long-running operation (§8.9).
+
+`CheckEvent`, `HookEvent`, `ProcessEvent`, and `McpCallEvent` cover the `Check`, `Hook`, `Process`, and `MCP` event scopes (§3.5) introduced by the post-GA devenv-parity work (§10.11–§10.14). They follow the same redaction discipline as `pre-shell-exec` / `pre-host-proxy-call`: command shapes are redacted, `${secret:…}`-resolved values never appear, and full payloads are available only to the active `Logger` at debug level. These are illustrative; the canonical schemas are published from `@lando/sdk` when each feature ships in its phase.
+
+```ts
+// CheckRunner (§10.11) — one pair per check, plus a fail variant carrying diagnostics
+export const CheckEvent = Schema.TaggedStruct("check-start", {
+  app: AppRef,
+  checkId: Schema.String,
+  source: Schema.Literal("hooks", "test"),                 // which surface drove the run
+  timestamp: Schema.DateTimeUtc,
+});
+export const CheckResultEvent = Schema.TaggedStruct("check-complete", {   // and "check-fail"
+  app: AppRef,
+  checkId: Schema.String,
+  status: Schema.Literal("passed", "failed", "skipped", "fixed"),
+  durationMs: Schema.Number,
+  diagnosticCount: Schema.Number,                          // full Diagnostic[] only at Logger debug
+  timestamp: Schema.DateTimeUtc,
+});
+
+// git-stage hook invocation (§8.2.7, §10.12)
+export const HookEvent = Schema.TaggedStruct("pre-hook-run", {            // and "post-hook-run"
+  app: AppRef,
+  stage: Schema.String,                                    // e.g. "pre-commit"
+  checkCount: Schema.Number,
+  changedFileCount: Schema.Number,
+  timestamp: Schema.DateTimeUtc,
+});
+
+// ProcessSupervisor (§10.13) — supervised long-running host process
+export const ProcessEvent = Schema.TaggedStruct("pre-process-start", {   // and "post-process-start", "process-exit"
+  app: AppRef,
+  name: Schema.String,
+  command: Schema.String,                                  // redacted command shape
+  exitCode: Schema.optional(Schema.Number),               // present on "process-exit"
+  restartCount: Schema.optional(Schema.Number),
+  timestamp: Schema.DateTimeUtc,
+});
+
+// MCP server (§10.14) — every agent-dispatched command or ProjectContext read
+export const McpCallEvent = Schema.TaggedStruct("pre-mcp-call", {        // and "post-mcp-call"
+  kind: Schema.Literal("command", "project-context"),
+  canonicalId: Schema.optional(Schema.String),            // for kind: "command"
+  mutability: Schema.optional(Schema.Literal("read", "write", "lifecycle", "host-mutation")),
+  confirmed: Schema.optional(Schema.Boolean),             // whether requiresConfirmation was satisfied
+  durationMs: Schema.optional(Schema.Number),             // on "post-mcp-call"
+  timestamp: Schema.DateTimeUtc,
+});
+```
 
 ### 11.3 Subscriber priority
 

@@ -36,6 +36,8 @@ The **encoding** column captures the §12.2 rule: every cache read on the router
 | `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Compiled `CompiledTemplate` blobs per `TemplateEngine` (§7.3.2). Content-addressed by canonical template-content hash; cross-app | Template content change (hash mismatch), engine version change, `--clear` |
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered template output. Content-addressed by template content hash + canonical resolved-vars hash; cross-app | Template content change, resolved `vars:` change, render context schema/version change, `--clear` |
 | `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Generated allowlist of canonical command ids that the in-container `lando` shim may forward via `HostProxyService.runLando` (§10.10). Built from every `LandoCommandSpec` with `hostProxyAllowed: true` (§8.3), every plugin command with the same flag, and every per-app tooling task with `hostProxyAllowed: true` (§8.5) | Plugin install/remove/update, app command index change, app-plan rebuild, `--clear` |
+| `ambient-state` | `<userCacheRoot>/apps/<app-id>/ambient-state.bin` | binary | Per-app shell-integration state (§8.2.5): the encoded `HostEnvProjection` (host-shell env keys/values, the full mode-independent shim inventory, the shim-dir path) plus the **precomputed trust bit and host-wide `ambient.enabled`/`ambient.shims` flags**. This is the ONLY file the per-prompt `meta:ambient:export` reads (alongside the binary `cwd-app-map` lookup) — binary because it is read on the level-`none` hot path, which has no Effect runtime and must not parse YAML (§3.2, §12.5). Materialized by `app:start` / `app:cache:refresh`; the trust/flag fields are re-emitted (without a full app-plan rebuild) by `lando ambient allow`/`deny` and by `meta config` writes touching `ambient.*` | App-plan rebuild, `app:cache:refresh`, `app:destroy`, Landofile `ambient:`/`env:` change, `ambient allow`/`deny`, `meta config` `ambient.*` write, `--clear` |
+| `ambient-manifest` (debug mirror) | `<userCacheRoot>/apps/<app-id>/ambient.json` | JSON | Human-readable mirror of `ambient-state.bin`, written alongside it for `cat`-debugging only. **Never on a read path** — no command consumes it at runtime; it exists so a developer can inspect what ambient mode would export. Safe to delete | Rewritten whenever `ambient-state` is, `--clear` |
 | `file-sync-sessions` | `<userCacheRoot>/file-sync/sessions/<app-id>.bin` | binary | Per-app `FileSyncEngine` session metadata (§10.6): engine id, engine-issued session id, source path (with `${HOME}` normalized), target shape (volume name or service path), mode, canonicalized excludes hash, `mountKey`, last-known status. Read at `app:start` to reconcile or recreate sessions, written at every `pre-/post-file-sync-*` event, read at `app:stop` to terminate cleanly. Survives `lando stop`; cleared by `lando destroy` and by app-plan rebuild | App-plan rebuild, `app:cache:refresh`, `app:destroy`, engine version change, `--clear` |
 | `build-results` | `<userCacheRoot>/apps/<app-id>/build-results.bin` | binary | Per-app `BuildResult[]` index (§6.13.5): for each `(service, phase, buildKey)`, the most recent `complete` and `fail` outcomes with `exitCode`, `durationMs`, `artifactRef` (artifact phase), `transcriptPath` pointer, and `completedAt`. Bounded per `(service, phase, buildKey)`: the most recent N=10 `complete` and N=5 `fail` entries are kept (configurable via `build.transcripts.keep*` global). Read by `BuildOrchestrator` at `pre-build-phase` to short-circuit unchanged steps; written on every `build-step-complete` / `build-step-fail`. The cache stores only the index — actual transcripts live as the persistent artifact in §12.4. | `app:rebuild`, `app:destroy`, `app:cache:refresh --rebuild`, build orchestrator schema/version change, `--clear` |
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update channel metadata | `update`, scheduled refresh |
@@ -74,12 +76,16 @@ Files Lando v4 writes to disk:
 | `<userConfRoot>/` | User config root |
 | `<userConfRoot>/config.yml` | Global config |
 | `<userConfRoot>/global.config.yml` | Plugin enablement map for the global Lando app (§20.3.1); `{ <globalServices.id>: { enabled: bool } }` map populated by `meta:global:install` / `meta:global:uninstall` |
+| `<userConfRoot>/ambient-trust.yml` | Ambient-mode trust ledger (§8.2.5): `{ <absolute-app-root>: { allowedAt } }` map, written by `lando ambient allow`, pruned by `lando ambient deny`. Non-expiring until revoked; keyed on resolved absolute app root. Gates whether the shell integration may export an app's env/shims |
 | `<userConfRoot>/config.d/*.yml` | Layered global config |
 | `<userCacheRoot>/` | Cache root |
 | `<userCacheRoot>/logs/` | Core log files |
 | `<userCacheRoot>/cwd-app-map.bin` | Bounded LRU mapping of cwd → resolved app root for fast router-phase lookup (§12.1) |
 | `<userCacheRoot>/templates/<engineId>/` | Cross-app `template-compile` and `template-render` caches per engine (§12.1) |
 | `<userCacheRoot>/apps/<app-id>/` | Per-app caches and provider workdir |
+| `<userCacheRoot>/apps/<app-id>/ambient-state.bin` | Per-app binary shell-integration state consumed by the per-prompt `meta:ambient:export`; encodes the `HostEnvProjection` plus the precomputed trust bit and host-wide mode flags (§8.2.5, §12.1) |
+| `<userCacheRoot>/apps/<app-id>/ambient.json` | Human-readable debug mirror of `ambient-state.bin`; never read at runtime (§8.2.5, §12.1) |
+| `<userCacheRoot>/apps/<app-id>/bin/` | Per-app ambient-mode shim directory (one dispatcher per tooling task); **always materialized** from the app command index at `app:start` / `app:cache:refresh` regardless of the active ambient mode, so the cache survives an `ambient.shims` flip. Whether it is prepended to `PATH` is decided per prompt from the flags in `ambient-state.bin` (§8.2.5) |
 | `<userDataRoot>/` | Persistent data root |
 | `<userDataRoot>/plugins/` | User-installed plugin packages (read-write; written by `meta:plugin:add`) |
 | `<userDataRoot>/global/` | App root for the global Lando app (§20.3); contains the six-file merge layers and plugin-generated `dist` layer |
@@ -126,5 +132,47 @@ After a successful app materialization/build, Lando-owned state required for rou
 If an offline command needs a missing Lando-managed dependency, Lando fails with a tagged error explaining which cache/artifact is missing and which online command will repair it. Lando MUST NOT silently attempt repeated network retries for routine offline-capable commands.
 
 Telemetry and update checks are queued/best-effort. Failure to reach telemetry or update endpoints never invalidates local caches and never changes a local-dev command's exit code.
+
+### 12.7 Owned host artifacts (`OwnedHostArtifactRegistry`)
+
+§12.4 lists the files Lando writes **inside its own roots** (`<userCacheRoot>`, `<userDataRoot>`, `<userConfRoot>`). A distinct class of file is written into **user-visible, user-owned locations** — the shell-profile hook line, the per-app ambient shim directory and its `bin/` dispatchers, generated git-hook scripts under a repo's `.git/hooks/`, a generated `.env` or devcontainer file, CA cert files dropped into a project, and host-side `files:` outputs (a future surface). These are not caches: deleting them changes what the user sees, and overwriting one could clobber a file the user edited. They need an **ownership ledger** so Lando knows exactly what it wrote where, can verify it before touching it, and can reap it cleanly on `app:destroy`, `meta:uninstall`, or a feature opt-out.
+
+`OwnedHostArtifactRegistry` is that ledger. It is an ownership/cleanup primitive — **not** a content engine. It does not render templates (it delegates to `TemplateRenderer`, §7.3.2) and does not implement atomic IO (it delegates to `CacheService.writeAtomic`, §12.3); it records *who wrote what, where, and whether it is safe to remove*.
+
+```ts
+// illustrative; OwnedHostArtifact record is core-internal at v4.0 (not an @lando/sdk schema)
+interface OwnedHostArtifact {
+  readonly path: AbsolutePath;            // resolved, realpath-normalized destination
+  readonly owner: string;                 // contributing feature id, e.g. "ambient", "git-hooks", "ca-mkcert"
+  readonly scope: "app" | "global" | "host";
+  readonly appId?: string;                // present when scope === "app"
+  readonly mode?: string;                 // POSIX mode for the written file
+  readonly createdHash: string;           // SHA-256 of bytes Lando first wrote
+  readonly lastWrittenHash: string;       // SHA-256 of bytes Lando most recently wrote
+  readonly cleanup: "reap" | "keep" | "prompt";  // policy on destroy/uninstall/opt-out
+  readonly writtenAt: string;
+}
+
+export class OwnedHostArtifactRegistry extends Context.Service<OwnedHostArtifactRegistry, {
+  // write through the registry: renders+writes (via TemplateRenderer/CacheService), then records ownership
+  readonly write:  (spec: OwnedHostArtifactSpec) => Effect.Effect<OwnedHostArtifact, HostArtifactError>;
+  readonly list:   (filter?: OwnedHostArtifactFilter) => Effect.Effect<ReadonlyArray<OwnedHostArtifact>>;
+  // reap respects the modification guard unless force is set
+  readonly reap:   (filter: OwnedHostArtifactFilter, opts?: { force?: boolean }) => Effect.Effect<ReapReport, HostArtifactError>;
+  readonly verify: (filter?: OwnedHostArtifactFilter) => Effect.Effect<ReadonlyArray<HostArtifactDrift>>;
+}>()("@lando/core/OwnedHostArtifactRegistry") {}
+```
+
+Rules:
+
+- **Ledger location.** The registry persists to `<userDataRoot>/owned-host-artifacts.bin` (binary, atomic per §12.3). It is data root, not cache root, because losing it would orphan user-visible files; `--clear` MUST NOT purge it.
+- **Modification guard.** `reap` MUST refuse to delete an artifact whose on-disk bytes hash differently from `lastWrittenHash` (the user edited or replaced it) unless `force: true` is passed. `verify` reports these as `HostArtifactDrift` so `lando doctor` can surface "Lando wrote this file but you've since edited it." This is the rule that makes generating files into a user's repo safe.
+- **Containment.** Every `path` is resolved with realpath and checked for symlink containment before any write or delete, reusing the local-`includes:` path-safety rules (§7.7.6). The registry MUST NOT follow a symlink out of the intended scope root, so a hostile symlink in `.git/hooks/` cannot redirect a reap to an arbitrary file.
+- **Cleanup wiring.** `app:destroy` reaps `scope: "app"` artifacts for that app id (policy `reap`); `meta:uninstall` (§17.7) reaps `scope: "host"` and `scope: "global"` artifacts and is the authoritative answer to "what did Lando write onto this host?" — it enumerates the ledger in its `--dry-run` preview. A feature opt-out (e.g. `lando ambient deny`, disabling git-hooks) reaps just that owner's artifacts.
+- **Not for cache/data-root files.** Files already covered by §12.1/§12.4 inside Lando's own roots are owned by their subsystem and are NOT entered in this ledger; the registry tracks only files written into user-owned locations. The ambient `bin/` shim dir and the shell-profile hook line ARE tracked here (they live in user space); the binary `ambient-state.bin` cache is NOT (it lives under `<userCacheRoot>`).
+- **Not recipe scaffolds.** Files emitted by `apps:init` recipe scaffolds (§8.8) are intentionally the user's from birth and are NOT Lando-owned; a recipe MAY opt a specific generated file into the ledger only by declaring it reapable, which recipes do not do at v4.0.
+- **SDK surface.** `OwnedHostArtifactRegistry`'s service tag is exported from `@lando/core/services` (§16.2) for embedding hosts that write host artifacts; the `OwnedHostArtifact` record stays a core-internal type at v4.0 (no `@lando/sdk` schema) until a second non-core consumer proves the shape, matching the §8.2.6 freeze discipline.
+
+**Deliberately not persisted at v4.0.** Two adjacent surfaces have **no** cache or persistent artifact: (1) `CheckRunner` results (§10.11) are computed per `app:hooks:run` / `app:test` invocation and rendered/returned, not cached — a `check-results` cache is a future optimization that would key on a content hash of the inputs (the same up-to-date discipline as `build-results`, §12.1), but v4.0 re-runs checks every time. (2) Supervised-process state (§10.13) is **foreground/scope-bound in-memory state** held by `ProcessRegistry` for the duration of an `app:processes:start` session; there is no on-disk registry of running processes at v4.0 because there is no daemon to own it. The detached/background process registry — and the persistent state file it would require — is deferred to the post-v4.0 persistent-agent work (§14.2). Secret values resolved through `SecretStoreRegistry` (§3.4, §7.3.1) are **never** written to any cache or artifact in this catalog, decrypted or otherwise.
 
 ---

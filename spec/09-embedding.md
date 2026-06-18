@@ -44,7 +44,7 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 | Surface | Entry point | What it exports |
 |---|---|---|
 | Runtime factory | `@lando/core` | `makeLandoRuntime`, `LandoRuntimeOptions`, `BootstrapLevel` |
-| Service tags | `@lando/core/services` | `ConfigService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
+| Service tags | `@lando/core/services` | `ConfigService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EnvironmentProjection`, `OwnedHostArtifactRegistry`, `EventService`, `CacheService`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
 | Schemas | `@lando/core/schema` | Every schema in §7.8 (Landofile, ServiceConfig, expression AST/errors, ToolingConfig, ToolingInclude, RouteConfig, HealthcheckConfig, plugin manifest, event payloads, etc.) |
 | Tagged errors | `@lando/core/errors` | Every `Schema.TaggedError` subclass declared in `src/errors/tagged.ts` |
 | Lifecycle | `@lando/core/events` | `EventService` (re-exported), event payload schemas, subscriber priority bands, the standard event sequence |
