@@ -230,6 +230,40 @@ describe("scripts/install.ps1", () => {
     expect(await Bun.file(installedPath).exists()).toBe(true);
   });
 
+  powershellTest("falls back when the last config userDataRoot is a non-string YAML value", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const confRoot = join(root, "conf");
+    const staleRoot = join(root, "stale-root");
+    const localAppData = join(root, "LocalAppData");
+    await mkdir(confRoot, { recursive: true });
+    await writeFile(
+      join(confRoot, "config.yml"),
+      `userDataRoot: ${staleRoot}
+userDataRoot: null
+`,
+    );
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: confRoot,
+      LANDO_USER_DATA_ROOT: "",
+      LOCALAPPDATA: localAppData,
+    });
+
+    const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect(await Bun.file(join(staleRoot, "bin", "lando.exe")).exists()).toBe(false);
+  });
+
   powershellTest("detects the x64 host architecture from 32-bit PowerShell sessions", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);

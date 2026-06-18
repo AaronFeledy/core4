@@ -117,9 +117,9 @@ function Read-ConfigUserDataRoot([string] $ConfRoot) {
     if (($candidate.StartsWith('"') -and $candidate.EndsWith('"')) -or ($candidate.StartsWith("'") -and $candidate.EndsWith("'"))) {
       $candidate = $candidate.Substring(1, $candidate.Length - 2)
     }
-    if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
-    if ($candidate -in @("null", "true", "false")) { continue }
-    if ($candidate.StartsWith("[") -or $candidate.StartsWith("{")) { continue }
+    if ([string]::IsNullOrWhiteSpace($candidate)) { $value = $null; continue }
+    if ($candidate -in @("null", "true", "false")) { $value = $null; continue }
+    if ($candidate.StartsWith("[") -or $candidate.StartsWith("{")) { $value = $null; continue }
     $value = $candidate
   }
 
