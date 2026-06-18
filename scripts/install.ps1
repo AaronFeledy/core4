@@ -75,8 +75,8 @@ function Resolve-ConfigFileRoot {
   $userConfRoot = EnvValue "LANDO_USER_CONF_ROOT"
   if (-not [string]::IsNullOrWhiteSpace($userConfRoot)) { return $userConfRoot }
 
-  $appData = EnvValue "APPDATA"
-  if (-not [string]::IsNullOrWhiteSpace($appData)) { return (Join-Path $appData "Lando") }
+  $homeRoot = EnvValue "HOME"
+  if (-not [string]::IsNullOrWhiteSpace($homeRoot)) { return (Join-Path $homeRoot ".lando") }
 
   return (Join-Path (Get-Location).Path ".lando")
 }
@@ -131,19 +131,23 @@ function Default-InstallDir {
   $installDir = EnvValue "LANDO_INSTALL_DIR"
   if (-not [string]::IsNullOrWhiteSpace($installDir)) { return $installDir }
 
+  return (Join-Path (Default-UserDataRoot) "bin")
+}
+
+function Default-UserDataRoot {
   $userDataRoot = EnvValue "LANDO_USER_DATA_ROOT"
-  if (-not [string]::IsNullOrWhiteSpace($userDataRoot)) { return (Join-Path $userDataRoot "bin") }
+  if (-not [string]::IsNullOrWhiteSpace($userDataRoot)) { return $userDataRoot }
 
   $configured = Read-ConfigUserDataRoot (Resolve-ConfigFileRoot)
-  if (-not [string]::IsNullOrWhiteSpace($configured)) { return (Join-Path $configured "bin") }
+  if (-not [string]::IsNullOrWhiteSpace($configured)) { return $configured }
 
-  $localAppData = EnvValue "LOCALAPPDATA"
-  if (-not [string]::IsNullOrWhiteSpace($localAppData)) { return (Join-Path $localAppData "Lando\Data\bin") }
+  $xdgDataHome = EnvValue "XDG_DATA_HOME"
+  if (-not [string]::IsNullOrWhiteSpace($xdgDataHome)) { return (Join-Path $xdgDataHome "lando") }
 
-  $userProfile = EnvValue "USERPROFILE"
-  if (-not [string]::IsNullOrWhiteSpace($userProfile)) { return (Join-Path $userProfile "AppData\Local\Lando\Data\bin") }
+  $homeRoot = EnvValue "HOME"
+  if (-not [string]::IsNullOrWhiteSpace($homeRoot)) { return (Join-Path $homeRoot ".local/share/lando") }
 
-  return (Join-Path (Get-Location).Path ".lando\bin")
+  return (Join-Path (Get-Location).Path ".local/share/lando")
 }
 
 function Basename-FromUrl([string] $Url) {

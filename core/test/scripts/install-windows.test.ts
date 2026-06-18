@@ -141,32 +141,82 @@ describe("scripts/install.ps1", () => {
     }
   });
 
-  powershellTest(
-    "defaults to the Windows user data bin directory when LANDO_INSTALL_DIR is unset",
-    async () => {
-      const root = await makeTempRoot();
-      const fixture = await createReleaseFixture(root);
-      const { cosignPath, logPath } = await createFakeCosign(root);
-      const localAppData = join(root, "LocalAppData");
+  powershellTest("uses the CLI userDataRoot default when config and install env are unset", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
 
-      const result = await runInstaller({
-        COSIGN_LOG: logPath,
-        LANDO_INSTALL_COSIGN: cosignPath,
-        LANDO_INSTALL_DIR: "",
-        LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
-        LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
-        LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
-        LANDO_USER_DATA_ROOT: "",
-        LOCALAPPDATA: localAppData,
-      });
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      HOME: root,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
+      LANDO_USER_DATA_ROOT: "",
+      XDG_DATA_HOME: "",
+    });
 
-      const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
-      expect(result.stderr).toBe("");
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(`installed: ${installedPath}`);
-      expect(await Bun.file(installedPath).exists()).toBe(true);
-    },
-  );
+    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
+
+  powershellTest("uses XDG_DATA_HOME for the default userDataRoot", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const xdgDataHome = join(root, "xdg-data");
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      HOME: root,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
+      LANDO_USER_DATA_ROOT: "",
+      XDG_DATA_HOME: xdgDataHome,
+    });
+
+    const installedPath = join(xdgDataHome, "lando", "bin", "lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
+
+  powershellTest("uses HOME/.lando as the default config root", async () => {
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { cosignPath, logPath } = await createFakeCosign(root);
+    const confRoot = join(root, ".lando");
+    const userDataRoot = join(root, "home-config-data-root");
+    await mkdir(confRoot, { recursive: true });
+    await writeFile(join(confRoot, "config.yml"), `userDataRoot: ${userDataRoot}\n`);
+
+    const result = await runInstaller({
+      COSIGN_LOG: logPath,
+      HOME: root,
+      LANDO_INSTALL_COSIGN: cosignPath,
+      LANDO_INSTALL_DIR: "",
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+      LANDO_USER_CONF_ROOT: "",
+      LANDO_USER_DATA_ROOT: "",
+      XDG_DATA_HOME: join(root, "xdg-data"),
+    });
+
+    const installedPath = join(userDataRoot, "bin", "lando.exe");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed: ${installedPath}`);
+    expect(await Bun.file(installedPath).exists()).toBe(true);
+  });
 
   powershellTest("reads userDataRoot from config.yml when install env overrides are unset", async () => {
     const root = await makeTempRoot();
@@ -236,7 +286,6 @@ describe("scripts/install.ps1", () => {
     const { cosignPath, logPath } = await createFakeCosign(root);
     const confRoot = join(root, "conf");
     const staleRoot = join(root, "stale-root");
-    const localAppData = join(root, "LocalAppData");
     await mkdir(confRoot, { recursive: true });
     await writeFile(
       join(confRoot, "config.yml"),
@@ -253,10 +302,11 @@ userDataRoot: null
       LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
       LANDO_USER_CONF_ROOT: confRoot,
       LANDO_USER_DATA_ROOT: "",
-      LOCALAPPDATA: localAppData,
+      HOME: root,
+      XDG_DATA_HOME: "",
     });
 
-    const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
+    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
@@ -270,7 +320,6 @@ userDataRoot: null
     const { cosignPath, logPath } = await createFakeCosign(root);
     const confRoot = join(root, "conf");
     const ignoredRoot = join(root, "ignored-root");
-    const localAppData = join(root, "LocalAppData");
     await mkdir(confRoot, { recursive: true });
     await writeFile(
       join(confRoot, "config.yml"),
@@ -287,10 +336,11 @@ userDataRoot: ${ignoredRoot}
       LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
       LANDO_USER_CONF_ROOT: confRoot,
       LANDO_USER_DATA_ROOT: "",
-      LOCALAPPDATA: localAppData,
+      HOME: root,
+      XDG_DATA_HOME: "",
     });
 
-    const installedPath = join(localAppData, "Lando", "Data", "bin", "lando.exe");
+    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
