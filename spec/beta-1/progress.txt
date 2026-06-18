@@ -1130,3 +1130,8 @@
 - Verification: typecheck, lint passed; `core/test/cli/update-manifest.test.ts` spot check passed (26/26).
 - **Learnings for future iterations:** When redacting then bounding the size of free-text diagnostics, always scrub BEFORE truncating; truncating first can sever a sensitive pattern so the redactor no longer matches it.
 ---
+## 2026-06-17 19:46 CDT - US-263 Verify
+- Verified compiled `lando setup` in `lando4-dev` with a local verified provider-lando runtime-bundle manifest and live Podman socket, then exercised compiled `lando update` against a local signed-manifest HTTPS endpoint: a checksum-valid but non-launching replacement restored the original binary, returned `UpdateLaunchProbeError`, recorded only the `launch_probe_failure` category/platform/version, and left no scenario artifacts behind.
+- Fixed a real redaction regression found only in the compiled rollback scenario: mixed/lower-case secret assignments in launch-probe stdout/stderr (`token=...`, `PASSWORD=...`) now redact before rendering, with a focused regression test.
+- **Learnings for future iterations:** Launch-probe redaction fixtures must include mixed/lower-case secret assignment keys, not only uppercase env-style names; real compiled update rollback can be verified safely by running a copied `lando` binary against a sandbox-local HTTPS `update.lando.dev` endpoint with isolated cache/config roots.
+---
