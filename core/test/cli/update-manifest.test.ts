@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -15,7 +15,11 @@ import {
   type UpdateManifestFetcher,
   type UpdateManifestSignatureVerifier,
   UpdateMinimumVersionError,
+  UpdatePermissionError,
+  type UpdateWindowsReplacementSpawnInput,
+  buildWindowsReplacementScript,
   resolveUpdateManifestUrl,
+  scheduleWindowsReplacement,
   update,
   updateChannelForVersion,
 } from "../../src/cli/commands/update.ts";
@@ -94,6 +98,30 @@ const manifestFor = (channel: UpdateChannel) => ({
   notes: "https://github.com/lando/lando/releases/tag/v4.2.0",
 });
 
+const manifestWithBinary = ({
+  binarySha,
+  binarySize,
+  platform,
+}: {
+  readonly binarySha: string;
+  readonly binarySize: number;
+  readonly platform: keyof ReturnType<typeof manifestFor>["binaries"];
+}) => {
+  const manifest = manifestFor("stable");
+  return {
+    ...manifest,
+    latest: "4.4.0",
+    binaries: {
+      ...manifest.binaries,
+      [platform]: {
+        ...manifest.binaries[platform],
+        sha256: binarySha,
+        size: binarySize,
+      },
+    },
+  };
+};
+
 const bytes = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(value));
 const textBytes = (value: string): Uint8Array => encoder.encode(value);
 const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
@@ -134,7 +162,7 @@ const fetcherForSelfUpdate =
     if (url.endsWith("SHA256SUMS")) return textBytes(checksumsText);
     if (url.endsWith("SHA256SUMS.sig")) return textBytes("checksums-signature");
     if (url.endsWith("SHA256SUMS.crt")) return textBytes("checksums-certificate");
-    if (url === manifest.binaries["linux-x64"].url) return binaryBytes;
+    if (Object.values(manifest.binaries).some((binary) => url === binary.url)) return binaryBytes;
     throw new Error(`unexpected fetch: ${url}`);
   };
 
@@ -513,18 +541,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const execs: Array<{
       readonly path: string;
@@ -591,18 +612,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const execs: ReadonlyArray<string>[] = [];
 
     await Effect.runPromise(
@@ -635,24 +649,212 @@ describe("update signed manifest", () => {
     expect(execs).toEqual([[executablePath, "update", "--channel", "stable"]]);
   });
 
+  test("Windows self-update schedules replacement without overwriting the running exe", async () => {
+    const root = await makeTempRoot("lando-self-update-windows-");
+    const executablePath = join(root, "lando.exe");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-windows-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "windows-x64",
+    });
+    const probes: string[] = [];
+    const renames: Array<readonly [string, string]> = [];
+    const replacements: Array<{
+      readonly executablePath: string;
+      readonly stagedBinaryPath: string;
+      readonly backupPath: string;
+      readonly argv: ReadonlyArray<string>;
+      readonly env: Record<string, string>;
+      readonly manualFallback: string;
+    }> = [];
+    const processRunner = {
+      run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
+        Effect.sync(() => {
+          probes.push(input.cmd);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+      stream: noopProcessRunner.stream,
+    } satisfies typeof ProcessRunner.Service;
+
+    const result = await Effect.runPromise(
+      update({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-windows-x64.exe\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          platform: "win32",
+          arch: "x64",
+          argv: [executablePath, "update", "--channel=stable"],
+          env: { Path: "C:\\Windows" },
+          rename: async (from, to) => {
+            renames.push([from, to]);
+            await rename(from, to);
+          },
+          replaceWindows: (input) =>
+            Effect.sync(() => {
+              replacements.push(input);
+            }),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+
+    expect(result).toEqual({ updatedCore: true, updatedPlugins: [] });
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    expect(renames).toEqual([]);
+    expect(probes).toHaveLength(1);
+    expect(dirname(dirname(probes[0] ?? ""))).toBe(root);
+    expect(replacements).toHaveLength(1);
+    const replacement = replacements[0];
+    expect(replacement?.executablePath).toBe(executablePath);
+    expect(replacement?.backupPath).toBe(`${executablePath}.bak`);
+    expect(replacement?.argv).toEqual([executablePath, "update", "--channel=stable"]);
+    expect(replacement?.env).toEqual({ Path: "C:\\Windows" });
+    expect(replacement?.manualFallback).toContain("Close every running Lando process");
+    expect(replacement?.manualFallback).toContain("lando.exe.bak");
+    expect(replacement?.stagedBinaryPath).not.toBe(executablePath);
+    expect(await readFile(replacement?.stagedBinaryPath ?? "", "utf8")).toBe("new-windows-binary");
+  });
+
+  test("Windows self-update reports manual fallback instructions when replacement scheduling fails", async () => {
+    const root = await makeTempRoot("lando-self-update-windows-fallback-");
+    const executablePath = join(root, "lando.exe");
+    await writeFile(executablePath, "old-binary");
+
+    const binaryBytes = textBytes("new-windows-binary");
+    const binarySha = sha256(binaryBytes);
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "windows-x64",
+    });
+
+    const failure = await failureValue(
+      runUpdate({
+        channel: "stable",
+        currentVersion: "4.2.0",
+        fetchManifestBytes: fetcherForSelfUpdate({
+          manifest,
+          binaryBytes,
+          checksumsText: `${binarySha}  ./dist/lando-windows-x64.exe\n`,
+        }),
+        selfUpdate: {
+          executablePath,
+          platform: "win32",
+          arch: "x64",
+          replaceWindows: () =>
+            Effect.fail(new Error("CreateProcess failed for C:\\Users\\Alice\\lando.exe")),
+        },
+        updateStatePath: join(root, "state.json"),
+        verifyChecksumSignature: checksumVerifierFor(),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(UpdatePermissionError);
+    if (failure instanceof UpdatePermissionError) {
+      expect(failure.message).toContain("Failed to schedule Windows Lando replacement");
+      expect(failure.remediation).toContain("Close every running Lando process");
+      expect(failure.remediation).toContain("lando.exe.bak");
+      const report = buildBugReport({
+        error: failure,
+        context: { commandId: "meta:update", cacheRoot: root },
+      });
+      expect(report.body).not.toContain("Alice");
+      expect(report.remediation).toContain("Close every running Lando process");
+      expect(report.remediation).toContain(executablePath);
+    }
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+  });
+
+  test("Windows replacement helper waits for the running exe lock before swapping", () => {
+    const script = buildWindowsReplacementScript({
+      executablePath: "C:\\Lando\\lando.exe",
+      stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
+      backupPath: "C:\\Lando\\lando.exe.bak",
+      attemptedVersion: "4.4.0",
+      argv: ["C:\\Lando\\lando.exe", "update", "--channel=stable"],
+      env: { Path: "C:\\Windows" },
+      manualFallback: "fallback",
+    });
+
+    expect(script).toContain(
+      [
+        ":wait",
+        'move /Y "%TARGET%" "%BACKUP%" >nul 2>nul',
+        "if not errorlevel 1 goto install",
+        "timeout /t 1 /nobreak >nul 2>nul",
+        "goto wait",
+        ":install",
+      ].join("\r\n"),
+    );
+    expect(script).not.toContain("if errorlevel 1 exit /b 1\r\n:install");
+    expect(script).toContain('move /Y "%CANDIDATE%" "%TARGET%" >nul 2>nul');
+    expect(script).toContain('move /Y "%BACKUP%" "%TARGET%" >nul 2>nul');
+    expect(script).toContain('start "" "%TARGET%" "update" "--channel=stable"');
+  });
+
+  test("Windows replacement scheduler detaches the helper so the running exe can exit", async () => {
+    const root = await makeTempRoot("lando-self-update-windows-scheduler-");
+    const stagedBinaryPath = join(root, ".lando-update-abc", "lando.exe");
+    await mkdir(dirname(stagedBinaryPath), { recursive: true });
+    await writeFile(stagedBinaryPath, "new-windows-binary");
+    const spawns: UpdateWindowsReplacementSpawnInput[] = [];
+
+    await Effect.runPromise(
+      scheduleWindowsReplacement(
+        {
+          executablePath: join(root, "lando.exe"),
+          stagedBinaryPath,
+          backupPath: join(root, "lando.exe.bak"),
+          attemptedVersion: "4.4.0",
+          argv: [join(root, "lando.exe"), "update"],
+          env: {},
+          manualFallback: "fallback",
+        },
+        (input) => {
+          spawns.push(input);
+        },
+      ),
+    );
+
+    expect(spawns).toEqual([
+      {
+        cmd: ["cmd.exe", "/d", "/s", "/c", join(root, ".lando-update-abc", "replace-lando.cmd")],
+        cwd: join(root, ".lando-update-abc"),
+        detached: true,
+      },
+    ]);
+    expect(await readFile(join(root, ".lando-update-abc", "replace-lando.cmd"), "utf8")).toContain(
+      "goto wait",
+    );
+  });
+
   test("POSIX self-update fails before probe or rename when the binary checksum does not match", async () => {
     const root = await makeTempRoot("lando-self-update-checksum-");
     const executablePath = join(root, "lando");
     await writeFile(executablePath, "old-binary");
 
     const binaryBytes = textBytes("tampered-binary");
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: "b".repeat(64),
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha: "b".repeat(64),
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const processRunner = {
       run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
@@ -695,18 +897,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probeCommands: string[] = [];
     const processRunner = {
       run: (input: Parameters<typeof noopProcessRunner.run>[0]) =>
@@ -749,18 +944,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const renames: Array<readonly [string, string]> = [];
 
     const tag = await failureTag(
@@ -800,18 +988,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
 
     const tag = await failureTag(
       runUpdate({
@@ -844,18 +1025,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     const probes: string[] = [];
     const execs: string[] = [];
     const updateStatePath = join(root, "state.json");
@@ -942,18 +1116,11 @@ describe("update signed manifest", () => {
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
-    const manifest = {
-      ...manifestFor("stable"),
-      latest: "4.4.0",
-      binaries: {
-        ...manifestFor("stable").binaries,
-        "linux-x64": {
-          ...manifestFor("stable").binaries["linux-x64"],
-          sha256: binarySha,
-          size: binaryBytes.byteLength,
-        },
-      },
-    };
+    const manifest = manifestWithBinary({
+      binarySha,
+      binarySize: binaryBytes.byteLength,
+      platform: "linux-x64",
+    });
     let probeCount = 0;
     const processRunner = {
       run: () =>

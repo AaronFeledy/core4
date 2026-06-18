@@ -1155,8 +1155,8 @@
         "Lint passes"
       ],
       "priority": 65,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Windows self-update now keeps the running .exe untouched, verifies the downloaded replacement, schedules a delayed swap helper with rollback backup paths, and reports exact manual fallback instructions when scheduling fails."
     },
     {
       "id": "US-265",
