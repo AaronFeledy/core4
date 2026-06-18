@@ -295,6 +295,15 @@ describe("renderer visual language docs", () => {
       "[WAIT]",
       "80 columns",
       "plain, json, non-TTY, and CI output stay undecorated",
+      "LANDO OPS headings",
+      "two-space row rhythm",
+      "glyph plus text status",
+      "dimmed detail tails",
+      "progress rails stay semantic",
+      "no undifferentiated rainbow logs",
+      "no SaaS-purple gradients",
+      "no dense ASCII art",
+      "no decorative motion",
     ]) {
       expect(guide).toContain(token);
     }

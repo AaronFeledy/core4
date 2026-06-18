@@ -19,10 +19,23 @@ tags: [beta, docs, cli, renderer]
       <Variable name="blocked" value="[BLOCKED]" display="Failures render with a blocked chip, exit/remediation text, and a red accent in TTY mode" />
       <Variable name="wait" value="[WAIT]" display="Declared-but-not-started children stay visible as wait-state rows" />
     </Step>
+    <Step name="layout-rules">
+      <Variable name="headings" value="LANDO OPS headings" display="Every panel opens with a compact cockpit heading so users can identify the current phase before reading task rows" />
+      <Variable name="spacing" value="two-space row rhythm" display="Task rows, detail tails, and footer telemetry keep consistent spacing so dense output remains scannable" />
+      <Variable name="icons" value="glyph plus text status" display="Glyphs such as check, cross, warning, and wait markers never stand alone; each state also carries a status chip or remediation text" />
+      <Variable name="dimming" value="dimmed detail tails" display="Low-priority task detail lines and telemetry separators dim behind the status rows while preserving readable contrast" />
+      <Variable name="progressRails" value="progress rails stay semantic" display="Rails and scanner motion are reserved for live RUNNING work; static summaries use telemetry footers instead of decorative animation" />
+    </Step>
     <Step name="widths-and-fallbacks">
       <Variable name="fixtures" value="80 columns, 100 columns, 120 columns" display="Golden fixtures prove common terminal widths stay readable, with long paths wrapped inside the panel rhythm" />
       <Variable name="machineModes" value="plain, json, non-TTY, and CI output stay undecorated" display="Machine-readable and non-interactive paths keep stable parseable output; decorative ANSI belongs only to TTY lando frames" />
       <Variable name="example" value="@lando/renderer-lando contributes.renderers: [lando]" display="Renderer authors can inspect the bundled first-party plugin as the maintained example for renderer contribution metadata" />
+    </Step>
+    <Step name="anti-patterns">
+      <Variable name="rainbow" value="no undifferentiated rainbow logs" display="Color is constrained to telemetry accents and status severity instead of cycling arbitrary rainbow output" />
+      <Variable name="purple" value="no SaaS-purple gradients" display="The palette avoids default purple-on-white SaaS styling in favor of deep-space contrast and cyan/teal accents" />
+      <Variable name="ascii" value="no dense ASCII art" display="Panel borders stay sparse and scan-friendly; decoration must not make small terminals harder to read" />
+      <Variable name="motion" value="no decorative motion" display="Animation belongs only to live state transitions, never as unrelated ornament" />
     </Step>
   </Scenario>
 </Guide>
