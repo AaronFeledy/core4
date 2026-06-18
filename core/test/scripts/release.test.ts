@@ -2020,7 +2020,10 @@ describe("release orchestrator", () => {
 
     await withReleaseFixtureRoot(async (root) => {
       const artifactEntries: Record<string, unknown> = {};
-      const writeArtifactEntry = async (name: string, kind: "binary" | "library"): Promise<void> => {
+      const writeArtifactEntry = async (
+        name: string,
+        kind: "binary" | "library" | "installer" | "trust-root",
+      ): Promise<void> => {
         const path = `dist/${name}`;
         const stem = name.endsWith(".exe")
           ? name.slice(0, -".exe".length)
@@ -2055,6 +2058,10 @@ describe("release orchestrator", () => {
         );
       }
       await writeArtifactEntry("lando-library-4.0.0-beta.1.tgz", "library");
+      await writeArtifactEntry("install.sh", "installer");
+      await writeArtifactEntry("install.ps1", "installer");
+      await writeArtifactEntry("lando-release-gpg.asc", "trust-root");
+      await writeArtifactEntry("lando-release-cosign.pub", "trust-root");
       for (const path of [
         "dist/SHA256SUMS",
         "dist/SHA256SUMS.asc",

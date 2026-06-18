@@ -679,7 +679,7 @@ const releaseVersion = (env: ReleaseEnvironment): string => envValue(env, "LANDO
 
 const releaseLibraryArchivePath = (version: string): string => `./dist/lando-library-${version}.tgz`;
 
-type ReleaseManifestArtifactKind = "binary" | "library";
+type ReleaseManifestArtifactKind = "binary" | "library" | "installer" | "trust-root";
 
 interface ReleaseManifestFileEntry {
   readonly path: string;
@@ -717,6 +717,9 @@ const releaseManifestFileEntry = (value: unknown, label: string): ReleaseManifes
   return { path, sha256 };
 };
 
+const isReleaseManifestArtifactKind = (value: unknown): value is ReleaseManifestArtifactKind =>
+  value === "binary" || value === "library" || value === "installer" || value === "trust-root";
+
 const readReleaseManifest = async (
   manifestPath = "dist/release-artifacts.json",
 ): Promise<ReleaseManifest> => {
@@ -730,7 +733,7 @@ const readReleaseManifest = async (
     const kind = entry.kind;
     const path = entry.path;
     const sha256 = entry.sha256;
-    if ((kind !== "binary" && kind !== "library") || typeof path !== "string" || typeof sha256 !== "string") {
+    if (!isReleaseManifestArtifactKind(kind) || typeof path !== "string" || typeof sha256 !== "string") {
       throw new Error(`artifact ${name} is not a release manifest artifact entry`);
     }
     const sbom = releaseManifestFileEntry(entry.sbom, `artifact ${name} sbom`);
