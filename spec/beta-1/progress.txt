@@ -27,6 +27,14 @@
 - Windows self-update must never rename over the running `.exe` in-process; stage the verified binary beside the target, launch the delayed replacement helper with explicit backup/fallback paths, and let the current process exit.
 - Installer trust roots split by platform: `install.sh` derives/verifies `SHA256SUMS.asc` beside the checksum manifest with its embedded GPG key, while `install.ps1` verifies the manifest's cosign `.sig`/`.crt` using an embedded identity/issuer trust-root object; the update manifest's `checksums.signature` stays `.sig` for self-update and Windows.
 
+## 2026-06-18 02:15 CDT - US-276
+- Extended the linux-x64 §17.9 acceptance rehearsal guide with criteria 1-9 proof surfaces: local `bun run release` / compile rehearsal, CI pipeline timing budgets, signing/SBOM/provenance/cosign verification via existing release guides and `release.test.ts`, signed update-manifest trust ordering, and self-update rollback/permission behavior via `update-manifest.test.ts`.
+- Locked the new scenarios with a focused `linux-acceptance-rehearsal.test.ts` case so PRD-11 acceptance cannot drift from the documented harness.
+- Verification: typecheck, lint, guide lint, and `core/test/build/linux-acceptance-rehearsal.test.ts` spot check passed.
+- **Learnings for future iterations:**
+  - Criteria 1-9 share the same host-safe pattern as 10-27: `render={false}` guide variables pointing at focused tests and sibling release/update guides, not live `bun run release` during guide generation.
+---
+
 ## 2026-06-18 00:34 CDT - US-269
 - Completed installer trust-root verification: POSIX installs now import an installer-vendored GPG key into an isolated temporary home and verify `SHA256SUMS.asc` before checksum/install; Windows installs now read an installer-owned cosign trust-root definition and fail closed when it is missing or malformed.
 - Updated the install guides to describe the GPG and cosign trust-root split, and marked the story complete in the PRD.
