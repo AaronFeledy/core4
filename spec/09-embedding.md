@@ -5,7 +5,7 @@
 
 This part defines embedding Lando v4 as a library from another Bun program. The CLI (§8) is one imperative shell over the runtime; an embedding host is another (§3.6). Both build the same `LandoRuntimeLive` Layer, run Effect programs against it, and tear down through `Scope`.
 
-Covered here: what counts as an embedding host and which use cases are first-class, the `@lando/core` package surface and entry-point boundaries, the Effect-native public API (no Promise facade), the `LandoRuntime` factory and its options, plugin behavior in library mode (host-controlled by default; opt-in to standard discovery), bootstrap-level and lifecycle semantics for embedding hosts, resource ownership and `Scope` discipline, programmatic invocation of CLI command logic, the testing API surface, version compatibility, and the explicit non-goals.
+Covered here: what counts as an embedding host and which use cases are first-class, the `@lando/core` package surface and entry-point boundaries, the Effect-native public API (no Promise facade), the `makeLandoRuntime` Layer factory, the `openLandoRuntime` object wrapper, the stable `App` handle primitive, plugin behavior in library mode (host-controlled by default; opt-in to standard discovery), bootstrap-level and lifecycle semantics for embedding hosts, resource ownership and `Scope` discipline, programmatic invocation of CLI command logic, the testing API surface, version compatibility, and the explicit non-goals.
 
 For *what* services and schemas exist, see §3.4 and §7.8. This part is *how* a host wires them up.
 
@@ -43,9 +43,12 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 
 | Surface | Entry point | What it exports |
 |---|---|---|
-| Runtime factory | `@lando/core` | `makeLandoRuntime`, `LandoRuntimeOptions`, `BootstrapLevel` |
-| Service tags | `@lando/core/services` | `ConfigService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
+| Runtime factory + App handles | `@lando/core` | `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, `LandoRuntimeOptions`, `LandoRuntimeServices`, `LandoRuntime`, `BootstrapLevel`, `App`, `AppSelector`, `AppResolveError` |
+| Service tags | `@lando/core/services` | `ConfigService`, `PathsService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `StateStore`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `InteractionService`, `RedactionService`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
+| Paths | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, and the `LandoRoots` / `LandoPaths` / `RootOverrides` types — the Effect-free root/path resolver (§7.5.1). OCLIF-free and runtime-free, so hosts can resolve roots before constructing a runtime |
 | Schemas | `@lando/core/schema` | Every schema in §7.8 (Landofile, ServiceConfig, expression AST/errors, ToolingConfig, ToolingInclude, RouteConfig, HealthcheckConfig, plugin manifest, event payloads, etc.) |
+| Landofile serializer | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, `LandofileEmitError` — the canonical block-style Landofile serializer pair (§7.8.1). Re-export of the pure `@lando/sdk/landofile` logic; hosts and config-translator plugins use it to emit, preview, and test Landofile fragments. |
+| Secret redaction | `@lando/core/secrets` | Re-export of `@lando/sdk/secrets` (§3.7): `createRedactor`, `createSecretRedactor`, the `RedactionProfile` literal, the canonical pattern-class catalog, and the `REDACTED` sentinel. Pure and runtime-free — a host can redact log/diagnostic output for its own UI with the same coverage core uses, and the `RedactionService` tag supplies the live secret set when the host wants profile-driven redaction wired to the active `SecretStore`. |
 | Tagged errors | `@lando/core/errors` | Every `Schema.TaggedError` subclass declared in `src/errors/tagged.ts` |
 | Lifecycle | `@lando/core/events` | `EventService` (re-exported), event payload schemas, subscriber priority bands, the standard event sequence |
 | Programmatic CLI | `@lando/core/cli` | Wrappers for invoking built-in command logic without OCLIF (§16.7) |
@@ -56,7 +59,7 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 
 Stability rules:
 
-- The default entry (`@lando/core`), `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli` are **semver-stable** within a major version. Breaking changes bump the major.
+- The default entry (`@lando/core`), `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, `@lando/core/paths`, `@lando/core/landofile`, and `@lando/core/cli` are **semver-stable** within a major version. Breaking changes bump the major. `@lando/core/landofile` re-exports the pure `@lando/sdk/landofile` serializer (§7.8.1); the `LandofileEmitError` it adds rides the subpath, not the frozen `@lando/core/errors` barrel.
 - `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1; it is also published on `dev`, and it still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA. After GA it follows the standard semver rule.
 - `@lando/core/docs/components` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
 - `@lando/core/docs/redactions` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
@@ -71,12 +74,13 @@ Stability rules:
 import { Context, Effect, Layer, Schema, Scope } from "effect";
 import {
   makeLandoRuntime,
+  type LandoRuntimeServices,
   AppPlanner,
   RuntimeProviderRegistry,
   LandofileService,
 } from "@lando/core";
 
-const runtime: Layer.Layer<LandoRuntime, LandoRuntimeBootstrapError, Scope.Scope> =
+const runtime: Layer.Layer<LandoRuntimeServices, LandoRuntimeBootstrapError, Scope.Scope> =
   makeLandoRuntime({
     bootstrap: "app",
     cwd: process.cwd(),
@@ -130,6 +134,11 @@ export const LandoRuntimeOptions = Schema.Struct({
   logger: Schema.optional(Schema.String),
   renderer: Schema.optional(Schema.String),
 
+  // Interaction policy (§8.10). Default mode = "non-interactive" in library mode (CLI = "auto").
+  // A host MAY pass "auto"/"interactive" to opt into terminal prompting, or override the
+  // InteractionService entirely via `overrides` to route prompts through its own transport.
+  interaction: Schema.optional(Schema.Literal("auto", "interactive", "non-interactive")),
+
   // Telemetry: enabled by default in core. Hosts may disable it explicitly.
   telemetry: Schema.optional(Schema.Boolean),
 
@@ -152,7 +161,7 @@ export const LandoRuntimeOptions = Schema.Struct({
 - The factory MUST run the same bootstrap sequence (§3.2) up to the requested level. Lifecycle events fire identically (§16.6).
 - The Layer's outer scope owns all resource handles; closing the scope tears everything down (§16.6).
 
-**Runtime reuse for performance.** A single `LandoRuntime` MAY be reused across many sequential Effect programs by the same host. This is the **recommended pattern** for embedding hosts that perform repeated small operations — TUIs, dashboards, IDE/editor extensions, long-lived web servers, monorepo orchestrators driving dozens of apps — and is the perf shape that closes the gap between transactional CLI invocations and the deferred persistent-agent decision (§14.2):
+**Runtime reuse for performance.** A single runtime Layer acquisition or retained `LandoRuntime` object MAY be reused across many sequential Effect programs by the same host. This is the **recommended pattern** for embedding hosts that perform repeated small operations — TUIs, dashboards, IDE/editor extensions, long-lived web servers, monorepo orchestrators driving dozens of apps — and is the perf shape that closes the gap between transactional CLI invocations and the deferred persistent-agent decision (§14.2):
 
 - Build the runtime once at host startup at the **lowest** `bootstrap` level the host needs (e.g., `tooling` for an editor extension that only triggers cached tooling tasks; reserve `app` for hosts that genuinely need full app planning).
 - Provide it to every program with `Effect.provide` and run each program with `Effect.runPromise` / `Effect.runFork` against the same Layer instance.
@@ -162,7 +171,7 @@ Reuse skips bootstrap, plugin discovery, AOT layer instantiation, and cache load
 
 Hosts that need *isolation* across operations (per-request isolation in a multi-tenant server, parallel-test isolation, scenarios that mutate `<userCacheRoot>`) construct multiple runtimes per §16.5's cache-root override. The two patterns are not in tension — the host picks one per logical context.
 
-The bundled `HostProxyServiceLive` (§10.10) is itself an embedding host: it constructs one retained `LandoRuntime` at `app:start`, holds it in scope until `app:stop`, and dispatches every inbound `runLando` RPC through `@lando/core/cli` (§16.7) against that retained runtime. Hosts building an alternate `HostProxyService` MUST follow the same pattern so the in-container `lando` shim hits hot-path budgets on all calls past the first.
+The bundled `HostProxyServiceLive` (§10.10) is itself an embedding host: it constructs one retained runtime acquisition at `app:start`, holds it in scope until `app:stop`, and dispatches every inbound `runLando` RPC through `@lando/core/cli` (§16.7) against that retained runtime. Hosts building an alternate `HostProxyService` MUST follow the same pattern so the in-container `lando` shim hits hot-path budgets on all calls past the first.
 
 **Difference from CLI defaults:**
 
@@ -170,12 +179,84 @@ The bundled `HostProxyServiceLive` (§10.10) is itself an embedding host: it con
 |---|---|---|
 | `logger` | `pretty` (TTY) / `json` (non-TTY) | `silent` |
 | `renderer` | `lando` | `json` |
+| `interaction` | `auto` (prompt when stdin is a TTY) | `non-interactive` (§8.10.3; unanswered prompts fail fast) |
 | Plugin discovery | bundled + system + user + app | host-provided only (§16.4) |
 | Telemetry | per global config, enabled by default | enabled by default unless `telemetry: false` or config disables reporting |
 | Signal handlers | installed | not installed |
 | `bootstrap` per command | declared by command | required option |
 
 These differences are deliberate: an embedded host should be quiet and predictable by default, then opt into CLI-like behavior explicitly.
+
+**App handle convenience API.** `makeLandoRuntime` remains the low-level Layer factory and is the right primitive for hosts that want to provide runtime services to arbitrary Effect programs. Most hosts that want to drive one resolved app use the stable `App` handle instead. The public type is named `App`; "App handle" describes its behavior and scope ownership rather than a separate exported `AppHandle` interface. The canonical contract types are published by `@lando/sdk` and re-exported by `@lando/core`; `@lando/core` owns the implementations returned by `openLandoRuntime` and `resolveApp`.
+
+```ts
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+
+await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const runtime = yield* openLandoRuntime({
+        bootstrap: "app",
+        cwd: process.cwd(),
+        plugins: { discovery: { bundled: true } },
+      });
+
+      const app = yield* runtime.app({ cwd: process.cwd() });
+      yield* app.start({ reconcile: false });
+      const info = yield* app.info({ deep: true });
+      yield* app.stop({});
+
+      return info;
+    }),
+  ),
+);
+```
+
+`openLandoRuntime(options)` acquires one runtime Layer inside the caller's `Scope` and returns an object whose methods are already bound to that retained runtime. It MUST NOT reacquire the scoped Layer per method call. The object exposes:
+
+```ts
+export interface LandoRuntime {
+  readonly app: (selector?: AppSelector) => Effect.Effect<App, AppResolveError>;
+  readonly scratch: (input: ScratchAcquireInput) => Effect.Effect<ScratchHandle, ScratchAcquireError, Scope.Scope>;
+  readonly run: <A, E, R>(program: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, LandoRuntimeServices>>;
+}
+```
+
+`resolveApp(selector)` is the Layer-native equivalent for hosts that already provide `makeLandoRuntime(...)` themselves. It resolves the app once, captures the app root and plan identity in the handle, and returns an `App` whose one-shot methods require no runtime services from the caller:
+
+```ts
+export type AppSelector =
+  | { readonly id: string; readonly root?: AbsolutePath; readonly cwd?: AbsolutePath }
+  | { readonly landofile: AbsolutePath; readonly root?: AbsolutePath; readonly cwd?: AbsolutePath }
+  | { readonly landofile: LandofileShape; readonly root: AbsolutePath; readonly cwd?: AbsolutePath }
+  | { readonly root: AbsolutePath; readonly cwd?: AbsolutePath }
+  | { readonly cwd: AbsolutePath };
+
+export interface App {
+  readonly id: string;
+  readonly ref: AppRef;
+  readonly root: AbsolutePath;
+  readonly plan: Effect.Effect<AppPlan, AppResolveError>;
+  readonly start: (options?: StartAppOptions) => Effect.Effect<StartAppResult, StartAppError>;
+  readonly stop: (options?: StopAppOptions) => Effect.Effect<StopAppResult, StopAppError>;
+  readonly restart: (options?: RestartAppOptions) => Effect.Effect<RestartAppResult, RestartAppError>;
+  readonly rebuild: (options?: RebuildAppOptions) => Effect.Effect<RebuildAppResult, RebuildAppError>;
+  readonly destroy: (options?: DestroyAppOptions) => Effect.Effect<DestroyAppResult, DestroyAppError>;
+  readonly info: (options?: InfoAppOptions) => Effect.Effect<InfoAppResult, InfoAppError>;
+  readonly exec: (options: ExecAppOptions) => Effect.Effect<ExecAppResult, ExecAppError, Scope.Scope>;
+  readonly tooling: (id: string, options?: ToolingOptions) => Effect.Effect<ToolingResult, ToolingError, Scope.Scope>;
+  readonly logs: (options?: LogsAppOptions) => Stream.Stream<LogChunk, LogsAppError, Scope.Scope>;
+  readonly config: AppConfigApi;
+  readonly events: AppEventsApi;
+}
+```
+
+`AppSelector` precedence is `id` > `landofile` > `root` > `cwd`. Passing more than one selector field is allowed only when the higher-precedence field can be validated against the lower-precedence field; a mismatch fails with `AppResolveError`. `cwd` follows the normal Landofile discovery walk from the retained runtime `cwd`, never from a later ambient `process.cwd()` after the handle has been created. `root` resolves a Landofile from an already-known app root and MUST NOT re-walk from the host's current working directory on later handle method calls. `landofile` accepts either an explicit file path or an already-decoded `LandofileShape`; a decoded `LandofileShape` MUST be paired with an explicit validated `root` so relative includes, mounts, tooling, and file reads have one authoritative base directory. `id` resolves through the app registry/cache when available and fails with a tagged `AppResolveError` when the id is unknown at the selected bootstrap level. A missing selector (`runtime.app()` or `resolveApp()`) resolves from the retained runtime `cwd`; if the runtime was constructed with the `scratch` option, the missing selector resolves to that acquired scratch app instead.
+
+The `App` contract is SDK-published and the implementation returned by core is opaque/branded. Embedding hosts consume `App` values returned by `resolveApp`/`runtime.app`; they do not implement the interface structurally. This keeps future method additions non-breaking inside the 4.x line while preserving the `@lando/sdk` = contracts/types and `@lando/core` = implementations split.
+
+Method inputs are option objects, never positional arguments. One-shot methods (`start`, `stop`, `info`, config reads/writes, etc.) have `R = never` after binding because the handle already carries the runtime. Methods that expose live resources or subscriptions (`exec`, `tooling`, `logs`, `events.subscribe`) keep `Scope.Scope` in `R` so the host owns the subscription lifetime. The stable API returns typed Effect successes and tagged failures directly; it does not expose the internal command-operation `{ ok, value | error }` renderer envelope. `app.start()` defaults to `detached: false`; callers must opt into detached start-state explicitly with `app.start({ detached: true })`.
 
 ### 16.4 Plugin behavior in library mode
 
@@ -296,33 +377,41 @@ const program = Effect.gen(function* () {
 - The Layer returned by `makeLandoRuntime` is a `Layer.scoped`. The host MUST run it under `Effect.scoped` (or an equivalent scope-bearing context) so finalizers run.
 - Anything the runtime opens — provider connections, file watchers, log streams, network listeners, plugin module handles — is acquired in this scope. Closing the scope tears down everything in LIFO order. The CLI relies on the same guarantee.
 - Cancellation propagates: an `Effect.interrupt` (whether from a host signal handler, a test timeout, or an outer fiber) finalizes the runtime cleanly. Provider operations honor `Effect.interrupt` per §5.3.
-- A host MAY pass `scratch: { source, isolate, shareGlobalStorage }` to `makeLandoRuntime` to acquire a **scratch Lando app** (§21) under the runtime's `Scope`. The scratch is materialized at runtime construction; the runtime's `Scope` finalizer destroys the scratch on close exactly as a foreground CLI `apps:scratch:start` does on Ctrl+C. Hosts that drive many scratches in succession SHOULD reuse a single non-scratch runtime and call `runtime.scratchAppService.acquire` per scratch instead of constructing a fresh runtime for each (§21.12). The library-mode reuse-perf rule from §16.3 covers this case: per-scratch acquisition latency stays steady-state when the host reuses one runtime across many `acquire` calls.
+- An `App` handle has its own child scope under the runtime scope. `app.start()` and `app.start({ detached: false })` open a managed start scope that survives the `start()` method call, owns start-state resources such as host-proxy/file-sync sessions, and is closed by `app.stop()`, `app.restart()`, `app.destroy()`, or the outer runtime scope finalizer. `app.start({ detached: true })` starts provider resources without registering a start-state finalizer on the handle. Starting an already-managed app is idempotent unless the options request a reconcile/restart operation that changes the plan.
+- A host MAY pass `scratch: { source, isolate, shareGlobalStorage }` to `makeLandoRuntime` to acquire a **scratch Lando app** (§21) under the runtime's `Scope`. The scratch is materialized at runtime construction; the runtime's `Scope` finalizer destroys the scratch on close exactly as a foreground CLI `apps:scratch:start` does on Ctrl+C. Hosts that drive many scratches in succession SHOULD reuse a single non-scratch runtime and call `runtime.scratch(input)` per scratch instead of constructing a fresh runtime for each (§21.12). The library-mode reuse-perf rule from §16.3 covers this case: per-scratch acquisition latency stays steady-state when the host reuses one runtime across many `acquire` calls.
 
 ### 16.7 Programmatic CLI invocation
 
-`@lando/core/cli` exports the underlying Effect operations that back each built-in command (§8.2). Embedding hosts that want to "run what `lando app start` runs" can invoke these directly without parsing argv or pulling OCLIF into their bundle. Function names in the library API mirror the canonical command id (`app:start` → `appStart`, `meta:plugin:add` → `metaPluginAdd`); the namespace prefix is preserved in the function name so it's unambiguous which canonical command a host is calling.
+The stable app-lifecycle embedding primitive is the `App` handle in §16.3. Embedding hosts that want to "run what `lando app start` runs" SHOULD call `app.start()`, `app.info()`, `app.stop()`, and sibling handle methods rather than naming command-operation functions directly.
+
+`@lando/core/cli` remains the programmatic CLI entry point for hosts that need command-shaped behavior: argv parsing policy, canonical command ids, renderer-independent typed results, and the same dispatch surface used by the source and compiled CLIs. It does not require OCLIF for command effects. Lower-level operation modules such as `@lando/core/cli/operations` are building blocks for `@lando/core/cli`, `runCompiledCli`, and the `App` handle; they are not the preferred stable app-lifecycle API.
 
 ```ts
 import { Effect } from "effect";
-import { makeLandoRuntime } from "@lando/core";
-import { appStart, appInfo, appStop, metaConfig } from "@lando/core/cli";
+import { openLandoRuntime } from "@lando/core";
+import { metaConfig } from "@lando/core/cli";
 
-const runtime = makeLandoRuntime({ bootstrap: "app", cwd: process.cwd(), plugins: { layers: [...] } });
+await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const runtime = yield* openLandoRuntime({ bootstrap: "app", cwd: process.cwd() });
+      const app = yield* runtime.app();
 
-const program = Effect.gen(function* () {
-  yield* appStart({ reconcile: false });
-  const info = yield* appInfo({ deep: true });
-  console.log(JSON.stringify(info, null, 2));
-  yield* appStop({});
-});
+      yield* app.start({ reconcile: false });
+      const info = yield* app.info({ deep: true });
+      const config = yield* runtime.run(metaConfig.get({ key: "telemetry" }));
+      yield* app.stop({});
 
-await Effect.runPromise(program.pipe(Effect.provide(runtime), Effect.scoped));
+      return { info, config };
+    }),
+  ),
+);
 ```
 
 **Required behaviors:**
 
-- Every built-in command in §8.2 has a corresponding exported Effect-returning function in `@lando/core/cli` except the installation/interactive diagnostics commands explicitly listed below. The function's input is an Effect-Schema-validated subset of the command's flags/args; its output is a typed result (the same data the CLI's renderer would format).
-- Function names follow `<namespace><PascalSegments…>` (e.g., `appStart`, `appsList`, `appsPoweroff`, `metaPluginAdd`). Top-level CLI aliases (`lando start` for `app:start`) do **not** create a separate library export; hosts call `appStart` directly.
+- Every built-in command in §8.2 has a corresponding exported Effect-returning command operation reachable through `@lando/core/cli` or its documented command-operation submodules except the installation/interactive diagnostics commands explicitly listed below. The operation input is an Effect-Schema-validated subset of the command's flags/args; its output is a typed result (the same data the CLI's renderer would format).
+- Command-operation names follow `<namespace><PascalSegments…>` (e.g., `appStart`, `appsList`, `appsPoweroff`, `metaPluginAdd`) where they are exported directly. Top-level CLI aliases (`lando start` for `app:start`) do **not** create a separate library export. Hosts that need app lifecycle call `app.start()` and siblings; hosts that need command-shaped dispatch call the command operation.
 - Sub-commands of `app config` and `meta config` (§8.2.1, §8.2.2) are exposed as nested function namespaces: `appConfig.get`, `appConfig.set`, `appConfig.unset`, `appConfig.view`, `metaConfig.get`, `metaConfig.set`, etc.
 - These functions DO NOT touch `process.stdin`/`stdout`/`stderr` and DO NOT call OCLIF. Output is in the return value; logs go through the active `Logger`; rendering is the host's choice.
 - Functions are pure Effect and inherit the runtime's services via the requirements channel. Hosts compose them like any other Effect.
@@ -333,7 +422,7 @@ await Effect.runPromise(program.pipe(Effect.provide(runtime), Effect.scoped));
 **Not exported as functions:**
 
 - `meta:setup` (interactive; host should construct equivalent flows from `@lando/core/services` and `PrivilegeService`).
-- `apps:init` (interactive; uses `InitSource` plugins; host should drive `InitSource` directly if needed).
+- `apps:init` (interactive; uses `InitSource` plugins; host should drive `InitSource` directly if needed). A host that wants the full init flow non-interactively MAY provide an `InteractionService` Layer (or pass `interaction: "non-interactive"` with seeded answers, §8.10) so recipe prompts resolve from supplied answers instead of the terminal.
 - `meta:events:follow` (diagnostic stream over CLI event traces; hosts should subscribe to `EventService` directly).
 - `meta:shellenv` (CLI-installation concern, not runtime behavior).
 - `meta:uninstall` (CLI-installation concern, not runtime behavior).
@@ -351,8 +440,10 @@ Provided test fixtures (illustrative):
 | `TestRuntime` | A pre-composed `Layer` with in-memory `FileSystem`, in-memory `ProcessRunner`, mock `RuntimeProvider`, and a `TestEventService` bus that records all published events. |
 | `TestRuntimeProvider` | A `RuntimeProvider` Layer that satisfies the contract suite (§13.1) without running any real provider. State is in-memory and inspectable. |
 | `withLandofile(yamlOrObject)` | Helper that injects a virtual Landofile into the in-memory `FileSystem` and returns a Layer that overrides `LandofileService.discover`. |
-| `expectEvent(name, predicate)` | Awaits an event matching the predicate; fails the test with a useful diff if it doesn't arrive within a timeout. |
-| `recordedEvents()` | Returns the full event log captured during the test, for snapshot assertions. |
+| `expectEvent(name, predicate)` | Awaits an event matching the predicate; fails the test with a useful diff if it doesn't arrive within a timeout. Thin wrapper over `EventService.waitFor` (§11.1) with a default test timeout. |
+| `waitForEvent(name, options?)` | Lower-level await that mirrors `EventService.waitFor<E>` (typed `name`, optional `filter`/`timeout`) for tests that want to compose the await themselves rather than assert-and-diff. |
+| `TestInteractionService` | An `InteractionService` Layer that returns pre-seeded answers (keyed by prompt `name`) and captures the prompt transcript for assertions; never opens stdin. Satisfies the §13.1 interaction contract suite and backs the executable-guide scenario answer flow (§19.4). |
+| `recordedEvents()` | Returns the full event log captured during the test, for snapshot assertions. Backed by `EventService.query("*")` over the test runtime's history buffer (§11.1), so it returns the same redacted payloads a host would see. |
 | `TestClock` / `TestRandom` | Re-exports of Effect's testing primitives, plumbed through the runtime. |
 
 ```ts

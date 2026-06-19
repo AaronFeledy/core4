@@ -1089,6 +1089,8 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 | `path` | Filesystem path with shell completion | `validate.exists: true` requires the path to exist; relative paths are resolved against the destination directory. |
 | `editor` | Multi-line string entered via `$VISUAL` / `$EDITOR` | Falls back to `text` when no editor is configured or when `--no-interactive` is set. |
 
+These prompt types are the published `PromptSpec` vocabulary owned by §8.10; recipe prompts are one consumer. The recipe runtime resolves them through the `InteractionService` (§8.10.2), which owns the answer-source precedence, interactivity-mode resolution, and `secret` redaction for every prompting surface in Lando.
+
 `when:` is honored uniformly across all types. Prompts whose `when:` evaluates falsy are skipped silently and their `name` resolves to `undefined` in subsequent expressions.
 
 #### 8.8.6 Recipe expressions
@@ -1373,5 +1375,131 @@ task.tree.complete  →  collapse to summary; tree is now passive (focused-child
 **Cancellation.** `Effect.interrupt` (Ctrl+C) propagates from the imperative shell through the orchestrator to every in-flight child; the renderer MUST receive a `task.fail` for each affected child within the §2.1 cancellation budget. While the alt-screen view is active, the renderer MUST NOT swallow Ctrl+C; the input is still routed to the runtime so the user can cancel from inside the expanded view without first pressing Esc.
 
 **Test coverage.** The §13.1 perf-budget suite exercises the contract end-to-end: a fixture with three services whose `build.app` scripts sleep for known durations asserts that wall-clock time is approximately `max(t_a, t_b, t_c)` (within 20%) rather than `sum(…)`, that every child emits at least one `task.detail` event during the sleep window, and that the renderer publishes `task.detail.expand` / `task.detail.collapse` events when synthetic Enter / Esc inputs are fed to its TTY. The non-TTY mode is asserted on the same fixture by piping output and matching the `[<stepId>]`-prefixed line set.
+
+### 8.10 Interaction and prompts
+
+`InteractionService` is the **input peer of `Renderer`** (§8.9). Where the renderer owns everything Lando writes *out*, `InteractionService` owns everything Lando reads *in* as a typed question-and-answer: recipe prompts during `apps:init`, the `meta:plugin:new` scaffold questions, the `meta:plugin:add` trust confirmation, `meta:setup` confirmations, and `lando doctor --fix` remediation prompts all resolve through this one service. It is a core service (§3.4) and a §4.2 pluggable abstraction. It is **not** the raw-keystroke surface — the renderer's alt-screen expand/collapse input (§8.9.2) and the `lando shell` REPL stdin (§8.2.3) own their own terminal modes and are explicitly out of scope here.
+
+This section is the canonical owner of the **prompt vocabulary** (`PromptSpec` and friends). The recipe `prompts:` block (§8.8.3/§8.8.5) is one consumer of that vocabulary, not its owner; recipe prompts are `PromptSpec`s with recipe-specific `when`/`choicesFrom` semantics layered on top.
+
+#### 8.10.1 Prompt vocabulary
+
+The prompt schemas are published from `@lando/sdk` (re-exported by `@lando/core/schema`, §7.8) and are part of the §13.2 schema snapshot:
+
+```ts
+export const PromptType = Schema.Literal(
+  "text", "select", "multiselect", "confirm", "number", "secret", "path", "editor",
+);
+
+export const PromptChoice = Schema.Union(
+  Schema.String, Schema.Number, Schema.Boolean,
+  Schema.Struct({
+    value:       Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
+    label:       Schema.optional(Schema.String),
+    description: Schema.optional(Schema.String),
+  }),
+);
+
+export const PromptValidate = Schema.Struct({
+  pattern: Schema.optional(Schema.String),   // text/path
+  message: Schema.optional(Schema.String),   // human-readable failure
+  min:     Schema.optional(Schema.Number),   // number / multiselect count
+  max:     Schema.optional(Schema.Number),
+  exists:  Schema.optional(Schema.Boolean),  // path
+});
+
+export const PromptSpec = Schema.Struct({
+  name:        Schema.String,
+  type:        PromptType,
+  message:     Schema.String,
+  default:     Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+  validate:    Schema.optional(PromptValidate),
+  choices:     Schema.optional(Schema.Array(PromptChoice)),
+  choicesFrom: Schema.optional(ChoicesFrom),  // dynamic choices via a canonical command (§8.8.14)
+});
+export type PromptSpec = Schema.Schema.Type<typeof PromptSpec>;
+
+export const PromptAnswer = Schema.Union(
+  Schema.String, Schema.Number, Schema.Boolean,
+  Schema.Array(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+);
+```
+
+`RecipePrompt` (§8.8.3) is defined as `PromptSpec` extended with the recipe-only `when:` and `deprecated:` fields, so a single vocabulary serves recipes, plugin scaffolding, setup, and embedding hosts. The eight `PromptType` literals are frozen on ship; `editor` is the multi-line type that opens `$VISUAL` / `$EDITOR` and falls back to `text` when no editor is configured or `--no-interactive` is set (§8.8.5).
+
+#### 8.10.2 The service interface
+
+```ts
+export class InteractionService extends Context.Service<InteractionService, {
+  readonly id: string;
+  readonly isInteractive: Effect.Effect<boolean>;                 // resolved from mode + TTY
+
+  // Resolve one prompt against the active answer source + mode.
+  readonly prompt:    (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
+
+  // Resolve an ordered batch: honors per-prompt `when`, earlier-answer references,
+  // dynamic `choicesFrom`, and the §8.10.3 answer-source precedence.
+  readonly promptAll: (specs: ReadonlyArray<PromptSpec>, options?: PromptBatchOptions)
+    => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
+
+  // Ergonomic narrow helpers so callers do not hand-build a PromptSpec.
+  readonly confirm: (q: ConfirmSpec)      => Effect.Effect<boolean,                  InteractionError, Scope.Scope>;
+  readonly select:  <A>(q: SelectSpec<A>) => Effect.Effect<A,                        InteractionError, Scope.Scope>;
+  readonly secret:  (q: SecretSpec)       => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
+}>()("@lando/core/InteractionService") {}
+
+export interface PromptBatchOptions {
+  readonly answers?:     Readonly<Record<string, string>>;   // explicit --answer values, already merged
+  readonly answersFile?: AbsolutePath;                       // --answers <file>; merged under `answers` (later wins)
+  readonly yes?:         boolean;                             // --yes: accept defaults without asking
+  readonly mode?:        "auto" | "interactive" | "non-interactive";
+  readonly cwd?:         AbsolutePath;                        // for `path` resolution / validation
+}
+```
+
+Every method is Effect-typed per §4.5; `secret` returns `Redacted.Redacted<string>` so a masked answer is non-loggable at the type level. The service interface is frozen on ship; the `InteractionServiceLive` implementation is not.
+
+#### 8.10.3 Answer-source precedence and interactivity mode
+
+For each prompt the service resolves an answer in this order:
+
+```text
+1. Explicit answer (--answer/--answers, or caller-supplied `answers`)
+2. Recipe/caller default, when `--yes` is set or the mode is non-interactive
+3. Interactive prompt (only when mode resolves to interactive)
+4. Fail with InteractionRequiredError (no answer, no default, not interactive)
+```
+
+`mode: "auto"` resolves to interactive only when the active stdin is a TTY; the CLI default is `auto` and the library-mode default is `non-interactive` (§16.3). This replaces the per-command `process.stdin.isTTY !== true` checks that were previously inlined across `apps:init`, `meta:plugin:add`, and `meta:plugin:new`.
+
+The `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module** that both the OCLIF command path and the compiled `run.ts` dispatcher import, so the answer source and interactivity gate are byte-for-byte identical across paths (§8.4.1 single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1).
+
+#### 8.10.4 Required behaviors
+
+- The default `InteractionServiceLive` MUST construct lazily via `Layer.suspend` (§3.4); a command that never prompts MUST NOT touch stdin or allocate a reader. Constructing the Live Layer MUST NOT touch the network, the provider, or any plugin module — it is safe at bootstrap level `minimal`.
+- `secret` answers MUST NOT be echoed to the terminal, MUST NOT appear in any transcript (§19.6), and MUST be redacted from logs and error messages per §7.3.1's secret-redaction rules. The masked value is carried as `Redacted.Redacted<string>`.
+- A non-interactive resolution that has neither an explicit answer nor a default MUST fail with `InteractionRequiredError` carrying the prompt name and an `--answer <name>=<value>` remediation — never block waiting on stdin.
+- Prompt output (the question chrome) MUST route through `Renderer.output.stdout` when a `Renderer` is present (resolved via `Effect.serviceOption`) and fall back to a direct stdio write only when no renderer is active, so the §13.4 renderer-boundary gate stays enforceable; the `InteractionServiceLive` stdin reader and its no-renderer fallback writer are the section's declared carve-outs in that gate.
+- `Effect.interrupt` (Ctrl+C) during a prompt MUST surface as `InteractionCancelledError` and finalize any raw-mode TTY state before propagating.
+- Dynamic `choicesFrom` MUST resolve through the §8.8.14 canonical-command runner under the recipe `runs:` allowlist; a failed or empty resolution surfaces `ChoicesUnavailableError` with a manual-entry fallback in interactive mode.
+- In-flight prompting mid-build (interleaved with the §8.9.2 task tree) is a v4.0 non-goal: prompts fire at command boundaries only. There is no `Interaction` lifecycle event scope in v4.0.
+
+Tagged errors live in `@lando/core/errors`:
+
+- `InteractionRequiredError` — non-interactive (or `--no-interactive`) with no supplied answer and no default. Payload includes the prompt name and remediation. The recipe-scoped `RecipeMissingAnswerError` is re-exported as an alias of this error so the frozen recipe error surface is preserved.
+- `PromptValidationError` — a supplied or entered value failed the prompt's `validate` constraint. Payload includes the prompt name, type, the failing issue, and remediation. `RecipePromptValidationError` aliases it.
+- `InteractionCancelledError` — the user aborted the prompt (Ctrl+C / EOF on stdin).
+- `ChoicesUnavailableError` — dynamic `choicesFrom` could not be resolved. `RecipeChoicesError` aliases it.
+- `InteractionUnavailableError` — the active Live Layer cannot satisfy the request (e.g., a headless plugin that refuses interactive prompts outside an allowlist).
+
+#### 8.10.5 Replaceability
+
+`InteractionService` is a §4.2 pluggable abstraction. Plugins contribute `interactionServices:` (§9.5) to satisfy use cases the default does not cover:
+
+- **Headless / CI.** A fail-fast non-interactive implementation that never opens stdin; every unanswered prompt without a default raises `InteractionRequiredError`.
+- **Recording / test.** A scripted implementation that returns pre-seeded answers and captures the prompt transcript for assertions. `@lando/core/testing` ships this as `TestInteractionService` (§16.8), and it backs the executable-guide scenario answer flow (§19.4).
+- **GUI / host transport.** An embedding host (IDE extension, dashboard, `Bun.serve()` UI) provides an `InteractionService` Layer that pops native dialogs or round-trips prompts over its own transport instead of the terminal. This is what lets a host drive `apps:init`-style flows without screen-scraping the CLI (§16.7).
+
+Plugin and host implementations MUST pass the §13.1 interaction contract suite and MUST honor the `secret`-redaction, answer-precedence, and non-interactive-fail-fast guarantees; weakening any of them is forbidden and checked by the suite.
 
 ---

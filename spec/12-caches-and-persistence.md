@@ -29,7 +29,7 @@ The **encoding** column captures the §12.2 rule: every cache read on the router
 | `scratch-app-plan` | `<userCacheRoot>/scratch/<scratch-id>/plan.bin` | binary | Frozen `AppPlan` for a single scratch Lando app (§21.5), plus compiled tooling task graphs and expression ASTs. Same encoding rules as `app-plan`; written when `ScratchAppService.acquire` materializes the scratch root, removed atomically when the scratch is destroyed | Scratch acquisition (initial write), `apps:scratch:rebuild` (deferred), scratch destroy (removed), provider change (force-rebuild) |
 | `scratch-app-info` | `<userCacheRoot>/scratch/<scratch-id>/info.json` | JSON | Last known `ServiceInfo[]` for a single scratch app for fast `apps:scratch:info`/`apps:scratch:list` | `apps:scratch:start`, `apps:scratch:stop`, `apps:scratch:destroy` |
 | `scratch-build-results` | `<userCacheRoot>/scratch/<scratch-id>/build-results.bin` | binary | Per-scratch `BuildResult[]` index (§6.13.5) using the same encoding and rotation rules as `build-results`. Read by `BuildOrchestrator` at `pre-build-phase` to short-circuit unchanged steps; the content-hashed `buildKey` is shared across user, global, and scratch apps so a fork-mode scratch reuses cached artifacts when the source has already built them | Scratch destroy, `apps:scratch:start` against an existing scratch id (rare; only via `--detach` re-resolve), build orchestrator schema/version change |
-| `scratch-registry` | `<userCacheRoot>/scratch/registry.bin` | binary | Single-file registry of every scratch app on the host (§21.11). One entry per id with source, isolation, owning PID, status, root path, host-proxy socket, timestamps. Read by `apps:scratch:list` and `apps:scratch:gc`; written atomically per `CacheService.writeAtomic` (§12.3) plus a fcntl-style lockfile at `<userCacheRoot>/scratch/registry.lock` for cross-process serialization | Every `ScratchAppService` lifecycle transition; corruption quarantines the file to `registry.bin.corrupt-<timestamp>` and rebuilds empty so a label-driven `apps:scratch:gc` can recover orphans (§21.14 `ScratchRegistryCorruptError`) |
+| `scratch-registry` | `<userCacheRoot>/scratch/registry.bin` | binary | Single-file registry of every scratch app on the host (§21.11). One entry per id with source, isolation, owning PID, status, root path, host-proxy socket, timestamps. Read by `apps:scratch:list` and `apps:scratch:gc`; written through the `StateStore` primitive (§12.7) — an atomic write per §12.3 plus a fcntl-style lockfile at `<userCacheRoot>/scratch/registry.lock` for cross-process serialization | Every `ScratchAppService` lifecycle transition; corruption quarantines the file to `registry.bin.corrupt-<timestamp>` and rebuilds empty so a label-driven `apps:scratch:gc` can recover orphans (§21.14 `ScratchRegistryCorruptError`) |
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known `ServiceInfo[]` for fast `info`/`list` | Start, stop, restart, rebuild, destroy |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability + version metadata | `setup`, provider config change, `--clear` |
 | `oclif-manifest` | embedded in binary + `<userCacheRoot>/oclif-manifest.bin` | binary | OCLIF adapter shim cache derived from core/plugin/app command indexes | Plugin install/remove, app command index change |
@@ -126,5 +126,80 @@ After a successful app materialization/build, Lando-owned state required for rou
 If an offline command needs a missing Lando-managed dependency, Lando fails with a tagged error explaining which cache/artifact is missing and which online command will repair it. Lando MUST NOT silently attempt repeated network retries for routine offline-capable commands.
 
 Telemetry and update checks are queued/best-effort. Failure to reach telemetry or update endpoints never invalidates local caches and never changes a local-dev command's exit code.
+
+### 12.7 State store
+
+`CacheService` (§12.3) is the **ephemeral, in-memory** memo layer: a process-lifetime `Ref` map with TTLs and a raw `writeAtomic` escape hatch. Its durable peer is the **`StateStore`** — the single primitive for every Lando-owned file that must survive process exit, be written atomically, validated against a schema, versioned, and (optionally) serialized across processes. Before `StateStore`, three subsystems each reimplemented a slice of this: the scratch registry (§21.11) carried the most complete take (versioned envelope + token lockfile + stale-owner detection + corruption quarantine + atomic write), the `.lando.lock.yml` include lockfile (§7.7.4) carried a no-lock variant, and `CacheService.writeAtomic` carried the bare write-temp-then-rename. `StateStore` is the union of those, published once.
+
+`StateStore` is a core service (§3.4), constructed eagerly at level `minimal`. It is **not** a §4.2 plugin contribution surface: like `EmbeddedAssetService` and `RedactionService`, it mediates state integrity and is host/test-overridable but never plugin-replaceable.
+
+#### 12.7.1 Buckets
+
+A `StateStore` mints `StateBucket` handles; one bucket is exactly one file. `open` resolves and containment-checks the path and does no IO; reads happen on `get`.
+
+```ts
+export type StateRoot =
+  | "userData" | "userCache" | "userConf"
+  | { readonly app: AbsolutePath }
+  | { readonly path: AbsolutePath };
+
+export type StateCodec<A, I> =
+  | "json"                                       // { version, data } envelope; debuggable
+  | "binary"                                     // §12.2 magic-header + Bun.serialize | schema-binary
+  | { readonly encode: (a: A) => string | Uint8Array;
+      readonly decode: (raw: Uint8Array) => A }; // user-facing formats (the includes YAML)
+
+export interface StateBucketSpec<A, I> {
+  readonly root: StateRoot;
+  readonly namespace?: string;                   // subdir under root (e.g. "scratch", "apps/<id>")
+  readonly key: string;                          // filename; no path separators
+  readonly schema: Schema.Schema<A, I>;
+  readonly version: number;                       // document schema version
+  readonly codec?: StateCodec<A, I>;             // default "json"
+  readonly lock?: "none" | "advisory";          // default "none"
+  readonly onCorrupt?: "discard" | "quarantine" | "fail";        // default "quarantine"
+  readonly onVersionMismatch?: "discard" | StateMigrator<A>;     // default "discard"
+  readonly default?: A;                           // returned by get when the file is absent
+}
+
+export interface StateBucket<A> {
+  readonly path:   AbsolutePath;
+  readonly get:    Effect.Effect<A | null, StateStoreError>;
+  readonly set:    (value: A) => Effect.Effect<void, StateStoreError>;            // atomic replace
+  readonly update: (f: (cur: A | null) => A) => Effect.Effect<A, StateStoreError>; // RMW (locked if advisory)
+  readonly modify: <B>(f: (cur: A | null) => readonly [B, A]) => Effect.Effect<B, StateStoreError>;
+  readonly remove: Effect.Effect<void, StateStoreError>;
+  readonly exists: Effect.Effect<boolean, StateStoreError>;
+}
+
+export class StateStore extends Context.Tag("@lando/core/StateStore")<StateStore, {
+  readonly open: <A, I>(spec: StateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+}>() {}
+```
+
+Required behaviors:
+
+- **Atomicity.** Every `set` / `update` encodes in memory, writes `<path>.tmp-<rnd>`, fsyncs, and renames (§12.3). A crash mid-write leaves only a temp file, which is cleaned up; the live file is never partially written.
+- **Versioning.** The `json` codec wraps payloads as `{ version, data }`; the `binary` codec writes the §12.2 fixed magic header. On read mismatch the bucket applies `onVersionMismatch`: `"discard"` silently invalidates (cache semantics), or a `StateMigrator` upgrades durable data that must not be lost.
+- **Corruption.** A decode failure applies `onCorrupt`: `"quarantine"` renames the bad file to `<path>.corrupt-<timestamp>` and returns `default`/`null` (the scratch-registry behavior, generalized), `"discard"` resets silently, `"fail"` surfaces `StateStoreError`.
+- **Locking.** `advisory` buckets serialize `update`/`modify` across processes with an `O_CREAT|O_EXCL` lockfile recording `{ pid, token, createdAt }`, stale-owner takeover (age threshold or dead pid via `kill(pid, 0)`), bounded retry/backoff, and token-checked release; the lock is acquired through `Scope` so interruption finalizes it. `none` buckets assume a single writer.
+- **Containment.** The resolved `(root, namespace, key)` realpath MUST stay under the resolved root; `../`, absolute keys, and symlink escapes fail with `StateStoreError` (`reason: "path"`), mirroring the §9.7 plugin module-path containment rule.
+- **Roots.** Root resolution flows through the Paths/Roots primitive (§7.5.1); `StateStore` never re-derives `$HOME` / XDG / `%APPDATA%`.
+- **Codec-agnostic.** Built-in `json` and `binary` codecs cover most needs; a `custom` codec covers user-facing formats whose on-disk shape is a contract — the include lockfile (§7.7.4) supplies its existing block-style YAML renderer/parser as a custom codec so its file format is unchanged.
+
+The errors live on the service surface as a single tagged `StateStoreError` carrying a `reason: "io" | "decode" | "lock" | "path" | "version"` discriminator plus `operation`, `path`, `cause`, and `remediation` (mirroring the single-error-with-`operation` shape the scratch registry uses today).
+
+`StateStore` and `CacheService` stay distinct: the cache is in-memory, hot-path, and TTL-bounded; the store is durable, off the hot path, and schema-validated. Hot-path binary caches in §12.1 (`plan.bin`, `cwd-app-map.bin`) keep their existing readers under the §12.5 budgets and are not required to migrate; they MAY adopt `StateStore` later behind the same budgets.
+
+#### 12.7.2 Reference consumers
+
+The two durable subsystems are realized through `StateStore`:
+
+- **Scratch registry** (§21.11): a single `advisory`, `quarantine` bucket at `{ root: "userCache", namespace: "scratch", key: "registry.bin" }`; `read` is `get` with an empty-envelope default, and `upsert` / `remove` are `update`. The §21.11 token lockfile and corruption-quarantine behavior are now the store's.
+- **Include lockfile** (§7.7.4): a `none`-lock bucket at `{ root: { app: appRoot }, key: ".lando.lock.yml" }` with a custom codec wrapping the existing renderer/parser, so the committed YAML is byte-for-byte unchanged while gaining the shared atomic-write and containment path.
+
+#### 12.7.3 Plugins and embedding hosts
+
+Plugins receive a `stateStore` factory through `LandoPluginContext` (§9.8) **pre-namespaced** to `plugins/<plugin-id>/` under `userData`, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a `SecretStore` to cache resolved tokens, an `UpdateService` to persist channel metadata, or a `ConfigTranslator` to write a sidecar lockfile. Embedding hosts (§16) resolve the `StateStore` tag from the runtime and MAY open buckets under `{ path: ... }` for per-tenant or per-test isolation, pairing with the §16.5 cache-root override. `@lando/core/testing` ships an in-memory `StateStore` (no disk; inspectable) plus a contract suite both the real and in-memory stores satisfy.
 
 ---

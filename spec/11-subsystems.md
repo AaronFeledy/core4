@@ -7,6 +7,8 @@ This part defines the cross-cutting subsystems that sit between the core runtime
 
 Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `ProxyService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
 
+The verified-download path is part of this subsystem surface: every Lando-owned artifact download goes through the `Downloader` abstraction (§10.3.2), which centralizes proxy/CA honoring, checksum verification, path containment, atomic persistence, and redaction.
+
 ---
 
 ## 10. Subsystems
@@ -101,6 +103,49 @@ Required behaviors:
 - Proxy credentials are secrets. They are redacted from logs, telemetry, support diagnostics, lockfiles, and cache metadata.
 - Offline-capable commands do not fail because proxy/CA endpoints are unreachable when their required local state is already present (§12.6).
 
+### 10.3.2 Verified downloads (`Downloader`)
+
+All Lando-owned artifact downloads MUST flow through the `Downloader` service, not direct `fetch`, ad-hoc checksum helpers, or plugin-local proxy/CA implementations. This includes the `@lando/provider-lando` runtime bundle, Mutagen host and agent binaries, helper binaries, recipe and include tarballs, self-update binary/checksum/signature artifacts, and future provider/helper artifacts that Lando initiates directly. Registry or package-manager operations delegated to `BunSelfRunner` remain outside this primitive, but they still honor the same `network.proxy` / `network.ca` policy through their own runner contract.
+
+```ts
+export class Downloader extends Context.Service<Downloader, {
+  readonly id: string;
+  readonly capabilities: DownloaderCapabilities;
+  readonly download: (request: DownloadRequest) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
+}>()("@lando/core/Downloader") {}
+
+export const ArtifactManifestEntry = Schema.Struct({
+  url: Schema.String,          // production manifests MUST be https://; file:// only through explicit dev/CI override paths
+  sha256: Schema.String,       // 64 hex chars
+  filename: Schema.String,
+  sizeBytes: Schema.optional(Schema.Number),
+});
+```
+
+`DownloadRequest` carries a single resolved artifact URL, an atomic file destination or `memory` destination, optional expected `sha256`/`sizeBytes`, an explicit `allowFileSource` gate for local CI/dev artifacts, optional resolved network-trust override, offline/cache policy, and caller-supplied redaction tokens. Manifest selection remains with the caller: a provider or updater resolves the active per-platform entry and override precedence, then passes that single entry to `Downloader`.
+
+Required behaviors:
+
+- Production artifact manifests MUST use `https://` URLs. `file://` is rejected unless the caller sets the explicit override gate (`allowFileSource: true`), and that gate is limited to documented dev/CI override paths such as `LANDO_RUNTIME_BUNDLE_MANIFEST` (§5.8.1).
+- The default implementation resolves outbound trust with the canonical §10.3.1 resolver unless the caller passes an already-resolved trust object from setup preflight. Every `https://` request honors explicit `network.proxy`, then `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`, plus configured custom CA PEMs.
+- File downloads stream bytes through a SHA-256 hasher while writing to a unique temp file in the destination filesystem, then atomically rename on success. The temp file is deleted on `Effect.interrupt`, fetch failure, size mismatch, checksum mismatch, or persistence failure.
+- `memory` downloads buffer only when the caller explicitly requests bytes in memory. Large artifacts default to file streaming so runtime bundles and helper binaries are never double-buffered.
+- If the destination already exists and matches the expected SHA-256, the download is a cache hit: no network request is made, `fromCache: true` is returned, and offline mode succeeds. If offline mode is active and no matching cached artifact exists, the request fails with `DownloadOfflineError` before opening a network connection.
+- Destination filenames are path-contained. A manifest `filename` whose realpath would escape the destination directory is rejected with `DownloadSourceForbiddenError` before any bytes are read.
+- The service publishes `pre-download`, zero or more `download-progress`, and `post-download` lifecycle events. Payloads include URL origin, artifact kind/caller id, byte counts, cache-hit status, checksum summary, duration, and redacted failure detail. URL credentials, proxy credentials, bearer tokens, signed-URL query params, and caller-supplied redaction tokens MUST NOT appear in events, telemetry, support diagnostics, lockfiles, or cache metadata.
+- Checksum verification is mandatory whenever a request supplies `expected.sha256`; callers that download executable or provider/helper artifacts MUST supply it. There is no skip-verification flag. Signature verification is a separate release/signing primitive (§17.6); callers may run it after `Downloader` returns the verified bytes/path, but the Downloader itself owns SHA-256 and size checks only.
+- Plugin-contributed `Downloader` implementations MAY provide mirror, audited, air-gapped, or sandboxed behavior, but they MUST pass the Downloader contract suite (§13.1) and MUST NOT weaken scheme gating, proxy/CA honoring, checksum verification, atomic persistence, cache/offline semantics, redaction, or cancellation finalization.
+
+Tagged errors:
+
+- `DownloadFetchError` — DNS, TCP, TLS, proxy, HTTP status, or response-body failure. Payload includes redacted URL origin, status when available, classified network-trust cause when known, and remediation.
+- `DownloadChecksumError` — actual SHA-256 differs from expected. Payload includes expected/actual hashes, size, destination, and caller id; temp files are already removed.
+- `DownloadSizeMismatchError` — actual byte count differs from manifest `sizeBytes`.
+- `DownloadPersistError` — temp-file creation, write, fsync, chmod, or atomic rename failed.
+- `DownloadOfflineError` — offline/cache-only policy could not satisfy the request from an existing verified artifact.
+- `DownloadSourceForbiddenError` — rejected scheme, `file://` without explicit override, path traversal, or destination escape.
+- `DownloaderUnavailableError` — the selected downloader implementation cannot satisfy the request or declared capabilities.
+
 ### 10.4 SSH and host identity
 
 **Required behaviors:**
@@ -122,12 +167,62 @@ Behavior in v4.0:
 
 ### 10.5 Healthchecks and scanner
 
+Healthchecks and the URL scanner are both **retry-until-a-verdict** loops: run a probe effect, classify the result, and retry on a schedule until it passes, a budget is exhausted, or a deadline hits. v4 factors that shared shape into one declarative primitive — the **probe primitive** — so healthchecks, the scanner, `lando doctor` shell checks, the `Downloader` retry path (§10.3.2), and `lando setup` readiness waits share one retry/backoff/timeout vocabulary and one deterministic runner instead of each hand-rolling `Effect.retry` + `Schedule`.
+
+#### 10.5.1 The probe primitive (`@lando/sdk/probe`)
+
+The probe primitive is a pure, dependency-light SDK module published from `@lando/sdk/probe` — the same contracts-only tier as `@lando/sdk/secrets` and `@lando/sdk/expressions`, importable without constructing a `LandoRuntime`. It is **not** a pluggable abstraction (§4.2) and **not** an Effect service tag: it is a declarative `RetryPolicy` plus a pure runner that the `HealthcheckRunner`, `UrlScanner`, `DoctorService`, `Downloader`, and `lando setup` readiness paths all consume.
+
+```ts
+// @lando/sdk/probe — schemas (illustrative; canonical in the SDK)
+export const RetryPolicy = Schema.Struct({
+  maxAttempts: Schema.optional(Schema.Int),                 // total attempts incl. the first; default 1 (no retry)
+  delay:       Schema.optional(DurationFromMillis),         // base delay between attempts; default 0
+  backoff:     Schema.optional(Schema.Literal("fixed", "exponential")), // default "fixed"
+  factor:      Schema.optional(Schema.Number),              // exponential multiplier; default 2
+  maxDelay:    Schema.optional(DurationFromMillis),         // cap on a single inter-attempt delay; default unbounded
+  jitter:      Schema.optional(Schema.Boolean),             // full jitter on each delay; default false
+  timeout:     Schema.optional(DurationFromMillis),         // overall deadline across all attempts; default unbounded
+});
+
+export const ProbeOutcome = Schema.Literal("green", "yellow", "red");
+
+export const ProbeSpec = Schema.Struct({
+  id:     Schema.String,                                     // probe id for events/transcripts (e.g. "healthcheck:web", "scanner:https://app.lndo.site")
+  policy: RetryPolicy,
+  // Maps an attempt's success value or failure to a verdict. Default: success ⇒ green, failure ⇒ red.
+  // A `yellow` verdict retries like `red` but is surfaced distinctly in the result.
+  classify: Schema.optional(ClassifyFn),
+});
+
+export const ProbeResult = Schema.Struct({
+  outcome:   ProbeOutcome,
+  attempts:  Schema.Int,
+  elapsedMs: Schema.Number,
+  lastError: Schema.optional(Schema.Unknown),               // redacted by the consuming surface before it reaches events/transcripts
+});
+```
+
+```ts
+// Pure helpers — no service dependencies; deterministic under Effect's TestClock.
+export const toSchedule: (policy: RetryPolicy) => Schedule.Schedule<unknown>;
+export const runProbe:   <A, E, R>(spec: ProbeSpec, attempt: Effect.Effect<A, E, R>) => Effect.Effect<ProbeResult, ProbeError, R>;
+```
+
+Required behaviors:
+
+- `runProbe` MUST be deterministic under Effect's `TestClock`: inter-attempt delays, exponential backoff, jitter, and the overall `timeout` deadline are all driven through Effect's `Clock`/`Schedule`, never `Date.now()` or `setTimeout`. Healthcheck, scanner, doctor, and setup suites assert attempt counts and elapsed time without wall-clock flake.
+- `runProbe` MUST stop at the first `green` (the caller's success verdict), retry on `red`/`yellow` per `policy`, and resolve with a `ProbeResult` carrying the final `outcome`, the attempt count, the elapsed time, and the last error. Exhausting `maxAttempts` or hitting `timeout` resolves with the last non-`green` `ProbeResult` — it does NOT fail the Effect. The **consumer** decides whether a non-`green` outcome fails its own Effect (a healthcheck that never goes `green` fails app readiness; a scanner that ends `yellow` reports `yellow` without failing start).
+- The primitive performs no IO, no logging, and no redaction. The consuming surface owns event publication and redaction: a `ProbeResult.lastError` that embeds a command, URL, or secret MUST be passed through the canonical `RedactionService` (§3.7) before it reaches a lifecycle event, transcript, or `lando info`.
+- `ProbeError` (and the `ProbeTimeoutError` sub-shape it carries for deadline expiry) is a tagged error exported from `@lando/sdk/probe`. Like the `@lando/sdk/expressions` errors, it deliberately does NOT ride the frozen `@lando/sdk/errors` barrel, so adding the primitive widens no frozen error union.
+- Core MUST NOT hand-roll a second `Schedule`/backoff/retry loop for any host- or provider-shaped probe. `HealthcheckRunner`, `UrlScanner`, `DoctorService` shell checks, the `Downloader` retry path, and `lando setup` readiness waits all build on `runProbe`; a §13.4-style boundary check keeps net-new `Effect.retry(… Schedule …)` loops out of `core/src/**` outside the primitive and its consumers.
+
 **Healthcheck behaviors:**
 
 - Healthchecks support `false`/`disabled`, string, string-array, and object forms; any form may be computed from disk via `load()` (§7.3).
 - Object form supports `command`, `user`, `retry`, `delay`, `timeout`, `target`.
 - Startup distinguishes `running` from `ready`. The `ready` event fires when all healthchecks pass.
-- The active `HealthcheckRunner` decides execution mechanics. Default: `RuntimeProvider.exec` with retry/delay loop.
+- The active `HealthcheckRunner` decides execution mechanics. Default: `RuntimeProvider.exec` driving the probe primitive (§10.5.1) — the object form's `retry`/`delay`/`timeout` map onto a `RetryPolicy`, and the `ready` verdict is the probe's `green` `ProbeOutcome`.
 - Healthchecks may declare `target: service | host` (default `service`). Service-target healthchecks run inside the named service via `RuntimeProvider.exec`. Host-target healthchecks run on the host via `ShellRunner` (§3.4) and are useful for probing proxy routes, TLS endpoints, port reachability, or DNS resolution from outside the container — exactly the cases where running the probe inside the service would test the wrong thing. Plugin-supplied `HealthcheckRunner` implementations MAY provide native probes (e.g., a TCP probe, a Postgres `SELECT 1`) that bypass shell entirely; runners declare which targets they can satisfy via `capabilities`, and the planner refuses healthchecks whose declared `target:` no installed runner supports with `HealthcheckTargetUnsupportedError`.
 
 **URL scanner behaviors:**
@@ -135,7 +230,7 @@ Behavior in v4.0:
 - After start, the active `UrlScanner` probes host-facing URLs.
 - Scanner config: `enabled`, `retry`, `delay`, `timeout`, `path`, `okCodes`, `maxRedirects`.
 - Per-service overrides under `services.<name>.scanner:`.
-- Results are reported as green/yellow/red with optional structured detail.
+- Results are reported as green/yellow/red with optional structured detail. The `retry`/`delay`/`timeout` config resolves to a `RetryPolicy` and the green/yellow/red verdict is the probe primitive's `ProbeOutcome` (§10.5.1); only the probe effect differs between the built-in and plugin scanners.
 - The default scanner uses Bun's built-in `fetch` against the resolved host-facing URL. Plugin-supplied scanners MAY use `ShellRunner` (§3.4) for shell-shaped probes — `curl --resolve` for testing custom DNS, `openssl s_client -connect` for TLS handshake details, `dig +short` for record validation — particularly when a project's routing depends on host networking that `fetch` cannot reproduce. Plugin scanners surface the same green/yellow/red verdict shape; only the underlying probe mechanism differs.
 
 ### 10.6 Files and performance

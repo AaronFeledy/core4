@@ -18,9 +18,9 @@ Depends on: **BETA1-01 through BETA1-10**.
 
 ## Goals
 
-- Declare the Beta 1 stable `@lando/core` library entry points and keep internal OCLIF code out of stable imports.
+- Declare the Beta 1 stable `@lando/core` library entry points, including the `App` handle embedding primitive, and keep internal OCLIF code out of stable imports.
 - Make `@lando/core/testing` stable on `next` with deterministic test runtime coverage and JSDoc on every export.
-- Contract-test library-mode defaults, `makeLandoRuntime`, CLI operations, and packed-install entry points.
+- Contract-test library-mode defaults, `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, CLI operations, and packed-install entry points.
 - Enforce plugin SDK compatibility through `requires."@lando/core": "^4.0.0"`.
 - Run the §17.9 acceptance harness green on linux-x64: implement all 27 criteria (1–19 runtime/release/update/setup, 20–24 external compiled-plugin loading, 25–27 codegen/bundled-plugin/recipe gates), with only the all-platform pass deferred to RC.
 
@@ -133,15 +133,75 @@ Depends on: **BETA1-01 through BETA1-10**.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+### US-289: Publish the stable `App` handle contracts in the SDK and core API
+
+**Description:** As an embedding host, I can resolve an app once and receive a stable Effect-native handle with lifecycle, introspection, tooling, config, logs, and event methods instead of composing low-level service calls for every operation.
+
+**Acceptance Criteria:**
+- [ ] `@lando/sdk` exports the canonical `App`, `AppSelector`, `AppResolveError`, `LandoRuntime`, and related method option/result types needed by the §16 App-handle surface.
+- [ ] `@lando/core` exports `resolveApp(selector?)` and `openLandoRuntime(options)` from the default entry without pulling `@oclif/core` into the default import graph.
+- [ ] `AppSelector` implements the documented precedence `id > landofile > root > cwd`, validates compatible multi-field selectors, requires decoded `LandofileShape` selectors to carry an explicit root, defines the no-selector default, and fails mismatches with tagged `AppResolveError` variants.
+- [ ] The `App` contract is SDK-published while the core-returned implementation is opaque/branded so embedding hosts consume returned handles but do not structurally implement the public interface.
+- [ ] `sdk/API_COMPATIBILITY.md`, SDK export fixtures, package export tests, schema registry entries, and schema snapshots are updated where the new contracts add schemas.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-290: Implement root-bound app resolution and retained runtime object semantics
+
+**Description:** As a long-lived editor, dashboard, TUI, or test host, I can open one Lando runtime and perform many operations against resolved app handles without re-running bootstrap or relying on `process.cwd()` after handle creation.
+
+**Acceptance Criteria:**
+- [ ] `openLandoRuntime(options)` acquires the `makeLandoRuntime` Layer once in the caller's `Scope` and exposes `.app(selector)`, `.scratch(input)`, and `.run(effect)` against that retained runtime.
+- [ ] `resolveApp(selector?)` captures the resolved app id, `AppRef`, root, and plan identity once; later handle method calls do not re-discover from the host's current working directory.
+- [ ] Calling `runtime.app()` or `resolveApp()` with no selector resolves from the retained runtime `cwd`, except runtimes constructed with `scratch` resolve to the acquired scratch app by default.
+- [ ] `loadUserLandofile` gains or delegates to a root-aware seam so root-bound handles can resolve includes and reserved-id validation without widening frozen SDK service signatures.
+- [ ] Reusing one retained `LandoRuntime` for operations 2..N does not re-acquire scoped runtime Layers, reload plugin discovery, or rebuild bootstrap services.
+- [ ] Library API contract tests cover workspace and packed installs for `openLandoRuntime`, `resolveApp`, and the default-entry import boundary.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-291: Add managed App lifecycle scopes with detached-start support
+
+**Description:** As an embedding host, I can call `app.start()`, then later `app.info()`, `app.exec()`, or `app.stop()` against live start-state resources, while still relying on Effect scopes to clean everything up on host shutdown.
+
+**Acceptance Criteria:**
+- [ ] `App` handles own a child scope under the retained runtime scope and use it to track a single managed start scope per app handle.
+- [ ] `app.start()` defaults to `detached: false`; omitted `detached` and explicit `detached: false` both keep start-state resources alive after the method returns and register finalizers that run on `app.stop()`, `app.restart()`, `app.destroy()`, or runtime-scope close.
+- [ ] `app.start({ detached: true })` starts provider resources without registering a handle-owned stop finalizer, matching the CLI detached semantics.
+- [ ] Existing file-sync and host-proxy session finalizers target the managed start scope instead of a transient method-call scope.
+- [ ] Repeated start/stop/restart/destroy calls are serialized per handle, close managed scopes exactly once, and do not regress CLI foreground Ctrl-C teardown.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-292: Prefer App handles in library guides while preserving command-operation building blocks
+
+**Description:** As a package consumer reading the embedding documentation, I see `app.start()` and `runtime.app()` as the stable app lifecycle path, while lower-level command operations remain available for command-shaped dispatch.
+
+**Acceptance Criteria:**
+- [ ] `docs/guides/library/embedding-runtime.mdx` demonstrates `openLandoRuntime`, `runtime.app()`, and `app.start()`/`app.info()`/`app.stop()` as the primary app lifecycle example.
+- [ ] The guide still shows `makeLandoRuntime` for Layer-native hosts and explains when to use `runtime.run(...)` or `@lando/core/cli` command operations.
+- [ ] `core/test/library/` includes contract coverage for App-handle one-shot methods, scoped live-resource methods, root-bound behavior after `process.chdir`, decoded Landofile selectors with/without explicit root, no-selector runtime defaults, and runtime-scope finalization cleanup.
+- [ ] `@lando/core/cli` and `@lando/core/cli/operations` remain tested as command building blocks, but docs no longer frame raw `appStart`/`appInfo` operation names as the preferred stable lifecycle API.
+- [ ] The guide drift gate maps App-handle implementation paths to the library embedding guide.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
 ## Functional Requirements
 
-- FR-1: Stable in-major entry points are `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli`.
+- FR-1: Stable in-major entry points are `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli`; the default entry exposes `makeLandoRuntime`, `openLandoRuntime`, and `resolveApp` without importing OCLIF.
 - FR-2: `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions` publish on `next`/`dev`; only `@lando/core/testing` is declared stable at Beta 1.
 - FR-3: `@lando/core/oclif` remains internal-only and must not be imported by the default entry point.
 - FR-4: `@lando/core/cli` exports Effect-returning operations for every built-in command except explicitly omitted interactive or install surfaces; operations return typed results, not rendered text.
 - FR-5: `@lando/core/cli` exposes `runTooling(...)` and config-translator operations without touching stdio or OCLIF.
 - FR-6: `makeLandoRuntime` must be scoped, option-validated, idempotent, CLI-bootstrap-equivalent, and safe from global process mutation unless signal handlers are enabled.
-- FR-7: The §17.9 acceptance set is 27 criteria. The Beta 1 harness MUST implement all 27 criteria — including external compiled-plugin loading (criteria 20–24) and the `codegen:check` / bundled-plugin-removal / recipe-codegen gates (criteria 25–27) — and run them green on linux-x64. Only the all-platform pass is deferred to RC; no §17.9 criterion is deferred to RC as new feature work.
+- FR-7: `openLandoRuntime` must retain one scoped runtime acquisition and expose `.app(selector)`, `.scratch(input)`, and `.run(effect)` without per-call Layer reacquisition.
+- FR-8: `resolveApp` and `runtime.app` must produce root-bound `App` handles whose one-shot methods have `R = never` after binding and whose live-resource methods retain `Scope.Scope` in `R`.
+- FR-9: Managed App lifecycle scopes must keep start-state resources alive between method calls, tear them down exactly once on stop/destroy/runtime-close, and preserve detached-start semantics.
+- FR-10: The §17.9 acceptance set is 27 criteria. The Beta 1 harness MUST implement all 27 criteria — including external compiled-plugin loading (criteria 20–24) and the `codegen:check` / bundled-plugin-removal / recipe-codegen gates (criteria 25–27) — and run them green on linux-x64. Only the all-platform pass is deferred to RC; no §17.9 criterion is deferred to RC as new feature work.
 
 ## Non-Goals
 
@@ -150,19 +210,26 @@ Depends on: **BETA1-01 through BETA1-10**.
 - Adding a Promise-based facade for the library API.
 - Requiring all-platform §17.9 acceptance during Beta 1.
 - Allowing library-mode operations to write rendered CLI text instead of typed results.
+- Replacing `makeLandoRuntime` with the runtime object wrapper; Layer-native hosts remain first-class.
+- Removing `@lando/core/cli` command operations; App handles are the preferred lifecycle primitive, not the only programmatic surface.
 
 ## Technical Considerations
 
 - Current `core/package.json#exports` includes `.`, `./schema`, `./errors`, `./events`, `./services`, `./testing`, `./cli`, `./cli/operations`, and `./oclif`; `./docs/redactions` is the known gap from the spec.
 - The library contract suite belongs under `core/test/library/` and should test both workspace imports and packed-install imports where applicable.
 - CLI operation exports should reuse the same command logic as OCLIF and compiled dispatch while stopping before renderer formatting.
+- App handles should reuse the same command-operation logic where appropriate but must own root binding, runtime retention, and managed lifecycle scopes at the handle layer rather than leaking those concerns to hosts.
+- `loadUserLandofile` is currently cwd-bound; App-handle implementation needs a root-aware seam that keeps include resolution and reserved-id checks on non-frozen core helpers.
+- `startApp` currently owns file-sync session scope creation internally; App-handle implementation needs an injected managed-scope path without regressing CLI foreground signal teardown.
 - Live signing, notarization, installer, and update tests must stay environment-gated when credentials or external services are missing.
 - Acceptance criteria that are platform-specific should be represented in the harness at Beta 1 even when non-linux platforms are marked RC-gated.
 
 ## Success Metrics
 
 - All stable library entry points import from workspace and packed installs without OCLIF leakage.
+- Embedding hosts can resolve one app handle and perform lifecycle, info, tooling, config, log, and event operations without manual `discover -> plan -> select -> apply` boilerplate.
 - Embedding hosts can create and close repeated `makeLandoRuntime` scopes without leaked resources or global process changes.
+- Long-lived hosts can retain one `LandoRuntime` object and call multiple App handles without repeated bootstrap or cwd-sensitive re-discovery.
 - Plugin SDK compatibility failures produce clear remediation before plugin execution.
 - The §17.9 harness runs green on linux-x64 and records which criteria remain all-platform RC gates.
 
@@ -175,7 +242,7 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 | User Story | Feature | Guide Path | Acceptance |
 |---|---|---|---|
 | US-272 | Testing API and deterministic `TestRuntime` | `docs/guides/library/testing-runtime.mdx` | Required at story acceptance |
-| US-273, US-274 | Library entry points and `makeLandoRuntime` | `docs/guides/library/embedding-runtime.mdx` | Required at story acceptance |
+| US-273, US-274, US-289, US-290, US-291, US-292 | Library entry points, `makeLandoRuntime`, `openLandoRuntime`, and App handles | `docs/guides/library/embedding-runtime.mdx` | Required at story acceptance |
 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Required at story acceptance |
 | US-276, US-277, US-278, US-279 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Required at story acceptance |
 
@@ -183,8 +250,10 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 - `core/package.json`
 - `core/src/library/**`
+- `core/src/app/**`
 - `core/src/cli/operations/**`
 - `core/src/cli/commands/start.ts`
+- `core/src/cli/app-resolution.ts`
 - `core/src/testing/**`
 - `core/test/cli/start.scenario.test.ts`
 - `core/test/cli/fast-path*.ts`
@@ -200,5 +269,6 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 - Should `@lando/core/docs/redactions` be added in Beta 1 or only ticketed? Default: add the export because §16 names it and the contract test should pass.
 - Which interactive/install CLI surfaces are omitted from `@lando/core/cli` operations? Default: omit only surfaces that cannot return typed results without user prompts or external credentials.
+- Should `App` include both `logs()` and `events` at first ship, or should one of those wait until after the core lifecycle methods land? Default: include both in the frozen contract now because §16 promises lifecycle/event parity, even if their first implementation delegates to existing streams.
 - Should telemetry default-on apply in `TestRuntime`? Default: no, `TestRuntime` uses deterministic no-op telemetry unless explicitly overridden.
 - How should linux-only acceptance results be labeled in release notes? Default: clearly label them as Beta 1 reference-platform acceptance, with RC owning all-platform acceptance.

@@ -705,6 +705,8 @@ Lando defaults to platform-conventional user roots rather than a single `$HOME/.
 
 `<userConfRoot>` is resolved before reading global config. Resolution order is: explicit runtime option (§16.3), `LANDO_USER_CONF_ROOT`, platform default. Because it determines where global config is read from, setting `userConfRoot` inside `config.yml` MUST NOT relocate that same config load. `<userCacheRoot>`, `<userDataRoot>`, and `<systemPluginRoot>` follow the same order with `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT` / `LANDO_SYSTEM_PLUGIN_ROOT`, then values from global config, then platform defaults. `<systemPluginRoot>` is read-only from Lando's perspective: system packages, OS package managers, or admins write to it; Lando never installs into it through `meta:plugin:add` (which always targets `<userDataRoot>/plugins/`).
 
+These four roots, the resolution order above, the platform-default matrix, and every path derived from them are owned by a single primitive — the Effect-free `@lando/core/paths` resolver and the `PathsService` runtime tag (§7.5.1). Core code, plugins, and embedding hosts MUST resolve roots and derived paths through that primitive rather than re-deriving `$HOME`/XDG/`%APPDATA%` fallbacks or hand-joining `<userDataRoot>/plugins`, `<userCacheRoot>/scratch`, etc.
+
 ```yaml
 envPrefix: LANDO
 domain: lndo.site
@@ -803,6 +805,21 @@ stats:
 
 `build.concurrency.app: min(4, cpu_count)` is the spec form; the resolved value at runtime is the integer minimum of `4` and the host CPU count. CI runners with high core counts therefore stay capped at `4` by default to leave headroom for the runner's own work; users with a fixed budget can pin a literal integer in their global config or per-app override. Per-service overrides live under `services.<name>.build:` in the Landofile (§6.2): `services.appserver.build.failFast: true` opts a single service into fail-fast even when the phase default is continue-all; `services.node.build.concurrency: 1` serializes a service's own multi-step app build.
 
+#### 7.5.1 Root and path resolution primitive
+
+Root resolution and the dozens of paths derived from the four roots are a single primitive rather than a convention re-implemented per call site. It is published in two cooperating forms:
+
+- **`@lando/core/paths`** — a pure, Effect-free, OCLIF-free module (§2.7). It exposes `resolveLandoRoots(options?)`, `makeLandoPaths(options?)`, and `normalizeHostPlatform(input?)`. Because it constructs no `Context.Service` and imports neither `effect` nor `@oclif/core`, it is safe on the level-`none` fast path (§3.2), inside `scripts/`, and for embedding hosts and plugin utilities that need a path before (or without) a runtime.
+- **`PathsService`** — the runtime DI tag (§3.4), constructed eagerly at level `minimal`. Its Live Layer is a thin wrapper over `makeLandoPaths`, so runtime code already inside the Layer graph resolves the same paths through `yield* PathsService` without re-deriving them and without depending on `ConfigService`.
+
+**Resolved roots.** `resolveLandoRoots` returns the four roots — `userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot` — applying, per root, the §7.5 order: explicit runtime option (a `RootOverrides` field, §16.3/§16.5) → `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT` / `LANDO_SYSTEM_PLUGIN_ROOT` → value from `config.yml` → platform default. The `userConfRoot` self-reference rule holds: a `userConfRoot` value inside `config.yml` decodes as ordinary config but MUST NOT relocate the `config.yml` load itself, so `resolveLandoRoots` reads `config.yml` for the other three roots only after the conf root is fixed from option/env/default. The platform-default matrix is exactly the §7.5 table (Linux/BSD XDG, macOS `~/Library/...`, Windows `%APPDATA%`/`%LOCALAPPDATA%`/`%PROGRAMDATA%`); `normalizeHostPlatform` resolves the `HostPlatform` (including WSL) that selects the column.
+
+**Derived paths.** `makeLandoPaths` returns `LandoPaths`: the resolved `roots`, the active `platform`, and builders for every path the §12 catalog and §9.3 discovery order name — `pluginsDir`, `appPluginsDir(appId)`, `pluginAuthFile`, `binDir`, `keysDir`, `certsDir`, `runtimeDir`, `globalAppRoot` (under `userDataRoot`); `logsDir`, `scratchDir`, `scratchRegistryFile`, `appCacheDir(appName, appRoot)`, `appPlanCacheFile(appName, appRoot)`, `fileSyncSessionsDir` (under `userCacheRoot`); and `configFile`, `configDir`, `globalConfigFile` (under `userConfRoot`). App-scoped cache builders apply the §12.1 name-sanitization and app-root fingerprinting so two apps sharing a `name:` never collide.
+
+**Config schema.** `GlobalConfig` (§7.8) carries all four roots — `userConfRoot`, `userCacheRoot`, `userDataRoot`, and `systemPluginRoot` — as optional `AbsolutePath` fields, so the `config.yml` layer of the resolution order and the host `config:` override (§16.5) are typed end to end.
+
+**Overridability.** `RootOverrides` accepts per-root overrides plus `platform`, `env`, and `home` for deterministic testing and host isolation. The primitive is host- and test-overridable but is **not** a plugin contribution surface (§4.2): the resolution order and platform matrix are a fixed contract, and a plugin relocating roots would break the layout every other contribution assumes.
+
 ### 7.6 Environment overrides
 
 Every global config key is overridable with an env var that uses the configured prefix (default `LANDO`).
@@ -896,6 +913,8 @@ A fragment MAY itself declare `includes:`. Cycles are detected and rejected with
 - `lando app includes verify` (canonical id `app:includes:verify`; §8.2) re-checks every checksum without updating.
 - A lockfile mismatch (checksum drift, missing source) fails with a tagged `IncludeLockError` and remediation pointing at `lando app includes update`.
 
+The lockfile is read and written through the canonical `StateStore` primitive (§12.7) — a `none`-lock bucket at `{ root: { app: appRoot }, key: ".lando.lock.yml" }` whose custom codec wraps the existing block-style renderer/parser, so the committed on-disk YAML is byte-for-byte unchanged while gaining the shared atomic-write and path-containment guarantees.
+
 #### 7.7.5 Caching
 
 Resolved fragment contents are cached under `<userCacheRoot>/includes/` keyed by source + ref + checksum. Cache reads are content-addressed and cross-app — a fragment used by multiple apps is fetched once.
@@ -929,4 +948,21 @@ Build-time schema publication produces:
 
 Schema definitions MUST include useful annotations (`identifier`, `title`, `description`, and examples where helpful) because the same metadata powers validation errors, JSON Schema output, and generated docs. Human-authored docs remain in `docs/` and explain concepts and workflows; generated schema reference documents exact contract shape.
 
----
+#### 7.8.1 Canonical Landofile serializer
+
+Core ships **one** canonical serializer pair for the block-style Landofile subset, published as pure, dependency-free logic from `@lando/sdk/landofile` (mirroring the `@lando/sdk/expressions` engine, and like it not compatibility-locked beyond its declared exports) and re-exported from `@lando/core/landofile`:
+
+- `emitLandofileYaml(value): string` — serialize a Landofile object (or a `Partial<LandofileShape>` fragment) to block-style YAML. Fails with a tagged `LandofileEmitError` on a non-emittable input.
+- `emitLandofileYamlEither(value): Either<string, LandofileEmitError>` — the same emit as an `Either` for callers that prefer typed handling over a throw.
+- `parseLandofile({ file, content, cwd }): Effect<unknown, LandofileParseError>` — parse the block-style subset back into a plain object.
+
+The pair is governed by one **round-trip law**: for every value in the supported domain, `parseLandofile(emitLandofileYaml(value))` MUST deep-equal `value`. This serializer is the single source of truth for writing a `LandofileShape`/fragment back to disk — `app:config:translate --write`, `app:config:set` / `unset` (§8.2.1), `lando doctor`'s YAML report, and global-config writes all consume it — and config-translator plugins (§9.5) and embedding hosts (§16.2) use it to preview, emit, and test generated fragments. Per-recipe and per-command hand-written YAML is forbidden where this serializer applies.
+
+Supported value domain (inputs outside it fail with `LandofileEmitError`, never silently corrupt):
+
+- **Map keys** matching `^[A-Za-z0-9_.-]+$` — emitted verbatim. Keys carrying other characters are quoted only when required to round-trip through the block-style parser.
+- **Scalars** — `string`, finite `number`, `boolean`, and `null`. Strings that would otherwise re-parse as a number, boolean, or `null`, or that carry structural YAML characters, are quoted so the round-trip law holds. Non-finite numbers (`NaN`, `Infinity`) fail with `LandofileEmitError`.
+- **Maps** — nested plain objects whose values are themselves in the supported domain. An empty object emits as `{}`.
+- **Arrays** — lists whose items are scalars or maps. An empty array emits as `[]`. Nested arrays-of-arrays are unsupported (a Landofile never contains them) and fail with `LandofileEmitError`.
+
+Values outside this domain — `undefined`, functions, symbols, class instances, or any other non-plain structure — fail with `LandofileEmitError` rather than emitting malformed YAML.

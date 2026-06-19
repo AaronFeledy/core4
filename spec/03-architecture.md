@@ -261,20 +261,25 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `BuildOrchestrator` | Compiles the resolved `AppPlan` into a `BuildPlan` DAG (artifact-build phase + per-service app-build phase, with cross-service `depends_on:` edges), runs siblings concurrently per the §6.13 caps, drives the build lifecycle (`pre-build`, `build-step-*`, `post-build`) through `EventService`, owns the per-step transcript writer (`<userDataRoot>/builds/<app-id>/<buildKey>.log`; §12.4), and surfaces task-tree progress to the active `Renderer` via the §8.9.2 events. Up-to-date checks consult the planner-stamped `buildKey` against the `build-results` cache (§12.1) so unchanged steps short-circuit to `build-step-skip { reason: "up-to-date" }`. | `BuildOrchestratorLive` (constructed at level `app`; `Layer.suspend`-wrapped — `lando info`, `lando logs`, and most tooling commands never construct it) |
 | `EventService` | Pub/sub over typed lifecycle events | `EventServiceLive` |
 | `CacheService` | Atomic cache reads/writes, invalidation | `CacheServiceLive` |
+| `StateStore` | Durable, atomic, schema-validated, versioned, optionally cross-process-locked on-disk document store (§12.7) — the durable peer of `CacheService`'s in-memory memo. Mints `StateBucket` handles (one file each) with `json`/`binary`/custom codecs, advisory file locking, corruption quarantine, and version migration. The single owner of every Lando-owned durable write (scratch registry §21.11, include lockfile §7.7.4, plugin/host/translator state). **Not a §4.2 plugin abstraction — a state-integrity invariant** (like `EmbeddedAssetService`); host/test-overridable, never plugin-replaceable | `StateStoreLive` (constructed eagerly at level `minimal`; root resolution via the §7.5.1 Paths primitive; touches no network/provider/plugin module) |
 | `FileSystem` | `Bun.file` / `Bun.write` wrapper | `FileSystemBunLive` |
 | `ProcessRunner` | Argv-precise subprocess spawn (`Bun.spawn`) | `ProcessRunnerBunLive` |
 | `ShellRunner` | Cross-platform shell-shaped execution (pipes, redirection, globs, built-ins) via `Bun.$` (Bun Shell) | `ShellRunnerBunLive` |
 | `BunSelfRunner` | Self-spawn the compiled `lando` binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI; the only place in core that constructs a `BUN_BE_BUN=1` child. Backs plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bun:` post-init action verbs `install` / `add` / `create` / `run` / `x` (§8.8.8), the plugin authoring toolkit (§9.10), and `includes:` materialization for `npm:` / `registry:` schemes (§7.7). Library-mode fallback spawns a system `bun` when one is on PATH | `BunSelfRunnerBunLive` |
+| `Downloader` | Verified, proxy/CA-aware artifact acquisition for Lando-owned downloads (§10.3.2): resolves outbound trust, streams bytes to memory or an atomic file destination, verifies SHA-256/size, enforces scheme and path-containment policy, publishes redacted lifecycle events, and cooperates with cache/offline mode. Used by runtime bundles, Mutagen/helper downloads, recipe/include tarballs, self-update artifacts, and any future Lando-owned artifact fetch | `DownloaderLive` (constructed eagerly at level `minimal`; plugin-contributed implementations register at level `plugins` and replace the default per §4.2/§4.3) |
 | `PrivilegeService` | sudo/UAC dispatch | `PrivilegeServiceLive` (platform-specific) |
 | `EmbeddedAssetService` | Unified access to build-embedded assets and library-mode package assets | `EmbeddedAssetServiceLive` |
+| `PathsService` | Authoritative resolution of the four Lando roots (`userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot`) and every path derived from them (plugin store, `bin/`, `certs/`, `runtime/`, `keys/`, logs, scratch root, app caches, config files) per the §7.5 precedence and platform-default matrix. Backed by the Effect-free `@lando/core/paths` resolver so the tag is a thin runtime wrapper that never depends on `ConfigService`; the same resolver serves the level-`none` fast path and embedding hosts (§7.5.1) | `PathsServiceLive` (constructed eagerly at level `minimal`) |
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
 | `Renderer` | CLI output strategy | `RendererLive` (default Lando renderer; `Layer.suspend`-wrapped, with a pre-bootstrap direct-write fallback for first-paint banners; §8.9) |
+| `InteractionService` | The input peer of `Renderer` (§8.10): resolves a typed `PromptSpec` (or ordered batch) against the active answer source — explicit answer → recipe/caller default (`--yes`) → interactive prompt → fail — using the published prompt vocabulary (text/select/multiselect/confirm/number/secret/path/editor); owns interactivity-mode resolution (`auto`/`interactive`/`non-interactive`), `secret`/redaction guarantees, and dynamic `choicesFrom` resolution. Used by `apps:init` recipe prompts, `meta:plugin:new`, the `meta:plugin:add` trust gate, `meta:setup` confirmations, and `lando doctor --fix` | `InteractionServiceLive` (`Layer.suspend`-wrapped — built only when a command actually prompts; default `auto` mode in CLI, `non-interactive` in library mode; plugin-contributed implementations register at level `plugins` and replace the default per §4.2/§4.3) |
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
 | `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
 | `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
 | `ScratchAppService` | Scratch apps (§21): acquires, starts, stops, destroys, lists, and reaps short-lived Lando apps whose lifetime is bound to an Effect `Scope`. Owns materialization of the scratch root under `<userCacheRoot>/scratch/<id>/`, the scratch registry at `<userCacheRoot>/scratch/registry.bin`, and the orphan-reap protocol that combines the registry walk with a provider-label scan (`dev.lando.scratch: "TRUE"`). Reuses every other core service a normal user app uses — `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `ProxyService`, `CertificateAuthority` — with the §21.7–§21.9 plan-time transformations applied (mount isolation, `scope: global` shadowing, hostname auto-suffix). | `ScratchAppServiceLive` (constructed at level `scratch`; `Layer.suspend`-wrapped — `lando info` against a user app pays zero `ScratchAppService` cost) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
+| `RedactionService` | The single owner of secret and PII masking (§3.7). Builds a request-scoped redactor from the active `SecretStore` resolutions, known token env (`BUN_AUTH_TOKEN`, scoped `_authToken`, resolved proxy credentials), and per-call redaction tokens, then exposes `forProfile(profile)` returning a canonical `Redactor`. Consumed by `Logger`, `EventService`, `ProcessRunner` / `ShellRunner` / `BunSelfRunner`, `BuildOrchestrator`, `HostProxyService`, `Telemetry`, the build/doctor/guide transcript writers, and the CLI failure formatter so every surface "observes redacted forms only". **Not a §4.2 plugin abstraction — a non-replaceable security invariant** (like `EmbeddedAssetService`); audited/sandboxed runner and downloader plugins *compose* it, they never replace or weaken it. | `RedactionServiceLive` (constructed eagerly at level `minimal`; backed by the pure, dependency-free `@lando/sdk/secrets` functions so the telemetry hot-enqueue path and the docs build redact without constructing a runtime) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
 
@@ -445,8 +450,8 @@ Tagged errors live in `@lando/core/errors`:
 | Level | Services included (eager) | Services included (`Layer.suspend`-wrapped, lazy on first access) | Services NOT in this layer |
 |---|---|---|---|
 | `none` | *none* — no Effect runtime constructed | *none* | every service |
-| `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService`, `DeprecationService`, `TemplateEngineRegistry` (built-in `lando` engine pre-registered), `TemplateRenderer` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner` | plugins, commands, providers, app planner, networking subsystems |
-| `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry` (built-in `passthrough` engine pre-registered); plugin-contributed `TemplateEngine` and `FileSyncEngine` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
+| `minimal` | `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry` (built-in `lando` engine pre-registered), `TemplateRenderer`, `Downloader` (default implementation) | `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService` | plugins, commands, providers, app planner, networking subsystems |
+| `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry` (built-in `passthrough` engine pre-registered); plugin-contributed `TemplateEngine`, `FileSyncEngine`, `Downloader`, and `InteractionService` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
@@ -469,7 +474,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
-| Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec` |
+| Process / Shell / Download | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-download`, `download-progress`, `post-download` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
 | Build | `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-complete`, `build-step-skip`, `build-step-fail` (published by `BuildOrchestrator` for every node in the `BuildPlan` DAG; §6.13) |
@@ -515,6 +520,37 @@ Anything spec'd elsewhere as "the CLI does X" applies symmetrically to embedding
 
 A test harness is a third imperative shell, but `test/` consumes core through the same library entry point as embedding hosts; it is not separately spec'd.
 
+### 3.7 Secret redaction
+
+Redaction is a cross-cutting security invariant, not a per-surface convenience. The spec mandates "the same redaction" in many places — `${secret:…}` resolution (§7.3.1), `ProcessRunner` / `ShellRunner` / `BunSelfRunner` logs and events (§3.4), build-step transcripts (§6.13.6), host-proxy payloads (§10.10), file-sync events (§10.6), telemetry (§2.4 + the telemetry inventory), executable-guide and doctor transcripts (§19.6, §10.9), tooling caches (§12), and config-translator output (§7.4.1). This subsection is the **single canonical owner** those references resolve to. There is exactly one redaction implementation in v4; no surface ships its own regexes or sentinels.
+
+**Two redaction layers, always composed in this order.** Redaction has two inputs that MUST combine, value-set first:
+
+1. **Value layer (authoritative).** The set of *known* sensitive values for the current operation — every `${secret:…}` value the active `SecretStore` resolved, registry tokens (`BUN_AUTH_TOKEN`, scoped `_authToken`), resolved proxy credentials, and any per-call `redact:` tokens. These are masked by **literal** match, **longest-first**, so a shorter secret that is a substring of a longer one cannot leave the longer value's tail exposed. The value layer runs **before** the pattern layer; otherwise a normalizing pattern could rewrite the context around a literal secret and let the secret survive.
+2. **Pattern layer (defense-in-depth).** A fixed catalog of pattern classes catches sensitive data that was never registered as a known value. Secret classes: `secretAssignment` (`FOO_TOKEN=…`, `token …`), `urlUserinfo` (`scheme://user:pass@`), `bearerToken`, `signedQueryParam` (`?token=`, `&X-Amz-Signature=`), and `secretKeyedField` (object keys matching `password|secret|token|credential|bearer|api[-_]?key|authorization`). Normalizing classes (privacy / determinism): `url`, `email`, `uuid`, `hostname`, `posixPath` / `windowsPath` / `uncPath` / `homeAlias`, `port`, `containerId`, `digest`, `highEntropyToken`, and literal `user` / `host` / `root` substitution.
+
+**Profiles** select which pattern classes apply and the placeholder vocabulary; all profiles compose the value layer first:
+
+| Profile | Classes | Output vocabulary | Consumers |
+|---|---|---|---|
+| `secrets` | value-set + the five secret classes + deep object key-name masking | single `[redacted]` sentinel | `Logger`, `EventService` payloads, `ProcessRunner`/`ShellRunner`/`BunSelfRunner`, `BuildOrchestrator`, `HostProxyService`, the CLI failure formatter / bug report |
+| `telemetry` | `secrets` + the normalizing classes (low cardinality) | class placeholders `[path]`/`[url]`/`[host]`/`[email]`/`[id]` + `[redacted]` | `Telemetry` value scrub (the event-inventory allowlist is layered on top in core, not here) |
+| `transcript` | `secrets` + the normalizing classes (byte-stable determinism) | deterministic placeholders `<HOME>`/`<TMP>`/`<PORT>`/`<CONTAINER_ID>`/`<DIGEST>`/`<PROVIDER_ID>`/`<USER>`/`<HOST>` | executable-guide public transcripts (§19.6), `lando doctor` transcripts (§10.9) |
+
+**Layering: pure functions in the SDK, a thin service in core.**
+
+- `@lando/sdk/secrets` ships the **pure, dependency-free** primitives: `createSecretRedactor(values)` (the value layer), the pattern-class catalog, the three profiles, the canonical `REDACTED` sentinel, and `createRedactor(profile, { secrets, env })` returning `{ redactString, redactValue }` (`redactValue` is the deep walker that also masks `secretKeyedField` object keys). Purity is required: the telemetry hot-enqueue path and the docs build call these without constructing a `LandoRuntime`.
+- `@lando/core` ships `RedactionService` (§3.4), a thin Effect service that supplies the *live* value set (resolved secrets + token env + per-call tokens) and exposes `forProfile(profile) → Redactor`. Runner, event, build, and host-proxy surfaces consume it so they "observe redacted forms only."
+- Core consumers that already own their value set or have none (the telemetry scrub, the docs transcript writer, the CLI bug-report formatter) call the pure `@lando/sdk/secrets` functions directly. The telemetry **event-inventory allowlist** and the transcript **frame walker** stay in core and compose the shared scrub — the primitive owns *string redaction*, those modules own their structural policy.
+
+**Required behaviors.**
+
+- `RedactionService` is constructed eagerly at level `minimal` and MUST NOT touch the network, the provider, or any plugin module.
+- It is **not** a §4.2 pluggable abstraction. There is no `redactors:` contribution surface. Audited / sandboxed / mirror-aware `ShellRunner`, `BunSelfRunner`, `HostProxyService`, `FileSyncEngine`, and `Downloader` plugins MUST compose the canonical redactor and MUST NOT weaken it; the relevant contract suites (§13.1) check this.
+- The canonical sentinel is `[redacted]` (lowercase). The `transcript` profile's `<HOME>`/`<PORT>`/… placeholders are a separate normalizing vocabulary and are part of the published transcript redaction contract (§19.6); they are byte-stable and gated.
+- `redactValue` preserves structure (arrays, objects, `Error` shape) and never throws on cyclic or exotic input.
+- A merge-blocking lint gate (§13.4) forbids new `[redacted]`/`[REDACTED]` string literals and ad-hoc secret-matching regexes outside `@lando/sdk/secrets`, mirroring the §13.4 renderer-boundary gate; a fixture-based contract test asserts each profile redacts a canonical "secret soup" input byte-identically (§13.1).
+
 ---
 
 ## 11. Lifecycle and Events
@@ -527,7 +563,31 @@ A test harness is a third imperative shell, but `test/` consumes core through th
 export class EventService extends Context.Service<EventService, {
   readonly publish: <E extends LandoEvent>(event: E) => Effect.Effect<void, EventError>;
   readonly subscribe: <E extends LandoEvent>(name: E["name"]) => Stream.Stream<E, EventError, Scope.Scope>;
-  readonly waitFor: <E extends LandoEvent>(name: E["name"], filter?: (e: E) => boolean) => Effect.Effect<E, EventError>;
+
+  // Eagerly acquires a `PubSub` subscription queue in the caller's `Scope` so a consumer that
+  // must not miss the first event subscribes *before* the producer runs (vs. the lazy `subscribe` stream).
+  readonly subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>;
+
+  // Await the next matching event. `timeout` bounds the wait; on expiry the Effect fails with
+  // `EventError` (`reason: "timeout"`) rather than blocking forever.
+  readonly waitFor: <E extends LandoEvent>(
+    name: E["name"],
+    options?: { readonly filter?: (e: E) => boolean; readonly timeout?: DurationInput },
+  ) => Effect.Effect<E, EventError>;
+
+  // Await the next event matching ANY of several specs; resolves with the first to arrive.
+  readonly waitForAll: <E extends LandoEvent>(
+    specs: ReadonlyArray<{ readonly name: E["name"]; readonly filter?: (e: E) => boolean }>,
+    options?: { readonly timeout?: DurationInput },
+  ) => Effect.Effect<E, EventError>;
+
+  // Scan the bounded in-memory event history for events ALREADY published this run that match
+  // `name`/`filter`. Never blocks; returns redacted payloads only. Powers host "what already
+  // happened" queries and `lando events` snapshots without racing the live stream.
+  readonly query: <E extends LandoEvent>(
+    name: E["name"] | "*",
+    filter?: (e: E) => boolean,
+  ) => Effect.Effect<ReadonlyArray<E>, EventError>;
 }>()("@lando/core/EventService") {}
 ```
 
@@ -537,6 +597,13 @@ export class EventService extends Context.Service<EventService, {
 - `publish` MUST short-circuit to a no-op when the event name has zero registered subscribers in the current runtime. This is the common case for `pre-bootstrap-*` events at level `tooling`: there are typically no plugin subscribers, and the no-op path skips payload schema validation, `Effect.PubSub` enqueue, and fiber scheduling entirely. The check is a single Map-keyed boolean (`hasSubscribers[eventName]`) populated at registration and at plugin install/remove.
 - `EventService` is constructed eagerly at level `minimal` so that `publish` is callable from level-`minimal` code paths, but its internal subscriber index is empty until level `plugins` populates it. Calling `publish` at level `minimal` therefore always hits the zero-subscriber short-circuit unless core itself registered an internal subscriber (rare; see §11.3 priority bands).
 - Plugins MUST NOT register subscribers for `pre-bootstrap-tooling` / `post-bootstrap-tooling` unless they declare `bootstrap: tooling` themselves; subscriber registrations whose declared bootstrap level exceeds the event's level are rejected at manifest validation with `SubscriberLevelMismatchError`. This keeps the tooling fast path's `hasSubscribers` map empty by construction in the common case.
+
+**Query, timeout, and history.** `subscribe` is the live stream; `waitFor` / `waitForAll` are the one-shot awaits; `query` is the retrospective scan. They share one bounded history buffer:
+
+- `EventService` retains a bounded in-memory ring buffer of recently published events (default cap is small and fixed; the oldest entries are evicted first). The buffer holds **redacted** payloads only — events are redacted through the canonical `RedactionService` (§3.7) *before* they are buffered, so `query`, host snapshots, and the executable-guide transcript writer can never observe an un-redacted payload. The buffer is a zero-allocation no-op when history is disabled (library hosts MAY set the cap to 0).
+- `waitFor(name, { timeout })` MUST resolve from the live stream and MUST fail with `EventError` (`reason: "timeout"`) when the deadline elapses, driven through Effect's `Clock` so tests assert it under `TestClock`. Without `timeout` it waits indefinitely (the prior behavior). `waitForAll` resolves with the first matching event across its specs and honors the same timeout contract.
+- `query(name, filter?)` scans the history buffer and returns matching events **without blocking** — it answers "did this already happen?" for a host or a guide assertion, where `waitFor` would race or hang because the event fired before the caller subscribed. `query` never observes events evicted from the buffer; a host that needs the full log subscribes early instead.
+- These members are the runtime counterpart of the `@lando/core/testing` event helpers (§16.8): `expectEvent` / `waitForEvent` are thin wrappers over `waitFor`, and `recordedEvents` is `query("*")` over the test runtime's history. The typed generic signatures (`subscribe<E>` / `waitFor<E>` / `query<E>` narrowing on `E["name"]`) are normative here and enforced by `expectTypeOf` tests in `test/types/`.
 
 ### 11.2 Event payloads
 

@@ -38,6 +38,7 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | **Process execution** | `ProcessRunner` | Argv-precise subprocess spawn (no shell parsing) | `Bun.spawn` | Replaceable for telemetry, sandboxing, dry-run modes. Used for provider exec, signing tools, and other "exact binary, exact arguments" calls (§3.4 ProcessRunner-vs-ShellRunner table). |
 | **Shell execution** | `ShellRunner` | Cross-platform shell-shaped execution: pipes, redirection, globs, built-in `rm`/`mkdir`/`cat`/`mv`/`which`, command substitution, `.bun.sh` script files | `Bun.$` (Bun Shell) | Replaceable for audited / dry-run / sandboxed shell. Backs the `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` script-backed tasks (§8.5.9), the `lando shell` REPL (§8.2.3), host-target healthchecks/scanners (§10.5), recipe `bun: { verb: script }` post-init (§8.8.8), and `lando doctor` transcripts (§10.9). Complementary to `ProcessRunner`, not redundant; core code MUST NOT use one to imitate the other (§3.4). |
 | **Bun self-execution** | `BunSelfRunner` | Self-spawn the compiled binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI (§2.1, §3.4). Drives plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bun:` post-init action verbs `install` / `add` / `create` / `run` / `x` (§8.8.8), `npm:` / `registry:` `includes:` materialization (§7.7), and the plugin authoring toolkit (§9.10) | The compiled `lando` binary, self-spawned with `BUN_BE_BUN=1`; library-mode fallback to a system `bun` on PATH | Replaceable for audited / dry-run / sandboxed / mirror-aware Bun dispatch, headless CI variants that swallow `x` calls, and air-gapped variants that refuse uncached registry reads. Plugins MUST honor the verb-shape contract from §3.4 (`install`, `add`, `remove`, `x`, `create`, `runScript`, `buildLib`, `publishPkg`) and MUST NOT weaken the §3.4 redaction or recursion-guard contracts. |
+| **Verified downloads** | `Downloader` | Resolve Lando-owned artifact downloads through the shared corporate-proxy/custom-CA stack, stream bytes to memory or an atomic destination, verify SHA-256 and optional size, enforce `https://` by default with explicit `file://` override gates for local CI/dev artifacts, publish redacted download lifecycle events, and cooperate with offline/cache policy (§10.3.2) | Built-in `DownloaderLive` using Bun `fetch`, `CacheService`, `FileSystem`, and the canonical network-trust resolver | Plugin contributes `downloaders:`. Replaceable for audited distributions, mirror-aware or air-gapped environments, sandboxed library hosts, and corporate artifact gateways. Selection follows §4.3; implementations MUST NOT weaken checksum verification, proxy/CA honoring, path containment, redaction, or atomic-write guarantees. |
 | **Privilege escalation** | `PrivilegeService` | Run a host command as root/admin | Platform-specific (`sudo`, `pkexec`, UAC) | Replaceable to support `polkit`, `doas`, custom credential prompts. |
 | **CA / certificates** | `CertificateAuthority` | Generate/store dev CA, issue leaf certs | `@lando/ca-mkcert` | Plugin contributes `certificateAuthorities:`. |
 | **Proxy / routing** | `ProxyService` | Realize `RoutePlan`s into running ingress | `@lando/proxy-traefik` | Plugin contributes `proxyServices:`. |
@@ -55,8 +56,17 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | **Telemetry** | `Telemetry` | Core usage stats with redaction and disablement controls | Core telemetry collector, enabled by default | Plugins MAY contribute telemetry sinks only through the telemetry service; plugins MUST NOT bypass user/global disablement. |
 | **Update channel** | `UpdateService` | Check/apply updates to core and plugins | Built-in registry-channel updater | Replaceable for air-gapped or vendor-managed distributions. |
 | **Secret store** | `SecretStore` | Resolve `${secret:...}` references in Landofiles | Built-in env-var store | Plugin replaces with Vault, 1Password CLI, AWS SM, etc. |
+| **Interaction / prompts** | `InteractionService` | Resolve typed `PromptSpec`s and batches against the active answer source (explicit answer → default → interactive prompt → fail), own interactivity-mode resolution and `secret` redaction, and drive dynamic `choicesFrom` (§8.10). The single input peer of `Renderer` | Built-in `InteractionServiceLive` (stdio/TTY-backed; `auto` mode in CLI, `non-interactive` in library mode) | Plugin contributes `interactionServices:`. Replaceable for headless/CI (fail-fast non-interactive), recording/test runs, and GUI/host transports (an IDE extension or dashboard that pops native dialogs). Selection follows §4.3; implementations MUST NOT weaken the `secret`-redaction, answer-precedence, or non-interactive-fail-fast guarantees, and MUST pass the §13.1 interaction contract suite. |
 
 `EmbeddedAssetService` is intentionally absent from this plugin catalog. It is a core service (§3.4) that can be overridden by tests or embedding hosts, but plugins cannot replace it because it mediates access to embedded binary/package assets.
+
+`StateStore` is also intentionally absent. Durable on-disk state (§12.7) — atomic, schema-validated, versioned, optionally cross-process-locked document storage — is a state-integrity invariant: there is exactly one implementation, owned by core and constructed eagerly at level `minimal`. Plugins do not contribute alternate stores and there is no `stateStores:` contribution surface; instead, plugins receive a pre-namespaced `StateBucket` factory through `LandoPluginContext` (§9.8) and embedding hosts/tests override the core service. Audited or sandboxed variants of the surfaces that *emit* state still flow their writes through the canonical store.
+
+`PathsService` is likewise intentionally absent. It is a core service (§3.4, §7.5.1) whose roots are overridable by tests and embedding hosts through `RootOverrides` (the `makeLandoRuntime` `config:` option, §16.5), but plugins cannot replace it: the resolution order and platform-default matrix in §7.5 are a fixed contract, and a plugin that relocated Lando's roots out from under other plugins would break the filesystem layout every other contribution assumes.
+
+`RedactionService` is also intentionally absent. Secret/PII redaction (§3.7) is a non-replaceable security invariant: there is exactly one redaction implementation, owned by `@lando/sdk/secrets` and surfaced through the core `RedactionService` (§3.4). Plugins do not contribute redactors and there is no `redactors:` contribution surface. Audited, sandboxed, mirror-aware, or air-gapped variants of the surfaces that *emit* potentially-sensitive output — `ShellRunner`, `BunSelfRunner`, `HostProxyService`, `FileSyncEngine`, `Downloader` — MUST compose the canonical redactor and MUST NOT weaken its sentinel, value-set, or pattern coverage; the relevant contract suites (§13.1) enforce this.
+
+The **probe primitive** (`@lando/sdk/probe`, §10.5.1) is likewise intentionally absent. It is neither a service tag nor a pluggable abstraction: it is a pure `RetryPolicy` plus the `runProbe` / `toSchedule` runner that the `HealthcheckRunner`, `UrlScanner`, `DoctorService`, `Downloader`, and `lando setup` readiness paths consume to share one deterministic retry/backoff/timeout vocabulary and one green/yellow/red verdict shape. Plugins that implement those abstractions reuse the primitive (they get the shared schedule semantics for free); they do not replace it, and there is no `probes:` contribution surface.
 
 ### 4.3 Selection precedence
 
@@ -115,6 +125,15 @@ provides:
       capabilities:
         verbs: [install, add, remove, runScript, buildLib]   # explicitly omits `x`, `create`, `publishPkg`
         offlineOnly: true                                    # refuses any registry read that misses the local cache
+  downloaders:
+    - id: corporate-mirror
+      module: ./src/downloader/mirror.ts
+      capabilities:
+        schemes: [https, file]
+        atomicFileWrites: true
+        checksumAlgorithms: [sha256]
+        offlineCache: true
+        progressEvents: true
   fileSyncEngines:
     - id: mutagen
       module: ./src/file-sync/engine.ts

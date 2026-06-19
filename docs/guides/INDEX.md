@@ -2,7 +2,7 @@
 
 This matrix maps each user-facing Beta PRD feature to the executable guide(s) that
 exercise it. The first table is the union of every PRD's `## Guide Coverage` section;
-internal/infra PRDs (09, 13) declare no guides and are intentionally absent. The
+internal/infra PRD 13 declares no guides and is intentionally absent. The
 supplementary sections at the end list capability guides that are **not owned by a Beta
 PRD** (core service types and end-to-end tutorials that predate the Beta milestone) — they
 carry no PRD or User Story and exist purely as capability documentation plus tests.
@@ -99,7 +99,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-168 | system / user / app plugin discovery scopes | `docs/guides/plugins/discovery-scopes.mdx` | Shipped |
 | PRD-11 | US-173 | library-mode defaults | `docs/guides/library/embedding-defaults.mdx` | Shipped |
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
-| PRD-11 | US-274 | makeLandoRuntime embedding runtime | `docs/guides/library/embedding-runtime.mdx` | Shipped |
+| PRD-11 | US-273, US-274, US-289, US-290, US-291, US-292 | Library entry points, `makeLandoRuntime`, `openLandoRuntime`, and App handles | `docs/guides/library/embedding-runtime.mdx` | Shipped |
 | PRD-11 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Shipped |
 | PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |

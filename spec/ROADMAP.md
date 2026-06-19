@@ -479,6 +479,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 - Every Effect Schema in `@lando/sdk` exports JSON Schema
 - Generated reference docs (Starlight) ship with deprecation callouts
 - Schema gate (§13.2) enforced in CI
+- Canonical Landofile serializer (`@lando/sdk/landofile` / `@lando/core/landofile`) ships with the §7.8.1 round-trip contract and call-site migration
 
 **Executable guides and scenarios (§19):**
 - MDX → generated scenario TypeScript pipeline
@@ -522,17 +523,28 @@ Land the last feature surface — release engineering, governance, the plugin au
 
 **Library:**
 - `@lando/core/testing` declared stable on `next`
-- Library API contract tests in `core/test/library/` cover the full §16.2 surface
+- Library API contract tests in `core/test/library/` cover the full §16.2 surface, including stable `App` handles, `AppSelector`, `openLandoRuntime`, and `resolveApp`
 - Plugin SDK contract test for `requires."@lando/core": "^4.0.0"` enforcement
+- Shared `Downloader` primitive for proxy/CA-aware verified artifact downloads lands with its SDK service, default implementation, manifest contribution, contract suite, and migrated Lando-owned download call sites
+- Paths/Roots primitive (`@lando/core/paths` + `PathsService`) and durable `StateStore` primitive land as the paired filesystem/persistence foundation for roots, derived paths, scratch registry, include lockfile, and plugin/host state buckets
 
 **Telemetry:**
 - Default-on with documented inventory
 - Opt-out command + global-config key
-- All redactions enforced
+- Canonical redaction primitive (`@lando/sdk/secrets` + `RedactionService`) enforces all telemetry, event, log, transcript, and diagnostic redactions
+
+**Terminal UI and interaction:**
+- Default terminal UI moves behind the bundled `@lando/renderer-lando` plugin and receives the bounded spaceship-console polish pass
+- Shared `InteractionService` primitive consolidates prompts behind `PromptSpec`, answer-source precedence, `editor` prompt type, and dispatch-parity-safe prompt call-site migration
+
+**SDK runtime primitives & plugin contract kit:**
+- `@lando/sdk/probe` retry/verdict primitive (`RetryPolicy`, `runProbe`, `ProbeOutcome`, contracts-only, `TestClock`-deterministic) ships and the healthcheck, scanner, doctor, `Downloader`, and `lando setup` readiness loops migrate onto it, with a §13.4 boundary gate banning net-new ad-hoc retry/backoff loops
+- `EventService` gains typed `waitFor`/`waitForAll`/`query` with an `EventError` timeout contract and a bounded **redacted** in-memory history buffer; `@lando/core/testing` `expectEvent`/`waitForEvent`/`recordedEvents` become thin wrappers over them
+- The §4.2 plugin-abstraction contract kit ships from `@lando/sdk/test` — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` suites — every built-in implementation runs through its suite, and the §13.1 layer-coverage gate fails if a suite or its built-in invocation is removed
 
 ### Exit criteria for Beta 1
 
-Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
+Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the shared `Downloader`, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, and the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
 
 ---
 
