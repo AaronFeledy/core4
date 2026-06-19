@@ -27,6 +27,15 @@ import {
 
 export type { SummaryTone };
 
+export const worstSummaryTone = (tones: ReadonlyArray<SummaryTone>): SummaryTone => {
+  if (tones.includes("error")) return "error";
+  if (tones.includes("warn")) return "warn";
+  if (tones.includes("pending")) return "warn";
+  if (tones.includes("skipped")) return "warn";
+  if (tones.includes("ok")) return "ok";
+  return "info";
+};
+
 export interface SummaryField {
   readonly label: string;
   readonly value: string;

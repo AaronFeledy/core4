@@ -37,6 +37,7 @@ import {
   type SummaryRow,
   type SummaryTone,
   formatSummary,
+  worstSummaryTone,
 } from "../renderer/summary.ts";
 
 export interface InfoAppOptions {
@@ -129,15 +130,6 @@ const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
   }
 };
 
-const worstTone = (tones: ReadonlyArray<SummaryTone>): SummaryTone => {
-  if (tones.includes("error")) return "error";
-  if (tones.includes("warn")) return "warn";
-  if (tones.includes("pending")) return "warn";
-  if (tones.includes("skipped")) return "warn";
-  if (tones.includes("ok")) return "ok";
-  return "info";
-};
-
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const rows: SummaryRow[] = result.services.map((service) => ({
     label: service.service,
@@ -155,7 +147,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   return {
     title: "APP INFO",
     subtitle: result.app,
-    tone: result.services.length === 0 ? "info" : worstTone(rows.map((row) => row.tone ?? "info")),
+    tone: result.services.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone ?? "info")),
     sections: [
       {
         title: "services",
