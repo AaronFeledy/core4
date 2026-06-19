@@ -35,6 +35,8 @@ import {
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
 } from "../../recipes/tarball-source.ts";
+import { resolveInteractivePromptDriver } from "../prompts/interactive-driver.ts";
+import { tryDriverConfirm } from "../prompts/interactive.ts";
 
 export interface PluginAddSpawner {
   readonly install: (request: {
@@ -315,9 +317,11 @@ const defaultPrompter: PluginAddPrompter = {
   confirmTrust: async ({ pluginName }) => {
     const io = createStdioPromptIO();
     if (!io.isTTY) return false;
-    io.write(
-      `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session? [y/N] `,
-    );
+    const message = `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session?`;
+    const driver = await resolveInteractivePromptDriver({ isTTY: io.isTTY });
+    const viaDriver = await tryDriverConfirm(driver, io, { message, name: "trust" });
+    if (viaDriver !== undefined) return viaDriver;
+    io.write(`${message} [y/N] `);
     const line = (await io.readLine()).trim().toLowerCase();
     return line === "y" || line === "yes";
   },

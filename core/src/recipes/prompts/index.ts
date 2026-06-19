@@ -6,6 +6,12 @@ export {
   type PromptAnswers,
 } from "./runtime.ts";
 export {
+  PromptCancelledError,
+  type PromptDriver,
+  type PromptDriverMode,
+  type PromptDriverRequest,
+} from "./driver.ts";
+export {
   createBufferedPromptIO,
   createStdioPromptIO,
   type BufferedPromptIO,
