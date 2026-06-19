@@ -691,7 +691,7 @@ Plugin implementations MUST pass the same contract suite as the default and MUST
 
 `DataMover` is the single chokepoint for **local/volume/service byte movement** — the on-host counterpart to the `HttpClient` egress chokepoint (§10.3.2). Every feature that moves bytes into or out of a named volume, a path inside a service, the host filesystem, or a built artifact goes through it: DB import/export, DB snapshot / fast-reset, the local landing half of hosting `pull`/`push`, scratch `--isolate=full`, disposable-toolbox seeding, and `image save`/`load`. Core ships exactly one implementation; the pluggable seam is the `RuntimeProvider` data plane (§5.3/§5.4), not `DataMover` itself (§4.2).
 
-`DataMover` is **not** a sync engine (live bidirectional sync stays `FileSyncEngine`, §10.6) and **not** a remote transport (a `HostingProvider` plugin owns remote I/O via `HttpClient`; it uses `DataMover` only for the local extract/land half).
+`DataMover` is **not** a sync engine (live bidirectional sync stays `FileSyncEngine`, §10.6) and **not** a remote transport (a `RemoteSource` plugin owns remote I/O via `HttpClient`; it uses `DataMover` only for the local extract/land half — §10.12).
 
 #### 10.11.1 The `DataEndpoint` model
 
@@ -716,7 +716,7 @@ export const ArchiveFormat = Schema.Literal("tar", "tar.gz", "tar.zst");
 | `lando db export` | `transfer(serviceCmd(pg_dump) → hostArchive(.sql.gz))` |
 | `lando db import` | `transfer(hostArchive(.sql.gz) → serviceCmd(psql))` |
 | `lando db snapshot` / `restore` | `snapshot(volume(db-store))` / `restore(handle, volume(db-store))` |
-| hosting `pull` (db / files) | `HttpClient.stream` → `transfer(stream → serviceCmd(psql))` / `transfer(stream → hostPath)` |
+| hosting `pull` (db / files) | `HttpClient.stream` → `transfer(stream → serviceCmd(psql))` / `transfer(stream → hostPath)` — but the local landing endpoint (which `serviceCmd`/`creds`, or which `hostPath`) is chosen by the app's resolved **`Dataset`** (§10.12), **not** hardcoded by the `RemoteSource`; `DataMover` only executes the transfer |
 | scratch `--isolate=full` | `transfer(hostPath → hostPath)` (folds in the former `copyAppRoot`) |
 | `image save` / `load` | `transfer(artifact ↔ hostArchive)` |
 
@@ -777,5 +777,56 @@ Provider-side data-plane failures surface as `VolumeOperationError` / `ServiceCo
 #### 10.11.5 Contract suite
 
 The §13.1 provider contract suite gains a data-plane section run against `TestRuntimeProvider` and every real provider: `importVolume(exportVolume(x)) == x`; `snapshot → mutate → restore` restores bytes; `copyTo`/`copyFrom` round-trips; `artifact` export/import round-trips; and capability honesty (a provider declaring `native` must not fall back). `@lando/core/testing` ships an in-memory `TestDataMover` and fixtures so embedding-host and `@lando/sql` unit tests need no real provider. Security tests cover path-escape rejection, checksum-mismatch rejection, and secret redaction in emitted events/transcripts.
+
+### 10.12 Remote data sync (`RemoteSource` + `Dataset`)
+
+Core owns the remote-sync intent, schemas, tagged errors, CLI/API shape, safety rules, the `Sync` lifecycle events, and the contract suites. Two §4.2 pluggable abstractions compose to do the work, and the split is the whole design: **`RemoteSource`** owns *where data lives and how to move it across the network* (the egress half), and **`Dataset`** owns *what a slice of app state is and how to capture/apply it locally* (the landing half). A portable artifact is the seam between them. This part is **contract-only for Beta 1** (frozen in PRD-17, mirroring the §10.2.2 `TunnelService` freeze); the bundled generic remotes, the first hoster plugins, the `database`/`files` `Dataset` implementations, and the real `app:pull`/`app:push` connector wiring ship in 4.1.
+
+**Scope.** Remote sync moves **datasets — database, user files, and config — never application code.** Code is git's job (matching DDEV/Docksal). A `RemoteSource` that would write into the app's tracked source tree is rejected (`DatasetBindingError`). `pull` is destructive locally (overwrites a dataset); `push` is destructive remotely.
+
+**Why two abstractions, not one `HostingProvider`.** A monolithic hosting provider re-implements DB dump, file tar, gzip, progress, and redaction per provider — an N×M explosion. Splitting `Dataset` (a `database` dataset is identical whether the remote is Pantheon, rsync, or S3) from `RemoteSource` (an rsync transport works for DB *and* files) makes it N+M: a new hoster is one `RemoteSource`; a new dataset kind is one `Dataset`; they compose for free. "Hosting" is the marquee *category* of `RemoteSource`, not the contract name — the contract also covers rsync/ssh/s3/url/local and future peer/CI-artifact remotes.
+
+```ts
+export class RemoteSource extends Context.Service<RemoteSource, {
+  readonly id: string;                              // "rsync" | "s3" | "pantheon" | "local" | ...
+  readonly capabilities: RemoteCapabilities;        // { environments, push, datasets[], tool?, auth, protectedByDefault[] }
+  readonly configSchema: Schema.Schema<unknown>;    // validates the Landofile `remotes.<name>` block
+  readonly listEnvironments: (cfg: RemoteConfig) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteError>;
+  readonly resolve: (cfg: RemoteConfig, env: RemoteEnvId, datasetId: string) => Effect.Effect<RemoteLocator, RemoteError>;
+  readonly fetch:   (locator: RemoteLocator, opts?: RemoteFetchOptions) => Effect.Effect<DataEndpoint, RemoteError, Scope.Scope>;  // REMOTE → portable artifact
+  readonly send:    (locator: RemoteLocator, artifact: DataEndpoint, opts?: RemoteSendOptions) => Effect.Effect<void, RemoteError, Scope.Scope>; // portable artifact → REMOTE
+  readonly test?:   (cfg: RemoteConfig, env?: RemoteEnvId) => Effect.Effect<RemoteTestResult, RemoteError>;
+}>()("@lando/core/RemoteSource") {}
+
+export class Dataset extends Context.Service<Dataset, {
+  readonly id: string;                              // "database" | "files" | "config" | <plugin id>
+  readonly kind: DatasetKind;                       // "database" | "files" | "config" | "blob"
+  readonly capabilities: DatasetCapabilities;
+  readonly artifactFormat: DatasetArtifactFormat;   // documented portable shape per kind
+  readonly capture:    (ctx: DatasetContext, opts?: DatasetCaptureOptions) => Effect.Effect<DataEndpoint, DatasetError, Scope.Scope>; // LOCAL → portable artifact (via DataMover)
+  readonly apply:      (ctx: DatasetContext, artifact: DataEndpoint, opts?: DatasetApplyOptions) => Effect.Effect<DatasetApplyResult, DatasetError, Scope.Scope>; // portable artifact → LOCAL (via DataMover)
+  readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetError>; // so the orchestrator can auto-snapshot before apply
+}>()("@lando/core/Dataset") {}
+```
+
+The portable artifact is a `DataMover` `DataEndpoint` (`stream` or `hostArchive`): `RemoteSource.fetch` produces it and `Dataset.apply` consumes it (pull); `Dataset.capture` produces it and `RemoteSource.send` consumes it (push). The `pull`/`push` orchestration lives in core (the `app:pull`/`app:push` commands and `App.pull`/`App.push` handle methods), not in either plugin.
+
+Required behaviors:
+
+- **Selection** follows §4.3: `<remote>[@<env>]` / `--remote`, then Landofile `remotes.<name>.source`, then sole installed implementation. No installed `RemoteSource` ⇒ `lando pull`/`push` fails with remediation.
+- **Egress** (control-plane + byte fetch) MUST go through `HttpClient` (§10.3.2); a `RemoteSource` MUST NOT call `fetch` or open sockets directly, so proxy/CA/offline/redaction policy is inherited. Vendor CLIs (`terminus`, `platform`, `acli`, `lagoon`) MUST be acquired through the §10.3.4 tool-provisioning helper over `Downloader` with pinned `ToolManifest` entries; CLI processes run through `ProcessRunner` with redacted env and `Scope`-bound finalization.
+- **Landing** MUST go through the resolved `Dataset` + `DataMover` (§10.11); a `RemoteSource` MUST NOT re-implement DB import or file extraction. The `Dataset` chooses the local endpoint (which `serviceCmd`/`creds`, or which `hostPath`); DB credentials ride env, never argv.
+- **Safety.** Before `Dataset.apply` overwrites a local store, the orchestrator takes a `DataMover.snapshot(localStore)` unless `--no-snapshot`; pull confirms through `InteractionService` unless `-y`/`--no-interactive`. `push` is rejected when `capabilities.push` is false; pushing to an environment in `capabilities.protectedByDefault` requires `--force` plus typed confirmation of the env name.
+- **State.** Remote configuration is Landofile-declared (`remotes:`, §7.4); any remote-resolution lockfile/marker rides a `StateStore` bucket (§12.7) — no bespoke registry. Roots resolve through `PathsService` (§7.5.1).
+- **Readiness/retry** uses the §10.5.1 probe primitive; no hand-rolled retry loops.
+- **Redaction.** Tokens, auth URLs, signed-URL query params, and host paths are redacted through `RedactionService` before any log/event/transcript/JSON/telemetry/durable-state write.
+- **Machine output.** `lando pull`/`push`/`remote --format json` and `App.pull`/`App.push` return the universal machine-output/result schemas (§8.11); long-running foreground transfers emit `StreamFrame`s.
+- **Events.** The `Sync` lifecycle scope (§3.5): `pre-/post-pull`, `pre-/post-push`, `pre-/post-dataset-capture`, `pre-/post-dataset-apply`, `pre-/post-dataset-fetch`, `pre-/post-dataset-send`. A pull/push is a `pre-/post-pull`/`-push` envelope around the composed `pre-/post-http-call` (§10.3.2) and `pre-/post-data-transfer` (§10.11) events; subscribers see the redacted payloads.
+
+Tagged errors (`@lando/core/errors`): `RemoteError`, `RemoteUnreachableError`, `RemoteAuthError`, `RemoteEnvNotFoundError`, `RemoteDatasetUnsupportedError`, `RemoteProtectedEnvError`, `RemoteToolMissingError`; `DatasetError`, `DatasetCaptureError`, `DatasetApplyError`, `DatasetBindingError` (no local service bound, or a binding that would touch the code tree).
+
+**Landofile surface** (§7.4): a top-level `remotes:` map (each entry validated by its source's `configSchema`) plus optional `sync:` dataset bindings; bindings are usually inferred (a `database` service-type auto-provides the `database` dataset bound to itself; framework presets auto-bind `files` to the upload dir). Commands: `app:pull` / `app:push` (top-level `pull` / `push`), `app:remote:list` / `:add` / `:remove` / `:test` / `:setup`, and `app:remote:env:list`.
+
+This abstraction is **not** byte movement and **not** a tunnel: it composes `HttpClient`, tool provisioning/`Downloader`, `DataMover`, `StateStore`, the probe primitive, `InteractionService`, `SecretStore`, and `RedactionService`. The §13.1 `RemoteSource` and `Dataset` contract suites pin every guarantee above; `@lando/core/testing` ships an in-memory `TestRemoteSource` (and a `local` source) plus `TestDataset` so the surface is testable without a real hoster or network.
 
 ---

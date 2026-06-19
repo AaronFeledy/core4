@@ -248,6 +248,9 @@ export interface App {
   readonly share: (options?: ShareAppOptions) => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
   readonly shareList: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
   readonly shareStop: (request: TunnelStopRequest) => Effect.Effect<void, TunnelError>;
+  readonly pull: (options?: PullAppOptions) => Effect.Effect<SyncResult, RemoteError | DatasetError, Scope.Scope>;   // §10.12; connector wiring is 4.1
+  readonly push: (options?: PushAppOptions) => Effect.Effect<SyncResult, RemoteError | DatasetError, Scope.Scope>;   // §10.12; connector wiring is 4.1
+  readonly remote: AppRemoteApi;                                                                                     // list/add/remove/test/setup/env (§10.12)
   readonly tooling: (id: string, options?: ToolingOptions) => Effect.Effect<ToolingResult, ToolingError, Scope.Scope>;
   readonly logs: (options?: LogsAppOptions) => Stream.Stream<LogChunk, LogsAppError, Scope.Scope>;
   readonly config: AppConfigApi;

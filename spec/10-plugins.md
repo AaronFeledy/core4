@@ -238,6 +238,8 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
 | `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
+| `remoteSources` | `RemoteSource` implementations for remote data sync (`lando pull`/`push`; §10.12) — hosting platforms (Pantheon/Acquia/Platform.sh/Lagoon) and generic transports (rsync/ssh/s3/url/local) | Remote-sync subsystem |
+| `datasets` | `Dataset` implementations (the syncable units `database`/`files`/`config`/`blob`; §10.12) — typically contributed by a service-type (`database`) or app-feature (`files`) | Remote-sync subsystem |
 | `certificateAuthorities` | `CertificateAuthority` impls | Certs subsystem |
 | `loggers` | `Logger` impls | Logging service |
 | `renderers` | `Renderer` impls | Renderer service |

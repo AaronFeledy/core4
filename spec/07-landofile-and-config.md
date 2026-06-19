@@ -549,6 +549,15 @@ events:
 proxy:
   <service>: <RouteConfig[]>
 
+remotes:                               # named remote data-sync sources for `lando pull`/`push` (§10.12); feature is 4.1
+  <name>:
+    source: <remoteSource-id>          # e.g. pantheon | rsync | s3 | local; validated by that source's configSchema
+    <source-specific-config>           # e.g. site/token (pantheon), host/path (rsync), bucket/prefix (s3)
+sync:                                  # optional dataset→service bindings (usually inferred; §10.12)
+  <datasetId>:
+    service: <service-name>
+    path: <container-path>             # files datasets only
+
 env_file:
   - <path>
 

@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then enter feature freeze. Stories follow the 15-PRD breakdown in `spec/beta-1/prd-beta-1-{01..15}-*.md` (US-200..US-329); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then enter feature freeze. Stories follow the 17-PRD breakdown in `spec/beta-1/prd-beta-1-{01..17}-*.md` (US-200..US-348); each story has a corresponding US-XXX section with full TDD acceptance criteria. (PRD-16 adds the `DataMover` local/volume byte-movement primitive + the `RuntimeProvider` data plane; PRD-17 freezes the `RemoteSource` + `Dataset` remote-data-sync contract — the egress-side peer of `DataMover`, composing `HttpClient` for the remote half and `DataMover` for the local landing half — contract-only, mirroring the `TunnelService` freeze, with the `lando pull`/`push` feature shipping in 4.1.) Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -2590,6 +2590,97 @@
       "priority": 144,
       "passes": false,
       "notes": "TunnelService CLI/handle skeleton + detached registry seam (spec §8.2, §8.11, §10.2.2, §12.1, §12.4, §16.3). Depends on US-342, PRD-11 (App handles), PRD-15 (universal JSON)."
+    },
+    {
+      "id": "US-344",
+      "title": "Publish the RemoteSource + Dataset SDK contract surface",
+      "description": "As a plugin author or embedding host, I can build a remote-sync source or dataset against a stable, frozen contract — two service tags, the data-sync schemas, tagged errors, the `Sync` lifecycle events, and the `remoteSources:`/`datasets:` manifest surfaces — so the 4.1 `lando pull`/`push` feature plugs in without new SDK surface after feature freeze.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` publishes the `RemoteSource` (`@lando/core/RemoteSource`) and `Dataset` (`@lando/core/Dataset`) `Context.Service` tags with the §10.12 methods, re-exported from `@lando/core/services`, with matching `declare class` mirrors in `sdk/src/services/index.ts`.",
+        "A new `sdk/src/schema/remote-sync.ts` exports the §10.12 schemas (`RemoteCapabilities`, `RemoteConfig`, `RemoteEnvironment`, `RemoteEnvId`, `RemoteLocator`, `RemoteFetchOptions`, `RemoteSendOptions`, `RemoteTestResult`, `DatasetKind`, `DatasetCapabilities`, `DatasetArtifactFormat`, `DatasetContext`, `DatasetCaptureOptions`, `DatasetApplyOptions`, `DatasetApplyResult`, `SyncResult`); the portable-artifact type reuses the PRD-16 `DataEndpoint`.",
+        "`@lando/sdk/errors` exports the tagged `RemoteError`, `RemoteUnreachableError`, `RemoteAuthError`, `RemoteEnvNotFoundError`, `RemoteDatasetUnsupportedError`, `RemoteProviderUnavailableError`, `RemoteProtectedEnvError`, `RemoteToolMissingError`, `DatasetError`, `DatasetCaptureError`, `DatasetApplyError`, `DatasetBindingError` (no `line`/`column` field names per the Bun TaggedError gotcha).",
+        "The `Sync` lifecycle event scope (§3.5) ships with redacted payload schemas registered in the event inventory used by the §13.x gates.",
+        "The `remoteSources:`/`datasets:` manifest contribution surfaces (§4.2/§9.5) are added to `PluginManifest`, validated at plugin load, and the manifest-schema snapshot is updated.",
+        "New persisted schemas are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES`; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `exports.test.ts` are updated additively.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 145,
+      "passes": false,
+      "notes": "RemoteSource/Dataset contract freeze (spec §10.12, §3.5, §4.2, §9.5). Contract-only; the `lando pull`/`push` feature + bundled remotes + hoster plugins + database/files Dataset impls are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore/Paths), PRD-14 (probe/events/contract-kit), PRD-16 (DataMover)."
+    },
+    {
+      "id": "US-345",
+      "title": "Add the remotes:/sync: Landofile keys and wire the pluggability/contribution surfaces",
+      "description": "As a Landofile author, I can declare remotes and dataset bindings, and as a plugin author I can see `RemoteSource`/`Dataset` in the canonical pluggability and contribution registries.",
+      "acceptanceCriteria": [
+        "`LandofileShape` (and `@lando/core/schema`) gains an optional `remotes:` map (`{ source, ...sourceConfig }`, source block validated by the source's `configSchema` at use time) and an optional `sync:` dataset-binding map, matching §7.4.",
+        "`LandofileService.discover` ACCEPTS `remotes:`/`sync:` raw/unresolved (no beta-reject, no remote resolution) exactly like raw `includes:`; `discover`'s frozen error union is unchanged.",
+        "The §4.2 catalog carries the `RemoteSource` + `Dataset` rows and §9.5 carries the `remoteSources:`/`datasets:` contribution rules.",
+        "Dataset binding inference is specified and the decoded shape + ambiguity error `DatasetBindingError` are frozen (single DB service auto-binds `database`; multiple DB services require explicit `sync.database.service`; framework presets bind `files`). Inference logic itself is 4.1.",
+        "`bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md` records the `LandofileShape` additions as additive.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 146,
+      "passes": false,
+      "notes": "Landofile remotes:/sync: keys + §4.2/§9.5 surfaces (spec §7.4, §4.2, §9.5, §10.12). Mirrors the raw-includes acceptance pattern so discover's frozen error union does not widen. Depends on US-344, PRD-04 (Landofile serializer)."
+    },
+    {
+      "id": "US-346",
+      "title": "Ship the §13.1 RemoteSource + Dataset contract suites and the test doubles",
+      "description": "As a plugin author, I can prove a `RemoteSource` or `Dataset` implementation preserves the §10.12 guarantees by running it through a published shared suite, and core's own built-in test doubles pass it.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/test` exports `makeRemoteSourceContractSuite` and `makeDatasetContractSuite`, each asserting the §10.12/§13.1 guarantees (the rows added to the §13.1 table).",
+        "The RemoteSource suite asserts capability honesty; env/dataset resolution + tagged errors; all egress through the resolved `HttpClient` (recording double; no direct fetch/socket); vendor-CLI provisioning through the tool-provisioning helper/`Downloader`; `Scope`-bound `fetch`/`send` finalizing on interrupt; local landing delegated to a `Dataset` + `DataMover`; `push` gating (`capabilities.push:false`, protected-env `--force`); redaction in `Sync` events; probe-based readiness.",
+        "The Dataset suite asserts `capture`/`apply` move bytes only through `DataMover`; `capture`→`apply` round-trip; `localStore` reporting for auto-snapshot; DB creds via env (never argv); `DatasetBindingError` on code-tree targets; idempotent/replay-safe; redacted capture/apply events.",
+        "`@lando/core/testing` exports in-memory `TestRemoteSource`, a reference `local` `RemoteSource`, and `TestDataset`, all passing their suites with no real network/provider; the §13.1 layer-coverage rule fails on a published suite with no built-in invocation.",
+        "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `exports.test.ts` are updated; the import-boundary test confirms `@lando/sdk/test` stays OCLIF-free.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 147,
+      "passes": false,
+      "notes": "RemoteSource + Dataset contract suites + TestRemoteSource/local/TestDataset (spec §13.1, §10.12). Extends the PRD-14 contract-kit pattern. Depends on US-344, US-345, PRD-14 (contract kit), PRD-16 (TestDataMover)."
+    },
+    {
+      "id": "US-347",
+      "title": "Freeze app:pull/app:push/app:remote:* commands and App.pull/push/remote handle methods as provider-aware skeletons",
+      "description": "As a CLI user or embedding host, `lando pull` / `App.pull()` resolve a `RemoteSource` through the registry and either dispatch to it or fail with actionable remediation when none is installed — freezing the command, handle, result, and Landofile surface before feature freeze while the bundled remotes ship in 4.1.",
+      "acceptanceCriteria": [
+        "`app:pull`/`app:push` (top-level `pull`/`push`) and `app:remote:list`/`:add`/`:remove`/`:test`/`:setup`/`app:remote:env:list` register in `LandoCommandSpec` at bootstrap `app`, each with a `resultSchema` (§8.11) and the §10.12 flags (`--remote`, `@env`, `--only`, `--no-snapshot`, `--force`, `-y`, `--no-interactive`, `--format`).",
+        "The `App` handle exposes `pull`/`push` (→ `SyncResult`) and a `remote` namespace, re-exported through `@lando/core/cli` as `appPull`/`appPush`/`appRemote.*`; the SDK `App` contract addition is recorded additive.",
+        "With no installed `RemoteSource`, `pull`/`push`/`remote test` fail with `RemoteProviderUnavailableError` + remediation; `remote add` writes the `remotes:` block via the canonical serializer (§7.8.1) and `remote list` reads it — both work without a provider.",
+        "The destructive-op safety contract is wired at the orchestration layer (auto-snapshot before `apply` unless `--no-snapshot`; `InteractionService` confirm unless `-y`/`--no-interactive`; `push` blocked by `capabilities.push:false` + protected-env `--force`) and exercised against `TestRemoteSource`/`TestDataset`; no real connector wiring or bundled remote ships here.",
+        "Source-mode (OCLIF) and compiled `$bunfs` dispatch parse/dispatch `pull`/`push`/`remote:*` identically (canonical id in `MVP_COMMAND_IDS` + `runCompiledCli` branch + §13.1 parity probes); `--format json` emits the universal envelope on both paths.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 148,
+      "passes": false,
+      "notes": "RemoteSource CLI/handle skeleton + safety + dual-dispatch parity (spec §8.2, §8.11, §10.12, §16.3). Contract-only skeleton; connector wiring is 4.1. Depends on US-344..US-346, PRD-11 (App handles), PRD-15 (universal JSON), PRD-16 (DataMover snapshot)."
+    },
+    {
+      "id": "US-348",
+      "title": "Settle the RemoteSource naming and lock cross-surface consistency",
+      "description": "As a maintainer, I can rely on one name (`RemoteSource`, with 'hosting' as category language only) across every spec and PRD reference, and a gate that keeps the `RemoteSource`/`Dataset` surfaces consistent across the canonical registries.",
+      "acceptanceCriteria": [
+        "Every `HostingProvider` token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` §10.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet); a grep proves no `HostingProvider` identifier remains; 'hosting' is retained only as the descriptive feature category.",
+        "The `DataMover` hosting-pull matrix row (§10.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.",
+        "A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the §4.2 catalog, §9.5 contributions, §13.1 suites, §3.5 `Sync` events, §7.4 Landofile keys, §16.3 `App` methods, and the `@lando/sdk/services` tags.",
+        "The repo `AGENTS.md` records the contract freeze, the `Dataset × RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the code-is-never-synced scope, and that the feature wave is 4.1.",
+        "The ROADMAP Phase 4 freeze bullet and Phase 8 feature bullet are present and consistent with the `TunnelService` precedent.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 149,
+      "passes": false,
+      "notes": "Naming settle (RemoteSource, not HostingProvider) + cross-surface consistency governance (spec §10.11/§10.12, §4.2, §9.5, §13.1, §3.5, §7.4, §16.3, ROADMAP). Depends on US-344..US-347."
     }
   ]
 }
