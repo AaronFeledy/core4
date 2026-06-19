@@ -1356,3 +1356,10 @@
 - Review notes (deferred/rejected): setup provider-prompt cancellation falling back to the resolved default is accepted as a setup-specific safe fallback because explicit flag/env/config/yes/non-interactive paths remain deterministic; `secret`/`multiselect` rich controls stay declined intentionally so secret masking and existing line-reader semantics are preserved.
 - Verification: typecheck, lint passed; focused prompt/OpenTUI spot checks passed (`opentui-prompt-driver`, interactive-driver, interactive-helpers, driver-delegation, cold-start canary). LSP diagnostics could not run because the TypeScript LSP is not installed in this harness.
 ---
+
+## 2026-06-19 14:40 CDT - Babysit
+- PR: #410 https://github.com/AaronFeledy/core4/pull/410
+- CI outcome: pass
+- Review feedback: fixed (Bugbot High confirm-default-Yes → default No without affirmative default; Bugbot Medium select ignored prompt.default → fall back like input control; guide-drift gate satisfied via Guide-Coverage-Skip rationale for additive TTY-only recipe-prompt change)
+- Merge: merged (squash)
+---
