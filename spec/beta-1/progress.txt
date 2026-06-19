@@ -1350,3 +1350,9 @@
   - When a sub-agent iterates a TUI against the real test renderer, it can leave stray `_tmp-*.test.ts` debug files and small `as void` lint slips — sweep the plugin test dir and re-run lint before committing.
   - `meta:setup` had no interactive prompt; the clean injection point for an added provider picker is `resolveProviderSelection(...).source === "default"`, gated so flag/env/config/--yes/--no-interactive/CI/non-TTY all keep the prior silent-default behavior. Setup is single-source (both dispatch paths run `setupSpec`), so one injection covers compiled + OCLIF.
 ---
+
+## 2026-06-19 13:47 CDT - US-282 Review
+- Fixed confirmed review blockers in the OpenTUI prompt path: the driver now supports the literal textarea control called out by the PRD/guide without changing recipe schemas or command inputs, and the OpenTUI prompt-driver test now uses a manual test-renderer clock with explicit frame/input flushing so it exits deterministically instead of hanging under Bun.
+- Review notes (deferred/rejected): setup provider-prompt cancellation falling back to the resolved default is accepted as a setup-specific safe fallback because explicit flag/env/config/yes/non-interactive paths remain deterministic; `secret`/`multiselect` rich controls stay declined intentionally so secret masking and existing line-reader semantics are preserved.
+- Verification: typecheck, lint passed; focused prompt/OpenTUI spot checks passed (`opentui-prompt-driver`, interactive-driver, interactive-helpers, driver-delegation, cold-start canary). LSP diagnostics could not run because the TypeScript LSP is not installed in this harness.
+---
