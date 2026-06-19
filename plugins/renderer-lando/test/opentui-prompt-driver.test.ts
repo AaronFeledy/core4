@@ -70,6 +70,30 @@ describe("OpenTUI prompt driver", () => {
     await expect(answer).resolves.toBe("2");
   });
 
+  test("select pre-highlights prompt.default when defaultRaw is omitted", async () => {
+    // tryDriverSelect (incl. `lando setup` provider pick) carries the intended
+    // default on prompt.default and omits defaultRaw. Pressing Enter without
+    // navigation must submit the resolved default's row, not index 0.
+    const testSetup = await makeSetup();
+    const driver = await makeDriver(testSetup);
+
+    const choices = [
+      { value: "vanilla", label: "Vanilla" },
+      { value: "chocolate", label: "Chocolate" },
+      { value: "strawberry", label: "Strawberry" },
+    ];
+    const answer = driver.readRaw({
+      prompt: { ...basePrompt, type: "select", choices, default: "strawberry" },
+      mode: "normal",
+      choices,
+    });
+    await waitForBuild(testSetup);
+    testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
+
+    await expect(answer).resolves.toBe("3");
+  });
+
   test("confirm tab-select returns y or n", async () => {
     const testSetup = await makeSetup();
     const driver = await makeDriver(testSetup);

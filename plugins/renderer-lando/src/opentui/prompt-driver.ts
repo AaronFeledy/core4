@@ -253,6 +253,8 @@ const addSelectControl = (
   done: (value: string) => void,
 ): void => {
   const choices = request.choices ?? request.prompt.choices ?? [];
+  const defaultRaw =
+    request.defaultRaw ?? (request.prompt.default === undefined ? undefined : String(request.prompt.default));
   const options = choices.map((choice, index) => ({
     name: choiceLabel(choice),
     description: choiceDescription(choice) ?? String(index + 1),
@@ -263,7 +265,7 @@ const addSelectControl = (
     width: Math.max(10, panelWidth(renderer) - 4),
     height: Math.max(3, Math.min(8, options.length + 1)),
     options,
-    selectedIndex: selectedChoiceIndex(choices, request.defaultRaw),
+    selectedIndex: selectedChoiceIndex(choices, defaultRaw),
     backgroundColor: "#07131a",
     textColor: "#bae6fd",
     focusedBackgroundColor: "#07131a",
