@@ -140,13 +140,11 @@ describe("LandoTreePainter — tail panel", () => {
     }
     const frame = painter.snapshot().frameLines;
     const joined = frame.join("\n");
-    // Oldest two dropped; most recent four present in order.
     expect(joined).not.toContain("l1");
     expect(joined).not.toContain("l2");
     for (const line of ["l3", "l4", "l5", "l6"]) {
       expect(joined.includes(line)).toBe(true);
     }
-    // At most 4 panel (indented) lines for the task.
     const panelLines = frame.filter((l) => /^\s{4,}/.test(l));
     expect(panelLines.length).toBeLessThanOrEqual(TASK_DETAIL_TAIL_CAPACITY);
   });
@@ -163,10 +161,8 @@ describe("LandoTreePainter — tail panel", () => {
     painter.consume(taskComplete("a", "step a", 12400));
     const after = painter.snapshot();
     const joined = after.frameLines.join("\n");
-    // Detail panel lines are gone after collapse.
     expect(joined).not.toContain("compiling...");
     expect(joined).not.toContain("linking...");
-    // A completed summary line remains.
     expect(joined).toContain("✓");
     expect(after.activeTaskIds).not.toContain("a");
   });
@@ -212,9 +208,7 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     expect(firstFrameHeight).toBeGreaterThan(0);
 
     const second = painter.consume(taskStart("a", "step a", "build"));
-    // The redraw must rewind to the top of the previous frame.
     expect(second.startsWith(csi.cursorUp(firstFrameHeight))).toBe(true);
-    // And clear downward so a shorter new frame leaves no stale rows.
     expect(second.includes(csi.eraseDown)).toBe(true);
   });
 
@@ -252,7 +246,6 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     painter.consume(detail("a", "l2"));
     const collapse = painter.consume(taskComplete("a", "step a", 10));
     expect(collapse.includes(csi.eraseDown)).toBe(true);
-    // Cursor invariant: output ends below the frame (trailing newline).
     expect(collapse.endsWith("\n")).toBe(true);
   });
 
