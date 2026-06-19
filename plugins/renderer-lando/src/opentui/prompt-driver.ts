@@ -142,7 +142,7 @@ const selectedChoiceIndex = (choices: ReadonlyArray<unknown>, defaultRaw: string
 };
 
 const isYesDefault = (defaultRaw: string | undefined): boolean =>
-  defaultRaw === undefined || /^(y|yes|true|1|on)$/i.test(defaultRaw.trim());
+  defaultRaw !== undefined && /^(y|yes|true|1|on)$/i.test(defaultRaw.trim());
 
 const isDeclinedType = (type: string): boolean => type === "secret" || type === "multiselect";
 
