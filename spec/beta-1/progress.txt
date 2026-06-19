@@ -1332,3 +1332,9 @@
   - When a renderer must surface a status that has no field on a frozen event schema, derive it from a delimited trailing marker on the existing free-text `summary` and STRIP it from the label — this stays renderer-only (honors the "publishers emit only task.*" rule) and is forward-compatible: publishers opt in later by appending the marker, with no renderer change.
   - The running `·` and pending `◌` glyphs are pinned byte-for-byte by `renderer-first-paint.test.ts`; treat them as locked contracts. New completion states must be added as new chips, never by repurposing existing glyphs.
 ---
+
+## 2026-06-19 05:20 CDT - US-281 Verify
+- Verified the compiled binary inside `lando4-dev`: rebuilt `core/dist/lando`, ran `lando setup --provider=lando --yes --no-interactive` with a checksum-verified local runtime-bundle manifest and live Podman socket, captured the TTY setup task tree, and smoke-tested adjacent non-TTY setup output.
+- Fixed compiled setup dispatch so real TTY setup routes through the shared renderer event boundary; before the fix, compiled setup printed only the final result and skipped the task-tree frames.
+- **Learnings for future iterations:** Compiled command handlers that call a command spec directly can accidentally bypass renderer event consumption; task-tree stories need real compiled TTY captures, not only source-mode/unit painter tests.
+---
