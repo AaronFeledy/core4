@@ -21,6 +21,7 @@ Bun is the runtime, the package manager, the test runner, the bundler, and the b
 - `Bun.spawn` is the argv-precise subprocess primitive (no shell parsing), exposed through the `ProcessRunner` service (§3.4) and used for provider exec, signing tools, `bun add`, and other "exact binary, exact arguments" calls. `node:child_process` is forbidden in core except behind a `ProcessRunner` adapter that may need it for plugin compatibility.
 - `Bun.$` (Bun Shell) is the cross-platform shell substrate, exposed through the `ShellRunner` service (§3.4, §4.2). It backs the bundled `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` evaluation when `service: :host` (§8.5.3), `.bun.sh` script-backed tasks (§8.5.9), the `lando shell` REPL (§8.2.3), recipe `bun: { verb: script }` post-init (§8.8.8), host-target healthchecks/scanners (§10.5), and `lando doctor` diagnostic transcripts (§10.9). Use `Bun.$` whenever the work would naturally read as a `bash` one-liner (pipes, redirection, globs, command substitution, built-in `rm`/`mkdir`/`cat`/`mv`/`which`); use `Bun.spawn` for argv-precise calls. Core code MUST NOT use one to imitate the other (no `ProcessRunner.run(["sh", "-c", "…"])`, no `ShellRunner` invocations that just re-encode argv as a literal string; §3.4). The `scripts/release.ts` orchestrator and the codegen scripts under `scripts/` MAY use `Bun.$` directly because they run outside `LandoRuntimeLive` (§17.1).
 - `Bun.file` and `Bun.write` are the filesystem primitives. `node:fs` is allowed only inside the `FileSystem` adapter implementation when Bun lacks a primitive (e.g., `fs.watch` parity).
+- `fetch` (built into Bun) is the outbound-HTTP primitive, exposed through the `HttpClient` service (§3.4, §10.3.2) — the single egress chokepoint for all Lando-owned network access. Direct `fetch` for Lando-owned network access is forbidden in core source and bundled plugins outside the `HttpClient` adapter; `Downloader` (§10.3.3) and every request/response caller go through `HttpClient` so proxy/CA resolution, redaction, and lifecycle events are never re-implemented. The only carve-outs are package-manager operations routed through `BunSelfRunner` (which honor the same `network.proxy` / `network.ca` policy via their own runner contract) and the standalone installer shell scripts that run outside the runtime (§17.7). A §13.4-style boundary gate (`bun run check:network-boundary`) scans `core/src/**` and `plugins/**` and rejects net-new direct `fetch` outside the `HttpClient` adapter and the carve-outs.
 - TypeScript executes natively. No `tsc` build step in the development loop. `tsc --noEmit` is allowed for type-checking gates.
 - ESM only. CommonJS is rejected in core source. Plugins may publish CJS; the plugin loader handles the interop.
 
@@ -287,7 +288,7 @@ The `SchemaValidator` abstraction (§4) exists for plugins that prefer a differe
 
 Core's `package.json` `dependencies` (excluding `devDependencies` and `peerDependencies`) is intentionally tiny. The following are forbidden in core source:
 
-- `axios`, `got`, `node-fetch` — use `fetch` (built into Bun).
+- `axios`, `got`, `node-fetch` — use the `HttpClient` service (§3.4, §10.3.2), backed by Bun's built-in `fetch`; direct `fetch` for Lando-owned network access is itself confined to the `HttpClient` adapter (§2.1 egress-boundary rule).
 - `lodash`, `underscore`, `ramda` — use Effect's `Array`, `Record`, `Match` modules.
 - `dockerode`, `docker-modem`, anything Docker-specific.
 - `dockerfile-generator`, `mkcert`, `node-forge` — these belong in plugins.
@@ -318,8 +319,11 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
     ".":                  "./dist/index.js",                  // public library API (§16)
     "./schema":           "./dist/schema/index.js",           // Effect Schemas
     "./errors":           "./dist/errors/index.js",           // tagged error classes
+    "./secrets":          "./dist/secrets/index.js",          // re-export of @lando/sdk/secrets: canonical redactor (§3.7)
     "./events":           "./dist/lifecycle/index.js",        // EventService + payload schemas
     "./services":         "./dist/services/index.js",         // service-tag re-exports
+    "./paths":            "./dist/config/paths.js",           // root + path resolution primitive (§7.5.1)
+    "./landofile":        "./dist/landofile/index.js",        // re-export of @lando/sdk/landofile: canonical serializer (§7.8.1)
     "./testing":          "./dist/testing/index.js",          // test helpers (TestServices wiring, fixtures)
     "./cli":              "./dist/cli/index.js",              // programmatic CLI invocation
     "./oclif":            "./dist/cli/oclif/index.js",        // OCLIF adapter; do not import outside src/cli/oclif/
@@ -334,6 +338,8 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 - The default entry (`@lando/core`) MUST NOT pull `@oclif/core` into the import graph. An embedding host that never invokes the CLI must not pay for OCLIF in its bundle. This is enforced by an import-boundary test in `test/types/`.
 - `@lando/core/cli` MAY pull OCLIF; it is the programmatic-CLI entry.
 - `@lando/core/schema` MUST be tree-shakeable per-schema. Importing one schema must not pull every schema in the package.
+- `@lando/core/paths` MUST be Effect-free and OCLIF-free. It exposes the pure root/path resolver (`resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`) so cold-start code (the level-`none` fast path, §3.2), embedding hosts, `scripts/`, and plugin utilities can resolve Lando's roots and every derived path without constructing `ConfigService` or the Effect runtime (§7.5.1). The matching `PathsService` DI tag — for runtime code already inside the Layer graph — re-exports from `@lando/core/services`. An import-boundary test in `test/types/` enforces that `@lando/core/paths` pulls neither `effect` nor `@oclif/core` into its graph.
+- `@lando/core/landofile` MUST be Effect-light and OCLIF-free. It re-exports the pure `@lando/sdk/landofile` serializer (`emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, `LandofileEmitError`; §7.8.1) so cold-path writers, config-translator plugins, recipe/scaffold tooling, `scripts/`, and embedding hosts can serialize a `LandofileShape`/fragment to the canonical block-style subset without constructing `ConfigService` or planning an app. `parseLandofile` returns an `Effect` (it consumes `LandofileParseError`), but the emitter and its `Either` variant are pure; the subpath pulls neither `@oclif/core` nor the full runtime, enforced by the `test/types/` import-boundary test.
 - `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1, is also published on `dev`, and still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA.
 - `@lando/core/docs/components` and `@lando/core/docs/redactions` exist because executable guides (§19) ship JSX/Astro implementations and a shared redaction list that the docs build consumes. The contracts (prop schemas, frontmatter, matcher schema, transcript schemas) live in `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions`; the runtime implementations live here. They are tree-shakeable and do NOT pull `@oclif/core` or the Effect runtime — the docs site imports them at build time without instantiating a `LandoRuntime`.
 - Every entry point ships its own `.d.ts` file. Type-only re-exports use `export type { ... }`.

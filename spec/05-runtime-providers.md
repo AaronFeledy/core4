@@ -94,8 +94,49 @@ export class RuntimeProvider extends Context.Service<RuntimeProvider, {
   readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
   readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+
+  // Data plane (§10.11). Capability-gated; the core `DataMover` calls a native method only when the
+  // matching capability is declared, else it falls back to a generic helper-container path built on
+  // `run`/`runStream` (which is why `run` is mount-aware — see EphemeralRunSpec below).
+  readonly snapshotVolume:  (spec: VolumeSnapshotSpec) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+  readonly restoreVolume:   (spec: VolumeRestoreSpec)  => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly listVolumes:     (filter: VolumeFilter)     => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+  readonly removeVolume:    (ref: VolumeRef)           => Effect.Effect<void, ProviderError>;
+  readonly copyToService:   (target: ExecTarget, spec: ServiceCopyInSpec)  => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly copyFromService: (target: ExecTarget, spec: ServiceCopyOutSpec) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly exportArtifact:  (ref: ArtifactRef)         => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly importArtifact:  (data: Stream.Stream<Uint8Array, ProviderError>) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
 }>()("@lando/core/RuntimeProvider") {}
 ```
+
+**Data-plane methods and the mount-aware `run`.** The seven data-plane methods above are the
+provider side of the §10.11 data-movement primitive. They are capability-gated (§5.4): the core
+`DataMover` invokes `snapshotVolume`/`copyToService`/`exportArtifact`/… only when the provider
+declares the matching capability `native`, and otherwise realizes the same operation generically by
+mounting the target volume into a tiny helper container and streaming `tar` through
+`run`/`runStream`. For that generic fallback to work on every provider, `EphemeralRunSpec` is
+mount- and stream-aware:
+
+```ts
+export interface EphemeralRunSpec {
+  readonly image: string;
+  readonly command: ReadonlyArray<string>;
+  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;   // mount a volume/host path into the helper
+  readonly stdin?: "inherit" | "ignore";
+  readonly stdinStream?: AsyncIterable<Uint8Array>;                  // feed an archive into the helper
+  readonly captureStdout?: boolean;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly remove?: boolean;                                         // default true
+}
+// streaming sibling of `run`, for `tar c` → stdout style generic export:
+readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+```
+
+A provider that declares `ephemeralMounts: false` (§5.4) cannot host the generic fallback; the
+planner/`DataMover` then requires the corresponding native capability and otherwise fails with
+`CapabilityError`. The `VolumeRef` / `VolumeInfo` / `VolumeFilter` / `VolumeSnapshotSpec` /
+`VolumeSnapshotRef` / `VolumeRestoreSpec` / `ServiceCopyInSpec` / `ServiceCopyOutSpec` schemas are
+defined in `@lando/sdk` (`schema/data-transfer.ts`) and detailed in §10.11.
 
 **`exec` vs `execStream`.** `exec` returns a collected `ExecResult` (stdout / stderr buffered, exit code) and is the right primitive for short, structured calls (a single `psql -c "select 1"`, a healthcheck probe). `execStream` returns a `Stream<ExecChunk>` where each chunk is `{ stream: "stdout" | "stderr", data: Uint8Array }` followed by a terminal `{ exit: number }` chunk; it is the right primitive for long-running output that must be observable while it runs (the build orchestrator's `composer install` / `npm ci` steps; `lando logs --follow`'s sibling for one-shot exec; tooling tasks with `interactive: false` that the renderer needs to stream into a tail panel). `exec` MUST be implemented as a thin collector over `execStream` (`Stream.runFold`) — providers do not duplicate spawn logic. `Effect.interrupt` MUST propagate through `execStream` to the underlying `kill()` and the service's `Scope` MUST reap the child before resolving, identical to the contract on `RuntimeProvider.logs`. Unlike `logs`, `execStream` is `Scope`-bounded: a stream that is dropped without being consumed to completion still terminates the underlying exec at scope close.
 
@@ -125,6 +166,12 @@ export const ProviderCapabilities = Schema.Struct({
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
   composeSpec: Schema.Literal("none", "portable", "native"),
+  // Data plane (§10.11). Drive `DataMover` dispatch: native method vs generic helper-container fallback.
+  volumeSnapshot: Schema.Literal("native", "copy", "none"),  // native=CoW/commit; copy=tar export+import; none
+  serviceFileCopy: Schema.Literal("native", "exec", "none"), // native=cp API; exec=tar-over-exec; none
+  artifactExport: Schema.Boolean,                            // `image save`
+  artifactImport: Schema.Boolean,                            // `image load`
+  ephemeralMounts: Schema.Boolean,                           // `run` honors spec.mounts — gates the generic fallback
   providerExtensions: Schema.Array(Schema.String),
 });
 export type ProviderCapabilities = Schema.Schema.Type<typeof ProviderCapabilities>;
@@ -145,6 +192,15 @@ If a service, feature, or subsystem requires a missing capability, planning fail
 - `none` — the provider does not support bind mounts at all (some remote/cloud providers). Plans containing `bind` mounts fail with `CapabilityError` per the §5.4 capability-validation rule.
 
 `sharedCrossAppNetwork` declares whether services in different apps can reach each other via `<service>.<app>.internal` DNS aliases on the same provider network. Required by virtually every plugin-contributed `globalServices:` entry (§20.4); without it the contribution is dropped from the global plan with a doctor warning (§20.8.1).
+
+The five **data-plane capabilities** describe how much of the §10.11 data-movement surface the provider realizes natively versus through the generic helper-container fallback:
+
+- `volumeSnapshot` — `native` means the provider has a fast clone/commit path for a named volume; `copy` means snapshots are realized by `DataMover` as a verified `tar` archive (export + import); `none` means the provider supports no volume snapshot at all (a `lando db snapshot` against such a provider fails with `CapabilityError`).
+- `serviceFileCopy` — `native` exposes a host↔container copy API (`docker cp` / `podman cp` equivalent); `exec` realizes the same via `tar`-over-`exec`; `none` forbids arbitrary path copy.
+- `artifactExport` / `artifactImport` — whether the provider can stream a built artifact (image) out to / in from an archive, backing `image save` / `image load`.
+- `ephemeralMounts` — whether `run` honors `spec.mounts`. This is the **gate for the generic fallback**: when `false`, `DataMover` cannot tar a volume through a helper container, so any operation that lacks a `native` capability fails with `CapabilityError` rather than silently degrading.
+
+These five are informational at the boundary, not knobs; providers MUST report them truthfully and the §13.1 provider contract suite verifies that a provider declaring `native` actually does not fall back.
 
 `bindMountPerformance` is informational at the boundary, not a knob. Providers MUST report it truthfully; misreporting is treated as a contract violation by the §13.1 provider contract suite. The planner consults this field exactly once per `app:start` to compute the `realization` flag on every `MountPlan`; runtime overrides require a Landofile-level escape hatch (`mounts: [..., accelerate: false]`) or a global `defaultFileSyncEngine: passthrough` setting, neither of which is documented in canonical recipes or executable guides. The §13.1 perf-budget suite asserts that `app:start` against a `bindMountPerformance: "slow"` provider does **not** regress to native bind IO — i.e., the `FileSyncEngine` actually engaged.
 
@@ -242,7 +298,10 @@ export type ProviderError =
   | ServiceExecError
   | ServiceNotFoundError
   | ProviderConfigError
-  | ProviderInternalError;
+  | ProviderInternalError
+  | VolumeOperationError      // §10.11 data plane: snapshot/restore/list/remove volume failed
+  | ServiceCopyError          // §10.11 data plane: copyTo/copyFromService failed
+  | ArtifactTransferError;    // §10.11 data plane: exportArtifact/importArtifact failed
 ```
 
 Every provider error MUST include:
@@ -285,7 +344,7 @@ It demonstrates:
 - `LANDO_RUNTIME_BUNDLE_MANIFEST=<path>` supplies an alternate manifest (identical schema) that replaces the bundled one for the run.
 - The paired `--runtime-bundle-url` and `--runtime-bundle-sha256` flags override a single resolved entry's URL and checksum **together** — supplying one without the other is rejected, because a URL swap that keeps the pinned checksum can never verify a different artifact.
 
-Override-loaded entries MAY use `file://` URLs so neither CI nor a developer needs to stand up a server; the bundled production manifest MUST NOT. In every path the downloaded bytes are rejected unless `sha256(bytes)` equals the active entry's checksum — the override **redirects** verification to the locally-built artifact's checksum, it never disables it. There is no flag that skips checksum verification. Precedence: `LANDO_RUNTIME_BUNDLE_MANIFEST` > `--runtime-bundle-url` + `--runtime-bundle-sha256` > bundled pinned manifest.
+Override-loaded entries MAY use `file://` URLs so neither CI nor a developer needs to stand up a server; the bundled production manifest MUST NOT. In every path the selected entry is handed to `Downloader` (§10.3.3), and the downloaded bytes are rejected unless `sha256(bytes)` equals the active entry's checksum — the override **redirects** verification to the locally-built artifact's checksum, it never disables it. There is no flag that skips checksum verification. Precedence: `LANDO_RUNTIME_BUNDLE_MANIFEST` > `--runtime-bundle-url` + `--runtime-bundle-sha256` > bundled pinned manifest.
 
 **`bindMountPerformance` declaration.** `@lando/provider-lando` declares per platform: `native` on Linux (the runtime is on the host filesystem), `slow` on macOS (the managed Podman machine is a VM with VM-mediated file sharing), `slow` on Windows (managed machine on WSL2 or Hyper-V; even WSL-resident projects pay for the Windows↔WSL boundary on host-mounted paths). The planner consults the live capability report at `app:start`, so a user who later adopts a future native macOS Linux container substrate sees the value flip without code changes.
 

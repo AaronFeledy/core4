@@ -457,7 +457,7 @@ Lifecycle invariants:
 
 - `acquire` writes the entry as `acquiring` before any provider operation, updates to `running` after `post-scratch-start`, and removes it after `post-scratch-destroy`.
 - A scope finalizer that fails mid-destroy leaves the entry as `destroyed-pending-cleanup`; the next `apps:scratch:gc` retries the destroy.
-- Concurrent process access to the registry uses an atomic `CacheService.writeAtomic` (§12.3) plus a fcntl-style lockfile at `<userCacheRoot>/scratch/registry.lock`.
+- Concurrent process access to the registry uses an atomic write plus a fcntl-style lockfile at `<userCacheRoot>/scratch/registry.lock`, both realized through the canonical `StateStore` primitive (§12.7) — an `advisory`, `quarantine` bucket whose `read`/`upsert`/`remove` map to `StateBucket.get`/`update`.
 
 `apps:scratch:gc` does three things, in order:
 
@@ -474,12 +474,12 @@ The provider-label walk is what catches resources whose registry entry was remov
 Embedding hosts acquire scratch apps through the public `@lando/core` API:
 
 ```ts
-import { Effect, Scope } from "effect";
-import { makeLandoRuntime } from "@lando/core";
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
 
 const program = Effect.gen(function* () {
-  const runtime = yield* makeLandoRuntime({
-    bootstrapLevel: "scratch",
+  const runtime = yield* openLandoRuntime({
+    bootstrap: "scratch",
     scratch: {
       source: { _tag: "from-recipe", recipe: "lamp" },
       isolate: "baked",
@@ -489,7 +489,8 @@ const program = Effect.gen(function* () {
 
   // The scratch is acquired against the program's Scope.
   // Run library API operations here:
-  const info = yield* runtime.appInfo();
+  const app = yield* runtime.app();
+  const info = yield* app.info();
   // …assertions…
   // …on scope close, the scratch is destroyed automatically.
 });
@@ -501,8 +502,8 @@ Required behaviors (extends §16.3):
 
 - `makeLandoRuntime({ scratch })` with the `scratch` option provided causes the returned runtime to acquire a scratch app at construction. The acquisition runs within the runtime's `Scope`; finalization destroys the scratch.
 - Without the `scratch` option, the runtime is non-scratch (the existing §16 contract). The option is opt-in.
-- `runtime.scratchAppService` is exposed as a typed handle for hosts that want to drive multi-scratch flows manually (a TUI control surface that lists and switches between scratches, for example). The handle delegates to `ScratchAppService` (§21.5).
-- The library reuse-perf rule from §16.3 applies: a host that wants to spin up many scratches in succession SHOULD reuse the same `LandoRuntime` and call `scratchAppService.acquire` per scratch, rather than constructing a fresh runtime each time.
+- `runtime.scratch(input)` is exposed as the typed handle for hosts that want to drive multi-scratch flows manually (a TUI control surface that lists and switches between scratches, for example). The handle delegates to `ScratchAppService` (§21.5).
+- The library reuse-perf rule from §16.3 applies: a host that wants to spin up many scratches in succession SHOULD reuse the same `LandoRuntime` and call `runtime.scratch(input)` per scratch, rather than constructing a fresh runtime each time.
 - The §13.1 library API contract suite gains a scratch-app reuse class: a host that acquires N scratches in succession against a single runtime MUST observe steady-state per-scratch acquisition latency (no growth as N increases).
 
 ### 21.13 Discovery and resolution rules summary

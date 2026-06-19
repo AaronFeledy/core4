@@ -314,7 +314,7 @@ The strip rules: `<Guide>` and the rendered reader `<Scenario>` are unwrapped, `
 
 ### 19.14 Library-mode guides and scenarios
 
-Guides that document the embedding API (§16) target library entry points instead of the binary. `<Run runtime="appStart" />` invokes `LandoRuntime` operations directly through `ScenarioContext.runtime`; rendered docs show host TypeScript code rather than a CLI command. The same `<Verify>`, `<Inspect>`, `<Cleanup>`, `<Tabs>`, and test-only scenario vocabulary applies. Mixing CLI and runtime forms in one guide is allowed when the reader story needs it. The lint gate enforces that every `<Run runtime="…" />` is paired with rendered TypeScript showing the host code.
+Guides that document the embedding API (§16) target library entry points instead of the binary. `<Run runtime="app.start" />` resolves an `App` handle through the active `ScenarioContext.runtime` and invokes handle methods such as `app.start()`, `app.info()`, and `app.stop()`; rendered docs show host TypeScript code rather than a CLI command. Guides that need command-shaped behavior MAY use documented `@lando/core/cli` operations through `runtime.run(...)`, but App handles are the preferred lifecycle form. The same `<Verify>`, `<Inspect>`, `<Cleanup>`, `<Tabs>`, and test-only scenario vocabulary applies. Mixing CLI and runtime forms in one guide is allowed when the reader story needs it. The lint gate enforces that every `<Run runtime="…" />` is paired with rendered TypeScript showing the host code.
 
 ### 19.15 Acceptance criteria
 

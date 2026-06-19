@@ -122,6 +122,9 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
 | `app:restart` | `restart` | `app` | Stop then start the app |
 | `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
+| `app:share` | `share` | `app` | Start a public tunnel to a resolved app route or service endpoint; `--target`, `--provider`, `--detach`, `--format json` (§10.2.2) |
+| `app:share:list` | *(none)* | `app` | List foreground/detached public tunnel sessions for the current app (§10.2.2) |
+| `app:share:stop` | *(none)* | `app` | Stop a detached public tunnel session by id, provider, or target (§10.2.2) |
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |
@@ -339,6 +342,8 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly hostProxyAllowed?: boolean;                   // true only for commands safe to invoke from inside a container via the in-container `lando` shim (§10.10)
   readonly docs?: CommandDocsMetadata;
   readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
+  readonly resultSchema: Schema.Schema<A>;               // REQUIRED — the machine-readable shape of this command's result (§8.11)
+  readonly streaming?: StreamFrameSchema;                // present iff the command streams (logs/exec/build); see §8.11
   readonly run: (input: CommandInput) => Effect.Effect<A, E, LandoCommandRequirements>;
 }
 
@@ -363,6 +368,9 @@ Rules:
 - `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
 - `hostProxyAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **host-proxy `runLando` allowlist** (§10.10) — the set of canonical command ids the in-container `lando` shim is permitted to forward to the host. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT set this true; they would self-destruct the container that issued the call. Read-only and laterally-scoped commands (`app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:list`, `meta:version`, `meta:doctor`, `meta:events:follow`, `app:config get|view`) are the typical opt-ins. The flag generates the `host-proxy-allowlist` cache (§12.1); the host-side `HostProxyService` rejects any `runLando` request whose canonical id is not in that cache with `HostProxyCommandNotAllowedError`.
 - `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
+- `resultSchema` is **required** for every command (a command with no payload registers `Schema.Struct({})`). It is the single source of truth for the machine-readable shape of the command's result and is the schema `--format json` encodes against (§8.11). A command spec missing `resultSchema` is rejected at registration with `CommandRegistrationError`, and the §13 machine-output conformance gate fails the build. `streaming` is present only for commands that stream incremental output (`app:logs`, `app:exec`, build progress); it declares the per-line `StreamFrame` schema (§8.11).
+
+Every command MUST accept the universal `--format <text|json|...>` flag and its `--json` / `-j` shorthand (equivalent to `--format json`); see §8.11. The adapter injects these flags into every `LandoCommandSpec` so individual commands do not redeclare them.
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.
 
@@ -1089,6 +1097,8 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 | `path` | Filesystem path with shell completion | `validate.exists: true` requires the path to exist; relative paths are resolved against the destination directory. |
 | `editor` | Multi-line string entered via `$VISUAL` / `$EDITOR` | Falls back to `text` when no editor is configured or when `--no-interactive` is set. |
 
+These prompt types are the published `PromptSpec` vocabulary owned by §8.10; recipe prompts are one consumer. The recipe runtime resolves them through the `InteractionService` (§8.10.2), which owns the answer-source precedence, interactivity-mode resolution, and `secret` redaction for every prompting surface in Lando.
+
 `when:` is honored uniformly across all types. Prompts whose `when:` evaluates falsy are skipped silently and their `name` resolves to `undefined` in subsequent expressions.
 
 #### 8.8.6 Recipe expressions
@@ -1142,6 +1152,7 @@ Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `tem
 - `mode:` (octal string) sets file permissions on POSIX hosts. Ignored on Windows. Useful for shell scripts and entrypoints.
 - A file with a falsy `when:` is skipped and reported in the init summary.
 - The destination directory is created on demand. Atomic-write semantics from §12.3 apply per file.
+- Recipe `files:` writes are realized through `ManagedFileService` (§10.13) in whole-file mode (`owner` = recipe id), so scaffolded project files carry the ownership marker, record the `StateStore` ledger, and become updatable/adoptable instead of one-shot host-file writes.
 - `.lando.yml` (or whatever the configured Landofile basename is per §7.5) is validated against the published Landofile schema (§7.8) after rendering and before being written. A validation failure aborts the entire init with `RecipeOutputValidationError` and no partial files; the user sees the failing path with line/column.
 
 #### 8.8.8 Post-init actions
@@ -1373,5 +1384,200 @@ task.tree.complete  →  collapse to summary; tree is now passive (focused-child
 **Cancellation.** `Effect.interrupt` (Ctrl+C) propagates from the imperative shell through the orchestrator to every in-flight child; the renderer MUST receive a `task.fail` for each affected child within the §2.1 cancellation budget. While the alt-screen view is active, the renderer MUST NOT swallow Ctrl+C; the input is still routed to the runtime so the user can cancel from inside the expanded view without first pressing Esc.
 
 **Test coverage.** The §13.1 perf-budget suite exercises the contract end-to-end: a fixture with three services whose `build.app` scripts sleep for known durations asserts that wall-clock time is approximately `max(t_a, t_b, t_c)` (within 20%) rather than `sum(…)`, that every child emits at least one `task.detail` event during the sleep window, and that the renderer publishes `task.detail.expand` / `task.detail.collapse` events when synthetic Enter / Esc inputs are fed to its TTY. The non-TTY mode is asserted on the same fixture by piping output and matching the `[<stepId>]`-prefixed line set.
+
+### 8.10 Interaction and prompts
+
+`InteractionService` is the **input peer of `Renderer`** (§8.9). Where the renderer owns everything Lando writes *out*, `InteractionService` owns everything Lando reads *in* as a typed question-and-answer: recipe prompts during `apps:init`, the `meta:plugin:new` scaffold questions, the `meta:plugin:add` trust confirmation, `meta:setup` confirmations, and `lando doctor --fix` remediation prompts all resolve through this one service. It is a core service (§3.4) and a §4.2 pluggable abstraction. It is **not** the raw-keystroke surface — the renderer's alt-screen expand/collapse input (§8.9.2) and the `lando shell` REPL stdin (§8.2.3) own their own terminal modes and are explicitly out of scope here.
+
+This section is the canonical owner of the **prompt vocabulary** (`PromptSpec` and friends). The recipe `prompts:` block (§8.8.3/§8.8.5) is one consumer of that vocabulary, not its owner; recipe prompts are `PromptSpec`s with recipe-specific `when`/`choicesFrom` semantics layered on top.
+
+#### 8.10.1 Prompt vocabulary
+
+The prompt schemas are published from `@lando/sdk` (re-exported by `@lando/core/schema`, §7.8) and are part of the §13.2 schema snapshot:
+
+```ts
+export const PromptType = Schema.Literal(
+  "text", "select", "multiselect", "confirm", "number", "secret", "path", "editor",
+);
+
+export const PromptChoice = Schema.Union(
+  Schema.String, Schema.Number, Schema.Boolean,
+  Schema.Struct({
+    value:       Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
+    label:       Schema.optional(Schema.String),
+    description: Schema.optional(Schema.String),
+  }),
+);
+
+export const PromptValidate = Schema.Struct({
+  pattern: Schema.optional(Schema.String),   // text/path
+  message: Schema.optional(Schema.String),   // human-readable failure
+  min:     Schema.optional(Schema.Number),   // number / multiselect count
+  max:     Schema.optional(Schema.Number),
+  exists:  Schema.optional(Schema.Boolean),  // path
+});
+
+export const PromptSpec = Schema.Struct({
+  name:        Schema.String,
+  type:        PromptType,
+  message:     Schema.String,
+  default:     Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+  validate:    Schema.optional(PromptValidate),
+  choices:     Schema.optional(Schema.Array(PromptChoice)),
+  choicesFrom: Schema.optional(ChoicesFrom),  // dynamic choices via a canonical command (§8.8.14)
+});
+export type PromptSpec = Schema.Schema.Type<typeof PromptSpec>;
+
+export const PromptAnswer = Schema.Union(
+  Schema.String, Schema.Number, Schema.Boolean,
+  Schema.Array(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+);
+```
+
+`RecipePrompt` (§8.8.3) is defined as `PromptSpec` extended with the recipe-only `when:` and `deprecated:` fields, so a single vocabulary serves recipes, plugin scaffolding, setup, and embedding hosts. The eight `PromptType` literals are frozen on ship; `editor` is the multi-line type that opens `$VISUAL` / `$EDITOR` and falls back to `text` when no editor is configured or `--no-interactive` is set (§8.8.5).
+
+#### 8.10.2 The service interface
+
+```ts
+export class InteractionService extends Context.Service<InteractionService, {
+  readonly id: string;
+  readonly isInteractive: Effect.Effect<boolean>;                 // resolved from mode + TTY
+
+  // Resolve one prompt against the active answer source + mode.
+  readonly prompt:    (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
+
+  // Resolve an ordered batch: honors per-prompt `when`, earlier-answer references,
+  // dynamic `choicesFrom`, and the §8.10.3 answer-source precedence.
+  readonly promptAll: (specs: ReadonlyArray<PromptSpec>, options?: PromptBatchOptions)
+    => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
+
+  // Ergonomic narrow helpers so callers do not hand-build a PromptSpec.
+  readonly confirm: (q: ConfirmSpec)      => Effect.Effect<boolean,                  InteractionError, Scope.Scope>;
+  readonly select:  <A>(q: SelectSpec<A>) => Effect.Effect<A,                        InteractionError, Scope.Scope>;
+  readonly secret:  (q: SecretSpec)       => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
+}>()("@lando/core/InteractionService") {}
+
+export interface PromptBatchOptions {
+  readonly answers?:     Readonly<Record<string, string>>;   // explicit --answer values, already merged
+  readonly answersFile?: AbsolutePath;                       // --answers <file>; merged under `answers` (later wins)
+  readonly yes?:         boolean;                             // --yes: accept defaults without asking
+  readonly mode?:        "auto" | "interactive" | "non-interactive";
+  readonly cwd?:         AbsolutePath;                        // for `path` resolution / validation
+}
+```
+
+Every method is Effect-typed per §4.5; `secret` returns `Redacted.Redacted<string>` so a masked answer is non-loggable at the type level. The service interface is frozen on ship; the `InteractionServiceLive` implementation is not.
+
+#### 8.10.3 Answer-source precedence and interactivity mode
+
+For each prompt the service resolves an answer in this order:
+
+```text
+1. Explicit answer (--answer/--answers, or caller-supplied `answers`)
+2. Recipe/caller default, when `--yes` is set or the mode is non-interactive
+3. Interactive prompt (only when mode resolves to interactive)
+4. Fail with InteractionRequiredError (no answer, no default, not interactive)
+```
+
+`mode: "auto"` resolves to interactive only when the active stdin is a TTY; the CLI default is `auto` and the library-mode default is `non-interactive` (§16.3). This replaces the per-command `process.stdin.isTTY !== true` checks that were previously inlined across `apps:init`, `meta:plugin:add`, and `meta:plugin:new`.
+
+The `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module** that both the OCLIF command path and the compiled `run.ts` dispatcher import, so the answer source and interactivity gate are byte-for-byte identical across paths (§8.4.1 single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1).
+
+#### 8.10.4 Required behaviors
+
+- The default `InteractionServiceLive` MUST construct lazily via `Layer.suspend` (§3.4); a command that never prompts MUST NOT touch stdin or allocate a reader. Constructing the Live Layer MUST NOT touch the network, the provider, or any plugin module — it is safe at bootstrap level `minimal`.
+- `secret` answers MUST NOT be echoed to the terminal, MUST NOT appear in any transcript (§19.6), and MUST be redacted from logs and error messages per §7.3.1's secret-redaction rules. The masked value is carried as `Redacted.Redacted<string>`.
+- A non-interactive resolution that has neither an explicit answer nor a default MUST fail with `InteractionRequiredError` carrying the prompt name and an `--answer <name>=<value>` remediation — never block waiting on stdin.
+- Prompt output (the question chrome) MUST route through `Renderer.output.stdout` when a `Renderer` is present (resolved via `Effect.serviceOption`) and fall back to a direct stdio write only when no renderer is active, so the §13.4 renderer-boundary gate stays enforceable; the `InteractionServiceLive` stdin reader and its no-renderer fallback writer are the section's declared carve-outs in that gate.
+- `Effect.interrupt` (Ctrl+C) during a prompt MUST surface as `InteractionCancelledError` and finalize any raw-mode TTY state before propagating.
+- Dynamic `choicesFrom` MUST resolve through the §8.8.14 canonical-command runner under the recipe `runs:` allowlist; a failed or empty resolution surfaces `ChoicesUnavailableError` with a manual-entry fallback in interactive mode.
+- In-flight prompting mid-build (interleaved with the §8.9.2 task tree) is a v4.0 non-goal: prompts fire at command boundaries only. There is no `Interaction` lifecycle event scope in v4.0.
+
+Tagged errors live in `@lando/core/errors`:
+
+- `InteractionRequiredError` — non-interactive (or `--no-interactive`) with no supplied answer and no default. Payload includes the prompt name and remediation. The recipe-scoped `RecipeMissingAnswerError` is re-exported as an alias of this error so the frozen recipe error surface is preserved.
+- `PromptValidationError` — a supplied or entered value failed the prompt's `validate` constraint. Payload includes the prompt name, type, the failing issue, and remediation. `RecipePromptValidationError` aliases it.
+- `InteractionCancelledError` — the user aborted the prompt (Ctrl+C / EOF on stdin).
+- `ChoicesUnavailableError` — dynamic `choicesFrom` could not be resolved. `RecipeChoicesError` aliases it.
+- `InteractionUnavailableError` — the active Live Layer cannot satisfy the request (e.g., a headless plugin that refuses interactive prompts outside an allowlist).
+
+#### 8.10.5 Replaceability
+
+`InteractionService` is a §4.2 pluggable abstraction. Plugins contribute `interactionServices:` (§9.5) to satisfy use cases the default does not cover:
+
+- **Headless / CI.** A fail-fast non-interactive implementation that never opens stdin; every unanswered prompt without a default raises `InteractionRequiredError`.
+- **Recording / test.** A scripted implementation that returns pre-seeded answers and captures the prompt transcript for assertions. `@lando/core/testing` ships this as `TestInteractionService` (§16.8), and it backs the executable-guide scenario answer flow (§19.4).
+- **GUI / host transport.** An embedding host (IDE extension, dashboard, `Bun.serve()` UI) provides an `InteractionService` Layer that pops native dialogs or round-trips prompts over its own transport instead of the terminal. This is what lets a host drive `apps:init`-style flows without screen-scraping the CLI (§16.7).
+
+Plugin and host implementations MUST pass the §13.1 interaction contract suite and MUST honor the `secret`-redaction, answer-precedence, and non-interactive-fail-fast guarantees; weakening any of them is forbidden and checked by the suite.
+
+---
+
+### 8.11 Machine-readable output contract
+
+The **Agent-native** tenet (§1.2) requires that every command be consumable by an agent or script without parsing prose. This section is the canonical owner of that guarantee: a single, universal, schema-backed JSON output path that works the same on every command.
+
+This is distinct from the `Renderer` (§8.9), and the two are not redundant:
+
+- **`--renderer <lando|json|plain|verbose>`** selects the *global output mode* — how messages, progress, and the task tree are routed and styled for the whole process.
+- **`--format <text|json|table|yaml|...>`** (with the **`--json` / `-j`** shorthand) selects the *per-command result encoding* — how this one command's typed result is serialized. **`--format json` is universal**: every non-interactive command MUST accept it and emit a valid envelope. `text` is the default; `table`/`yaml` remain per-command opt-ins. Bridge rule: `--renderer json` sets the default `--format` to `json`, but an explicit `--format` always wins.
+
+#### 8.11.1 The result envelope
+
+Every `--format json` invocation emits exactly one `CommandResultEnvelope` (streaming commands emit `StreamFrame`s terminated by a `result` frame — §8.11.3). The schemas are published from `@lando/sdk` (re-exported by `@lando/core/schema`, §7.8) and are part of the §13.2 schema snapshot:
+
+```ts
+export const CommandResultFormat = Schema.Literal("text", "json", "table", "yaml", "ndjson");
+
+export const CommandWarning = Schema.Struct({
+  code:        Schema.String,
+  message:     Schema.String,
+  remediation: Schema.optional(Schema.String),
+});
+
+export const CommandResultEnvelope = Schema.Struct({
+  apiVersion:   Schema.Literal("v4"),        // bumps only on a breaking envelope change
+  command:      Schema.String,               // canonical command id, e.g. "app:info"
+  ok:           Schema.Boolean,
+  result:       Schema.optional(Schema.Unknown),    // present when ok — the command's `resultSchema`-encoded value
+  error:        Schema.optional(TaggedErrorJson),   // present when !ok — the §7.8 tagged-error JSON shape
+  warnings:     Schema.Array(CommandWarning),
+  deprecations: Schema.Array(DeprecationUse),       // the §18 DeprecationUse shape
+});
+```
+
+`result` is typed per command by that command's required `LandoCommandSpec.resultSchema` (§8.3): `Schema.Unknown` at the envelope level, strongly typed and snapshot-frozen per command id. A command with no payload still emits a valid envelope with `result: {}`.
+
+#### 8.11.2 The single serialization seam
+
+JSON output is produced by **one** function — `encodeCommandResult` — used by every command, never by per-command `JSON.stringify`:
+
+1. On success, `Schema.encode(spec.resultSchema)` encodes the result; on failure, the tagged error is encoded via its §7.8 schema and `ok: false`. The process exit code is preserved — JSON output never swallows a non-zero exit.
+2. The encoded envelope is passed through the canonical `RedactionService` (§3.7) before any byte is written, so resolved `${secret:…}` values and `secret: true` environment values (§6.9.1) are masked uniformly.
+3. The §13.4 renderer-boundary lint gate forbids `JSON.stringify` of a command result anywhere outside `encodeCommandResult`; per-command `render*` helpers produce **human** encodings only (`text`/`table`/`yaml`), never JSON.
+
+#### 8.11.3 Streaming commands
+
+Commands that declare `LandoCommandSpec.streaming` (`app:logs`, `app:exec`, build progress) emit newline-delimited `StreamFrame`s under `--format json`, terminated by a `result` frame carrying the envelope:
+
+```ts
+export const StreamFrame = Schema.Union(
+  Schema.TaggedStruct("stdout", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("stderr", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("event",  { event: Schema.String, payload: Schema.Unknown }),  // redacted lifecycle frame
+  Schema.TaggedStruct("result", { envelope: CommandResultEnvelope }),                 // terminal frame
+);
+```
+
+`event` frames reuse the §11.1 `EventService` bounded **redacted** history; they are not a second event tap. This subsumes the prior one-off NDJSON paths (the doctor NDJSON renderer and the deprecation-event JSON line).
+
+#### 8.11.4 Required behaviors
+
+- Every non-interactive canonical command MUST accept `--format json` / `--json` / `-j` and emit a schema-valid `CommandResultEnvelope` (or `StreamFrame`s for streaming commands). The interactive carve-outs (`meta:setup`, `apps:init`, `meta:events:follow`, `app:shell`) are exempt **only** in their interactive mode; their non-interactive results still emit an envelope.
+- JSON MUST be produced solely by `encodeCommandResult`; the §13.4 gate fails any other result `JSON.stringify`.
+- Every envelope MUST pass through `RedactionService` (§3.7) before emission.
+- The envelope and every per-command `resultSchema` MUST be in the §13.2 schema snapshot; a shape change requires an intentional, reviewable snapshot regen.
+- `--format json` MUST behave identically across the OCLIF and compiled (`runCompiledCli`) dispatch paths; the §13.1 parity layer covers every canonical id.
+- The §13.1 machine-output conformance gate drives **every** canonical command id with `--format json` against `TestRuntime` and asserts a decodable envelope with correct `command`/`ok` for a success and a failure case.
 
 ---

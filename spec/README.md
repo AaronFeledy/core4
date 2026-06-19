@@ -29,10 +29,10 @@ The split is *almost* one-section-per-file, with a few principled merges and six
 | 05 | [`05-runtime-providers.md`](./05-runtime-providers.md) | §5 | The `RuntimeProvider` deep dive: terminology, design principles, the Effect service interface (including the streaming `execStream` primitive that powers long-running build output), the `ProviderCapabilities` matrix, the provider-neutral `AppPlan` and `ServicePlan` schemas, supported Compose input at the provider boundary, namespaced provider extensions, the typed error model, the bundled providers (Lando-managed runtime as default, system Docker and system Podman as opt-in), and the deferred multi-provider design. |
 | 06 | [`06-services.md`](./06-services.md) | §6 | The v4 service model: `l337` and `lando` bases, the common service schema with supported Compose service keys, the group-weighted artifact build, app mounts and mounts (with excludes/includes semantics), storage scopes and auto-naming, endpoints/hostnames/routes with provider-neutral filters, healthchecks, certs and additional CA injection, the `LANDO_*` environment contract, the `ServiceInfo` schema, the `ServiceType` + `ServiceFeature` contracts (with the built-in feature priority list), the canonical service-type catalog shipped in core (PHP, Node, Python, Ruby, Go, common databases, caches, search, mail, queues, static, raw Compose passthrough), and the build orchestration model (parallel per-service artifact and app-build phases via `BuildOrchestrator`, the `BuildPlan` DAG with per-phase concurrency caps and failure policies, the content-hashed `buildKey` up-to-date check, and per-step transcript artifacts). |
 | 07 | [`07-landofile-and-config.md`](./07-landofile-and-config.md) | §7 | Landofile discovery and bounds, the six-file merge order with array identity keys, the `load()` / `import()` file-IO expression helpers (with `FileRef` / `ImportRef<T>` value shapes and pipe-decoder pipeline), the config-wide expression language (`{{ … }}` interpolation, filter-and-call helpers, native `${VAR}` shell-parameter-expansion, AST + staged bootstrap-level-aware resolution), the pluggable `TemplateEngine` abstraction with the bundled `lando` / `handlebars` / `mustache` engines, the top-level Landofile keys, the supported Compose subset, explicit config translation into Landofile fragments, the explicitly forbidden wrapper keys (`compose:`, `recipe:`, `recipes:`), the global config schema, env-var override naming, the `includes:` composition primitive with its source schemes (local/git/npm/registry) and lockfile, and schema / generated-doc publication. |
-| 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Command kinds (built-in, plugin, tooling, management). Three first-class command namespaces (`app`, `apps`, `meta`) with plugin-owned topics. Top-level alias mechanism and conflict rules. Built-in command list with behavioral requirements, including dedicated `app config`, `meta config`, and `meta recipes:*` commands. The `LandoCommandSpec` contract (with `namespace` and `topLevelAlias` fields) and `CommandInput` shape. OCLIF integration policies (manifest-first, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, flexible taxonomy, namespace-to-topic mapping). Taskfile-inspired tooling schema with dynamic service resolution, expressions, dependencies, includes, and up-to-date checks. The `ToolingEngine` abstraction and its hot-path cache. `lando apps init` and the v4 recipe model — Yeoman-style init-time scaffolds with Q&A prompts (text/select/multiselect/confirm/number/secret/path/editor), file manifests, and post-init actions, replacing the v3 recipe-as-plugin model. The `Renderer` service and selection precedence, the first-paint contract, and the concurrent task tree contract that drives the multi-task build UI (per-task tail panels, alt-screen full-tail expand). |
-| 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Embedding `@lando/core` in another Bun program: use cases, the public API surface (Effect-native; no Promise facade), the `makeLandoRuntime` factory and its options, host-controlled plugin discovery (opt-in to system/user/app sources), bootstrap and lifecycle in library mode, scope/resource ownership, programmatic CLI invocation via `@lando/core/cli`, the `@lando/core/testing` API, version compatibility, and embedding non-goals. |
+| 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Command kinds (built-in, plugin, tooling, management). Three first-class command namespaces (`app`, `apps`, `meta`) with plugin-owned topics. Top-level alias mechanism and conflict rules. Built-in command list with behavioral requirements, including dedicated `app config`, `meta config`, and `meta recipes:*` commands. The `LandoCommandSpec` contract (with `namespace` and `topLevelAlias` fields) and `CommandInput` shape. OCLIF integration policies (manifest-first, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, flexible taxonomy, namespace-to-topic mapping). Taskfile-inspired tooling schema with dynamic service resolution, expressions, dependencies, includes, and up-to-date checks. The `ToolingEngine` abstraction and its hot-path cache. `lando apps init` and the v4 recipe model — Yeoman-style init-time scaffolds with Q&A prompts (text/select/multiselect/confirm/number/secret/path/editor), file manifests, and post-init actions, replacing the v3 recipe-as-plugin model. The `Renderer` service and selection precedence, the first-paint contract, and the concurrent task tree contract that drives the multi-task build UI (per-task tail panels, alt-screen full-tail expand). The `InteractionService` — the input peer of `Renderer` — that owns the published prompt vocabulary (`PromptSpec`), answer-source precedence, interactivity-mode resolution, and `secret` redaction for every prompting surface (recipes, plugin authoring, setup, doctor), and is pluggable for headless/CI, recording/test, and GUI/host transports. |
+| 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Embedding `@lando/core` in another Bun program: use cases, the public API surface (Effect-native; no Promise facade), the `makeLandoRuntime` Layer factory, the `openLandoRuntime` object wrapper, stable `App` handles via `resolveApp`/`runtime.app`, host-controlled plugin discovery (opt-in to system/user/app sources), bootstrap and lifecycle in library mode, scope/resource ownership, programmatic CLI invocation via `@lando/core/cli`, the `@lando/core/testing` API, version compatibility, and embedding non-goals. |
 | 10 | [`10-plugins.md`](./10-plugins.md) | §9 | Plugin identity (manifest locations, distribution forms via `PluginSource` adapters), runtime rules, discovery order across bundled/system/user/app-local sources (CLI default; library mode in §16.4), the full manifest schema (with command-namespace and top-level-alias rules), the contribution surfaces table, the install/update flow for `meta:plugin:add` / `meta:plugin:remove` / `meta:update` (and their top-level aliases), plugin loading rules, and the constrained `LandoPluginContext`. |
-| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Networking intent, `ProxyService` and `RoutePlan` (with the route-filter abstraction), `CertificateAuthority`, corporate proxy/custom CA handling for Lando-owned network access, SSH and host identity (with the new sidecar-by-default SSH-agent design), `HealthcheckRunner` and `UrlScanner`, files and performance (with the `FileSyncEngine` pluggable abstraction and the bundled `@lando/file-sync-mutagen` reference engine that transparently accelerates bind mounts on Docker-Desktop-class providers), SQL helpers (plugin-only), `lando setup` and host integration, and logs/diagnostics. |
+| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Networking intent, `ProxyService` and `RoutePlan` (with the route-filter abstraction), `CertificateAuthority`, corporate proxy/custom CA handling for Lando-owned network access, the `HttpClient` outbound-egress chokepoint and the `Downloader` verified artifact-acquisition primitive (plus the tool-provisioning helper that installs pinned host binaries over it), SSH and host identity (with the new sidecar-by-default SSH-agent design), `HealthcheckRunner` and `UrlScanner`, files and performance (with the `FileSyncEngine` pluggable abstraction and the bundled `@lando/file-sync-mutagen` reference engine that transparently accelerates bind mounts on Docker-Desktop-class providers), SQL helpers (plugin-only), `lando setup` and host integration, logs/diagnostics, and the `DataMover` local/volume byte-movement chokepoint (§10.11) with its snapshot/restore store. |
 | 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | The cache catalog (command, plugin, app-plugin, app-plan, service-info, provider, oclif-manifest, update) with locations and invalidation triggers. Encoding choices. Atomicity rules. The full list of persistent on-disk artifacts. Hot-path read budgets. Disconnectable local-dev state after app build. |
 | 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | The fourteen test layers (unit, Effect service, CLI, library API, provider contract, template engine contract, host proxy contract, plugin SDK contract, scenario, recipe, executable guides and generated scenarios, deprecation, perf budget, end-to-end), Effect testing patterns, the mandatory provider contract suite, the library API contract suite, the recipe suite that exercises every canonical recipe, the scenario / recipe / end-to-end conventions that replace the Lando 3 Leia format, schema and docs gates, type gates, PR merge requirements, the two distribution forms (compiled binary and library package whose `package.json#bin` doubles as a CLI install path) plus bundled-plugin and bundled-recipe generation, the docs site build, the per-PR/nightly/weekly CI matrices, and the release flow with channels. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provider-neutral language reference. Forbidden core dependencies. The source-derived acceptance checklist (with embedding criteria). The OCLIF-vs-`@effect/cli` decision rationale. The glossary. |
@@ -85,7 +85,12 @@ If you are looking for…
 | Service membership per bootstrap level | 03 | §3.4 |
 | Source layout (`core/` tree) | 03 | §3.3 |
 | Core Effect services table | 03 | §3.4 |
+| `PathsService` core service | 03 | §3.4 |
 | `ShellRunner` core service (Bun Shell wrapper) | 03 | §3.4 |
+| `RedactionService` core service | 03 | §3.4 |
+| Secret redaction policy (value + pattern layers, profiles, sentinel) | 03 | §3.7 |
+| `@lando/sdk/secrets` redactor primitive (`createRedactor` / `createSecretRedactor`) | 03 + 09 | §3.7 + §16.2 |
+| Redaction contract suite + redaction-boundary gate | 13 | §13.1 + §13.4 |
 | `ProcessRunner` vs `ShellRunner` (when to use which) | 03 | §3.4 |
 | Lifecycle event scopes overview | 03 | §3.5 |
 | `pre-shell-exec` / `post-shell-exec` events | 03 | §3.5 |
@@ -96,6 +101,7 @@ If you are looking for…
 | Subscriber priority bands | 03 | §11.3 |
 | Standard cold-start event sequence | 03 | §11.4 |
 | Hot-path event subset (tooling fast path) | 03 | §11.5 |
+| EventService query / `waitFor` timeout / bounded history | 03 | §11.1 |
 | Subscriber failure handling | 03 | §11.6 |
 | Pluggability principles | 04 | §4.1 |
 | The pluggability catalog (master table) | 04 | §4.2 |
@@ -155,11 +161,13 @@ If you are looking for…
 | Top-level Landofile keys, Compose subset compatibility, config translation, and forbidden wrappers (`compose:`, `recipe:`, `recipes:`) | 07 | §7.4 |
 | `commandAliases:` Landofile key (per-app override) | 07 | §7.4 |
 | Global config keys and user root defaults | 07 | §7.5 |
+| Root and path resolution primitive (`@lando/core/paths`, `PathsService`) | 07 | §7.5.1 |
 | `commandAliases:` global config key | 07 | §7.5 |
 | Env-var override rules | 07 | §7.6 |
 | `includes:` and fragments (local/git/npm/registry sources, lockfile, merge semantics) | 07 | §7.7 |
 | `includes:` `kind:` discriminator (`landofile` / `tooling` / `compose`) — unified import surface | 07 | §7.7.1 + §7.7.7 |
 | Schema and generated-doc publication | 07 | §7.8 |
+| Canonical Landofile serializer (`emitLandofileYaml` / `parseLandofile`, round-trip law) | 07 | §7.8.1 |
 | Command kinds (built-in, plugin, tooling, management) | 08 | §8.1 |
 | Command namespaces (`app`, `apps`, `meta`) | 08 | §8.1.1 |
 | Top-level command aliases | 08 | §8.1.2 |
@@ -218,11 +226,21 @@ If you are looking for…
 | Renderers and messages | 08 | §8.9 |
 | Renderer first-paint contract | 08 | §8.9.1 |
 | Concurrent task tree contract (multi-task UI, per-task tail, alt-screen expand) | 08 | §8.9.2 |
+| Interaction and prompts (`InteractionService`, the input peer of `Renderer`) | 08 | §8.10 |
+| Prompt vocabulary (`PromptSpec`, `PromptType`, `PromptChoice`, `PromptValidate`) | 08 | §8.10.1 |
+| `InteractionService` interface and answer-source precedence | 08 | §8.10.2 + §8.10.3 |
+| `InteractionService` pluggability (headless/CI, recording/test, GUI/host) | 04 + 08 | §4.2 + §8.10.5 |
+| `interactionServices:` plugin contribution surface | 10 | §9.5 |
+| Interaction contract suite (mandatory) | 13 | §13.1 |
+| `TestInteractionService` test fixture | 09 | §16.8 |
+| Embedding `interaction` policy (library-mode non-interactive default) | 09 | §16.3 + §8.10.3 |
 | `task.tree.start` / `task.tree.complete` render events | 08 | §8.9 |
 | `task.detail` render event (per-task tail) | 08 | §8.9 |
 | `task.detail.expand` / `task.detail.collapse` render events | 08 | §8.9 |
 | Embedding concept and use cases | 09 | §16.1 |
 | Public API surface (entry points, stability) | 09 | §16.2 |
+| `@lando/core/paths` export (root/path resolver) | 02 + 09 | §2.7 + §16.2 + §7.5.1 |
+| `@lando/core/landofile` export (canonical serializer) | 02 + 09 | §2.7 + §16.2 + §7.8.1 |
 | `makeLandoRuntime` factory | 09 | §16.3 |
 | Runtime reuse for performance (long-lived hosts) | 09 | §16.3, §16.6 |
 | Plugin behavior in library mode | 09 | §16.4 |
@@ -246,6 +264,12 @@ If you are looking for…
 | `LandoPluginContext` | 10 | §9.8 |
 | Networking intent (no shared bridge in core) | 11 | §10.1 |
 | Proxy/routing service | 11 | §10.2 |
+| Public tunnels and app sharing (`TunnelService`) | 11 | §10.2.2 |
+| `tunnelServices:` plugin contribution surface | 04 + 10 | §4.2 + §9.5 |
+| `app:share` / `app:share:list` / `app:share:stop` commands | 08 | §8.2 |
+| `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, …) | 03 | §3.5 + §10.2.2 |
+| `tunnel-registry` cache (detached share sessions) | 12 | §12.1 |
+| `TunnelService` contract suite | 13 | §13.1 |
 | Certificate authority service | 11 | §10.3 |
 | Corporate proxies and outbound trust | 11 | §10.3.1 |
 | SSH and host identity (sidecar-by-default agent) | 11 | §10.4 |
@@ -266,6 +290,7 @@ If you are looking for…
 | Per-app `host-proxy.sock` persistent artifact | 12 | §12.4 |
 | Host-proxy contract suite (mandatory) | 13 | §13.1 |
 | Healthcheck runner + URL scanner | 11 | §10.5 |
+| Probe / RetryPolicy primitive (`@lando/sdk/probe`) | 11 | §10.5.1 |
 | Host-target healthchecks (`ShellRunner`-backed) | 11 | §10.5 |
 | Files and performance | 11 | §10.6 |
 | `FileSyncEngine` pluggable abstraction | 04 + 11 | §4.2 + §10.6 |
@@ -275,6 +300,19 @@ If you are looking for…
 | Bundled `@lando/file-sync-mutagen` engine | 11 | §10.6.2 |
 | `FileSyncEngine` doctor checks | 11 | §10.6.3 |
 | `FileSyncEngine` replaceability (audited / air-gapped / alternate engines) | 11 | §10.6.4 |
+| `HttpClient` outbound-egress chokepoint (proxy/CA-aware, streaming, upload, redacted) | 04 + 11 | §4.2 + §10.3.2 |
+| `Downloader` verified downloads (checksum-verified, atomic, wraps `HttpClient`) | 04 + 11 | §4.2 + §10.3.3 |
+| Tool provisioning (`ToolManifest` + extract + `bin/` install over `Downloader`) | 11 | §10.3.4 |
+| `pre-http-call` / `post-http-call` lifecycle events | 03 | §3.5 + §11.2 |
+| `pre-download` / `download-progress` / `post-download` lifecycle events | 03 | §3.5 + §11.2 |
+| HttpClient and Downloader contract suites (mandatory) | 13 | §13.1 |
+| `DataMover` local/volume byte-movement chokepoint | 03 + 11 | §3.4 + §10.11 |
+| `DataEndpoint` model and transfer dispatch | 11 | §10.11.1 |
+| Volume snapshot / restore + snapshot store | 11 + 12 | §10.11.3 + §12.4 |
+| Provider data-plane methods + capabilities (snapshot/copy/artifact export-import, ephemeral mounts) | 05 | §5.3 + §5.4 |
+| `Data` lifecycle event scope | 03 | §3.5 |
+| Cache-volume storage kind (`kind: cache`) | 06 | §6.5 |
+| DataMover / provider data-plane contract suite | 13 | §13.1 |
 | `pre-file-sync-*` / `post-file-sync-*` lifecycle events | 03 | §3.5 + §11.2 |
 | `file-sync-conflict-detected` / `file-sync-progress` events | 03 | §11.2 |
 | `file-sync-sessions` cache | 12 | §12.1 |
@@ -295,8 +333,16 @@ If you are looking for…
 | Persistent on-disk artifacts | 12 | §12.4 |
 | Hot-path read budgets | 12 | §12.5 |
 | Disconnectable local-dev state | 12 | §12.6 |
+| State store (durable, atomic, lockable persistence) | 12 | §12.7 |
+| `StateStore` core service | 03 | §3.4 |
+| `StateBucket` / `StateBucketSpec` / `StateRoot` / `StateCodec` | 12 | §12.7.1 |
+| `StateStore` plugin exposure (pre-namespaced `stateStore`) | 10 | §9.8 |
 | Test layers + Effect testing patterns | 13 | §13.1 |
+| Plugin-abstraction contract suites (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) | 13 | §13.1 |
 | Library API contract suite | 13 | §13.1 |
+| `App` handle / `AppSelector` embedding primitive | 09 | §16.3 |
+| `openLandoRuntime` retained runtime object | 09 | §16.3 |
+| `resolveApp` Layer-native App resolver | 09 | §16.3 |
 | Perf-budget test suite | 13 | §13.1 |
 | Schema gates | 13 | §13.2 |
 | Documentation build gates | 13 | §13.2–13.5 |
@@ -445,6 +491,7 @@ Canonical owners:
 - Built-in commands, aliases, flags, args, bootstrap levels, recipe post-init eligibility, and command docs metadata: `LandoCommandSpec` registry (§8.2/§8.3).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: `@lando/sdk` schema/error/event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
+- Secret/PII redaction: the single canonical redactor — value layer, pattern-class catalog, three profiles (`secrets`/`telemetry`/`transcript`), and the `[redacted]` sentinel — is owned by `@lando/sdk/secrets` and surfaced through the core `RedactionService` (§3.7, §3.4). It is a non-replaceable security invariant; there is no `redactors:` plugin surface (§4.2). Every surface that emits potentially-sensitive output composes it; the §13.4 redaction-boundary gate forbids ad-hoc redaction elsewhere.
 - Package entry points and public library exports: `package.json#exports` plus the API report gate (§2.7, §16.2, §13.4).
 - Recipe action types and `postInit.command` allowlist: generated from command metadata (§8.8.8).
 - Acceptance checklist items: stable checklist ids mapped to tests and public surfaces (§15.C, §17.9).

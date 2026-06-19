@@ -129,6 +129,15 @@ provides:
   proxyServices:
     - id: traefik
       module: ./src/proxy.ts
+  tunnelServices:
+    - id: cloudflare
+      module: ./src/tunnel/cloudflare.ts
+      capabilities:
+        connectorBinary: true                 # provisions `cloudflared` through the §10.3.4 helper
+        ephemeralUrls: true                    # account-free quick tunnels
+        stableUrls: true                       # named tunnels when authenticated
+        basicAuth: false                       # provider has no built-in auth gate
+        detached: true                         # supports `app:share --detach`
   certificateAuthorities:
     - id: mkcert
       module: ./src/ca.ts
@@ -141,6 +150,25 @@ provides:
   toolingEngines:
     - id: providerExec
       module: ./src/tooling/provider-exec.ts
+  httpClients:
+    - id: corporate-egress-gateway
+      module: ./src/http/gateway.ts
+  downloaders:
+    - id: corporate-mirror
+      module: ./src/downloader/corporate-mirror.ts
+      capabilities:
+        schemes: [https, file]
+        atomicFileWrites: true
+        checksumAlgorithms: [sha256]
+        offlineCache: true
+        progressEvents: true
+  interactionServices:
+    - id: headless-ci
+      module: ./src/interaction/headless.ts
+      capabilities:
+        interactive: false                  # fail-fast non-interactive; never opens stdin
+        promptTypes: [text, select, multiselect, confirm, number, secret, path, editor]
+        secretRedaction: true
   routeFilters:
     - id: requestHeader
       module: ./src/filters/request-header.ts
@@ -209,10 +237,16 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `commands` | OCLIF + Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
+| `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
+| `remoteSources` | `RemoteSource` implementations for remote data sync (`lando pull`/`push`; §10.12) — hosting platforms (Pantheon/Acquia/Platform.sh/Lagoon) and generic transports (rsync/ssh/s3/url/local) | Remote-sync subsystem |
+| `datasets` | `Dataset` implementations (the syncable units `database`/`files`/`config`/`blob`; §10.12) — typically contributed by a service-type (`database`) or app-feature (`files`) | Remote-sync subsystem |
 | `certificateAuthorities` | `CertificateAuthority` impls | Certs subsystem |
 | `loggers` | `Logger` impls | Logging service |
 | `renderers` | `Renderer` impls | Renderer service |
 | `toolingEngines` | `ToolingEngine` impls for compiled Lando task graphs | Tooling service |
+| `httpClients` | `HttpClient` impls — the outbound-egress chokepoint for all Lando-owned network access (§10.3.2) | HttpClient service |
+| `downloaders` | `Downloader` impls for verified Lando-owned artifact downloads, layered over `HttpClient` (§10.3.3) | Downloader service |
+| `interactionServices` | `InteractionService` impls for prompt/answer resolution (headless/CI, recording/test, GUI/host transports; §8.10) | Interaction service |
 | `routeFilters` | Provider-neutral route transforms | Proxy subsystem |
 | `healthcheckRunners` | `HealthcheckRunner` impls | Healthcheck subsystem |
 | `urlScanners` | `UrlScanner` impls | Scanner subsystem |
@@ -233,6 +267,7 @@ There are no legacy autoload directories. All contributions go through the manif
 - `optionsSchema:` is optional. When present, CLI and library callers validate translator-specific options against it before invoking `translate()`.
 - Translators return Landofile fragments plus diagnostics. They MUST NOT return an `AppPlan`, mutate files directly, contact providers, or install plugins.
 - Translators run only on explicit request; they never participate in normal app bootstrap.
+- Translators emit fragment *data*; core owns serialization. Authors who need to preview or unit-test a fragment as canonical YAML use the published `emitLandofileYaml` / `parseLandofile` serializer pair from `@lando/sdk/landofile` (§7.8.1) rather than hand-writing YAML; the serializer round-trips the same block-style subset core writes to disk, including `${secret:…}` references.
 
 **Template engine contribution rules:**
 
@@ -285,6 +320,22 @@ There are no legacy autoload directories. All contributions go through the manif
 - Automatic solution commands run only when the user explicitly passes `--fix`; default doctor runs are read-only.
 - Checks MUST redact secrets and MUST NOT require provider-native commands for normal diagnosis unless the provider itself is the subject of the check.
 
+**Interaction service contribution rules:**
+
+- Each `interactionServices:` entry MUST declare a unique `id`, `module`, and `capabilities` (`interactive`, the supported `promptTypes` subset, and `secretRedaction`). An implementation that declares a `promptTypes` subset MUST fail unsupported prompt types with `InteractionUnavailableError` rather than silently degrading.
+- The module MUST satisfy the published `InteractionService` tag (§8.10.2) and accept the canonical `PromptSpec`/`PromptBatchOptions` shapes without engine-specific mutation.
+- Implementations MUST honor the §8.10.3 answer-source precedence and interactivity-mode resolution, MUST NOT echo or log `secret` answers, and MUST fail fast (never block on stdin) in non-interactive mode.
+- Implementations MUST pass the §13.1 interaction contract suite; they MUST NOT weaken the `secret`-redaction, answer-precedence, or non-interactive-fail-fast guarantees.
+- Selection follows §4.3; the `id: stdio` default implementation is reserved by core.
+
+**Tunnel service contribution rules:**
+
+- Each `tunnelServices:` entry MUST declare a unique `id`, `module`, and `capabilities` (`connectorBinary`, `ephemeralUrls`, `stableUrls`, `basicAuth`, `detached`). Declared capabilities MUST match observed behavior; the §13.1 TunnelService contract suite checks this.
+- The module MUST satisfy the published `TunnelService` tag (§10.2.2) and accept only app-local `TunnelTarget`s (a resolved `RoutePlan` id/hostname or a service endpoint). It MUST NOT accept arbitrary public→host-port forwarding except behind an explicit advanced option, and the canonical `lando share` UX never exposes that path.
+- Provider control-plane egress (login/device flow, session create/delete, status) MUST go through `HttpClient` (§10.3.2); implementations MUST NOT call `fetch` or open their own sockets for Lando-owned egress. Connector binaries MUST be provisioned through the tool-provisioning helper over `Downloader` (§10.3.4), never plugin-local downloads.
+- Connector processes MUST run through `ProcessRunner` with `Scope`-bound finalization; foreground sessions close on `Effect.interrupt`, detached sessions persist in the `tunnel-registry` `StateStore` bucket (§12.1) until explicit stop, app destroy, or GC. Readiness MUST use the §10.5.1 probe primitive; implementations MUST NOT hand-roll retry loops.
+- Implementations MUST compose the canonical `RedactionService` for public URLs, auth URLs, tokens, device codes, and local paths, and MUST NOT move local/volume bytes (`DataMover` is reserved for features that also transfer data). Selection follows §4.3; there is no core default implementation in v4.0.
+
 ### 9.6 Plugin install and update
 
 `lando meta plugin add <spec>` (top-level alias `lando plugin add`) and `lando meta plugin remove <name>` (top-level alias `lando plugin remove`) are core commands implemented by:
@@ -336,8 +387,11 @@ export interface LandoPluginContext {
   readonly userDataRoot: AbsolutePath;
   readonly platform: HostPlatform;
   readonly logger: Logger.Logger<unknown, unknown>;
+  readonly stateStore: PluginStateStore;      // §12.7 StateStore, pre-namespaced to plugins/<id>/
 }
 ```
+
+The `stateStore` factory is a `StateStore` (§12.7) **pre-namespaced** to `plugins/<id>/` under `userData`: every bucket a plugin opens is rooted inside its own subtree, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a plugin to persist durable state with atomic-write, schema-validation, versioning, corruption-quarantine, and advisory-lock guarantees — e.g. a `SecretStore` caching resolved tokens, an `UpdateService` recording channel metadata, or a `ConfigTranslator` writing a sidecar lockfile. Plugins MUST NOT hand-roll atomic writes or lockfiles outside this surface.
 
 Plugins do not receive the full `LandoRuntimeLive` Layer. They receive precisely the services declared in their contribution requirements; this is enforced by the manifest's `requires.services:` field (TBD, §14).
 

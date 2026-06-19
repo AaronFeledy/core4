@@ -1,4 +1,4 @@
-# PRD: BETA1-12 — Terminal UI polish
+# PRD: BETA1-12 — Terminal UI polish & interaction service
 
 ## Introduction
 
@@ -6,7 +6,11 @@ The renderer contract in §8.9 already describes the default `lando` renderer as
 
 OpenTUI is allowed as an implementation dependency for bounded TTY surfaces because its Core API exposes an imperative renderer plus composable renderables (`TextRenderable`, `BoxRenderable`, `ScrollBoxRenderable`, `InputRenderable`, `TextareaRenderable`, `SelectRenderable`, `TabSelectRenderable`) and Yoga/Flexbox-style layout primitives. The intent is to use those primitives behind the existing `Renderer` and prompt seams where they help, while preserving the non-TTY, `plain`, `json`, and CI output contracts.
 
-Depends on: **BETA1-01** (setup/uninstall renderer surfaces), **BETA1-07** (public transcript and guide rendering expectations), and **BETA1-11** (§17.9 acceptance/perf gates). This PRD does not add new commands, flags, schema fields, lifecycle events, or product behavior.
+Depends on: **BETA1-01** (setup/uninstall renderer and prompt surfaces), **BETA1-04** (schema publication for `PromptSpec`), **BETA1-05** (plugin authoring prompts), **BETA1-07** (public transcript and guide rendering expectations), and **BETA1-11** (§17.9 acceptance/perf gates). This PRD does not add unrelated commands, flags, lifecycle events, or product behavior; its new surface is limited to the `InteractionService`/`PromptSpec` primitive and prompt consolidation described below.
+
+This PRD also absorbs the shared `InteractionService` primitive and prompt consolidation work. Interaction belongs with terminal UI polish because it is the input peer of the renderer seam: prompt vocabulary, answer-source precedence, interactivity mode, and prompt chrome must be coordinated with the default renderer and OpenTUI-backed bounded surfaces.
+
+Interaction work keeps its external dependencies on **BETA1-01** (setup prompts/confirmations), **BETA1-04** (schema publication), **BETA1-05** (plugin authoring prompts), and **BETA1-11** (SDK/library acceptance + App-handle embedding); renderer coordination is now internal to this PRD.
 
 ## Source References
 
@@ -15,6 +19,16 @@ Depends on: **BETA1-01** (setup/uninstall renderer surfaces), **BETA1-07** (publ
 - [`spec/17-executable-tutorials.md`](../17-executable-tutorials.md) §19.6 public transcript safety and §19.10 guide lint discipline.
 - [`spec/ROADMAP.md`](../ROADMAP.md) Phase 4 feature freeze and Phase 8 renderer-plugin follow-up.
 
+### InteractionService source references
+
+- [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.10 interaction-and-prompts contract, §8.10.1 prompt vocabulary, §8.10.3 answer-source precedence, §8.8.3/§8.8.5 recipe prompts.
+- [`spec/03-architecture.md`](../03-architecture.md) §3.4 `InteractionService` service membership and bootstrap-level table.
+- [`spec/04-pluggability.md`](../04-pluggability.md) §4.2 `InteractionService` catalog entry and `interactionServices:` manifest contribution.
+- [`spec/10-plugins.md`](../10-plugins.md) §9.4/§9.5 contribution surface and interaction-service contribution rules.
+- [`spec/09-embedding.md`](../09-embedding.md) §16.2 service tag, §16.3 `interaction` option, §16.7 host-drivable `apps:init`, §16.8 `TestInteractionService`.
+- [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 interaction contract suite.
+- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+
 ## Goals
 
 - Make the default TTY renderer a bundled internal plugin (`@lando/renderer-lando`) that dogfoods the public renderer contribution shape and serves as the example for third-party renderer authors.
@@ -22,6 +36,16 @@ Depends on: **BETA1-01** (setup/uninstall renderer surfaces), **BETA1-07** (publ
 - Use OpenTUI field and layout primitives only for bounded interactive surfaces: prompts, selectable lists, task-tree panes, and summaries.
 - Preserve machine output exactly: `--renderer=json`, non-TTY/CI output, and `--renderer=plain` remain stable and parseable.
 - Prove the visual language with snapshot-style terminal tests and narrow-terminal fixtures before implementation is considered accepted.
+
+### InteractionService goals
+
+- Publish `InteractionService` as the canonical service for every interactive prompt/answer flow in Lando.
+- Promote the recipe-scoped prompt vocabulary to a general `PromptSpec` owned by §8.10; redefine `RecipePrompt` in terms of it without breaking the frozen recipe schema surface.
+- Centralize the answer-source precedence (explicit answer → default-under-`--yes` → interactive prompt → fail) and the interactivity-mode gate (`auto`/`interactive`/`non-interactive`) into one shared module both dispatch paths import.
+- Close the prompt-type divergence by shipping the `editor` type the spec already documents.
+- Expose an SDK-safe contract and `interactionServices:` manifest surface for headless/CI, recording/test, and GUI/host implementations, and an `interaction` policy for embedding hosts.
+- Migrate `apps:init`, `meta:plugin:new`, the `meta:plugin:add` trust gate, and `meta:setup` confirmations onto one service.
+- Add a mandatory contract suite so plugin-contributed and host-supplied interaction services cannot weaken `secret` redaction, answer precedence, or non-interactive fail-fast.
 
 ## Visual North Star
 
@@ -114,6 +138,86 @@ The visual language should use:
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+The following stories are folded in from the InteractionService primitive scope.
+
+### US-293: Publish the `InteractionService` SDK service, `PromptSpec` vocabulary, errors, and manifest surface
+
+**Description:** As a plugin author or embedding host, I can resolve and replace Lando's prompting through a stable `InteractionService` contract and a published prompt vocabulary instead of importing recipe-internal helpers.
+
+**Acceptance Criteria:**
+
+- [ ] `@lando/sdk/services` exports the `InteractionService` service tag and typed interface (`prompt`, `promptAll`, `confirm`, `select`, `secret`, `isInteractive`) with Effect-returning methods.
+- [ ] `@lando/sdk/schema` exports `PromptSpec`, `PromptType` (eight literals incl. `editor`), `PromptChoice`, `PromptValidate`, `PromptAnswer`, `PromptBatchOptions`, and `ChoicesFrom`; `RecipePrompt` is redefined as `PromptSpec` plus the recipe-only `when:`/`deprecated:` fields with an unchanged serialized shape.
+- [ ] `@lando/sdk/errors` exports tagged errors `InteractionRequiredError`, `PromptValidationError`, `InteractionCancelledError`, `ChoicesUnavailableError`, and `InteractionUnavailableError`; `RecipeMissingAnswerError`, `RecipePromptValidationError`, and `RecipeChoicesError` are preserved as aliases of the generalized errors.
+- [ ] Plugin manifests accept `provides.interactionServices[]` with `capabilities` (`interactive`, `promptTypes`, `secretRedaction`), module path containment, deprecation metadata, and standard §4.3 selection behavior.
+- [ ] `sdk/API_COMPATIBILITY.md`, SDK export fixtures, the JSON Schema registry + `SDK_SCHEMA_NAMES`, and `sdk/test/fixtures/schema-snapshot.json` are updated in the same change with `bun run codegen:schema-snapshot` producing no further drift.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-294: Implement the default `InteractionServiceLive`, answer-source precedence, and renderer coordination
+
+**Description:** As a user, every Lando prompt resolves through one implementation with consistent answer precedence, interactivity detection, and secret masking.
+
+**Acceptance Criteria:**
+
+- [ ] `InteractionServiceLive` wraps the existing `collectPrompts` engine behind the Effect interface; `PromptIO` becomes an internal Live-layer detail and is no longer the public prompting surface.
+- [ ] The service is constructed lazily via `Layer.suspend` at bootstrap level `minimal`; a command that never prompts allocates no reader and touches no stdin, and construction touches no network/provider/plugin module.
+- [ ] Answer-source precedence resolves in order: explicit answer (`answers`/`answersFile`) → default when `--yes`/non-interactive → interactive prompt → `InteractionRequiredError`; `mode: "auto"` gates interactivity on a TTY stdin.
+- [ ] A shared flag module parses `--answer` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` and computes the interactivity gate; both the OCLIF command path and the compiled `run.ts` dispatcher import it, and the scratch `--option` synonym merges into the same answer source.
+- [ ] `secret` answers are returned as `Redacted.Redacted<string>`, never echoed, never logged, and absent from transcripts and error messages.
+- [ ] Prompt output routes through `Renderer.output.stdout` when a `Renderer` is resolvable via `Effect.serviceOption`, and falls back to a direct stdio write only when no renderer is active; the Live-layer stdin reader and no-renderer fallback writer are the declared §13.4 renderer-boundary carve-outs.
+- [ ] `Effect.interrupt` during a prompt surfaces `InteractionCancelledError` and restores TTY raw-mode state before propagating.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-295: Ship the `editor` prompt type and close the 7-vs-8 divergence
+
+**Description:** As a recipe author, I can use the `editor` prompt type the spec documents, and the SDK enum, runtime, and docs agree on the eight prompt types.
+
+**Acceptance Criteria:**
+
+- [ ] `PromptType` (and the recipe re-export) includes `editor`; the prompt runtime handles `editor` by opening `$VISUAL`/`$EDITOR` through `ProcessRunner`, reading the edited buffer back, and applying the prompt's `validate` rules.
+- [ ] `editor` falls back to `text` semantics when no editor is configured or when the resolved mode is non-interactive (or `--no-interactive` is set), with no hang.
+- [ ] The schema snapshot, JSON Schema output, and any generated reference docs reflect eight prompt types; no spec/SDK/runtime divergence remains.
+- [ ] A scenario or unit test exercises an `editor` prompt with a scripted editor command and asserts the captured multi-line value.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-296: Migrate existing prompt call sites onto `InteractionService`
+
+**Description:** As a maintainer, I can reason about one prompting path instead of auditing near-duplicate prompt loops across init, plugin authoring, plugin trust, and setup.
+
+**Acceptance Criteria:**
+
+- [ ] `apps:init` resolves recipe prompts and the tarball-checksum confirmation through `InteractionService` (`promptAll`/`confirm`); the local `resolveIO` and the hard-coded `yes:false, nonInteractive:false` gate are removed.
+- [ ] `meta:plugin:new` builds a `PromptSpec[]` (name/template/cspace/description) and resolves it through `promptAll`; its bespoke `readAnswer` loop is removed.
+- [ ] The `meta:plugin:add` trust confirmation uses `interaction.confirm(...)`, and the non-interactive trust failure surfaces `InteractionRequiredError` with the existing `--trust` remediation preserved.
+- [ ] `meta:setup` confirmations resolve through `InteractionService`; `--yes`/`--no-interactive` route through the shared flag module.
+- [ ] Inlined `process.stdin.isTTY !== true` interactivity checks across `run.ts`, the OCLIF commands, and the affected command modules are replaced by the shared interactivity gate.
+- [ ] Source-mode and compiled `$bunfs` dispatch resolve answers and interactivity identically; dispatch-parity tests cover `apps:init`, `meta:plugin:new`, and `meta:plugin:add --trust`.
+- [ ] The recipe-scoped `collectPrompts`/`PromptIO` modules are reduced to Live-layer internals (or removed) with no public-surface consumers outside the Live layer.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-297: Enforce the interaction contract suite, `TestInteractionService`, redaction, and embedding wiring
+
+**Description:** As a maintainer, security reviewer, or embedding host, I can prove every built-in, plugin-contributed, or host-supplied interaction service preserves the spec's guarantees, and I can drive prompt flows without a terminal.
+
+**Acceptance Criteria:**
+
+- [ ] `@lando/core/testing` exports `TestInteractionService` (pre-seeded answers keyed by prompt name; captures the prompt transcript; never opens stdin) and it backs the executable-guide scenario answer flow (§19.4).
+- [ ] `@lando/sdk/test` exports an interaction contract suite that runs against `InteractionServiceLive`, `TestInteractionService`, and any plugin-contributed implementation.
+- [ ] The suite covers capability declaration, answer-source precedence, `auto`-mode TTY gating, non-interactive fail-fast (never blocks on stdin), per-type validation, `secret` non-echo/redaction, `Effect.interrupt` → `InteractionCancelledError` with TTY restore, dynamic `choicesFrom` resolution and manual fallback, and prompt-output routing through `Renderer.output`.
+- [ ] `makeLandoRuntime` accepts the `interaction` option (default `non-interactive` in library mode, `auto` in CLI) and a host can override `InteractionService` via `overrides` to route prompts through its own transport; a library-API test drives an `apps:init`-style flow non-interactively with seeded answers.
+- [ ] Contract tests prove a plugin/host implementation cannot weaken `secret` redaction, answer precedence, or non-interactive fail-fast while still satisfying the interface.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
 ## Functional Requirements
 
 - FR-1: Terminal UI polish MUST be implemented behind the existing `Renderer` and prompt seams; command logic must not import OpenTUI directly.
@@ -124,13 +228,32 @@ The visual language should use:
 - FR-6: Visual status cannot rely on color alone; every success/warning/error/progress state needs text or glyph+text redundancy.
 - FR-7: The default TTY visual direction is futuristic spaceship operations console, not generic colorful CLI output; implementations must preserve this direction in fixtures and docs.
 
+### InteractionService functional requirements
+
+- FR-1: Every interactive prompt/answer flow in core and bundled plugins MUST resolve through `InteractionService`; ad-hoc `process.stdin`/`readLine` prompting outside the Live layer is forbidden by the §13.4 boundary gate (the renderer alt-screen input and the `lando shell` REPL are out of scope and keep their own terminal modes).
+- FR-2: The prompt vocabulary MUST be the published `PromptSpec`; recipe prompts MUST be `PromptSpec` plus recipe-only fields with an unchanged serialized shape.
+- FR-3: Non-interactive resolution MUST fail fast with `InteractionRequiredError` and MUST NOT block on stdin.
+- FR-4: `secret` answers MUST be carried as `Redacted.Redacted<string>` and MUST be absent from logs, events, transcripts, and error messages.
+- FR-5: The `--answer`/`--answers`/`--yes`/`--no-interactive`/`--interactive` flags and the interactivity gate MUST come from one shared module used by both the OCLIF and compiled dispatch paths.
+- FR-6: `interactionServices:` plugins and host-supplied implementations MUST pass the SDK interaction contract suite before they are considered compatible.
+- FR-7: Library mode MUST default to `non-interactive`; CLI mode defaults to `auto`.
+- FR-8: There is no `Interaction` lifecycle event scope in v4.0; prompts fire at command boundaries only (no mid-build prompting).
+
 ## Non-Goals
 
 - Replacing the entire CLI with a full-screen TUI shell.
-- Adding new commands, flags, schema fields, lifecycle events, or behavioral semantics.
+- Adding unrelated commands, flags, lifecycle events, or behavioral semantics outside the `InteractionService` / `PromptSpec` surface explicitly covered by this PRD.
 - Decorating `json`, `plain`, non-TTY, or CI output beyond existing stable prefixes and structured events.
 - Building the post-GA `github-actions` renderer or plugin marketplace UI.
 - Replacing Starlight docs rendering or changing public transcript schemas.
+
+### InteractionService non-goals
+
+- Adopting an external prompt/TUI library; the existing hand-rolled engine is retained behind the service.
+- Mid-build / interleaved prompting against the live §8.9.2 task tree.
+- Replacing the renderer alt-screen keyboard input or the `lando shell` REPL stdin handling.
+- A new lifecycle event scope for prompts.
+- Rich-widget prompts (tables, trees) beyond the eight `PromptType` values.
 
 ## Technical Considerations
 
@@ -140,11 +263,26 @@ The visual language should use:
 - TTY rendering should have a fallback when OpenTUI cannot initialize (unsupported terminal, missing native binding, or test harness constraints). The fallback is the existing `plain`/minimal renderer path with a warning only when it does not contaminate machine output.
 - Renderer tests should feed synthetic `RenderEvent` streams rather than requiring slow real provider operations.
 
+### InteractionService technical considerations
+
+- Keep the engine logic intact; this is a contract-promotion + wiring + migration change, not a prompting rewrite.
+- `RecipePrompt` must remain serialization-compatible so the §13.2 schema snapshot diff is additive (alias to `PromptSpec`, add `editor` to the enum).
+- Provide `TestInteractionService` so scenario and library tests assert prompt flows without a terminal; the executable-guide scenario answer flow consumes it.
+- The renderer-boundary gate (§13.4) must explicitly allow the Live-layer stdin reader and no-renderer fallback writer; route question chrome through `Renderer.output` whenever a renderer is present.
+- Coordinate with PRD-12's renderer seam so prompt output and task-tree output do not interleave; prompts remain command-boundary only.
+
 ## Success Metrics
 
 - A first-time user can identify the current phase, active task, failure, and next action from `lando setup`, `lando start`, and `lando uninstall --dry-run` output within one screenful, and describe the interface as futuristic/mission-control rather than plain terminal output.
 - Visual QA snapshots catch accidental loss of spacing, status labels, or hierarchy before merge.
 - TTY polish ships with zero changes to JSON renderer envelopes and no first-paint regression.
+
+### InteractionService success metrics
+
+- Grepping core shows one prompting implementation; `collectPrompts`/`PromptIO` have no consumers outside `InteractionServiceLive`, and the inlined `process.stdin.isTTY` interactivity checks are gone.
+- A single contract suite validates the default, test, and any contributed interaction service.
+- `apps:init`, `meta:plugin:new`, `meta:plugin:add --trust`, and `meta:setup` all resolve prompts and interactivity through the shared service and flag module, with dispatch parity green.
+- Embedding hosts drive `apps:init`-style flows non-interactively with seeded answers and zero terminal access.
 
 ## Guide Coverage
 
@@ -176,3 +314,9 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 - Should OpenTUI be a direct `@lando/core` dependency or live inside a bundled renderer plugin? Decision: bundled `@lando/renderer-lando` plugin, so the core renderer boundary stays pluggable and import-budget tests can isolate the dependency.
 - Should the polished task tree use alternate screen only for expanded detail or for the whole active task tree? Default: expanded detail only; the main task tree stays inline so scrollback remains useful.
 - Should prompt controls use tabbed horizontal choices for small option sets? Default: yes for two to four choices, vertical select for longer lists.
+
+### InteractionService open questions
+
+- Should `editor` shell out via `ProcessRunner` or reuse a `ShellRunner` path? Default: `ProcessRunner` with an argv-precise `$VISUAL`/`$EDITOR` invocation and a temp-file buffer, falling back to `text`.
+- Should `interactionServices:` allow replacing the reserved `id: stdio` default, or only adding alternatives? Default: additions only in v4.0; `stdio` is core-reserved like the `host`/`providerExec` tooling engines.
+- Should the embedding `interaction` option also accept a seeded-answers map inline, or only via `@lando/core/cli` call options? Default: answers flow through the call/`promptAll` options; `interaction` selects the mode only.

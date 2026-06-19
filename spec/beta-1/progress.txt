@@ -1315,3 +1315,10 @@
 - Review notes (deferred/rejected): terminal escape sanitization and renderer output redaction are pre-existing cross-renderer hardening concerns, not introduced by the bundled renderer seam; the `renderer = Layer.empty` slot remains intentional because the default TTY implementation is plugin-owned through `rendererFactories` plus core-injected primitives; explicit workspace dependency hygiene for `@lando/renderer-lando` is packaging follow-up, not a US-280 acceptance blocker.
 - Verification: typecheck and lint passed; focused renderer/plugin tests passed (93 pass); guide lint, `dev:guides docs/guides/cli/terminal-ui-polish.mdx --once`, guide coverage, and renderer-boundary check passed. LSP diagnostics could not run because no MDX server is configured and the TypeScript LSP is not installed in this harness.
 ---
+
+## Thu Jun 18 2026 15:40 CDT - Babysit
+- PR: #407 https://github.com/AaronFeledy/core4/pull/407
+- CI outcome: pass
+- Review feedback: fixed (restored the dropped README link to docs/alpha-install-and-bug-reports.md so the alpha-install-docs build test passes; no Bugbot findings)
+- Merge: merged (squash)
+---

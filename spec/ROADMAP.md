@@ -479,6 +479,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 - Every Effect Schema in `@lando/sdk` exports JSON Schema
 - Generated reference docs (Starlight) ship with deprecation callouts
 - Schema gate (§13.2) enforced in CI
+- Canonical Landofile serializer (`@lando/sdk/landofile` / `@lando/core/landofile`) ships with the §7.8.1 round-trip contract and call-site migration
 
 **Executable guides and scenarios (§19):**
 - MDX → generated scenario TypeScript pipeline
@@ -522,17 +523,44 @@ Land the last feature surface — release engineering, governance, the plugin au
 
 **Library:**
 - `@lando/core/testing` declared stable on `next`
-- Library API contract tests in `core/test/library/` cover the full §16.2 surface
+- Library API contract tests in `core/test/library/` cover the full §16.2 surface, including stable `App` handles, `AppSelector`, `openLandoRuntime`, and `resolveApp`
 - Plugin SDK contract test for `requires."@lando/core": "^4.0.0"` enforcement
+- Outbound-network primitives land as a layered set: the **`HttpClient`** egress chokepoint (proxy/CA-aware streaming request/response + upload, the canonical network-trust resolver promoted to a pure `@lando/sdk` module, redaction, `pre-/post-http-call` events) as the single home for all Lando-owned network access (it is the precondition for hosting push/pull, telemetry delivery, the update-manifest fetch, plugin-registry queries, tunnel/share control planes, the MCP surface, and the scanner); **`Downloader`** rewritten as the verified-artifact specialization that wraps `HttpClient`; and the **tool-provisioning helper** (`ToolManifest` + archive extraction + `bin/` install over `Downloader`). All ship with their SDK services/schemas/errors/events, default implementations, `httpClients:` / `downloaders:` manifest contributions, contract suites, the `check:network-boundary` gate, and migrated Lando-owned call sites (runtime bundle, Mutagen host CLI + agents, recipe/include tarballs, self-update bytes)
+- The downstream **`TunnelService`** contract (public app sharing, §10.2.2) is **frozen here, contract-only**: the SDK service tag, schemas, the seven tagged errors, the `Tunnel` lifecycle events, the `tunnelServices:` manifest surface, the §13.1 contract suite, the `app:share` / `app:share:list` / `app:share:stop` command + `App.share*` handle result schemas, and the `tunnel-registry` `StateStore` seam — wired to consume `HttpClient` + tool provisioning + `ProcessRunner` + `StateStore` + the probe primitive + `RedactionService`. No bundled tunnel provider and no real connector wiring ship in Beta 1 (the `lando share` feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. `TunnelService` is **not** a `DataMover` consumer — it rides the egress cluster, not the byte-movement primitive
+- The downstream **`RemoteSource` + `Dataset`** remote-data-sync contract (`lando pull`/`push`, §10.12) is **frozen here, contract-only** (PRD-17), the same way `TunnelService` is: the two SDK service tags, schemas, tagged errors, the `Sync` lifecycle events, the `remotes:`/`sync:` Landofile keys, the `remoteSources:`/`datasets:` manifest surfaces, the §13.1 `RemoteSource` + `Dataset` contract suites with in-memory `TestRemoteSource`/`local`/`TestDataset`, and the `app:pull`/`app:push`/`app:remote:*` command + `App.pull`/`App.push`/`App.remote` handle result schemas — wired to compose `HttpClient` + tool provisioning/`Downloader` (egress) + `DataMover` (local landing) + `StateStore` + the probe primitive + `InteractionService` + `SecretStore` + `RedactionService`. The `Dataset × RemoteSource` split keeps the local landing half reusable across every remote (N+M, not N×M). No bundled generic remotes, no hoster plugins, and no `database`/`files` `Dataset` implementations ship in Beta 1 (the feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. Remote sync moves DB + files + config, **never application code**
+- Paths/Roots primitive (`@lando/core/paths` + `PathsService`) and durable `StateStore` primitive land as the paired filesystem/persistence foundation for roots, derived paths, scratch registry, include lockfile, and plugin/host state buckets
 
 **Telemetry:**
 - Default-on with documented inventory
 - Opt-out command + global-config key
-- All redactions enforced
+- Canonical redaction primitive (`@lando/sdk/secrets` + `RedactionService`) enforces all telemetry, event, log, transcript, and diagnostic redactions
+
+**Terminal UI and interaction:**
+- Default terminal UI moves behind the bundled `@lando/renderer-lando` plugin and receives the bounded spaceship-console polish pass
+- Shared `InteractionService` primitive consolidates prompts behind `PromptSpec`, answer-source precedence, `editor` prompt type, and dispatch-parity-safe prompt call-site migration
+
+**SDK runtime primitives & plugin contract kit:**
+- `@lando/sdk/probe` retry/verdict primitive (`RetryPolicy`, `runProbe`, `ProbeOutcome`, contracts-only, `TestClock`-deterministic) ships and the healthcheck, scanner, doctor, `HttpClient`/`Downloader`, and `lando setup` readiness loops migrate onto it, with a §13.4 boundary gate banning net-new ad-hoc retry/backoff loops
+- `EventService` gains typed `waitFor`/`waitForAny`/`query` with an `EventError` timeout contract and a bounded **redacted** in-memory history buffer; `@lando/core/testing` `expectEvent`/`waitForEvent`/`recordedEvents` become thin wrappers over them
+- The §4.2 plugin-abstraction contract kit ships from `@lando/sdk/test` — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` suites — every built-in implementation runs through its suite, and the §13.1 layer-coverage gate fails if a suite or its built-in invocation is removed
+
+**Universal machine-output contract (agent-native tenet):**
+- The §8.11 machine-output contract lands: the `CommandResultEnvelope` / `CommandWarning` / `CommandResultFormat` / `StreamFrame` schemas (in `@lando/sdk`, snapshot-gated), a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json` / `-j` shorthand on every non-interactive command, and the single redaction-aware `encodeCommandResult` seam that replaces every per-command `JSON.stringify`
+- The §13.1 machine-output conformance layer drives every canonical command id with `--format json` and the §13.4 `check:machine-output` boundary gate bans result `JSON.stringify` outside the seam and specs missing `resultSchema`; both run per-PR. This realizes the machine-legibility half of the agent-native tenet (§1.2)
+
+**Data movement & volume primitives:**
+- The **`DataMover`** local/volume byte-movement chokepoint lands (§10.11) — the on-host counterpart to `HttpClient` — moving bytes between five typed `DataEndpoint`s (host path/archive, in-process stream, named volume, service path/command, built artifact) with the `DataEndpoint` model + transfer dispatch, snapshot/restore over a `PathsService`-resolved store indexed in a `StateStore` bucket, the `Data` lifecycle events, and the shared `@lando/sdk` streaming-hash/atomic-write helper factored out of `Downloader` (consumed by both)
+- The **`RuntimeProvider` data plane** extends the frozen provider contract: a mount-aware `EphemeralRunSpec` + `runStream`, the `snapshotVolume`/`restoreVolume`/`listVolumes`/`removeVolume`/`copyToService`/`copyFromService`/`exportArtifact`/`importArtifact` methods, and five new `ProviderCapabilities` (`volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, `ephemeralMounts`); `DataMover` dispatches to a native method when the capability is `native`, else a generic helper-container `tar` fallback. All three bundled providers + `TestRuntimeProvider` implement it and pass the new §13.1 data-plane contract section
+- Refactors fold existing one-offs onto the primitive: the scratch `--isolate=full` `copyAppRoot`/`reflinkCopyAppRoot` becomes a `transfer(hostPath → hostPath)`, the snapshot index moves onto `StateStore`, and the `Downloader` hash/atomic-write logic is extracted to the shared SDK helper. `DataMover` joins the `RedactionService` consumer list
+- The **cache-volume storage kind** (`storage[].kind: cache`, §6.5) lands as the adjacent volume primitive — named, cross-app-shareable dependency-cache volumes that survive `lando destroy` — distinct from data *movement*
+
+**Managed-file primitive:**
+- The **`ManagedFileService`** working-tree write chokepoint lands (§10.13): file/block modes for rendered project files, per-format ownership markers, a `StateStore` ledger resolved through `PathsService.managedFileLedger(appId)`, conflict/adoption detection that never silently clobbers in-place edits, realpath containment, atomic writes through the shared streaming-hash helper, redacted `ManagedFile` lifecycle events, and a §13.1 contract suite with `TestManagedFileStore`
+- Refactors fold the existing recipe `files:` scaffold writer onto the primitive so scaffolded files carry markers and become updatable/adoptable, and the `check:managed-file-boundary` gate prevents parallel host-project-file writers. The primitive is substrate-only in Beta 1; CMS settings management, `lando add`, devcontainer generation, the user-facing `files:` Landofile key, `lando files *`, and `keys`-mode structural merge are 4.x
 
 ### Exit criteria for Beta 1
 
-Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
+Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the layered `HttpClient`/`Downloader` egress primitives and tool provisioning, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), the universal `--format json` machine-output contract (§8.11) that realizes the agent-native tenet, the `DataMover` local/volume byte-movement primitive plus the `RuntimeProvider` data plane (§10.11), and the `ManagedFileService` working-tree write primitive (§10.13), and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered once Beta 1's deliverables land** — from Beta 2 on, no new spec section is added and every later phase is hardening only. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
 
 ---
 
@@ -615,6 +643,9 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 - Doctor depth: more checks driven by Beta 1 field reports
 - Bun version floor bump if Bun shipped a meaningfully better release
 - Hot-path tooling profiling fixes (real ~150ms target chasing)
+- First consumers of the Beta-1 `DataMover` primitive (§10.11): a bundled `@lando/sql` plugin (`db import/export/snapshot/restore/reset` with gzip + progress) and `image save`/`load`, both built entirely on `DataMover` + the provider data plane; the **`RemoteSource` + `Dataset` pull/push feature** — the "hosting" category plus generic remotes (Pantheon/Acquia/Platform.sh, and rsync/ssh/s3/local) — lands here too as **feature work on the Beta-1 `RemoteSource`/`Dataset` contract** (frozen in PRD-17, §10.12): the bundled generic remotes + first hoster plugins, the `database`/`files` `Dataset` implementations (the `database` one ships in `@lando/sql`), and the real `app:pull`/`app:push`/`app:remote:*` connector wiring (remote half via `HttpClient`, local landing half via `DataMover`). These are feature work on top of the primitives, not new primitives
+- First consumers of the Beta-1 `ManagedFileService` primitive (§10.13): CMS settings-management AppFeatures, `lando add <service>`, devcontainer generation, the user-facing `files:` Landofile key, `lando files list/diff/apply/adopt/release`, and `keys`-mode structural merge. These are deferred consumer features on top of the primitive, not new working-tree write seams
+- **`lando share` (public tunnels):** the first bundled `TunnelService` provider (Cloudflare quick-tunnels, account-free; ngrok optional) plus the real `app:share` / `App.share` connector wiring, GC of orphaned detached sessions, and a doctor stale-tunnel check. This is **feature work on the Beta-1 `TunnelService` contract** (frozen in PRD-09, §10.2.2) and rides the `HttpClient` + tool-provisioning egress cluster — **not** `DataMover`. A tunnel moves no local/volume bytes
 
 ---
 
