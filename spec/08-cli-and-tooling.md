@@ -339,6 +339,8 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly hostProxyAllowed?: boolean;                   // true only for commands safe to invoke from inside a container via the in-container `lando` shim (§10.10)
   readonly docs?: CommandDocsMetadata;
   readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
+  readonly resultSchema: Schema.Schema<A>;               // REQUIRED — the machine-readable shape of this command's result (§8.11)
+  readonly streaming?: StreamFrameSchema;                // present iff the command streams (logs/exec/build); see §8.11
   readonly run: (input: CommandInput) => Effect.Effect<A, E, LandoCommandRequirements>;
 }
 
@@ -363,6 +365,9 @@ Rules:
 - `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
 - `hostProxyAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **host-proxy `runLando` allowlist** (§10.10) — the set of canonical command ids the in-container `lando` shim is permitted to forward to the host. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT set this true; they would self-destruct the container that issued the call. Read-only and laterally-scoped commands (`app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:list`, `meta:version`, `meta:doctor`, `meta:events:follow`, `app:config get|view`) are the typical opt-ins. The flag generates the `host-proxy-allowlist` cache (§12.1); the host-side `HostProxyService` rejects any `runLando` request whose canonical id is not in that cache with `HostProxyCommandNotAllowedError`.
 - `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
+- `resultSchema` is **required** for every command (a command with no payload registers `Schema.Struct({})`). It is the single source of truth for the machine-readable shape of the command's result and is the schema `--format json` encodes against (§8.11). A command spec missing `resultSchema` is rejected at registration with `CommandRegistrationError`, and the §13 machine-output conformance gate fails the build. `streaming` is present only for commands that stream incremental output (`app:logs`, `app:exec`, build progress); it declares the per-line `StreamFrame` schema (§8.11).
+
+Every command MUST accept the universal `--format <text|json|...>` flag and its `--json` / `-j` shorthand (equivalent to `--format json`); see §8.11. The adapter injects these flags into every `LandoCommandSpec` so individual commands do not redeclare them.
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.
 
@@ -1501,5 +1506,74 @@ Tagged errors live in `@lando/core/errors`:
 - **GUI / host transport.** An embedding host (IDE extension, dashboard, `Bun.serve()` UI) provides an `InteractionService` Layer that pops native dialogs or round-trips prompts over its own transport instead of the terminal. This is what lets a host drive `apps:init`-style flows without screen-scraping the CLI (§16.7).
 
 Plugin and host implementations MUST pass the §13.1 interaction contract suite and MUST honor the `secret`-redaction, answer-precedence, and non-interactive-fail-fast guarantees; weakening any of them is forbidden and checked by the suite.
+
+---
+
+### 8.11 Machine-readable output contract
+
+The **Agent-native** tenet (§1.2) requires that every command be consumable by an agent or script without parsing prose. This section is the canonical owner of that guarantee: a single, universal, schema-backed JSON output path that works the same on every command.
+
+This is distinct from the `Renderer` (§8.9), and the two are not redundant:
+
+- **`--renderer <lando|json|plain|verbose>`** selects the *global output mode* — how messages, progress, and the task tree are routed and styled for the whole process.
+- **`--format <text|json|table|yaml|...>`** (with the **`--json` / `-j`** shorthand) selects the *per-command result encoding* — how this one command's typed result is serialized. **`--format json` is universal**: every non-interactive command MUST accept it and emit a valid envelope. `text` is the default; `table`/`yaml` remain per-command opt-ins. Bridge rule: `--renderer json` sets the default `--format` to `json`, but an explicit `--format` always wins.
+
+#### 8.11.1 The result envelope
+
+Every `--format json` invocation emits exactly one `CommandResultEnvelope` (streaming commands emit `StreamFrame`s terminated by a `result` frame — §8.11.3). The schemas are published from `@lando/sdk` (re-exported by `@lando/core/schema`, §7.8) and are part of the §13.2 schema snapshot:
+
+```ts
+export const CommandResultFormat = Schema.Literal("text", "json", "table", "yaml", "ndjson");
+
+export const CommandWarning = Schema.Struct({
+  code:        Schema.String,
+  message:     Schema.String,
+  remediation: Schema.optional(Schema.String),
+});
+
+export const CommandResultEnvelope = Schema.Struct({
+  apiVersion:   Schema.Literal("v4"),        // bumps only on a breaking envelope change
+  command:      Schema.String,               // canonical command id, e.g. "app:info"
+  ok:           Schema.Boolean,
+  result:       Schema.optional(Schema.Unknown),    // present when ok — the command's `resultSchema`-encoded value
+  error:        Schema.optional(TaggedErrorJson),   // present when !ok — the §7.8 tagged-error JSON shape
+  warnings:     Schema.Array(CommandWarning),
+  deprecations: Schema.Array(DeprecationUse),       // the §18 DeprecationUse shape
+});
+```
+
+`result` is typed per command by that command's required `LandoCommandSpec.resultSchema` (§8.3): `Schema.Unknown` at the envelope level, strongly typed and snapshot-frozen per command id. A command with no payload still emits a valid envelope with `result: {}`.
+
+#### 8.11.2 The single serialization seam
+
+JSON output is produced by **one** function — `encodeCommandResult` — used by every command, never by per-command `JSON.stringify`:
+
+1. On success, `Schema.encode(spec.resultSchema)` encodes the result; on failure, the tagged error is encoded via its §7.8 schema and `ok: false`. The process exit code is preserved — JSON output never swallows a non-zero exit.
+2. The encoded envelope is passed through the canonical `RedactionService` (§3.7) before any byte is written, so resolved `${secret:…}` values and `secret: true` environment values (§6.9.1) are masked uniformly.
+3. The §13.4 renderer-boundary lint gate forbids `JSON.stringify` of a command result anywhere outside `encodeCommandResult`; per-command `render*` helpers produce **human** encodings only (`text`/`table`/`yaml`), never JSON.
+
+#### 8.11.3 Streaming commands
+
+Commands that declare `LandoCommandSpec.streaming` (`app:logs`, `app:exec`, build progress) emit newline-delimited `StreamFrame`s under `--format json`, terminated by a `result` frame carrying the envelope:
+
+```ts
+export const StreamFrame = Schema.Union(
+  Schema.TaggedStruct("stdout", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("stderr", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("event",  { event: Schema.String, payload: Schema.Unknown }),  // redacted lifecycle frame
+  Schema.TaggedStruct("result", { envelope: CommandResultEnvelope }),                 // terminal frame
+);
+```
+
+`event` frames reuse the §11.1 `EventService` bounded **redacted** history; they are not a second event tap. This subsumes the prior one-off NDJSON paths (the doctor NDJSON renderer and the deprecation-event JSON line).
+
+#### 8.11.4 Required behaviors
+
+- Every non-interactive canonical command MUST accept `--format json` / `--json` / `-j` and emit a schema-valid `CommandResultEnvelope` (or `StreamFrame`s for streaming commands). The interactive carve-outs (`meta:setup`, `apps:init`, `meta:events:follow`, `app:shell`) are exempt **only** in their interactive mode; their non-interactive results still emit an envelope.
+- JSON MUST be produced solely by `encodeCommandResult`; the §13.4 gate fails any other result `JSON.stringify`.
+- Every envelope MUST pass through `RedactionService` (§3.7) before emission.
+- The envelope and every per-command `resultSchema` MUST be in the §13.2 schema snapshot; a shape change requires an intentional, reviewable snapshot regen.
+- `--format json` MUST behave identically across the OCLIF and compiled (`runCompiledCli`) dispatch paths; the §13.1 parity layer covers every canonical id.
+- The §13.1 machine-output conformance gate drives **every** canonical command id with `--format json` against `TestRuntime` and asserts a decodable envelope with correct `command`/`ok` for a success and a failure case.
 
 ---

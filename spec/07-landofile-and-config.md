@@ -938,7 +938,7 @@ Network access is required only when an include or app-declared plugin is missin
 
 ### 7.8 Schema and documentation publication
 
-Effect Schemas for the Landofile, global config, service config, expression AST/resolution errors, tooling config, route config, healthcheck config, plugin manifest, and event payloads are published from `@lando/sdk` and re-exported from `@lando/core/schema`. `@lando/sdk/schema` exposes a central public schema registry so build tooling can enumerate every schema that is part of the public contract. Schemas and individual fields MAY carry a `deprecated:` annotation per §18.5; the build pipeline propagates this to JSON Schema (`deprecated: true` plus `x-deprecation`) and to the generated reference MDX as a "Deprecated since X" callout (§17.2 codegen).
+Effect Schemas for the Landofile, global config, service config, expression AST/resolution errors, tooling config, route config, healthcheck config, plugin manifest, event payloads, the prompt vocabulary (§8.10.1), and the machine-readable command-output contract (`CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, `StreamFrame`; §8.11) are published from `@lando/sdk` and re-exported from `@lando/core/schema`. `@lando/sdk/schema` exposes a central public schema registry so build tooling can enumerate every schema that is part of the public contract. Schemas and individual fields MAY carry a `deprecated:` annotation per §18.5; the build pipeline propagates this to JSON Schema (`deprecated: true` plus `x-deprecation`) and to the generated reference MDX as a "Deprecated since X" callout (§17.2 codegen).
 
 Build-time schema publication produces:
 
