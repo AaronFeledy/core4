@@ -116,6 +116,7 @@ Files Lando v4 writes to disk:
 | `<userDataRoot>/builds/<app-id>/<phase>/<service>/<buildKey>.log` | Per-step build transcripts written by `BuildOrchestrator` (§6.13.6). One file per `(service, phase, buildKey)` containing the full unredacted output of the step. Opened on `build-step-start`, appended atomically as `execStream` chunks arrive, closed on `build-step-complete` / `build-step-fail`. Read directly by the renderer's alt-screen full-tail view (§8.9.2) and by `lando logs <service> --build [--build-key …]`. Rotation: per `(service, phase, buildKey)`, the most recent `build.transcripts.keepCompleted` (default 10) `complete` entries and the most recent `build.transcripts.keepFailed` (default 5) `fail` entries are retained; older transcript files are unlinked when their `build-results` cache entry rolls out. Cleared by `lando destroy`; never sent to telemetry |
 | `<userDataRoot>/snapshots/<app-id>/<store>/<snapshot-id>.<format>` | Volume snapshot archives written by `DataMover` (§10.11) in `copy` mode (`tar`/`tar.gz`/`tar.zst`), each paired with a `<snapshot-id>.json` `SnapshotInfo` sidecar (digest, size, createdAt, label, optional native `VolumeSnapshotRef`). The store root resolves through `PathsService.appSnapshotsDir` (§7.5.1). Survives `lando destroy`; removed only by `lando destroy --purge` or `meta`/`app` snapshot-prune. Never sent to telemetry |
 | `<userDataRoot>/snapshots/<app-id>/index.bin` | `StateStore` (§12.7) bucket indexing an app's snapshots (id, store, digest, size, label, createdAt). Atomic write + version header + corruption quarantine inherited from `StateStore`; NOT a bespoke registry. Read by `listSnapshots`/`pruneSnapshots` (§10.11.2) |
+| `<userDataRoot>/managed-files/<app-id>/ledger.json` | `StateStore` (§12.7) bucket recording `ManagedFileService` (§10.13) ownership state for working-tree files (id, owner, path, mode, format, marker, last checksum, source hash, adopted/conflict state, optional backup metadata). The path resolves through `PathsService.managedFileLedger(appId)` (§7.5.1). Local and rebuildable from on-disk markers; NOT a bespoke registry |
 | `<systemPluginRoot>/plugins/` | System-installed plugins (read-only from Lando; populated by OS package managers or admins; see §7.5 for the platform defaults that resolve `<systemPluginRoot>`) |
 
 ### 12.5 Hot-path read budgets
@@ -198,10 +199,12 @@ The errors live on the service surface as a single tagged `StateStoreError` carr
 
 #### 12.7.2 Reference consumers
 
-The two durable subsystems are realized through `StateStore`:
+The durable subsystems realized through `StateStore` include:
 
 - **Scratch registry** (§21.11): a single `advisory`, `quarantine` bucket at `{ root: "userCache", namespace: "scratch", key: "registry.bin" }`; `read` is `get` with an empty-envelope default, and `upsert` / `remove` are `update`. The §21.11 token lockfile and corruption-quarantine behavior are now the store's.
 - **Include lockfile** (§7.7.4): a `none`-lock bucket at `{ root: { app: appRoot }, key: ".lando.lock.yml" }` with a custom codec wrapping the existing renderer/parser, so the committed YAML is byte-for-byte unchanged while gaining the shared atomic-write and containment path.
+- **Snapshot index** (§10.11.3): an app-scoped bucket indexing `DataMover` snapshots under `<userDataRoot>/snapshots/<app-id>/index.bin`; `listSnapshots`/`pruneSnapshots` read and update the bucket instead of a bespoke registry.
+- **Managed-file ledger** (§10.13.3): an app-scoped `advisory`, `quarantine` bucket at `{ root: "userData", namespace: "managed-files/<app-id>", key: "ledger.json" }` recording marker ownership, checksums, source hashes, and adopted/conflict state for `ManagedFileService`.
 
 #### 12.7.3 Plugins and embedding hosts
 

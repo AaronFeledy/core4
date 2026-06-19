@@ -693,6 +693,8 @@ Plugin implementations MUST pass the same contract suite as the default and MUST
 
 `DataMover` is **not** a sync engine (live bidirectional sync stays `FileSyncEngine`, §10.6) and **not** a remote transport (a `RemoteSource` plugin owns remote I/O via `HttpClient`; it uses `DataMover` only for the local extract/land half — §10.12).
 
+`DataMover` moves opaque bytes and archives. `ManagedFileService` (§10.13) owns rendered, marked project files the user can adopt. Both primitives share the streaming-hash/atomic-write helper and the realpath-containment helper, but a settings file write never goes through `DataMover` and a DB dump never goes through `ManagedFileService`.
+
 #### 10.11.1 The `DataEndpoint` model
 
 Movement is expressed as a transfer between two typed endpoints. The union is the heart of the primitive; every feature is one `transfer(from, to)` or one `snapshot`/`restore`.
@@ -828,5 +830,125 @@ Tagged errors (`@lando/core/errors`): `RemoteError`, `RemoteUnreachableError`, `
 **Landofile surface** (§7.4): a top-level `remotes:` map (each entry validated by its source's `configSchema`) plus optional `sync:` dataset bindings; bindings are usually inferred (a `database` service-type auto-provides the `database` dataset bound to itself; framework presets auto-bind `files` to the upload dir). Commands: `app:pull` / `app:push` (top-level `pull` / `push`), `app:remote:list` / `:add` / `:remove` / `:test` / `:setup`, and `app:remote:env:list`.
 
 This abstraction is **not** byte movement and **not** a tunnel: it composes `HttpClient`, tool provisioning/`Downloader`, `DataMover`, `StateStore`, the probe primitive, `InteractionService`, `SecretStore`, and `RedactionService`. The §13.1 `RemoteSource` and `Dataset` contract suites pin every guarantee above; `@lando/core/testing` ships an in-memory `TestRemoteSource` (and a `local` source) plus `TestDataset` so the surface is testable without a real hoster or network.
+
+### 10.13 Managed files
+
+`ManagedFileService` is the single chokepoint for Lando-owned writes into the user's working tree: files the user sees, commits, edits, and may adopt (`settings.php`, `wp-config.php`, `.env`, `.devcontainer/devcontainer.json`, or a generated Landofile fragment). It is the working-tree peer of `DataMover` (§10.11): `DataMover` moves opaque local/volume/service/archive bytes, while `ManagedFileService` renders content, encodes structured formats, applies ownership markers, records a `StateStore` ledger, detects drift/adoption, and refuses to silently clobber a user edit.
+
+Core ships exactly one implementation. The service is host/test-overridable but is **not** a §4.2 plugin contribution surface (§4.2): plugins write managed files only through the pre-namespaced `LandoPluginContext.managedFiles` accessor (§9.8). It composes existing primitives instead of inventing new ones: `StateStore` (§12.7), `PathsService.managedFileLedger(appId)` (§7.5.1), the shared streaming-hash/atomic-write helper and realpath-containment helper factored for PRD-16, `RedactionService` (§3.7), `EventService` redacted history (§11.1), and the `@lando/sdk/landofile` serializer (§7.8.1).
+
+#### 10.13.1 The `ManagedFile` model
+
+Managed-file intent is declarative. A caller supplies one or more `ManagedFile` entries and the service plans or applies them against a resolved base (app root by default):
+
+```ts
+export const ManagedFile = Schema.Struct({
+  id: Schema.String,                         // "drupal:settings"
+  owner: Schema.String,                      // recipe/plugin/core id
+  path: PortablePath,                        // relative to base
+  mode: Schema.Literal("file", "block", "keys"),
+  format: FileFormat,                        // text | env | json | yaml | toml | ini | landofile
+  content: ContentSource,                    // text | structured | template | inline
+  marker: Schema.optional(Schema.String),    // defaults to id
+  perms: Schema.optional(Schema.String),     // octal
+  onConflict: Schema.optional(Schema.Literal("skip", "overwrite", "fail")),
+  base: Schema.optional(AbsolutePath),
+});
+```
+
+`ContentSource` is a tagged union:
+
+| Tag | Meaning |
+|---|---|
+| `text` | Already-rendered string/bytes, encoded as-is for `format` |
+| `structured` | JSON-like data encoded by the shared codec for `env`/`json`/`yaml`/`landofile` |
+| `template` | Template file + vars rendered through `TemplateRenderer` before encode |
+| `inline` | Inline template string + vars rendered through `TemplateRenderer` before encode |
+
+Modes:
+
+- `file` owns the whole file and writes the ownership marker at the top (or ledger + optional `x-lando-generated` for JSON).
+- `block` owns only a fenced region (`# >>> lando:<id> >>>` … `# <<< lando:<id> <<<`) inside a user-owned file and replaces only that region.
+- `keys` owns a structured subtree in `json`/`yaml`/`landofile`; the model reserves it, but the structural merge consumer is 4.x.
+
+The codec module is pure and shared with the §6.4 mount materializer. `landofile` and `yaml` delegate to the canonical `@lando/sdk/landofile` serializer so there is one Landofile round-trip implementation.
+
+#### 10.13.2 The `ManagedFileService` service
+
+```ts
+export class ManagedFileService extends Context.Service<ManagedFileService, {
+  readonly plan:    (files: ReadonlyArray<ManagedFile>) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
+  readonly apply:   (files: ReadonlyArray<ManagedFile>, opts?: ApplyOptions) => Effect.Effect<ManagedFileResult, ManagedFileError, Scope.Scope>;
+  readonly remove:  (selector: ManagedFileSelector) => Effect.Effect<ManagedFileResult, ManagedFileError>;
+  readonly status:  Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError>;
+  readonly adopt:   (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+  readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+}>()("@lando/core/ManagedFileService") {}
+```
+
+Required behaviors:
+
+- **Bootstrap.** `ManagedFileServiceLive` is available at level `minimal` and `Layer.suspend`-wrapped. Constructing the layer MUST NOT touch the provider, the network, or plugin modules.
+- **Plan/apply agreement.** `plan(files)` is side-effect-free and produces per-file actions (`create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, `adopt-detected`). `apply(files)` honors that plan and reports what it actually did.
+- **Rendering and encoding.** Template sources render through `TemplateRenderer`; structured sources encode through the shared codec module; `toml`/`ini` may fail with a `format` remediation until 4.x.
+- **Atomicity.** Every write goes through the shared streaming-hash/atomic-write helper (temp → fsync → rename; temp removed on interrupt/failure). A crash or `Effect.interrupt` never leaves a torn live file.
+- **Containment.** The resolved file realpath MUST stay under `base` (app root by default). Symlink escapes and `../` escapes fail with `ManagedFileError reason:"path"` via the shared containment helper.
+- **Events.** The `ManagedFile` lifecycle scope (§3.5) publishes `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, and `managed-file-skipped`. Payloads carry path/owner/action/summary only, never file content, and are routed through `RedactionService` before publish/history/transcript.
+- **Removal/adoption.** `remove(selector)` deletes only files/blocks the ledger records as Lando-owned. `adopt(path)` / `release(path)` flip ledger ownership state and `adopt` strips the marker so future applies skip.
+
+#### 10.13.3 Marker, StateStore ledger, and decision algorithm
+
+The inline marker is the user-facing adoption affordance. Deleting the marker means Lando stops touching the file. Per-format comment syntax is used where possible; JSON relies on the ledger plus an optional `x-lando-generated` field because JSON has no comments.
+
+The ledger is a `StateStore` bucket, not a bespoke file:
+
+```ts
+stateStore.open({
+  root: "userData",
+  namespace: `managed-files/${appId}`,
+  key: "ledger.json",
+  codec: "json",
+  lock: "advisory",
+  onCorrupt: "quarantine",
+  version: 1,
+});
+```
+
+The default concrete path is `<userDataRoot>/managed-files/<app-id>/ledger.json`, resolved through `PathsService.managedFileLedger(appId)` (§7.5.1). Each entry records `{ id, owner, path, mode, format, marker, lastWrittenChecksum, sourceHash, state, backup?, createdAt, updatedAt }`. The ledger is local and rebuildable: marked files in the working tree are the committed source of truth.
+
+Decision table:
+
+| Current state | Action |
+|---|---|
+| Path does not exist | `create` — write desired content + marker + ledger |
+| Exists, no marker, no ledger entry | `skip-adopted` — pre-existing user file; record adopted |
+| Marker present, ledger checksum equals current bytes, desired `sourceHash` unchanged | `skip-unchanged` |
+| Marker present, ledger checksum equals current bytes, desired `sourceHash` changed | `update` |
+| Marker present, ledger checksum differs from current bytes | `conflict` — default `onConflict:"skip"` warns/skips; `overwrite` backs up then updates; `fail` errors |
+| Ledger state is `adopted` | `skip-adopted` |
+| Marker was removed from a previously managed file | `adopt-detected` then `skip-adopted` |
+
+This is safer than DDEV's `#ddev-generated` rule: an in-place user edit under a still-present marker is detected through the ledger checksum and is a conflict by default, not a silent overwrite.
+
+#### 10.13.4 Errors
+
+The service exposes one tagged error, `ManagedFileError`, with a discriminator and operation context:
+
+```ts
+type ManagedFileError = {
+  readonly _tag: "ManagedFileError";
+  readonly reason: "io" | "decode" | "conflict" | "path" | "format";
+  readonly operation: "plan" | "apply" | "remove" | "status" | "adopt" | "release";
+  readonly path?: string;
+  readonly cause?: unknown;
+  readonly remediation?: string;
+};
+```
+
+`conflict` identifies a protected in-place edit; `path` covers realpath-containment failures; `format` covers unsupported codecs or deferred `keys`-mode merges; `decode` covers invalid existing structured content; `io` covers filesystem, permission, and ledger access failures. Error payloads are redacted before reaching events, logs, transcripts, or JSON output.
+
+#### 10.13.5 Contract suite
+
+The §13.1 managed-file contract suite is StateStore-style: it protects a core integrity invariant rather than a §4.2 plugin abstraction. It runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and host/test overrides. It asserts create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace leaves no torn file under `Effect.interrupt`; path escapes are rejected; markers round-trip per format; `block` mode is idempotent; ledger corruption uses `StateStore` quarantine semantics; and a known secret never appears in emitted events/history/transcripts. The §13.4 `check:managed-file-boundary` gate forbids parallel host-project-file writers with their own marker/overwrite logic outside `core/src/managed-file/**` and named consumers.
 
 ---

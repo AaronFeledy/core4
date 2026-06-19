@@ -1152,6 +1152,7 @@ Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `tem
 - `mode:` (octal string) sets file permissions on POSIX hosts. Ignored on Windows. Useful for shell scripts and entrypoints.
 - A file with a falsy `when:` is skipped and reported in the init summary.
 - The destination directory is created on demand. Atomic-write semantics from §12.3 apply per file.
+- Recipe `files:` writes are realized through `ManagedFileService` (§10.13) in whole-file mode (`owner` = recipe id), so scaffolded project files carry the ownership marker, record the `StateStore` ledger, and become updatable/adoptable instead of one-shot host-file writes.
 - `.lando.yml` (or whatever the configured Landofile basename is per §7.5) is validated against the published Landofile schema (§7.8) after rendering and before being written. A validation failure aborts the entire init with `RecipeOutputValidationError` and no partial files; the user sees the failing path with line/column.
 
 #### 8.8.8 Post-init actions
