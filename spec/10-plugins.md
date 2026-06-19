@@ -141,6 +141,9 @@ provides:
   toolingEngines:
     - id: providerExec
       module: ./src/tooling/provider-exec.ts
+  httpClients:
+    - id: corporate-egress-gateway
+      module: ./src/http/gateway.ts
   downloaders:
     - id: corporate-mirror
       module: ./src/downloader/corporate-mirror.ts
@@ -229,7 +232,8 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `loggers` | `Logger` impls | Logging service |
 | `renderers` | `Renderer` impls | Renderer service |
 | `toolingEngines` | `ToolingEngine` impls for compiled Lando task graphs | Tooling service |
-| `downloaders` | `Downloader` impls for verified Lando-owned artifact downloads (§10.3.2) | Downloader service |
+| `httpClients` | `HttpClient` impls — the outbound-egress chokepoint for all Lando-owned network access (§10.3.2) | HttpClient service |
+| `downloaders` | `Downloader` impls for verified Lando-owned artifact downloads, layered over `HttpClient` (§10.3.3) | Downloader service |
 | `interactionServices` | `InteractionService` impls for prompt/answer resolution (headless/CI, recording/test, GUI/host transports; §8.10) | Interaction service |
 | `routeFilters` | Provider-neutral route transforms | Proxy subsystem |
 | `healthcheckRunners` | `HealthcheckRunner` impls | Healthcheck subsystem |

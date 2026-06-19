@@ -145,7 +145,7 @@ The following items were explicitly deferred to Beta 1 by prior PRDs, the ROADMA
 | Telemetry — default-on inventory, retention, disablement, and canonical redaction primitive      | ROADMAP Beta 1, §3.7  | PRD-06 US-237..US-242, US-298..US-301 |
 | Executable guides full pipeline (§19) — public transcripts, full vocabulary, lint, recipe READMEs | Alpha 2/3 PRD-12   | PRD-07 US-243..US-250     |
 | Release engineering (§17.1–17.4) — `scripts/release.ts`, code signing on all platforms          | Alpha 3 (release-eng) | PRD-08 US-251..US-257     |
-| Supply chain (§17.5), self-update (§17.6), and shared verified `Downloader` primitive            | Alpha 3 (release-eng), §10.3.2 | PRD-09 US-258..US-265, US-285..US-288 |
+| Supply chain (§17.5), self-update (§17.6), and the layered outbound-network primitives (`HttpClient` egress chokepoint, `Downloader` verified-artifact wrapper, tool provisioning) | Alpha 3 (release-eng), §10.3.2–§10.3.4 | PRD-09 US-258..US-265, US-285..US-288, US-330..US-332 |
 | Installers (§17.7) — GitHub Releases + curl-pipe installers                                     | Alpha 3 (release-eng) | PRD-10 US-266..US-271     |
 | `@lando/core/testing` stable on `next` + full §16.2 library contract suite                      | Alpha 3 PRD-11        | PRD-11 US-272..US-275     |
 | §17.9 binary acceptance machinery green on the reference platform (linux-x64)                   | ROADMAP Beta 1, §17.9 | PRD-11 US-276..US-279     |

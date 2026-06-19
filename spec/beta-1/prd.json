@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the shared Downloader primitive for proxy/CA-aware verified artifact downloads, move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then enter feature freeze. Stories follow the 15-PRD breakdown in `spec/beta-1/prd-beta-1-{01..15}-*.md` (US-200..US-329); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then enter feature freeze. Stories follow the 15-PRD breakdown in `spec/beta-1/prd-beta-1-{01..15}-*.md` (US-200..US-329); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -1520,7 +1520,7 @@
       "title": "Publish the Downloader SDK service, schemas, errors, and manifest surface",
       "description": "As a plugin author or embedding host, I can replace Lando's verified artifact acquisition path through a stable `Downloader` service contract instead of patching individual setup/update call sites.",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` exports the `Downloader` service tag and typed interface with `download(request)` returning an Effect.",
+        "`@lando/sdk/services` exports the `Downloader` service tag and typed interface with `download(request)` returning an Effect; the interface and `DownloaderLive` are a wrapper over `HttpClient` (US-330/US-331) and depend on the `HttpClient` tag.",
         "`@lando/sdk/schema` exports `ArtifactManifestEntry`, `DownloadRequest`, `DownloadResult`, `DownloaderCapabilities`, and download lifecycle event payload schemas.",
         "`@lando/sdk/errors` exports tagged download errors: `DownloadFetchError`, `DownloadChecksumError`, `DownloadSizeMismatchError`, `DownloadPersistError`, `DownloadOfflineError`, `DownloadSourceForbiddenError`, and `DownloaderUnavailableError`.",
         "Plugin manifests accept `provides.downloaders[]` with capability metadata, module path containment, deprecation metadata, and standard §4.3 selection behavior.",
@@ -1535,12 +1535,11 @@
     },
     {
       "id": "US-286",
-      "title": "Implement the default DownloaderLive and canonical network-trust resolver",
-      "description": "As a user behind a proxy or custom CA, every Lando-owned artifact download honors one canonical outbound-trust implementation with secure defaults.",
+      "title": "Implement DownloaderLive as a verified wrapper over HttpClient",
+      "description": "As a user behind a proxy or custom CA, every Lando-owned artifact download inherits one canonical outbound-trust implementation (from HttpClient) and adds verified, atomic, cache-aware persistence on top.",
       "acceptanceCriteria": [
-        "The duplicated proxy/CA helper currently embodied by setup network-trust code is extracted to a canonical module consumed by `DownloaderLive` and setup preflight.",
-        "`DownloaderLive` is available at bootstrap `minimal`, uses Bun `fetch`, honors `network.proxy` before env proxy variables, honors `NO_PROXY`, loads configured CA PEMs, and accepts an already-resolved trust object from setup preflight.",
-        "File downloads stream bytes through SHA-256 hashing into a unique temp file on the destination filesystem, then atomically rename on success.",
+        "`DownloaderLive` is available at bootstrap `minimal`, depends on the `HttpClient` tag, and issues its byte-fetch through `HttpClient.stream`; it does NOT call `fetch` or resolve proxy/CA itself (that lives in `HttpClient`, US-331), so overriding `HttpClient` governs downloads too.",
+        "File downloads pipe the `HttpClient.stream` body through SHA-256 hashing into a unique temp file on the destination filesystem, then atomically rename on success.",
         "Temp files are removed on fetch failure, checksum mismatch, size mismatch, persistence failure, and `Effect.interrupt`.",
         "`memory` downloads buffer only when explicitly requested by the caller.",
         "Existing verified destination artifacts short-circuit without network access; offline cache misses fail before opening a connection.",
@@ -1559,7 +1558,7 @@
       "description": "As a maintainer, I can reason about one verified-download path instead of auditing near-duplicate helpers across provider, file-sync, recipe/include, and update code.",
       "acceptanceCriteria": [
         "`@lando/provider-lando` runtime-bundle fetch/verify/persist delegates to `Downloader` after it resolves the active manifest entry and override precedence.",
-        "`@lando/file-sync-mutagen` host CLI and agent binary fetch/verify/persist delegates to `Downloader`; extraction and daemon/session logic remain file-sync concerns.",
+        "`@lando/file-sync-mutagen` host CLI and agent binary acquisition delegates to the tool-provisioning helper (US-332) — which provisions through `Downloader`, extracts the archive member, and installs under `<userDataRoot>/bin/`; only daemon/session logic remains a file-sync concern. The plugin's bespoke download/extract/verify/install code is removed.",
         "Core recipe tarball and include tarball materialization delegate tarball fetch/verify/persist to `Downloader` while git/npm/registry paths remain with their existing Git/BunSelfRunner seams.",
         "Self-update binary/checksum/signature artifact fetches delegate byte acquisition to `Downloader`; signature/cosign/GPG verification remains in the release/update primitive after download.",
         "Plugin install/update paths that are package-manager operations remain on `BunSelfRunner` and are explicitly documented as out of `Downloader` scope.",
@@ -1583,7 +1582,7 @@
         "`pre-download`, `download-progress`, and `post-download` events are emitted with stable payload schemas and deterministic redaction.",
         "Proxy credentials, URL userinfo, bearer tokens, signed-URL query params, and caller-supplied redaction tokens never appear in events, telemetry, readiness summaries, support diagnostics, lockfiles, cache metadata, or normal logs.",
         "Linux-x64 acceptance coverage proves runtime-bundle and Mutagen downloads route through `Downloader`, while installer script downloads remain outside runtime scope.",
-        "Contract tests prove a plugin-contributed downloader cannot weaken checksum verification, path containment, or redaction while still satisfying the service interface.",
+        "Contract tests prove a plugin-contributed downloader cannot weaken checksum verification, path containment, or redaction, and cannot open its own socket — every byte of egress is asserted to flow through the resolved `HttpClient` — while still satisfying the service interface.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2333,6 +2332,61 @@
       "priority": 130,
       "passes": false,
       "notes": ""
+    },
+    {
+      "id": "US-330",
+      "title": "Publish the HttpClient SDK service, schemas, errors, events, and manifest surface",
+      "description": "As a plugin author or embedding host (hosting push/pull, a tunnel control plane, an MCP surface), I can perform Lando-governed outbound HTTP — request/response, streaming, and upload — through one stable `HttpClient` contract instead of calling `fetch` and re-implementing proxy/CA/redaction.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` exports the `HttpClient` service tag with `request(req)`, `stream(req)` (non-buffering `Stream<Uint8Array>` body), and `upload(req)`, each returning a `Scope`-bearing Effect, plus a `capabilities` field.",
+        "`@lando/sdk/schema` exports `HttpRequest`, `HttpResponse`, `HttpStreamResponse`, `HttpUploadRequest`, `HttpClientCapabilities`, and the `pre-http-call` / `post-http-call` event payload schemas.",
+        "`@lando/sdk/errors` exports `HttpRequestError`, `HttpUploadError`, `HttpTrustError` (kinds: proxy-authentication / tls-interception / missing-custom-ca / blocked-endpoint), and `HttpClientUnavailableError`.",
+        "Plugin manifests accept `provides.httpClients[]` with capability metadata, module-path containment, deprecation metadata, and §4.3 selection.",
+        "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, the schema registry / `SDK_SCHEMA_NAMES`, and schema snapshots are updated in the same change.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 131,
+      "passes": false,
+      "notes": "PRD-09 network primitives. Implement before US-285/US-286: HttpClient is the egress chokepoint Downloader wraps."
+    },
+    {
+      "id": "US-331",
+      "title": "Implement HttpClientLive, the canonical network-trust resolver, and the egress-boundary gate",
+      "description": "As a user behind a proxy or custom CA, every Lando-owned fetch — downloads and request/response traffic alike — honors one canonical outbound-trust implementation that I configure once.",
+      "acceptanceCriteria": [
+        "The proxy/CA helper in setup network-trust code (`fetchInitForNetwork`, `shouldBypassProxy`, trust resolution) is extracted to a canonical pure `@lando/sdk` module consumed by `HttpClientLive` and `lando setup` preflight; the duplicated copies in `provider-lando` and `file-sync-mutagen` are deleted.",
+        "`HttpClientLive` is available at bootstrap `minimal`, uses Bun `fetch`, honors `network.proxy` before env proxy vars, honors `NO_PROXY`, loads configured CA PEMs, and accepts an already-resolved trust object from setup preflight.",
+        "`stream` exposes a non-buffering `Stream<Uint8Array>` body; `Effect.interrupt` closes the connection and reaps in-flight transfers; an offline-only request fails before opening a connection.",
+        "`pre-http-call` / `post-http-call` events redact proxy credentials, URL userinfo, bearer tokens, and signed-URL query params; a call issued for a `Downloader` request is tagged so it is not double-counted.",
+        "`@lando/sdk/test` exports an `HttpClient` contract suite run against `HttpClientLive`, `TestHttpClient`, and any contributed implementation.",
+        "A `check:network-boundary` CI gate rejects direct `fetch` for Lando-owned network access outside the `HttpClient` adapter, with carve-outs only for `BunSelfRunner` package ops and standalone installer scripts.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 132,
+      "passes": false,
+      "notes": "PRD-09 network primitives. Prerequisite for the Downloader stories (US-285..US-288)."
+    },
+    {
+      "id": "US-332",
+      "title": "Ship the tool-provisioning helper and migrate Mutagen onto it",
+      "description": "As a maintainer, every bundled tool that installs a pinned host binary (Mutagen today; tunnel/mkcert/profiler/hosting CLIs later) uses one shared verify-extract-install helper instead of hand-rolled per-plugin code.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/schema` exports the canonical `ToolManifest` and `ToolArtifactEntry` schemas (multi-platform-keyed); `@lando/sdk/errors` exports `ToolExtractError`, `ToolInstallPathError`, and `ToolManifestError`.",
+        "A pure `@lando/sdk` helper resolves the active host entry by `${platform}-${arch}`, fetches+verifies via `Downloader` (never directly), extracts the named tar.gz/zip member, and installs it under a realpath-contained `<userDataRoot>/bin/` path with the declared mode.",
+        "The helper writes an installed-version marker plus a per-binary `.sha256` fingerprint; a re-run whose pinned `toolVersion` and fingerprints already match is an idempotent no-op with no network access.",
+        "`@lando/file-sync-mutagen` ships `mutagen-versions.json` as a `ToolManifest` asset and provisions the host CLI + agents through the helper; its bespoke fetch/extract/verify/install code is removed.",
+        "The §17.2 codegen emits/validates the Mutagen `ToolManifest` with a `git diff --exit-code` staleness gate; the `tool-downloads` cache (§12.1) and `bin/` markers (§12.4) behave as specified.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 133,
+      "passes": false,
+      "notes": "PRD-09 network primitives. Depends on Downloader (US-286/US-287); pairs with US-287's Mutagen migration."
     }
   ]
 }

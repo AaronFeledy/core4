@@ -7,7 +7,7 @@ This part defines the cross-cutting subsystems that sit between the core runtime
 
 Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `ProxyService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
 
-The verified-download path is part of this subsystem surface: every Lando-owned artifact download goes through the `Downloader` abstraction (§10.3.2), which centralizes proxy/CA honoring, checksum verification, path containment, atomic persistence, and redaction.
+Outbound network access is part of this subsystem surface. Every Lando-owned fetch goes through one egress chokepoint — the `HttpClient` abstraction (§10.3.2) — which centralizes proxy/CA honoring, redaction, streaming request/response and upload, cancellation, and lifecycle events. `Downloader` (§10.3.3) is the verified-artifact specialization layered over `HttpClient`, adding checksum/size verification, atomic persistence, cache/offline short-circuiting, and download progress; the tool-provisioning helper (§10.3.4) extracts and installs pinned host binaries over `Downloader`.
 
 ---
 
@@ -92,6 +92,8 @@ export class CertificateAuthority extends Context.Service<CertificateAuthority, 
 
 Lando-owned network access MUST work behind corporate HTTP(S) proxies and custom CA chains. This applies to runtime bundle downloads, plugin resolution/install, include and recipe resolution, update checks, telemetry delivery, provider-helper downloads, and any provider artifact pull that Lando initiates directly.
 
+This policy is implemented in exactly one place: the canonical network-trust resolver, exported as a pure `@lando/sdk` module and consumed at runtime by the `HttpClient` service (§10.3.2). Every Lando-owned fetch flows through `HttpClient`, so `Downloader` (§10.3.3), the tool-provisioning helper (§10.3.4), and every request/response caller (hosting push/pull, telemetry delivery, update-manifest fetch, plugin-registry queries, tunnel/share control planes, the in-process MCP surface, the `UrlScanner`) inherit the same proxy/CA resolution without re-implementing it. `lando setup` preflight consumes the same resolver to classify proxy/CA failures before issuing real requests. Package-manager operations delegated to `BunSelfRunner` are the one exception: they honor the same `network.proxy` / `network.ca` policy through their own runner contract rather than through `HttpClient`.
+
 Required behaviors:
 
 - Lando-owned network clients honor explicit global `network.proxy` config (§7.5), then standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables when config is unset.
@@ -103,9 +105,47 @@ Required behaviors:
 - Proxy credentials are secrets. They are redacted from logs, telemetry, support diagnostics, lockfiles, and cache metadata.
 - Offline-capable commands do not fail because proxy/CA endpoints are unreachable when their required local state is already present (§12.6).
 
-### 10.3.2 Verified downloads (`Downloader`)
+### 10.3.2 Outbound HTTP (`HttpClient`)
 
-All Lando-owned artifact downloads MUST flow through the `Downloader` service, not direct `fetch`, ad-hoc checksum helpers, or plugin-local proxy/CA implementations. This includes the `@lando/provider-lando` runtime bundle, Mutagen host and agent binaries, helper binaries, recipe and include tarballs, self-update binary/checksum/signature artifacts, and future provider/helper artifacts that Lando initiates directly. Registry or package-manager operations delegated to `BunSelfRunner` remain outside this primitive, but they still honor the same `network.proxy` / `network.ca` policy through their own runner contract.
+`HttpClient` is the single outbound-egress chokepoint for all Lando-owned network access. Every request/response interaction Lando initiates — hosting-provider push/pull orchestration and uploads, telemetry delivery, the update-manifest fetch, plugin-registry queries, tunnel/share control-plane calls, the in-process MCP surface, the `UrlScanner` — MUST flow through `HttpClient`, not direct `fetch` or plugin-local proxy/CA wiring. The one exception is registry/package-manager operations delegated to `BunSelfRunner`, which honor the same `network.proxy` / `network.ca` policy through their own runner contract. `Downloader` (§10.3.3) is itself a consumer: it issues its byte-fetch through `HttpClient`, so overriding `HttpClient` once (audited, air-gapped, mirror, corporate gateway) governs downloads too.
+
+```ts
+export class HttpClient extends Context.Service<HttpClient, {
+  readonly id: string;
+  readonly capabilities: HttpClientCapabilities;
+  // Buffered request/response.
+  readonly request: (req: HttpRequest)       => Effect.Effect<HttpResponse, HttpError, Scope.Scope>;
+  // Streaming response body — REQUIRED so `Downloader` can stream → hash → temp file without buffering whole artifacts.
+  readonly stream:  (req: HttpRequest)       => Effect.Effect<HttpStreamResponse, HttpError, Scope.Scope>;
+  // Streaming/buffered upload (PUT/POST bodies, multipart) for push and similar.
+  readonly upload:  (req: HttpUploadRequest) => Effect.Effect<HttpResponse, HttpError, Scope.Scope>;
+}>()("@lando/core/HttpClient") {}
+```
+
+`HttpRequest` carries method, URL, headers, optional body, optional per-call resolved network-trust override, redaction tokens, and timeout/retry policy (the §10.5.1 probe primitive supplies retry semantics). `HttpStreamResponse` exposes status, headers, and a `body: Stream.Stream<Uint8Array, HttpError>`.
+
+Required behaviors:
+
+- `HttpClient` resolves outbound trust with the canonical §10.3.1 resolver unless the caller passes an already-resolved trust object (e.g., from setup preflight). Every request honors explicit `network.proxy`, then `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`, plus configured custom CA PEMs.
+- `stream` MUST expose the response body as a `Stream<Uint8Array>` and MUST NOT buffer the whole body in memory; `request` buffers only when the caller wants a buffered body.
+- Proxy credentials, URL userinfo, bearer tokens, signed-URL query params, and caller-supplied redaction tokens MUST be redacted from logs, telemetry, support diagnostics, lifecycle events, lockfiles, and cache metadata. The active `Logger` at debug level MAY observe unredacted detail.
+- Every call publishes `pre-http-call` and `post-http-call` lifecycle events (§3.5/§11.2) with the redacted URL origin, method, caller-subsystem id, status, byte counts, duration, and redacted failure detail. A call issued on behalf of a `Downloader` request is tagged with the originating download so telemetry/transcripts do not double-count it as an independent `http-call`.
+- `Effect.interrupt` MUST close the connection and the service's `Scope` MUST reap in-flight transfers.
+- Offline cooperation: `HttpClient` does not itself cache, but it honors an offline policy by failing fast without opening a connection when the caller declares offline-only.
+- Scope discipline: `HttpClient` is a thin trust-aware, redacted, cancellable request/response + streaming + upload primitive. It is NOT a REST framework, retry engine, or artifact-verification layer — checksum/size verification and atomic persistence belong to `Downloader` (§10.3.3); retry/backoff belongs to the §10.5.1 probe primitive; hosting/registry/tunnel plugins build their vendor API clients on top of it.
+
+`HttpClient` is a §4.2 pluggable abstraction. Plugin-contributed implementations MAY provide audited, air-gapped, mirror-aware, corporate-gateway, or recording behavior, but they MUST pass the `HttpClient` contract suite (§13.1) and MUST NOT weaken proxy/CA honoring, redaction, scheme policy, or cancellation finalization.
+
+Tagged errors:
+
+- `HttpRequestError` — DNS, TCP, TLS, proxy, HTTP status, or response-body failure on a request/stream. Payload includes redacted URL origin, method, status when available, classified network-trust cause when known, and remediation.
+- `HttpUploadError` — an `upload` failed (connection, status, or body-stream failure). Payload includes the redacted target origin and remediation.
+- `HttpTrustError` — outbound trust could not be satisfied; carries a classified kind (`proxy-authentication`, `tls-interception`, `missing-custom-ca`, `blocked-endpoint`) and platform-specific remediation. This is the runtime form of the `lando setup` preflight classification (§10.8).
+- `HttpClientUnavailableError` — the selected `HttpClient` implementation cannot satisfy the request or its declared capabilities (e.g., a sandboxed host that allowlists specific origins).
+
+### 10.3.3 Verified downloads (`Downloader`)
+
+`Downloader` is the verified-artifact specialization layered over `HttpClient` (§10.3.2). It owns checksum/size verification, atomic persistence, cache/offline short-circuiting, and download progress; it does NOT open its own socket. All Lando-owned artifact downloads MUST flow through `Downloader`, not direct `fetch` or ad-hoc checksum helpers. This includes the `@lando/provider-lando` runtime bundle, Mutagen host and agent binaries, helper binaries, recipe and include tarballs, self-update binary/checksum/signature artifacts, and future provider/helper artifacts that Lando initiates directly.
 
 ```ts
 export class Downloader extends Context.Service<Downloader, {
@@ -127,14 +167,14 @@ export const ArtifactManifestEntry = Schema.Struct({
 Required behaviors:
 
 - Production artifact manifests MUST use `https://` URLs. `file://` is rejected unless the caller sets the explicit override gate (`allowFileSource: true`), and that gate is limited to documented dev/CI override paths such as `LANDO_RUNTIME_BUNDLE_MANIFEST` (§5.8.1).
-- The default implementation resolves outbound trust with the canonical §10.3.1 resolver unless the caller passes an already-resolved trust object from setup preflight. Every `https://` request honors explicit `network.proxy`, then `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`, plus configured custom CA PEMs.
-- File downloads stream bytes through a SHA-256 hasher while writing to a unique temp file in the destination filesystem, then atomically rename on success. The temp file is deleted on `Effect.interrupt`, fetch failure, size mismatch, checksum mismatch, or persistence failure.
+- `Downloader` issues its byte-fetch through `HttpClient.stream` (§10.3.2); it does NOT resolve proxy/CA or open a socket itself. Outbound trust, redaction, and the `pre-/post-http-call` events are inherited from `HttpClient`, so overriding `HttpClient` (audited, air-gapped, mirror, corporate gateway) automatically governs every download.
+- File downloads pipe the `HttpClient.stream` body through a SHA-256 hasher while writing to a unique temp file in the destination filesystem, then atomically rename on success. The temp file is deleted on `Effect.interrupt`, fetch failure, size mismatch, checksum mismatch, or persistence failure.
 - `memory` downloads buffer only when the caller explicitly requests bytes in memory. Large artifacts default to file streaming so runtime bundles and helper binaries are never double-buffered.
 - If the destination already exists and matches the expected SHA-256, the download is a cache hit: no network request is made, `fromCache: true` is returned, and offline mode succeeds. If offline mode is active and no matching cached artifact exists, the request fails with `DownloadOfflineError` before opening a network connection.
 - Destination filenames are path-contained. A manifest `filename` whose realpath would escape the destination directory is rejected with `DownloadSourceForbiddenError` before any bytes are read.
 - The service publishes `pre-download`, zero or more `download-progress`, and `post-download` lifecycle events. Payloads include URL origin, artifact kind/caller id, byte counts, cache-hit status, checksum summary, duration, and redacted failure detail. URL credentials, proxy credentials, bearer tokens, signed-URL query params, and caller-supplied redaction tokens MUST NOT appear in events, telemetry, support diagnostics, lockfiles, or cache metadata.
 - Checksum verification is mandatory whenever a request supplies `expected.sha256`; callers that download executable or provider/helper artifacts MUST supply it. There is no skip-verification flag. Signature verification is a separate release/signing primitive (§17.6); callers may run it after `Downloader` returns the verified bytes/path, but the Downloader itself owns SHA-256 and size checks only.
-- Plugin-contributed `Downloader` implementations MAY provide mirror, audited, air-gapped, or sandboxed behavior, but they MUST pass the Downloader contract suite (§13.1) and MUST NOT weaken scheme gating, proxy/CA honoring, checksum verification, atomic persistence, cache/offline semantics, redaction, or cancellation finalization.
+- Plugin-contributed `Downloader` implementations MAY provide mirror or artifact-level cache behavior (e.g., rewriting a manifest URL to a mirror before fetching), but they MUST route every byte of egress through the resolved `HttpClient` (§10.3.2) — they MUST NOT open their own sockets or re-implement proxy/CA wiring. They MUST pass the Downloader contract suite (§13.1) and MUST NOT weaken scheme gating, checksum verification, atomic persistence, cache/offline semantics, redaction, or cancellation finalization.
 
 Tagged errors:
 
@@ -145,6 +185,46 @@ Tagged errors:
 - `DownloadOfflineError` — offline/cache-only policy could not satisfy the request from an existing verified artifact.
 - `DownloadSourceForbiddenError` — rejected scheme, `file://` without explicit override, path traversal, or destination escape.
 - `DownloaderUnavailableError` — the selected downloader implementation cannot satisfy the request or declared capabilities.
+
+### 10.3.4 Tool provisioning
+
+Several subsystems acquire a pinned **host binary** rather than an opaque artifact: the bundled `@lando/file-sync-mutagen` engine installs the Mutagen host CLI and per-platform agents (§10.6.2), and the same shape recurs for any future bundled tool that ships a host executable (a tunnel CLI, `mkcert`, a profiler, a hosting-provider CLI). That work is "verify bytes, then extract a named member from an archive and install it under `<userDataRoot>/bin/` with the right mode, recording what version is installed so re-runs are idempotent." `Downloader` (§10.3.3) deliberately stops at verified bytes/file, so this extract-and-install step is factored into one shared helper.
+
+The tool-provisioning helper is a pure module published from `@lando/sdk` (the same contracts-only tier as `@lando/sdk/probe` and `@lando/sdk/secrets`); it is **not** an Effect service tag and **not** a §4.2 pluggable abstraction. Host-override of network behavior happens one layer down at `HttpClient` / `Downloader`; the helper itself is fixed so every bundled tool installs binaries identically. It consumes `Downloader` for the verified bytes and `FileSystem` for placement.
+
+```ts
+// Multi-platform pinned manifest for tools that install a host binary; one
+// canonical schema replaces bespoke per-plugin versions-manifest shapes such
+// as mutagen-versions.json. (The provider runtime bundle is NOT a ToolManifest:
+// it is artifact-mode — fetched+verified via Downloader and unpacked by the
+// provider, never installed under bin/ — so it keeps its own per-platform
+// artifact manifest, §5.8.1.)
+export const ToolManifest = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  toolVersion:   Schema.String,                                  // e.g. the pinned Mutagen version
+  // host key (e.g. "linux-x64", "darwin-arm64", "win32-x64") → artifact entry
+  artifacts:     Schema.Record({ key: Schema.String, value: ToolArtifactEntry }),
+});
+
+export const ToolArtifactEntry = Schema.Struct({
+  url:        Schema.String,                                     // https:// (file:// only via the documented dev/CI override)
+  sha256:     Schema.String,
+  sizeBytes:  Schema.optional(Schema.Number),
+  archive:    Schema.optional(Schema.Literal("tar.gz", "zip")),  // omitted ⇒ the downloaded bytes are the binary
+  member:     Schema.optional(Schema.String),                   // member to extract from the archive
+  installName: Schema.String,                                   // basename to install under <userDataRoot>/bin (or a contained subdir)
+  mode:       Schema.optional(Schema.String),                   // POSIX mode; default 0o755 on non-Windows
+});
+```
+
+Required behaviors:
+
+- The helper resolves the active host entry from `ToolManifest.artifacts` by `${platform}-${arch}`; an unrepresented host fails with `ToolManifestError` (the fail-closed equivalent of the per-plugin "unsupported platform" errors removed by this consolidation).
+- It fetches and verifies the entry's bytes through `Downloader` (§10.3.3) — never directly — so checksum verification, proxy/CA honoring, redaction, and atomic temp handling are inherited and never re-implemented.
+- When `archive` is set it extracts `member` (tar.gz or zip); extraction is bounded and the extracted member is written atomically. `installName` is realpath-contained under `<userDataRoot>/bin/`; a name that escapes is rejected with `ToolInstallPathError`. Non-Windows installs apply `mode` (default `0o755`).
+- It records an installed-version marker plus a per-binary `.sha256` fingerprint, so a re-run whose pinned `toolVersion` and fingerprints already match is an **idempotent no-op** with no network access — the offline contract (§1.4) holds once a tool is provisioned.
+- Extraction/install failures surface `ToolExtractError`; manifest/host-resolution failures surface `ToolManifestError`; containment failures surface `ToolInstallPathError`. All three live in `@lando/sdk/errors`.
+- The pinned `ToolManifest` JSON is a compile-time embedded asset (§17.3 mechanism A) generated by the unified tool-manifest codegen (§17.2); the downloaded archive cache lives at `<userCacheRoot>/tool-downloads/<toolId>/` (§12.1) and the installed binaries plus markers under `<userDataRoot>/bin/` (§12.4).
 
 ### 10.4 SSH and host identity
 
@@ -167,7 +247,7 @@ Behavior in v4.0:
 
 ### 10.5 Healthchecks and scanner
 
-Healthchecks and the URL scanner are both **retry-until-a-verdict** loops: run a probe effect, classify the result, and retry on a schedule until it passes, a budget is exhausted, or a deadline hits. v4 factors that shared shape into one declarative primitive — the **probe primitive** — so healthchecks, the scanner, `lando doctor` shell checks, the `Downloader` retry path (§10.3.2), and `lando setup` readiness waits share one retry/backoff/timeout vocabulary and one deterministic runner instead of each hand-rolling `Effect.retry` + `Schedule`.
+Healthchecks and the URL scanner are both **retry-until-a-verdict** loops: run a probe effect, classify the result, and retry on a schedule until it passes, a budget is exhausted, or a deadline hits. v4 factors that shared shape into one declarative primitive — the **probe primitive** — so healthchecks, the scanner, `lando doctor` shell checks, the `Downloader` retry path (§10.3.3), and `lando setup` readiness waits share one retry/backoff/timeout vocabulary and one deterministic runner instead of each hand-rolling `Effect.retry` + `Schedule`.
 
 #### 10.5.1 The probe primitive (`@lando/sdk/probe`)
 
@@ -329,7 +409,7 @@ The bundled default for `bindMountPerformance: "slow"` is `@lando/file-sync-muta
 
 **Architecture.** The plugin embeds a generated TypeScript Connect-RPC client (codegen entry in §17.2, "Mutagen gRPC client") for Mutagen's `Synchronization` service plus the small subset of `Daemon` and `Prompting` services needed for session management. The plugin spawns the Mutagen daemon as a Lando-owned subprocess and dials it over a Lando-owned Unix domain socket (Linux/macOS) or Windows named pipe (Windows). Lando's daemon runs in a Lando-owned data directory and is bit-for-bit isolated from any system Mutagen install the user may already have.
 
-- **Binary placement.** Mutagen host CLI at `<userDataRoot>/bin/mutagen[.exe]`; agent binaries at `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` (§12.4). Both are downloaded by `lando setup` from `https://github.com/mutagen-io/mutagen/releases/download/...` against checksums shipped in the plugin's compile-time `mutagen-versions.json` asset (§17.3 mechanism A).
+- **Binary placement.** Mutagen host CLI at `<userDataRoot>/bin/mutagen[.exe]`; agent binaries at `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` (§12.4). The plugin provisions both through the shared tool-provisioning helper (§10.3.4): it ships a pinned `ToolManifest` asset (a `mutagen-versions.json` validated against the canonical `ToolManifest` schema; §17.2/§17.3 mechanism A) and the helper fetches `https://github.com/mutagen-io/mutagen/releases/download/...` through `Downloader` (§10.3.3) against the manifest's pinned SHA-256, extracts the host CLI and agent members, and installs them under `<userDataRoot>/bin/`. The plugin does not hand-roll fetch, checksum, extraction, or atomic install.
 - **Daemon lifetime.** `Layer.scoped` resource owned by the engine. Acquired lazily on the first `createSession` call within a process, finalized at process exit. The daemon is **process-scoped, not app-scoped**: a single Lando process drives N apps with N×M sessions through one daemon, matching how Mutagen is designed.
 - **Daemon socket.** `<userDataRoot>/run/file-sync/daemon.sock` (POSIX, mode `0600`) or `\\.\pipe\lando-file-sync-daemon` (Windows). Pre-existing socket triggers `FileSyncDaemonUnreachableError` with remediation `lando doctor --fix` or `lando apps poweroff`.
 - **Daemon data directory.** `<userDataRoot>/file-sync/mutagen-data/` — Mutagen's own state directory (sessions registry, Mutagen logs). Lando does not interpret these files; they are owned by the embedded Mutagen and are not part of the §13.5 cache catalog.
