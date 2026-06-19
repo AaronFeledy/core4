@@ -1,20 +1,25 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createTestRenderer } from "@opentui/core/testing";
+import * as openTuiModule from "@opentui/core";
+import { ManualClock, createTestRenderer } from "@opentui/core/testing";
 
-import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import { type OpenTuiModuleLike, createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
 
-type TestSetup = Awaited<ReturnType<typeof createTestRenderer>>;
+type TestSetup = Awaited<ReturnType<typeof createTestRenderer>> & { clock: ManualClock };
 
-let setup: TestSetup | undefined;
+const openTui = openTuiModule satisfies OpenTuiModuleLike;
+
+const setups: TestSetup[] = [];
 
 const makeSetup = async (width = 60, height = 12): Promise<TestSetup> => {
-  setup = await createTestRenderer({ width, height });
+  const clock = new ManualClock();
+  const setup = { ...(await createTestRenderer({ width, height, clock })), clock };
+  setups.push(setup);
   return setup;
 };
 
 const makeDriver = async (testSetup: TestSetup) =>
   createOpenTuiPromptDriver({
-    loadModule: async () => await import("@opentui/core"),
+    loadModule: async () => openTui,
     createRenderer: async () => testSetup.renderer,
     startRenderer: () => {},
   });
@@ -28,13 +33,19 @@ const basePrompt = {
 const waitForBuild = async (testSetup: TestSetup): Promise<void> => {
   await Promise.resolve();
   await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 10));
   await testSetup.renderOnce();
 };
 
-afterEach(() => {
-  setup?.renderer.destroy();
-  setup = undefined;
+const flushInput = async (testSetup: TestSetup): Promise<void> => {
+  testSetup.clock.advance(25);
+  await Promise.resolve();
+  await testSetup.renderOnce();
+};
+
+afterEach(async () => {
+  for (const testSetup of setups.splice(0)) {
+    await testSetup.renderer.destroy();
+  }
 });
 
 describe("OpenTUI prompt driver", () => {
@@ -52,7 +63,9 @@ describe("OpenTUI prompt driver", () => {
     });
     await waitForBuild(testSetup);
     testSetup.mockInput.pressArrow("down");
+    await flushInput(testSetup);
     testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
 
     await expect(answer).resolves.toBe("2");
   });
@@ -68,7 +81,9 @@ describe("OpenTUI prompt driver", () => {
     });
     await waitForBuild(testSetup);
     testSetup.mockInput.pressArrow("right");
+    await flushInput(testSetup);
     testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
     await expect(noAnswer).resolves.toBe("n");
 
     const testSetup2 = await makeSetup();
@@ -80,7 +95,9 @@ describe("OpenTUI prompt driver", () => {
     });
     await waitForBuild(testSetup2);
     testSetup2.mockInput.pressArrow("left");
+    await flushInput(testSetup2);
     testSetup2.mockInput.pressEnter();
+    await flushInput(testSetup2);
     await expect(yesAnswer).resolves.toBe("y");
   });
 
@@ -91,6 +108,7 @@ describe("OpenTUI prompt driver", () => {
     const defaultAnswer = driver.readRaw({ prompt: basePrompt, mode: "normal", defaultRaw: "vanilla" });
     await waitForBuild(testSetup);
     testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
     await expect(defaultAnswer).resolves.toBe("vanilla");
 
     const testSetup2 = await makeSetup();
@@ -98,7 +116,9 @@ describe("OpenTUI prompt driver", () => {
     const typedAnswer = driver2.readRaw({ prompt: basePrompt, mode: "normal" });
     await waitForBuild(testSetup2);
     await testSetup2.mockInput.typeText("mint");
+    await flushInput(testSetup2);
     testSetup2.mockInput.pressEnter();
+    await flushInput(testSetup2);
     await expect(typedAnswer).resolves.toBe("mint");
   });
 
@@ -111,6 +131,7 @@ describe("OpenTUI prompt driver", () => {
 
     expect(testSetup.captureCharFrame()).toContain("must be lowercase");
     testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
     await answer;
   });
 
@@ -121,6 +142,7 @@ describe("OpenTUI prompt driver", () => {
     const ctrlCAnswer = driver.readRaw({ prompt: basePrompt, mode: "normal" });
     await waitForBuild(testSetup);
     testSetup.mockInput.pressCtrlC();
+    await flushInput(testSetup);
     await expect(ctrlCAnswer).rejects.toMatchObject({ name: "PromptCancelledError" });
 
     const testSetup2 = await makeSetup();
@@ -128,6 +150,7 @@ describe("OpenTUI prompt driver", () => {
     const escAnswer = driver2.readRaw({ prompt: basePrompt, mode: "normal" });
     await waitForBuild(testSetup2);
     testSetup2.mockInput.pressEscape();
+    await flushInput(testSetup2);
     await expect(escAnswer).rejects.toMatchObject({ name: "PromptCancelledError" });
   });
 
@@ -140,6 +163,7 @@ describe("OpenTUI prompt driver", () => {
     testSetup.resize(80, 16);
     await testSetup.renderOnce();
     testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
 
     await expect(answer).resolves.toBe("resized");
   });
@@ -147,7 +171,7 @@ describe("OpenTUI prompt driver", () => {
   test("declines secret and multiselect before creating a renderer", async () => {
     let created = false;
     const driver = createOpenTuiPromptDriver({
-      loadModule: async () => await import("@opentui/core"),
+      loadModule: async () => openTui,
       createRenderer: async () => {
         created = true;
         throw new Error("should not create renderer");
