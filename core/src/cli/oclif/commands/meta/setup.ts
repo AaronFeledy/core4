@@ -49,6 +49,8 @@ import {
 import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
 import { resolveInteractivePromptDriver } from "../../../prompts/interactive-driver.ts";
 import { tryDriverSelect } from "../../../prompts/interactive.ts";
+import { isDecoratedContext } from "../../../renderer-boundary.ts";
+import { type SummaryDocument, type SummaryTone, formatSummary } from "../../../renderer/summary.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -209,6 +211,34 @@ const fileSyncStatusLine = (status: string): string => {
       return "file-sync: already satisfied (native bind mounts)";
   }
 };
+
+const fileSyncTone = (status: string): SummaryTone => {
+  switch (status) {
+    case "deferred":
+      return "pending";
+    case "unavailable":
+      return "warn";
+    default:
+      return "ok";
+  }
+};
+
+const buildSetupSummary = (providerId: string, installDir: string, status: string): SummaryDocument => ({
+  title: "SETUP",
+  subtitle: "complete",
+  tone: status === "unavailable" ? "warn" : "ok",
+  sections: [
+    {
+      title: "runtime",
+      rows: [
+        { label: "provider", tone: "ok", value: providerId },
+        { label: "file-sync", tone: fileSyncTone(status), value: status, detail: fileSyncStatusLine(status) },
+        { label: "install dir", tone: "info", fields: [{ label: "LANDO_INSTALL_DIR", value: installDir }] },
+      ],
+    },
+  ],
+  footer: `Lando runtime ready (${providerId})`,
+});
 
 export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
   id: "meta:setup",
@@ -455,7 +485,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         fileSyncStatus,
       };
     }),
-  render: (result) => {
+  render: (result, _input, ctx) => {
     if (
       typeof result !== "object" ||
       result === null ||
@@ -465,7 +495,11 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       return undefined;
     }
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
-    return `setup complete: Lando runtime (${String(result.providerId)})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
+    const providerId = String(result.providerId);
+    const installDir = String(result.installDir);
+    if (isDecoratedContext(ctx))
+      return formatSummary(buildSetupSummary(providerId, installDir, status), { columns: ctx?.columns });
+    return `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
   },
 };
 

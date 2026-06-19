@@ -12,6 +12,14 @@ import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } 
 
 import { lintLandofile } from "../../landofile/lint.ts";
 import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
+import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
+import {
+  type SummaryDocument,
+  type SummaryRow,
+  type SummarySection,
+  type SummaryTone,
+  formatSummary,
+} from "../renderer/summary.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import {
   DefaultGlobalAppDoctorLayer,
@@ -132,7 +140,98 @@ export const doctorReport = (
     };
   });
 
-export const renderDoctorReport = (report: DoctorReport): string => {
+interface DoctorCheckLike {
+  readonly name: string;
+  readonly status: "pass" | "warn" | "fail";
+  readonly context: Readonly<Record<string, string>>;
+  readonly solutions: ReadonlyArray<{
+    readonly kind: string;
+    readonly description: string;
+    readonly command?: string;
+  }>;
+}
+
+const doctorStatusTone = (status: DoctorCheckLike["status"]): SummaryTone =>
+  status === "pass" ? "ok" : status === "warn" ? "warn" : "error";
+
+const checkToRow = (check: DoctorCheckLike): SummaryRow => {
+  const solutions = check.solutions.map(
+    (solution) => `${solution.description}${solution.command === undefined ? "" : ` (${solution.command})`}`,
+  );
+  return {
+    label: check.name,
+    tone: doctorStatusTone(check.status),
+    value: check.status,
+    fields: Object.entries(check.context).map(([label, value]) => ({ label, value })),
+    ...(solutions.length === 0 ? {} : { detail: solutions.join(" · ") }),
+  };
+};
+
+const checkSection = (title: string, checks: ReadonlyArray<DoctorCheckLike>): SummarySection => ({
+  title,
+  rows: checks.map(checkToRow),
+  ...(checks.length === 0 ? { notes: ["No checks reported."] } : {}),
+});
+
+const deprecationsSection = (report: DoctorDeprecationReport): SummarySection => ({
+  title: "deprecations",
+  rows: report.entries.map((entry) => ({
+    label: `${entry.kind} ${entry.id}`,
+    tone: entry.severity === "warn" ? "warn" : "info",
+    value: `${entry.count} ${entry.count === 1 ? "use" : "uses"}`,
+    fields: [
+      { label: "since", value: entry.since },
+      { label: "removeIn", value: valueOrDash(entry.removeIn) },
+      { label: "replacement", value: valueOrDash(entry.replacement) },
+      { label: "source", value: entry.source },
+    ],
+    detail: entry.note,
+  })),
+  ...(report.entries.length === 0
+    ? { notes: ["No deprecations were used or triggered at runtime for the app."] }
+    : {}),
+});
+
+const appConfigSection = (result: ConfigLintResult): SummarySection => ({
+  title: "app config",
+  rows: [
+    {
+      label: "lint",
+      tone: result.valid ? "ok" : "error",
+      value: result.valid ? "pass" : "fail",
+      fields: [{ label: "file", value: result.file }],
+    },
+  ],
+  ...(result.violations.length === 0 ? {} : { notes: result.violations.map(renderConfigLintViolation) }),
+});
+
+const countByStatus = (report: DoctorReport): { readonly checks: number; readonly failed: number } => {
+  const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
+  return { checks: checks.length, failed: checks.filter((check) => check.status === "fail").length };
+};
+
+export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument => {
+  const sections: SummarySection[] = [
+    checkSection("provider", report.provider.checks),
+    checkSection("subsystems", report.subsystems.checks),
+    checkSection("global app", report.globalApp.checks),
+  ];
+  if (report.deprecations !== undefined) sections.push(deprecationsSection(report.deprecations));
+  if (report.appConfig !== undefined) sections.push(appConfigSection(report.appConfig));
+  const counts = countByStatus(report);
+  const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const failed = counts.failed + (appConfigInvalid ? 1 : 0);
+  return {
+    title: "DOCTOR",
+    tone: failed > 0 ? "error" : "ok",
+    sections,
+    footer: `${counts.checks} checks · ${failed} failed`,
+  };
+};
+
+export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): string => {
+  if (isDecoratedContext(ctx))
+    return formatSummary(buildDoctorReportSummary(report), { columns: ctx?.columns });
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
   const globalApp = renderGlobalAppDoctorResult(report.globalApp);

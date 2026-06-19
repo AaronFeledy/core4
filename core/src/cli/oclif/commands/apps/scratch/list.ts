@@ -15,8 +15,8 @@ export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>
   topLevelAlias: "scratch:list",
   bootstrap: "scratch",
   run: () => scratchList(),
-  render: (result, input) =>
-    renderScratchListResult(result as ReadonlyArray<ScratchSummary>, scratchListFormatFromInput(input)),
+  render: (result, input, ctx) =>
+    renderScratchListResult(result as ReadonlyArray<ScratchSummary>, scratchListFormatFromInput(input), ctx),
 };
 
 export default class AppsScratchListCommand extends LandoCommandBase {

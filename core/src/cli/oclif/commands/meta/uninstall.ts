@@ -41,7 +41,7 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult> = {
   topLevelAlias: true,
   bootstrap: "minimal",
   run: (input) => uninstall(uninstallOptionsFromInput(input)),
-  render: (result) => renderUninstallResult(result as UninstallResult),
+  render: (result, _input, ctx) => renderUninstallResult(result as UninstallResult, ctx),
 };
 
 export default class MetaUninstallCommand extends LandoCommandBase {

@@ -18,7 +18,8 @@ import type {
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
-import { emitOptionalStdout } from "../renderer-boundary.ts";
+import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary.ts";
+import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -216,11 +217,50 @@ export const scratchList = (): Effect.Effect<
 export const scratchSourceLabel = (source: ScratchSource): string =>
   source.kind === "fork" ? "fork" : `recipe:${source.ref}`;
 
+const scratchStatusTone = (status: ScratchSummary["status"]): SummaryTone => {
+  switch (status) {
+    case "attached":
+      return "ok";
+    case "detached":
+      return "skipped";
+    case "orphan":
+      return "error";
+    default:
+      return "info";
+  }
+};
+
+export const buildScratchListSummary = (result: ReadonlyArray<ScratchSummary>): SummaryDocument => ({
+  title: "SCRATCH APPS",
+  subtitle: `${result.length} ${result.length === 1 ? "app" : "apps"}`,
+  tone: result.length === 0 ? "info" : "ok",
+  sections: [
+    {
+      title: "instances",
+      rows: result.map((entry) => ({
+        label: entry.id,
+        tone: scratchStatusTone(entry.status),
+        value: entry.status,
+        fields: [
+          { label: "source", value: scratchSourceLabel(entry.source) },
+          { label: "mode", value: entry.mode },
+          { label: "created", value: entry.created },
+        ],
+      })),
+      ...(result.length === 0 ? { notes: ["No scratch apps found."] } : {}),
+    },
+  ],
+  footer: `${result.length} scratch apps`,
+});
+
 export const renderScratchListResult = (
   result: ReadonlyArray<ScratchSummary>,
   format: ScratchListFormat = "table",
+  ctx?: RenderContext,
 ): string => {
   if (format === "json") return JSON.stringify(result);
+  if (isDecoratedContext(ctx))
+    return formatSummary(buildScratchListSummary(result), { columns: ctx?.columns });
   if (result.length === 0) return "No scratch apps found.";
   const rows = result.map((entry) =>
     [entry.id, scratchSourceLabel(entry.source), entry.mode, entry.created, entry.status].join("\t"),
