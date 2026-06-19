@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the shared Downloader primitive for proxy/CA-aware verified artifact downloads, move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites) — then enter feature freeze. Stories follow the 14-PRD breakdown in `spec/beta-1/prd-beta-1-{01..14}-*.md` (US-200..US-321); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the shared Downloader primitive for proxy/CA-aware verified artifact downloads, move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then enter feature freeze. Stories follow the 15-PRD breakdown in `spec/beta-1/prd-beta-1-{01..15}-*.md` (US-200..US-329); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -2201,6 +2201,136 @@
         "Lint passes."
       ],
       "priority": 122,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-322",
+      "title": "Publish the machine-output schemas in `@lando/sdk`",
+      "description": "As a plugin author or embedding host, I can import the command-output envelope schemas and decode any command's JSON against them.",
+      "acceptanceCriteria": [
+        "`CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are defined in `@lando/sdk` (§8.11.1/§8.11.3), re-exported from `@lando/core/schema`, and registered in the central schema registry, `SDK_SCHEMA_NAMES`, and the JSON-schema registry.",
+        "`bun run codegen:schema-snapshot` captures all four and `sdk/test/fixtures/schema-snapshot.json` updates; `git diff --exit-code` on the snapshot is clean afterward.",
+        "`sdk/API_COMPATIBILITY.md` records the additions.",
+        "Round-trip encode/decode tests pass for each schema (§13.2).",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 123,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-323",
+      "title": "Require `resultSchema` (and optional `streaming`) on `LandoCommandSpec`",
+      "description": "As the runtime, I reject any command that does not declare the machine shape of its result.",
+      "acceptanceCriteria": [
+        "`LandoCommandSpec` carries a required `resultSchema: Schema.Schema<A>` and an optional `streaming?: StreamFrameSchema` (§8.3).",
+        "Registration rejects a spec missing `resultSchema` with `CommandRegistrationError`; a command with no payload registers `Schema.Struct({})`.",
+        "Every built-in command and every deferred-command stub declares a `resultSchema`.",
+        "A registry-level test enumerates all canonical ids and fails if any lacks `resultSchema`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 124,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-324",
+      "title": "Implement the single `encodeCommandResult` serialization seam",
+      "description": "As a maintainer, all JSON output flows through one redaction-aware function.",
+      "acceptanceCriteria": [
+        "`encodeCommandResult` (`core/src/cli/result-encode.ts`) encodes success via `Schema.encode(spec.resultSchema)` and failure via the §7.8 tagged-error schema with `ok: false`, wrapping both in `CommandResultEnvelope`.",
+        "The encoded envelope is passed through `RedactionService` (§3.7) before emission; a test asserts a known secret value never appears in the envelope.",
+        "The process exit code is preserved on failure (JSON output does not zero a non-zero exit).",
+        "`renderer-boundary.ts`'s `json` branch is the only JSON producer; `core/src/cli/renderer/format.ts`'s ad-hoc path and every per-command result `JSON.stringify` are removed.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 125,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-325",
+      "title": "Universalize the `--format` flag plus the `--json` / `-j` shorthand across both dispatch paths",
+      "description": "As an agent, `--format json` (or `--json` / `-j`) works identically on every command in source and compiled binary.",
+      "acceptanceCriteria": [
+        "The OCLIF command base and the compiled `runCompiledCli` parser both inject and parse `--format <value>` and the `--json` / `-j` shorthand (equivalent to `--format json`) from one shared module (§8.4.1 single-source-of-truth).",
+        "The `--renderer json` -> default `--format json` bridge is implemented; an explicit `--format` always wins.",
+        "The OCLIF manifest regenerates to include the universal flags; `bun run scripts/build-oclif-manifest.ts` leaves a clean diff.",
+        "The §13.1 dispatch-parity layer covers `--format json` for representative MVP commands and the deferred set.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 126,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-326",
+      "title": "Define and emit the NDJSON streaming contract",
+      "description": "As an agent tailing logs or exec output, I receive typed frames terminated by a result frame.",
+      "acceptanceCriteria": [
+        "`app:logs`, `app:exec`, and build-progress commands declare `streaming` and, under `--format json`, emit newline-delimited `StreamFrame`s terminated by a `result` frame carrying the envelope.",
+        "`event` frames reuse the §11.1 `EventService` bounded redacted history (no second event tap).",
+        "The prior one-off `doctor-ndjson` renderer and the deprecation-event JSON line are migrated onto `StreamFrame`.",
+        "Tests assert frame ordering, the terminal `result` frame, and redaction of `event` payloads.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 127,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-327",
+      "title": "Author result schemas for all commands and migrate the ad-hoc JSON commands",
+      "description": "As a user, every command's JSON shape is stable and documented.",
+      "acceptanceCriteria": [
+        "Every command module declares a `resultSchema` describing its result; the commands that previously hand-rolled JSON (`info`, `list`, `doctor`, `app-config*`, `scratch`, `meta/global-status`, `plugin-*`, `update`, `uninstall`, `setup-readiness`, `includes-*`) emit through the envelope with no behavior regression (locked by snapshot).",
+        "Each command's per-id result shape is present in `sdk/test/fixtures/schema-snapshot.json`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 128,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-328",
+      "title": "Ship the conformance and boundary gates",
+      "description": "As a maintainer, the universal `--format json` guarantee cannot regress.",
+      "acceptanceCriteria": [
+        "The §13.1 machine-output conformance layer drives every canonical command id (and deferred stubs) with `--format json` against `TestRuntime`, decodes the output as a `CommandResultEnvelope`, and asserts `command`/`ok` for a success and a failure case.",
+        "`bun run check:machine-output` (§13.4) fails on any result `JSON.stringify` outside `encodeCommandResult` and on any spec missing `resultSchema`; it is wired into CI static checks.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 129,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-329",
+      "title": "Document and guide the machine-output contract",
+      "description": "As an agent author, I can read how to drive Lando from JSON.",
+      "acceptanceCriteria": [
+        "An executable guide ('scripting Lando / driving Lando from an agent') demonstrates `--format json` / `--json` on representative commands and is covered per §19 and the guide-coverage gate.",
+        "The generated command-reference docs note the universal `--format json` flag.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 130,
       "passes": false,
       "notes": ""
     }

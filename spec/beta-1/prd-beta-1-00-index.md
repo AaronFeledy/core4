@@ -59,6 +59,7 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
 | 12 | [Terminal UI polish & interaction service](./prd-beta-1-12-terminal-ui-polish.md)       | bundled `@lando/renderer-lando` seam, spaceship-console renderer polish, OpenTUI-backed prompts, `InteractionService`, `PromptSpec`, `editor` prompt type | US-280..US-284, US-293..US-297 | PRD-01, PRD-04, PRD-05, PRD-07, PRD-11 |
 | 13 | [Paths/Roots & durable StateStore](./prd-beta-1-13-paths-and-state-store.md)            | `@lando/core/paths` resolver, `PathsService`, `GlobalConfig` root fields, durable `StateStore`, scratch-registry/include-lockfile migration, contract suite | US-302..US-306, US-311..US-315 | PRD-01, PRD-04, PRD-11 |
 | 14 | [Probe, EventService query & plugin contract kit](./prd-beta-1-14-probe-events-contract-kit.md) | `@lando/sdk/probe` retry/verdict primitive + consumer migration, `EventService` `waitFor`/`query` + bounded redacted history, the six §4.2 plugin-abstraction contract suites | US-316..US-321 | PRD-04, PRD-06, PRD-09, PRD-11 |
+| 15 | [Universal `--format json` machine output](./prd-beta-1-15-universal-json-output.md) | `CommandResultEnvelope`/`StreamFrame` schemas, required `LandoCommandSpec.resultSchema`, universal `--format json` + `--json`/`-j` shorthand, single `encodeCommandResult` redaction-aware seam, conformance + boundary gates | US-322..US-329 | PRD-04, PRD-06, PRD-11, PRD-14 |
 
 ## Dependency graph
 
@@ -155,6 +156,7 @@ The following items were explicitly deferred to Beta 1 by prior PRDs, the ROADMA
 | `@lando/sdk/probe` retry/verdict primitive + healthcheck/scanner/doctor/downloader/setup-readiness migration + retry-loop boundary gate | §10.5.1, §10.5, §13.4 | PRD-14 US-316..US-317 |
 | `EventService` typed `waitFor`/`waitForAll`/`query` + bounded redacted history + `@lando/core/testing` helper rewire | §11.1, §16.8 | PRD-14 US-318 |
 | §4.2 plugin-abstraction contract kit (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) + layer-coverage gate | §13.1, §4.2, §9.5 | PRD-14 US-319..US-321 |
+| Universal machine-output contract (`CommandResultEnvelope`/`StreamFrame` schemas, required `LandoCommandSpec.resultSchema`, universal `--format json` + `--json`/`-j`, `encodeCommandResult` redaction seam) + conformance/boundary gates | §8.11, §8.3, §7.8, §13.1, §13.4 | PRD-15 US-322..US-329 |
 
 ## Exit criteria for Beta 1
 
