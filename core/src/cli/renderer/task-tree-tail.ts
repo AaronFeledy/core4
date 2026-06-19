@@ -146,9 +146,30 @@ const visibleLength = (line: string): number => line.replace(ansiPattern, "").le
 
 const DEFAULT_TERMINAL_COLUMNS = 80;
 
-type VisualStatus = "WAIT" | "RUNNING" | "ONLINE" | "BLOCKED";
+type VisualStatus = "WAIT" | "RUNNING" | "ONLINE" | "CACHED" | "SKIPPED" | "BLOCKED";
 
 const statusChip = (status: VisualStatus): string => `[${status}]`;
+
+type CompletionStatus = "ONLINE" | "CACHED" | "SKIPPED";
+
+// Trailing, delimited marker (`(cached)`/`(skipped)` or cockpit `· cached`/`· skipped`).
+// The delimiter requirement keeps undelimited prose ("warm cache") classified ONLINE.
+const COMPLETION_STATUS_MARKER = /(?:\s*\((cached|skipped)\)|\s+·\s*(cached|skipped))\s*$/i;
+
+const classifyCompletion = (
+  summary: string | undefined,
+  fallbackLabel: string,
+): { readonly status: CompletionStatus; readonly label: string } => {
+  if (summary === undefined) return { status: "ONLINE", label: fallbackLabel };
+  const match = COMPLETION_STATUS_MARKER.exec(summary);
+  if (match === null) return { status: "ONLINE", label: summary };
+  const marker = (match[1] ?? match[2] ?? "").toLowerCase();
+  const stripped = summary.slice(0, match.index).trim();
+  return {
+    status: marker === "cached" ? "CACHED" : "SKIPPED",
+    label: stripped.length > 0 ? stripped : fallbackLabel,
+  };
+};
 
 const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
   terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
@@ -450,10 +471,11 @@ export class LandoTreePainter {
   }
 
   #childSummaryLine(task: TaskState): string {
-    const label = task.summary ?? task.label;
     if (task.status === "done") {
-      return `│ ${statusChip("ONLINE")} ✓ ${label}${formatDurationSuffix(task.durationMs)}`;
+      const { status, label } = classifyCompletion(task.summary, task.label);
+      return `│ ${statusChip(status)} ✓ ${label}${formatDurationSuffix(task.durationMs)}`;
     }
+    const label = task.summary ?? task.label;
     const exitSuffix = task.exitCode === undefined ? "" : ` (exit ${task.exitCode})`;
     return `│ ${statusChip("BLOCKED")} ✗ ${label}${exitSuffix}${formatDurationSuffix(task.durationMs)}`;
   }
@@ -537,6 +559,9 @@ export class LandoTreePainter {
       if (line.startsWith("╭─")) return `${csi.bold}${csi.cyan}${line}${csi.reset}`;
       if (line.startsWith("╰─")) return `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
       if (line.includes(statusChip("BLOCKED"))) return `${csi.red}${line}${csi.reset}`;
+      if (line.includes(statusChip("CACHED"))) return `${csi.cyan}${line}${csi.reset}`;
+      if (line.includes(statusChip("SKIPPED")))
+        return `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
       if (line.includes(statusChip("ONLINE"))) return `${csi.green}${line}${csi.reset}`;
       if (line.includes(statusChip("WAIT"))) return `${csi.amber}${line}${csi.reset}`;
       if (line.includes(statusChip("RUNNING"))) return `${csi.cyan}${line}${csi.reset}`;

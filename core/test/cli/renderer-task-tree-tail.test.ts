@@ -140,13 +140,11 @@ describe("LandoTreePainter — tail panel", () => {
     }
     const frame = painter.snapshot().frameLines;
     const joined = frame.join("\n");
-    // Oldest two dropped; most recent four present in order.
     expect(joined).not.toContain("l1");
     expect(joined).not.toContain("l2");
     for (const line of ["l3", "l4", "l5", "l6"]) {
       expect(joined.includes(line)).toBe(true);
     }
-    // At most 4 panel (indented) lines for the task.
     const panelLines = frame.filter((l) => /^\s{4,}/.test(l));
     expect(panelLines.length).toBeLessThanOrEqual(TASK_DETAIL_TAIL_CAPACITY);
   });
@@ -163,10 +161,8 @@ describe("LandoTreePainter — tail panel", () => {
     painter.consume(taskComplete("a", "step a", 12400));
     const after = painter.snapshot();
     const joined = after.frameLines.join("\n");
-    // Detail panel lines are gone after collapse.
     expect(joined).not.toContain("compiling...");
     expect(joined).not.toContain("linking...");
-    // A completed summary line remains.
     expect(joined).toContain("✓");
     expect(after.activeTaskIds).not.toContain("a");
   });
@@ -212,9 +208,7 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     expect(firstFrameHeight).toBeGreaterThan(0);
 
     const second = painter.consume(taskStart("a", "step a", "build"));
-    // The redraw must rewind to the top of the previous frame.
     expect(second.startsWith(csi.cursorUp(firstFrameHeight))).toBe(true);
-    // And clear downward so a shorter new frame leaves no stale rows.
     expect(second.includes(csi.eraseDown)).toBe(true);
   });
 
@@ -252,7 +246,6 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     painter.consume(detail("a", "l2"));
     const collapse = painter.consume(taskComplete("a", "step a", 10));
     expect(collapse.includes(csi.eraseDown)).toBe(true);
-    // Cursor invariant: output ends below the frame (trailing newline).
     expect(collapse.endsWith("\n")).toBe(true);
   });
 
@@ -309,6 +302,85 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
     expect(frame.join("\n")).toContain("[BLOCKED] ✗ step a failed");
     expect(frame.join("\n")).not.toContain("[WAIT]");
     expect(new Set(frame.map((line) => line.length)).size).toBe(1);
+  });
+});
+
+describe("LandoTreePainter — cached/skipped badges", () => {
+  const completeWith = (summary: string, durationMs = 12400): string => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["a"]));
+    painter.consume(taskStart("a", "step a", "build"));
+    painter.consume(taskComplete("a", summary, durationMs));
+    return painter.snapshot().frameLines.join("\n");
+  };
+
+  test("renders a [CACHED] badge, keeps the success glyph, and strips the parenthetical marker", () => {
+    const frame = completeWith("composer install (cached)");
+    expect(frame).toContain("[CACHED] ✓ composer install");
+    expect(frame).toContain("(12.4s)");
+    expect(frame).not.toContain("[ONLINE]");
+    expect(frame).not.toContain("(cached)");
+  });
+
+  test("renders a [CACHED] badge for the cockpit `· cached` marker form", () => {
+    const frame = completeWith("deps · cached");
+    expect(frame).toContain("[CACHED] ✓ deps");
+    expect(frame).not.toContain("· cached");
+  });
+
+  test("renders a [SKIPPED] badge and strips the parenthetical marker", () => {
+    const frame = completeWith("run migrations (skipped)");
+    expect(frame).toContain("[SKIPPED] ✓ run migrations");
+    expect(frame).not.toContain("[ONLINE]");
+    expect(frame).not.toContain("(skipped)");
+  });
+
+  test("renders a [SKIPPED] badge for the cockpit `· skipped` marker form", () => {
+    const frame = completeWith("seed · skipped");
+    expect(frame).toContain("[SKIPPED] ✓ seed");
+  });
+
+  test("matches the cached/skipped marker case-insensitively", () => {
+    expect(completeWith("Build (CACHED)")).toContain("[CACHED] ✓ Build");
+    expect(completeWith("Build (Skipped)")).toContain("[SKIPPED] ✓ Build");
+  });
+
+  test("does not treat undelimited prose as a badge (no false positives)", () => {
+    expect(completeWith("warm cache")).toContain("[ONLINE] ✓ warm cache");
+    expect(completeWith("warm cache")).not.toContain("[CACHED]");
+    expect(completeWith("skipped migrations were applied")).toContain("[ONLINE]");
+    expect(completeWith("skipped migrations were applied")).not.toContain("[SKIPPED]");
+  });
+
+  test("a child whose label is literally 'cache' stays ONLINE without a marker", () => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["cache"]));
+    painter.consume(taskStart("cache", "cache", "build"));
+    painter.consume(taskComplete("cache", "cache", 500));
+    const frame = painter.snapshot().frameLines.join("\n");
+    expect(frame).toContain("[ONLINE] ✓ cache");
+    expect(frame).not.toContain("[CACHED]");
+  });
+
+  test("falls back to the task label when stripping the marker empties the summary", () => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["a"]));
+    painter.consume(taskStart("a", "warm step", "build"));
+    painter.consume(taskComplete("a", "(cached)", 100));
+    const frame = painter.snapshot().frameLines.join("\n");
+    expect(frame).toContain("[CACHED] ✓ warm step");
+  });
+
+  test("cached and skipped rows are color-accented in TTY but never status-by-color-only", () => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["a", "b"]));
+    painter.consume(taskStart("a", "a", "build"));
+    painter.consume(taskStart("b", "b", "build"));
+    const cachedFrame = painter.consume(taskComplete("a", "a (cached)", 10));
+    const skippedFrame = painter.consume(taskComplete("b", "b (skipped)", 10));
+    expect(cachedFrame.includes(String.fromCharCode(27))).toBe(true);
+    expect(stripCsi(skippedFrame)).toContain("[CACHED]");
+    expect(stripCsi(skippedFrame)).toContain("[SKIPPED]");
   });
 });
 
