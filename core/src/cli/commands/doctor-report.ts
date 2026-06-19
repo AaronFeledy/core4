@@ -19,6 +19,7 @@ import {
   type SummarySection,
   type SummaryTone,
   formatSummary,
+  worstSummaryTone,
 } from "../renderer/summary.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import {
@@ -177,7 +178,7 @@ const deprecationsSection = (report: DoctorDeprecationReport): SummarySection =>
   title: "deprecations",
   rows: report.entries.map((entry) => ({
     label: `${entry.kind} ${entry.id}`,
-    tone: entry.severity === "warn" ? "warn" : "info",
+    tone: entry.severity === "error" ? "error" : entry.severity === "warn" ? "warn" : "info",
     value: `${entry.count} ${entry.count === 1 ? "use" : "uses"}`,
     fields: [
       { label: "since", value: entry.since },
@@ -207,7 +208,11 @@ const appConfigSection = (result: ConfigLintResult): SummarySection => ({
 
 const countByStatus = (report: DoctorReport): { readonly checks: number; readonly failed: number } => {
   const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
-  return { checks: checks.length, failed: checks.filter((check) => check.status === "fail").length };
+  const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  return {
+    checks: checks.length + (report.appConfig === undefined ? 0 : 1),
+    failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
+  };
 };
 
 export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument => {
@@ -219,13 +224,12 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
   if (report.deprecations !== undefined) sections.push(deprecationsSection(report.deprecations));
   if (report.appConfig !== undefined) sections.push(appConfigSection(report.appConfig));
   const counts = countByStatus(report);
-  const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
-  const failed = counts.failed + (appConfigInvalid ? 1 : 0);
+  const rowTones = sections.flatMap((section) => section.rows.map((row) => row.tone ?? "info"));
   return {
     title: "DOCTOR",
-    tone: failed > 0 ? "error" : "ok",
+    tone: rowTones.length === 0 ? "info" : worstSummaryTone(rowTones),
     sections,
-    footer: `${counts.checks} checks · ${failed} failed`,
+    footer: `${counts.checks} checks · ${counts.failed} failed`,
   };
 };
 

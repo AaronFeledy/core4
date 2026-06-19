@@ -224,6 +224,48 @@ describe("doctor summary", () => {
     expect(plain).toContain("[WARN]");
     expect(plain).toContain("[redacted]");
   });
+
+  test("rolls warning checks up to the doctor document tone", () => {
+    expect(buildDoctorReportSummary(report).tone).toBe("warn");
+  });
+
+  test("maps error deprecations to error-toned rows", () => {
+    const summary = buildDoctorReportSummary({
+      provider: { checks: [] },
+      subsystems: { checks: [] },
+      globalApp: { checks: [] },
+      deprecations: {
+        entries: [
+          {
+            kind: "command",
+            id: "app:legacy",
+            severity: "error",
+            since: "4.1.0",
+            note: "Old command is not supported.",
+            source: "app:demo",
+            count: 1,
+          },
+        ],
+      },
+    } as unknown as DoctorReport);
+    expect(summary.sections.find((section) => section.title === "deprecations")?.rows[0]?.tone).toBe("error");
+  });
+
+  test("counts app config lint in doctor footer when it contributes a failure", () => {
+    const summary = buildDoctorReportSummary({
+      provider: { checks: [] },
+      subsystems: { checks: [] },
+      globalApp: { checks: [] },
+      appConfig: {
+        app: "demo",
+        file: "/tmp/demo/.lando.yml",
+        valid: false,
+        violations: [{ path: "bogusKey", message: "unexpected key" }],
+      },
+    } as unknown as DoctorReport);
+    expect(summary.footer).toBe("1 checks · 1 failed");
+    expect(summary.tone).toBe("error");
+  });
 });
 
 describe("setup summary via spec render", () => {
