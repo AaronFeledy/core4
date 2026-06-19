@@ -122,6 +122,24 @@ describe("OpenTUI prompt driver", () => {
     await expect(typedAnswer).resolves.toBe("mint");
   });
 
+  test("textarea submits multi-line answers", async () => {
+    const testSetup = await makeSetup();
+    const driver = await makeDriver(testSetup);
+
+    const answer = driver.readRaw({ prompt: { ...basePrompt, type: "textarea" }, mode: "normal" });
+    await waitForBuild(testSetup);
+    await testSetup.mockInput.typeText("line one");
+    await flushInput(testSetup);
+    testSetup.mockInput.pressEnter();
+    await flushInput(testSetup);
+    await testSetup.mockInput.typeText("line two");
+    await flushInput(testSetup);
+    testSetup.mockInput.pressEnter({ meta: true });
+    await flushInput(testSetup);
+
+    await expect(answer).resolves.toBe("line one\nline two");
+  });
+
   test("renders inline validation issue", async () => {
     const testSetup = await makeSetup();
     const driver = await makeDriver(testSetup);

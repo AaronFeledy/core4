@@ -39,6 +39,11 @@ interface InputRenderableLike extends RenderableLike {
   value: string;
 }
 
+interface TextareaRenderableLike extends RenderableLike {
+  plainText: string;
+  onSubmit?: () => void;
+}
+
 interface SelectRenderableLike extends RenderableLike {
   setSelectedIndex?(index: number): unknown;
 }
@@ -62,6 +67,7 @@ export interface OpenTuiModuleLike {
   BoxRenderable: ConstructorLike<RenderableLike>;
   TextRenderable: ConstructorLike<RenderableLike>;
   InputRenderable: ConstructorLike<InputRenderableLike>;
+  TextareaRenderable: ConstructorLike<TextareaRenderableLike>;
   SelectRenderable: ConstructorLike<SelectRenderableLike>;
   TabSelectRenderable: ConstructorLike<SelectRenderableLike>;
   InputRenderableEvents: { ENTER: string };
@@ -212,6 +218,33 @@ const addInputControl = (
   input.focus?.();
 };
 
+const addTextareaControl = (
+  mod: OpenTuiModuleLike,
+  renderer: RendererLike,
+  panel: RenderableLike,
+  request: PromptDriverRequestLike,
+  done: (value: string) => void,
+): void => {
+  const defaultRaw =
+    request.defaultRaw ?? (request.prompt.default === undefined ? undefined : String(request.prompt.default));
+  const textarea = new mod.TextareaRenderable(renderer, {
+    id: "lando-prompt-textarea",
+    width: Math.max(10, panelWidth(renderer) - 4),
+    height: Math.max(3, Math.min(8, renderer.height - 6)),
+    initialValue: defaultRaw ?? "",
+    placeholder: defaultRaw === undefined ? "Type an answer…" : `Default: ${defaultRaw}`,
+    backgroundColor: "#0f172a",
+    textColor: "#e5f9ff",
+    cursorColor: "#22d3ee",
+    focusedBackgroundColor: "#102033",
+    focusedTextColor: "#ffffff",
+    placeholderColor: "#64748b",
+    onSubmit: () => done(textarea.plainText),
+  });
+  panel.add?.(textarea);
+  textarea.focus?.();
+};
+
 const addSelectControl = (
   mod: OpenTuiModuleLike,
   renderer: RendererLike,
@@ -292,6 +325,10 @@ const buildPrompt = (
   }
   if (type === "confirm") {
     addConfirmControl(mod, renderer, panel, request, done);
+    return;
+  }
+  if (type === "textarea") {
+    addTextareaControl(mod, renderer, panel, request, done);
     return;
   }
   addInputControl(mod, renderer, panel, request, done);
