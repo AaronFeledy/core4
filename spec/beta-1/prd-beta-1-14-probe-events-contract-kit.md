@@ -8,7 +8,7 @@ Beta 1 is still the last feature-surface phase, so these primitives land now ins
 
 - **Probe / `RetryPolicy` (§10.5.1).** `HealthcheckRunner`, `UrlScanner`, `DoctorService` shell checks, the `Downloader` retry path (PRD-09), and `lando setup` readiness waits each carry their own retry/delay/timeout loop and their own green/yellow/red verdict shape. There is no shared, `TestClock`-deterministic probe runner, so attempt-count and backoff behavior are re-implemented per surface and asserted (where asserted at all) against the wall clock. The §13.1 Effect-service test row and §10.5/§10.5.1 already name `@lando/sdk/probe` as the single backoff/verdict primitive these surfaces build on; this PRD ships it.
 
-- **EventService query, timeout, and history (§11.1).** The live `subscribe` stream exists, but the one-shot `waitFor` / `waitForAll` awaits, the retrospective `query` scan, the bounded **redacted** history buffer, the `EventError` (`reason: "timeout"`) deadline contract, and the typed generic narrowing (`subscribe<E>` / `waitFor<E>` / `query<E>`) are spec-only. Embedding hosts (IDE extensions, dashboards), `lando events --follow`, and the executable-guide `<Verify event=…>` matcher all need "await/inspect an event matching a predicate," and `@lando/core/testing`'s `expectEvent` / `recordedEvents` are documented as thin wrappers over these members — but the runtime members they wrap do not exist yet.
+- **EventService query, timeout, and history (§11.1).** The live `subscribe` stream exists, but the one-shot `waitFor` / `waitForAny` awaits, the retrospective `query` scan, the bounded **redacted** history buffer, the `EventError` (`reason: "timeout"`) deadline contract, and the typed generic narrowing (`subscribe<E>` / `waitFor<E>` / `query<E>`) are spec-only. Embedding hosts (IDE extensions, dashboards), `lando events --follow`, and the executable-guide `<Verify event=…>` matcher all need "await/inspect an event matching a predicate," and `@lando/core/testing`'s `expectEvent` / `recordedEvents` are documented as thin wrappers over these members — but the runtime members they wrap do not exist yet.
 
 - **The §4.2 plugin-abstraction contract kit (§13.1).** Beta 1 already ships shared `@lando/sdk/test` contract suites for `Downloader`, `RedactionService`, `InteractionService`, the Landofile serializer, and `StateStore`. The §13.1 test-layer table also specifies six more — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` — but no story builds them. These are the literal "unlock plugin authors" payload: without a published harness, a plugin author writing one of these six abstractions has no way to prove their implementation preserves the spec's MUST/SHOULD guarantees, and the built-in implementations have no shared regression contract.
 
@@ -29,7 +29,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 
 ### EventService query source references
 
-- [`spec/03-architecture.md`](../03-architecture.md) §11.1 the `EventService` interface — typed `subscribe<E>` / `waitFor<E>` / `waitForAll<E>` / `query<E>`, the bounded redacted history buffer, the `EventError` (`reason: "timeout"`) contract, and the zero-subscriber / zero-history short-circuits.
+- [`spec/03-architecture.md`](../03-architecture.md) §11.1 the `EventService` interface — typed `subscribe<E>` / `waitFor<E>` / `waitForAny<E>` / `query<E>`, the bounded redacted history buffer, the `EventError` (`reason: "timeout"`) contract, and the zero-subscriber / zero-history short-circuits.
 - [`spec/03-architecture.md`](../03-architecture.md) §3.7 redaction — events are redacted through `RedactionService` before they are buffered.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.6 lifecycle and scopes for hosts, §16.8 the `@lando/core/testing` event helpers (`expectEvent` / `waitForEvent` / `recordedEvents`) that wrap these members.
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 the Effect-service test layer exercising typed narrowing + bounded-history semantics, and the `expectTypeOf` tests in `test/types/`.
@@ -57,7 +57,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 
 ### EventService query goals
 
-- Extend the `EventService` interface with typed `waitFor<E>` / `waitForAll<E>` (one-shot awaits with an `EventError` `reason: "timeout"` deadline driven through `Clock`) and `query<E>` (non-blocking retrospective scan of the history buffer).
+- Extend the `EventService` interface with typed `waitFor<E>` / `waitForAny<E>` (one-shot awaits with an `EventError` `reason: "timeout"` deadline driven through `Clock`) and `query<E>` (non-blocking retrospective scan of the history buffer).
 - Add a bounded in-memory ring buffer that holds **redacted** payloads only (redacted through `RedactionService` before buffering), evicts oldest-first, defaults to a small fixed cap, and is a zero-allocation no-op when a host sets the cap to 0.
 - Preserve the existing zero-subscriber short-circuit and `subscribe` semantics; add typed generic narrowing on `E["name"]` across `subscribe` / `waitFor` / `query`, enforced by `expectTypeOf` tests.
 - Re-point `@lando/core/testing`'s `expectEvent` / `waitForEvent` / `recordedEvents` to wrap `waitFor` / `query` so the test surface and runtime surface share one implementation.
@@ -110,8 +110,8 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 
 **Acceptance Criteria:**
 
-- [ ] `EventService` gains `waitFor<E>(name, { filter?, timeout? })`, `waitForAll<E>(specs, { timeout? })`, and `query<E>(name, filter?)`; `subscribe<E>` / `waitFor<E>` / `query<E>` narrow on `E["name"]`, and `expectTypeOf` tests in `test/types/` lock the typed signatures.
-- [ ] `waitFor` resolves from the live stream and fails with `EventError` (`reason: "timeout"`) when the deadline elapses, driven through Effect's `Clock` so a `TestClock` test asserts it deterministically; without `timeout` it waits indefinitely. `waitForAll` resolves with the first matching event across its specs under the same timeout contract.
+- [ ] `EventService` gains `waitFor<E>(name, { filter?, timeout? })`, `waitForAny<E>(specs, { timeout? })`, and `query<E>(name, filter?)`; `subscribe<E>` / `waitFor<E>` / `query<E>` narrow on `E["name"]`, and `expectTypeOf` tests in `test/types/` lock the typed signatures.
+- [ ] `waitFor` resolves from the live stream and fails with `EventError` (`reason: "timeout"`) when the deadline elapses, driven through Effect's `Clock` so a `TestClock` test asserts it deterministically; without `timeout` it waits indefinitely. `waitForAny` resolves with the first matching event across its specs under the same timeout contract.
 - [ ] `EventService` retains a bounded in-memory ring buffer (small fixed default cap, oldest-evicted-first) that holds payloads **redacted through `RedactionService` (§3.7) before buffering**; a test proves `query` and the history snapshot never observe an un-redacted payload.
 - [ ] `query(name, filter?)` scans the buffer and returns matching events without blocking; events evicted from the buffer are never returned; a host that sets the cap to 0 incurs a zero-allocation no-op (asserted).
 - [ ] The existing zero-subscriber short-circuit and `subscribe` completion-on-scope-close semantics are unchanged; a regression test covers both.
@@ -180,7 +180,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 
 ### EventService query functional requirements
 
-- FR-6: `EventService` MUST expose typed `waitFor<E>` / `waitForAll<E>` / `query<E>` narrowing on `E["name"]`; `waitFor`/`waitForAll` MUST honor an optional `timeout` that fails with `EventError` (`reason: "timeout"`) through Effect's `Clock`.
+- FR-6: `EventService` MUST expose typed `waitFor<E>` / `waitForAny<E>` / `query<E>` narrowing on `E["name"]`; `waitFor`/`waitForAny` MUST honor an optional `timeout` that fails with `EventError` (`reason: "timeout"`) through Effect's `Clock`.
 - FR-7: The history buffer MUST hold only payloads already redacted through `RedactionService`; `query` and any host/guide snapshot MUST be unable to observe an un-redacted payload.
 - FR-8: The buffer MUST be bounded (small fixed default, oldest-evicted-first) and MUST be a zero-allocation no-op when the cap is 0; `query` MUST never return evicted events.
 - FR-9: Existing `subscribe` semantics and the zero-subscriber short-circuit MUST be preserved; `@lando/core/testing` `expectEvent` / `waitForEvent` / `recordedEvents` MUST be thin wrappers over the new members (one implementation).

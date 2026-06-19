@@ -352,7 +352,7 @@ Required behaviors:
 - Scanner config: `enabled`, `retry`, `delay`, `timeout`, `path`, `okCodes`, `maxRedirects`.
 - Per-service overrides under `services.<name>.scanner:`.
 - Results are reported as green/yellow/red with optional structured detail. The `retry`/`delay`/`timeout` config resolves to a `RetryPolicy` and the green/yellow/red verdict is the probe primitive's `ProbeOutcome` (§10.5.1); only the probe effect differs between the built-in and plugin scanners.
-- The default scanner uses Bun's built-in `fetch` against the resolved host-facing URL. Plugin-supplied scanners MAY use `ShellRunner` (§3.4) for shell-shaped probes — `curl --resolve` for testing custom DNS, `openssl s_client -connect` for TLS handshake details, `dig +short` for record validation — particularly when a project's routing depends on host networking that `fetch` cannot reproduce. Plugin scanners surface the same green/yellow/red verdict shape; only the underlying probe mechanism differs.
+- The default scanner issues its probe through `HttpClient` (§10.3.2) against the resolved host-facing URL, inheriting the canonical proxy/CA resolution, redaction, and cancellation policy rather than calling `fetch` directly. Plugin-supplied scanners MAY use `ShellRunner` (§3.4) for shell-shaped probes — `curl --resolve` for testing custom DNS, `openssl s_client -connect` for TLS handshake details, `dig +short` for record validation — particularly when a project's routing depends on host networking that `fetch` cannot reproduce. Plugin scanners surface the same green/yellow/red verdict shape; only the underlying probe mechanism differs.
 
 ### 10.6 Files and performance
 

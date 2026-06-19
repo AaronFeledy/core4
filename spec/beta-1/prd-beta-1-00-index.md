@@ -37,7 +37,7 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
 | §10.3 / §10.6 / §10.8 / §10.9 | CA / Downloader / file-sync / setup / doctor | [`spec/11-subsystems.md`](../11-subsystems.md) |
 | §4.2 / §9.5 / §13.1 | Downloader pluggability, manifest contribution, contract suite | [`spec/04-pluggability.md`](../04-pluggability.md), [`spec/10-plugins.md`](../10-plugins.md), [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) |
 | §10.5 / §10.5.1 | Healthcheck/scanner behaviors + the `@lando/sdk/probe` retry/verdict primitive | [`spec/11-subsystems.md`](../11-subsystems.md) |
-| §11.1 | `EventService` interface — typed `waitFor`/`waitForAll`/`query` + bounded redacted history | [`spec/03-architecture.md`](../03-architecture.md) |
+| §11.1 | `EventService` interface — typed `waitFor`/`waitForAny`/`query` + bounded redacted history | [`spec/03-architecture.md`](../03-architecture.md) |
 | §13.1 (plugin-SDK layer) | Plugin-abstraction contract kit (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) | [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md), [`spec/04-pluggability.md`](../04-pluggability.md) |
 | §13.2 / §13.4 | Schema gate / merge-blocking gates | [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) |
 | §10.11 | `DataMover` local/volume byte-movement chokepoint, `DataEndpoint` model, snapshot store, data-plane contract suite | [`spec/11-subsystems.md`](../11-subsystems.md) |
@@ -181,7 +181,7 @@ The following items were explicitly deferred to Beta 1 by prior PRDs, the ROADMA
 | Public Paths/Roots primitive (`@lando/core/paths` + `PathsService`) + `GlobalConfig` `userCacheRoot`/`systemPluginRoot` + path-resolution consolidation | §7.5.1, §2.7, §16.2 | PRD-13 US-302..US-306 |
 | Durable state-store primitive (`StateStore` core service) + scratch-registry/include-lockfile consolidation + plugin/host exposure | §12.7, §3.4, §4.2, §9.8 | PRD-13 US-311..US-315 |
 | `@lando/sdk/probe` retry/verdict primitive + healthcheck/scanner/doctor/downloader/setup-readiness migration + retry-loop boundary gate | §10.5.1, §10.5, §13.4 | PRD-14 US-316..US-317 |
-| `EventService` typed `waitFor`/`waitForAll`/`query` + bounded redacted history + `@lando/core/testing` helper rewire | §11.1, §16.8 | PRD-14 US-318 |
+| `EventService` typed `waitFor`/`waitForAny`/`query` + bounded redacted history + `@lando/core/testing` helper rewire | §11.1, §16.8 | PRD-14 US-318 |
 | §4.2 plugin-abstraction contract kit (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) + layer-coverage gate | §13.1, §4.2, §9.5 | PRD-14 US-319..US-321 |
 | Universal machine-output contract (`CommandResultEnvelope`/`StreamFrame` schemas, required `LandoCommandSpec.resultSchema`, universal `--format json` + `--json`/`-j`, `encodeCommandResult` redaction seam) + conformance/boundary gates | §8.11, §8.3, §7.8, §13.1, §13.4 | PRD-15 US-322..US-329 |
 | `DataMover` local/volume byte-movement primitive + `RuntimeProvider` data plane (capabilities/methods/mount-aware run) + snapshot store on Paths/StateStore + shared streaming-hash helper + scratch-copy/Downloader refactors + cache-volume `kind` | §10.11, §5.3–§5.4, §3.4/§3.5, §6.5, §12.4 | PRD-16 US-333..US-341 |

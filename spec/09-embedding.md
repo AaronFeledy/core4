@@ -149,6 +149,12 @@ export const LandoRuntimeOptions = Schema.Struct({
   // Signal handling: the host owns SIGINT/SIGTERM by default. Set true to install
   // the same handler the CLI uses (signal → Effect.interrupt on the running fiber).
   installSignalHandlers: Schema.optional(Schema.Boolean),
+
+  // Acquire a scratch Lando app (§21) at construction, bound to the runtime's Scope (§16.6).
+  // When set, a missing-selector `runtime.app()` / `resolveApp()` resolves to this scratch app.
+  // Imperative acquisition via `runtime.scratch(input)` (§16.6) does NOT set this default;
+  // those scratches are addressed through their returned `ScratchHandle`.
+  scratch: Schema.optional(ScratchAcquireInput),
 });
 ```
 

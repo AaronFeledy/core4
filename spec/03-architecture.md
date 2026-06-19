@@ -584,7 +584,7 @@ export class EventService extends Context.Service<EventService, {
   ) => Effect.Effect<E, EventError>;
 
   // Await the next event matching ANY of several specs; resolves with the first to arrive.
-  readonly waitForAll: <E extends LandoEvent>(
+  readonly waitForAny: <E extends LandoEvent>(
     specs: ReadonlyArray<{ readonly name: E["name"]; readonly filter?: (e: E) => boolean }>,
     options?: { readonly timeout?: DurationInput },
   ) => Effect.Effect<E, EventError>;
@@ -606,10 +606,10 @@ export class EventService extends Context.Service<EventService, {
 - `EventService` is constructed eagerly at level `minimal` so that `publish` is callable from level-`minimal` code paths, but its internal subscriber index is empty until level `plugins` populates it. Calling `publish` at level `minimal` therefore always hits the zero-subscriber short-circuit unless core itself registered an internal subscriber (rare; see §11.3 priority bands).
 - Plugins MUST NOT register subscribers for `pre-bootstrap-tooling` / `post-bootstrap-tooling` unless they declare `bootstrap: tooling` themselves; subscriber registrations whose declared bootstrap level exceeds the event's level are rejected at manifest validation with `SubscriberLevelMismatchError`. This keeps the tooling fast path's `hasSubscribers` map empty by construction in the common case.
 
-**Query, timeout, and history.** `subscribe` is the live stream; `waitFor` / `waitForAll` are the one-shot awaits; `query` is the retrospective scan. They share one bounded history buffer:
+**Query, timeout, and history.** `subscribe` is the live stream; `waitFor` / `waitForAny` are the one-shot awaits; `query` is the retrospective scan. They share one bounded history buffer:
 
 - `EventService` retains a bounded in-memory ring buffer of recently published events (default cap is small and fixed; the oldest entries are evicted first). The buffer holds **redacted** payloads only — events are redacted through the canonical `RedactionService` (§3.7) *before* they are buffered, so `query`, host snapshots, and the executable-guide transcript writer can never observe an un-redacted payload. The buffer is a zero-allocation no-op when history is disabled (library hosts MAY set the cap to 0).
-- `waitFor(name, { timeout })` MUST resolve from the live stream and MUST fail with `EventError` (`reason: "timeout"`) when the deadline elapses, driven through Effect's `Clock` so tests assert it under `TestClock`. Without `timeout` it waits indefinitely (the prior behavior). `waitForAll` resolves with the first matching event across its specs and honors the same timeout contract.
+- `waitFor(name, { timeout })` MUST resolve from the live stream and MUST fail with `EventError` (`reason: "timeout"`) when the deadline elapses, driven through Effect's `Clock` so tests assert it under `TestClock`. Without `timeout` it waits indefinitely (the prior behavior). `waitForAny` resolves with the first matching event across its specs and honors the same timeout contract.
 - `query(name, filter?)` scans the history buffer and returns matching events **without blocking** — it answers "did this already happen?" for a host or a guide assertion, where `waitFor` would race or hang because the event fired before the caller subscribed. `query` never observes events evicted from the buffer; a host that needs the full log subscribes early instead.
 - These members are the runtime counterpart of the `@lando/core/testing` event helpers (§16.8): `expectEvent` / `waitForEvent` are thin wrappers over `waitFor`, and `recordedEvents` is `query("*")` over the test runtime's history. The typed generic signatures (`subscribe<E>` / `waitFor<E>` / `query<E>` narrowing on `E["name"]`) are normative here and enforced by `expectTypeOf` tests in `test/types/`.
 

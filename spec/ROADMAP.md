@@ -541,7 +541,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 
 **SDK runtime primitives & plugin contract kit:**
 - `@lando/sdk/probe` retry/verdict primitive (`RetryPolicy`, `runProbe`, `ProbeOutcome`, contracts-only, `TestClock`-deterministic) ships and the healthcheck, scanner, doctor, `HttpClient`/`Downloader`, and `lando setup` readiness loops migrate onto it, with a §13.4 boundary gate banning net-new ad-hoc retry/backoff loops
-- `EventService` gains typed `waitFor`/`waitForAll`/`query` with an `EventError` timeout contract and a bounded **redacted** in-memory history buffer; `@lando/core/testing` `expectEvent`/`waitForEvent`/`recordedEvents` become thin wrappers over them
+- `EventService` gains typed `waitFor`/`waitForAny`/`query` with an `EventError` timeout contract and a bounded **redacted** in-memory history buffer; `@lando/core/testing` `expectEvent`/`waitForEvent`/`recordedEvents` become thin wrappers over them
 - The §4.2 plugin-abstraction contract kit ships from `@lando/sdk/test` — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` suites — every built-in implementation runs through its suite, and the §13.1 layer-coverage gate fails if a suite or its built-in invocation is removed
 
 **Universal machine-output contract (agent-native tenet):**
