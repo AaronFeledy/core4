@@ -8,9 +8,9 @@ Phase 4 of [`spec/ROADMAP.md`](../ROADMAP.md) turns the breadth-complete Alpha 3
 
 > The governance contracts go live, the open decisions in §14.2 are closed, and the **remaining `lando setup` / `lando uninstall` functionality** is completed — this is the final phase that adds feature surface.
 
-Alpha 3 closed the breadth surface (every canonical service type, both providers on every platform, the global app, scratch apps, full recipes, full Landofile schema, renderer wiring, tooling hot path, plugin install, 5-platform CI). **Beta 1 lands the last feature surface**: the full `lando setup` / `lando uninstall` lifecycle, the §14.2 open-decision closures (Bun floor, OCLIF lock, auto-setup level, Compose subset documentation, `sshAgent.sidecar` opt-out, plugin trust model), deprecation governance, schema publication plus the canonical Landofile serializer, the plugin authoring toolkit, telemetry plus the canonical redaction primitive, the full executable-guides pipeline, the §17 release machinery (signing, supply chain, self-update, installers) plus the shared `Downloader` primitive, the stable App-handle embedding primitive, terminal UI polish plus the shared `InteractionService` primitive, the paired Paths/Roots + durable `StateStore` foundational primitives, and the remaining SDK primitive trio — the `@lando/sdk/probe` retry/verdict primitive, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit. At the end of Beta 1 the first signed `4.0.0-beta.N` ships from CI on the `next` channel and **feature freeze is entered**.
+Alpha 3 closed the breadth surface (every canonical service type, both providers on every platform, the global app, scratch apps, full recipes, full Landofile schema, renderer wiring, tooling hot path, plugin install, 5-platform CI). **Beta 1 lands the last feature surface**: the full `lando setup` / `lando uninstall` lifecycle, the §14.2 open-decision closures (Bun floor, OCLIF lock, auto-setup level, Compose subset documentation, `sshAgent.sidecar` opt-out, plugin trust model), deprecation governance, schema publication plus the canonical Landofile serializer, the plugin authoring toolkit, telemetry plus the canonical redaction primitive, the full executable-guides pipeline, the §17 release machinery (signing, supply chain, self-update, installers) plus the shared `Downloader` primitive, the stable App-handle embedding primitive, terminal UI polish plus the shared `InteractionService` primitive, the paired Paths/Roots + durable `StateStore` foundational primitives, the remaining SDK primitive trio — the `@lando/sdk/probe` retry/verdict primitive, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit — and the `DataMover` local/volume byte-movement primitive plus the `RuntimeProvider` data plane (§10.11). At the end of Beta 1 the first signed `4.0.0-beta.N` ships from CI on the `next` channel and **feature freeze is entered**.
 
-This PRD set picks up at **US-200** (Alpha 3 ended at US-199) and runs through **US-321**.
+This PRD set picks up at **US-200** (Alpha 3 ended at US-199) and runs through **US-341**.
 
 ## How to use this set of PRDs
 
@@ -40,6 +40,9 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
 | §11.1 | `EventService` interface — typed `waitFor`/`waitForAll`/`query` + bounded redacted history | [`spec/03-architecture.md`](../03-architecture.md) |
 | §13.1 (plugin-SDK layer) | Plugin-abstraction contract kit (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) | [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md), [`spec/04-pluggability.md`](../04-pluggability.md) |
 | §13.2 / §13.4 | Schema gate / merge-blocking gates | [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) |
+| §10.11 | `DataMover` local/volume byte-movement chokepoint, `DataEndpoint` model, snapshot store, data-plane contract suite | [`spec/11-subsystems.md`](../11-subsystems.md) |
+| §5.3 / §5.4 / §5.7 | `RuntimeProvider` data plane (mount-aware `EphemeralRunSpec`/`runStream` + methods), data-plane `ProviderCapabilities`, provider errors | [`spec/05-runtime-providers.md`](../05-runtime-providers.md) |
+| §6.5 | Cache-volume storage kind (`storage[].kind: cache`) | [`spec/06-services.md`](../06-services.md) |
 
 ## PRDs in this set
 
@@ -60,6 +63,7 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
 | 13 | [Paths/Roots & durable StateStore](./prd-beta-1-13-paths-and-state-store.md)            | `@lando/core/paths` resolver, `PathsService`, `GlobalConfig` root fields, durable `StateStore`, scratch-registry/include-lockfile migration, contract suite | US-302..US-306, US-311..US-315 | PRD-01, PRD-04, PRD-11 |
 | 14 | [Probe, EventService query & plugin contract kit](./prd-beta-1-14-probe-events-contract-kit.md) | `@lando/sdk/probe` retry/verdict primitive + consumer migration, `EventService` `waitFor`/`query` + bounded redacted history, the six §4.2 plugin-abstraction contract suites | US-316..US-321 | PRD-04, PRD-06, PRD-09, PRD-11 |
 | 15 | [Universal `--format json` machine output](./prd-beta-1-15-universal-json-output.md) | `CommandResultEnvelope`/`StreamFrame` schemas, required `LandoCommandSpec.resultSchema`, universal `--format json` + `--json`/`-j` shorthand, single `encodeCommandResult` redaction-aware seam, conformance + boundary gates | US-322..US-329 | PRD-04, PRD-06, PRD-11, PRD-14 |
+| 16 | [Data movement & volume primitives](./prd-beta-1-16-data-mover-and-volumes.md) | `DataMover` local/volume byte-movement chokepoint + `DataEndpoint` model, `RuntimeProvider` data plane (mount-aware `EphemeralRunSpec`/`runStream` + 8 methods + 5 capabilities), snapshot store on `PathsService`+`StateStore`, shared streaming-hash helper, scratch-copy/Downloader refactors, cache-volume `kind` | US-333..US-341 | PRD-04, PRD-09, PRD-11, PRD-13 |
 
 ## Dependency graph
 
@@ -105,7 +109,15 @@ The stable spec section numbers do **not** match their filenames. Beta 1 PRDs ci
                   │ 12 Terminal UI │ │ 13 Paths/    │ │ 14 Probe + events  │
                   │  + interaction │ │  Roots +     │ │  + contract kit    │
                   │                │ │  StateStore  │ │  (also 04, 06, 09) │
-                  └────────────────┘ └──────────────┘ └────────────────────┘
+                  └────────────────┘ └──────┬───────┘ └────────────────────┘
+                            │                │                │
+                            ▼                ▼                ▼
+                  ┌────────────────┐ ┌──────────────────────────────────┐
+                  │ 15 Universal   │ │ 16 Data movement & volumes       │
+                  │  JSON output   │ │  DataMover + provider data plane │
+                  │  (also 04,06,  │ │  (also 04, 09, 11; 13 for Paths/ │
+                  │   11, 14)      │ │   StateStore)                    │
+                  └────────────────┘ └──────────────────────────────────┘
 ```
 
 ## Verification contract (applies to every story in every PRD)
@@ -157,10 +169,11 @@ The following items were explicitly deferred to Beta 1 by prior PRDs, the ROADMA
 | `EventService` typed `waitFor`/`waitForAll`/`query` + bounded redacted history + `@lando/core/testing` helper rewire | §11.1, §16.8 | PRD-14 US-318 |
 | §4.2 plugin-abstraction contract kit (tooling-engine / route-filter / secret-store / config-translator / plugin-source / doctor-check) + layer-coverage gate | §13.1, §4.2, §9.5 | PRD-14 US-319..US-321 |
 | Universal machine-output contract (`CommandResultEnvelope`/`StreamFrame` schemas, required `LandoCommandSpec.resultSchema`, universal `--format json` + `--json`/`-j`, `encodeCommandResult` redaction seam) + conformance/boundary gates | §8.11, §8.3, §7.8, §13.1, §13.4 | PRD-15 US-322..US-329 |
+| `DataMover` local/volume byte-movement primitive + `RuntimeProvider` data plane (capabilities/methods/mount-aware run) + snapshot store on Paths/StateStore + shared streaming-hash helper + scratch-copy/Downloader refactors + cache-volume `kind` | §10.11, §5.3–§5.4, §3.4/§3.5, §6.5, §12.4 | PRD-16 US-333..US-341 |
 
 ## Exit criteria for Beta 1
 
-Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the shared `Downloader`, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, and the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
+Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the shared `Downloader`, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), and the `DataMover` local/volume byte-movement primitive plus the `RuntimeProvider` data plane (§10.11), and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — no spec section is being added from here on. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
 
 ## Cross-cutting conventions
 

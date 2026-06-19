@@ -7,7 +7,7 @@ This part defines the cross-cutting subsystems that sit between the core runtime
 
 Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `ProxyService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
 
-Outbound network access is part of this subsystem surface. Every Lando-owned fetch goes through one egress chokepoint — the `HttpClient` abstraction (§10.3.2) — which centralizes proxy/CA honoring, redaction, streaming request/response and upload, cancellation, and lifecycle events. `Downloader` (§10.3.3) is the verified-artifact specialization layered over `HttpClient`, adding checksum/size verification, atomic persistence, cache/offline short-circuiting, and download progress; the tool-provisioning helper (§10.3.4) extracts and installs pinned host binaries over `Downloader`.
+Byte movement is part of this subsystem surface and has two chokepoints, one per direction. **Outbound/remote** bytes go through `HttpClient` (§10.3.2) — the single egress abstraction that centralizes proxy/CA honoring, redaction, streaming request/response and upload, cancellation, and lifecycle events; `Downloader` (§10.3.3) is the verified-artifact specialization layered over it (checksum/size verification, atomic persistence, cache/offline short-circuiting, progress), and the tool-provisioning helper (§10.3.4) extracts and installs pinned host binaries over `Downloader`. **Local/volume/service** bytes go through `DataMover` (§10.11) — the on-host counterpart that moves bytes between host paths/archives, in-process streams, named volumes, service paths/commands, and built artifacts, owning snapshot/restore, verification, and the `Data` lifecycle events. A flow that does both (hosting `pull`/`push`, `image load` from a URL) composes them: `HttpClient` for the remote half, `DataMover` for the local landing half.
 
 ---
 
@@ -107,7 +107,7 @@ Required behaviors:
 
 ### 10.3.2 Outbound HTTP (`HttpClient`)
 
-`HttpClient` is the single outbound-egress chokepoint for all Lando-owned network access. Every request/response interaction Lando initiates — hosting-provider push/pull orchestration and uploads, telemetry delivery, the update-manifest fetch, plugin-registry queries, tunnel/share control-plane calls, the in-process MCP surface, the `UrlScanner` — MUST flow through `HttpClient`, not direct `fetch` or plugin-local proxy/CA wiring. The one exception is registry/package-manager operations delegated to `BunSelfRunner`, which honor the same `network.proxy` / `network.ca` policy through their own runner contract. `Downloader` (§10.3.3) is itself a consumer: it issues its byte-fetch through `HttpClient`, so overriding `HttpClient` once (audited, air-gapped, mirror, corporate gateway) governs downloads too.
+`HttpClient` is the single outbound-egress chokepoint for all Lando-owned network access. Every request/response interaction Lando initiates — hosting-provider push/pull orchestration and uploads, telemetry delivery, the update-manifest fetch, plugin-registry queries, tunnel/share control-plane calls, an outbound MCP/LLM call (if and when that surface ships), and the default fetch-based `UrlScanner` (shell-based scanner plugins use `ShellRunner` per §10.5) — MUST flow through `HttpClient`, not direct `fetch` or plugin-local proxy/CA wiring. The one exception is registry/package-manager operations delegated to `BunSelfRunner`, which honor the same `network.proxy` / `network.ca` policy through their own runner contract. `Downloader` (§10.3.3) is itself a consumer: it issues its byte-fetch through `HttpClient`, so overriding `HttpClient` once (audited, air-gapped, mirror, corporate gateway) governs downloads too.
 
 ```ts
 export class HttpClient extends Context.Service<HttpClient, {
@@ -132,6 +132,7 @@ Required behaviors:
 - Every call publishes `pre-http-call` and `post-http-call` lifecycle events (§3.5/§11.2) with the redacted URL origin, method, caller-subsystem id, status, byte counts, duration, and redacted failure detail. A call issued on behalf of a `Downloader` request is tagged with the originating download so telemetry/transcripts do not double-count it as an independent `http-call`.
 - `Effect.interrupt` MUST close the connection and the service's `Scope` MUST reap in-flight transfers.
 - Offline cooperation: `HttpClient` does not itself cache, but it honors an offline policy by failing fast without opening a connection when the caller declares offline-only.
+- Construction is inert: building `HttpClientLive` (eager at level `minimal`) MUST NOT touch the network, the provider, or any plugin module — it only captures the resolved trust configuration. The first byte of egress happens on the first `request`/`stream`/`upload`, never at Layer construction (§2.4 alignment).
 - Scope discipline: `HttpClient` is a thin trust-aware, redacted, cancellable request/response + streaming + upload primitive. It is NOT a REST framework, retry engine, or artifact-verification layer — checksum/size verification and atomic persistence belong to `Downloader` (§10.3.3); retry/backoff belongs to the §10.5.1 probe primitive; hosting/registry/tunnel plugins build their vendor API clients on top of it.
 
 `HttpClient` is a §4.2 pluggable abstraction. Plugin-contributed implementations MAY provide audited, air-gapped, mirror-aware, corporate-gateway, or recording behavior, but they MUST pass the `HttpClient` contract suite (§13.1) and MUST NOT weaken proxy/CA honoring, redaction, scheme policy, or cancellation finalization.
@@ -168,7 +169,7 @@ Required behaviors:
 
 - Production artifact manifests MUST use `https://` URLs. `file://` is rejected unless the caller sets the explicit override gate (`allowFileSource: true`), and that gate is limited to documented dev/CI override paths such as `LANDO_RUNTIME_BUNDLE_MANIFEST` (§5.8.1).
 - `Downloader` issues its byte-fetch through `HttpClient.stream` (§10.3.2); it does NOT resolve proxy/CA or open a socket itself. Outbound trust, redaction, and the `pre-/post-http-call` events are inherited from `HttpClient`, so overriding `HttpClient` (audited, air-gapped, mirror, corporate gateway) automatically governs every download.
-- File downloads pipe the `HttpClient.stream` body through a SHA-256 hasher while writing to a unique temp file in the destination filesystem, then atomically rename on success. The temp file is deleted on `Effect.interrupt`, fetch failure, size mismatch, checksum mismatch, or persistence failure.
+- File downloads pipe the `HttpClient.stream` body through a SHA-256 hasher while writing to a unique temp file in the destination filesystem, then atomically rename on success. The temp file is deleted on `Effect.interrupt`, fetch failure, size mismatch, checksum mismatch, or persistence failure. This stream → SHA-256 → temp-file → atomic-rename logic is the pure, dependency-free `@lando/sdk` streaming-hash/atomic-write helper (same contracts-only tier as `@lando/sdk/probe` / `@lando/sdk/secrets`); `DataMover` (§10.11) consumes the **same** helper for archive verification so the verify-and-persist path exists once, not twice.
 - `memory` downloads buffer only when the caller explicitly requests bytes in memory. Large artifacts default to file streaming so runtime bundles and helper binaries are never double-buffered.
 - If the destination already exists and matches the expected SHA-256, the download is a cache hit: no network request is made, `fromCache: true` is returned, and offline mode succeeds. If offline mode is active and no matching cached artifact exists, the request fails with `DownloadOfflineError` before opening a network connection.
 - Destination filenames are path-contained. A manifest `filename` whose realpath would escape the destination directory is rejected with `DownloadSourceForbiddenError` before any bytes are read.
@@ -643,5 +644,98 @@ If `LANDO_HOST_PROXY_SOCKET` is unset (the user is in a service without the feat
 - **Recording/test runs.** Capture every request for assertions; never call out to the real host.
 
 Plugin implementations MUST pass the same contract suite as the default and MUST honor the allowlist cache; weakening the security posture of the default (e.g., disabling token auth) is forbidden and is checked by the contract suite.
+
+---
+
+### 10.11 Data movement and volumes
+
+`DataMover` is the single chokepoint for **local/volume/service byte movement** — the on-host counterpart to the `HttpClient` egress chokepoint (§10.3.2). Every feature that moves bytes into or out of a named volume, a path inside a service, the host filesystem, or a built artifact goes through it: DB import/export, DB snapshot / fast-reset, the local landing half of hosting `pull`/`push`, scratch `--isolate=full`, disposable-toolbox seeding, and `image save`/`load`. Core ships exactly one implementation; the pluggable seam is the `RuntimeProvider` data plane (§5.3/§5.4), not `DataMover` itself (§4.2).
+
+`DataMover` is **not** a sync engine (live bidirectional sync stays `FileSyncEngine`, §10.6) and **not** a remote transport (a `HostingProvider` plugin owns remote I/O via `HttpClient`; it uses `DataMover` only for the local extract/land half).
+
+#### 10.11.1 The `DataEndpoint` model
+
+Movement is expressed as a transfer between two typed endpoints. The union is the heart of the primitive; every feature is one `transfer(from, to)` or one `snapshot`/`restore`.
+
+```ts
+// @lando/sdk/schema/data-transfer.ts
+export const DataEndpoint = Schema.Union(
+  Schema.TaggedStruct("hostPath",    { path: AbsolutePath }),                   // dir or file tree
+  Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
+  Schema.TaggedStruct("stream",      {}),                                       // in-process byte stream (Scope-bound)
+  Schema.TaggedStruct("volume",      { app: AppId, store: Schema.String }),     // a DataStorePlan name
+  Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }),
+  Schema.TaggedStruct("serviceCmd",  { app: AppId, service: ServiceName, command: CommandSpec }), // pipe in/out of a CLI
+  Schema.TaggedStruct("artifact",    { ref: Schema.String }),                   // built image
+);
+export const ArchiveFormat = Schema.Literal("tar", "tar.gz", "tar.zst");
+```
+
+| Feature | Expressed as |
+|---|---|
+| `lando db export` | `transfer(serviceCmd(pg_dump) → hostArchive(.sql.gz))` |
+| `lando db import` | `transfer(hostArchive(.sql.gz) → serviceCmd(psql))` |
+| `lando db snapshot` / `restore` | `snapshot(volume(db-store))` / `restore(handle, volume(db-store))` |
+| hosting `pull` (db / files) | `HttpClient.stream` → `transfer(stream → serviceCmd(psql))` / `transfer(stream → hostPath)` |
+| scratch `--isolate=full` | `transfer(hostPath → hostPath)` (folds in the former `copyAppRoot`) |
+| `image save` / `load` | `transfer(artifact ↔ hostArchive)` |
+
+The `serviceCmd` endpoint relies on the existing `CommandSpec.stdinStream` / `execStream` contract (§5.3), so piping a dump into a CLI's stdin or capturing a CLI's stdout needs **no** new provider method — only the orchestrator.
+
+#### 10.11.2 The `DataMover` service
+
+```ts
+export class DataMover extends Context.Service<DataMover, {
+  readonly transfer:       (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
+  readonly transferStream: (spec: DataTransferSpec) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+  // snapshot sugar over a PathsService-resolved snapshot store indexed in a StateStore bucket
+  readonly snapshot:       (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
+  readonly restore:        (handle: SnapshotHandle | SnapshotId, store: VolumeRef) => Effect.Effect<void, DataMoverError, Scope.Scope>;
+  readonly listSnapshots:  (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+  readonly removeSnapshot: (id: SnapshotId) => Effect.Effect<void, DataMoverError>;
+  readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
+}>()("@lando/core/DataMover") {}
+```
+
+Required behaviors:
+
+- **Dispatch.** For `transfer(from, to)`, `DataMover` chooses the native `RuntimeProvider` data-plane method when the matching capability (§5.4) is `native`, else the generic helper-container fallback (mount the volume into a tiny helper image, stream `tar` through `run`/`runStream`), else fails `DataEndpointUnsupportedError` with remediation. `DataTransferResult.accelerated` reports which path ran; the §13.1 perf suite asserts the native path engaged when the capability is `native`.
+- **Helper image.** The generic fallback resolves its `tar`-capable helper image from a pinned `{ image, digest }` (the §10.3.4 `ToolManifest` model, at the provider-image layer): resolved through `RuntimeProvider.pullArtifact`, digest-verified, cached, and offline-reused so the §1.4 offline contract holds once warm.
+- **Streaming + interruption.** All moves are `Scope`-bound streams; `Effect.interrupt` propagates to the underlying `execStream`/`runStream` `kill()` and reaps children, identical to §5.3.
+- **Verification.** Archive writes compute SHA-256 over the byte stream via the shared `@lando/sdk` streaming-hash helper that also backs `Downloader` (§10.3.3); `transfer` to a `hostArchive`/snapshot records the digest, and `restore`/`import` verifies it, failing `DataChecksumMismatchError`. There is no skip-verification flag.
+- **Compression.** `tar.gz` / `tar.zst` via Bun-native streams; no external `gzip` binary.
+- **Redaction.** Routed through the canonical `RedactionService` (§3.7) only — secrets/`${secret:…}` and host-home paths are redacted in events/logs/transcripts; DB credentials passed to a `serviceCmd` ride env, never argv.
+- **Events.** Publishes the `Data` lifecycle scope (§3.5): `pre-data-transfer`, `data-transfer-progress`, `post-data-transfer`, `pre-volume-snapshot`, `post-volume-snapshot`, with redacted payloads.
+- **Containment.** A `hostPath`/`hostArchive` whose realpath escapes the app root (or an explicitly opted-in base) is rejected with `DataSourceOutsideRootError`, mirroring §10.6 / `runScript`.
+- **Idempotence.** `restore`/`import` into an existing volume requires `{ overwrite: true }` for destructive replace, else `DataTargetExistsError`; snapshot ids are content+timestamp derived.
+
+#### 10.11.3 Snapshot store
+
+The snapshot store is rooted at `appSnapshotsDir(appId)` (resolved by `PathsService`, §7.5.1; default `<userDataRoot>/snapshots/<app-id>/<store>/`) and **indexed in a `StateStore` bucket** (§12.7) — not a bespoke registry file — so it inherits atomic write, advisory lock, version header, and corruption quarantine.
+
+```
+<appSnapshotsDir>/<store>/<snapshot-id>.<format>   # archive (copy mode)
+<appSnapshotsDir>/<store>/<snapshot-id>.json       # SnapshotInfo: digest, size, createdAt, label, native-ref?
+```
+
+A `volumeSnapshot: "native"` provider stores a `VolumeSnapshotRef` in the `.json` sidecar instead of an archive; `copy` mode stores the archive. `lando destroy --purge` removes an app's snapshot subtree; plain `destroy` keeps it (data-safety). `app:destroy --purge` and scratch teardown MAY take a safety snapshot first (opt-out), per the destructive-confirmation rule.
+
+#### 10.11.4 Errors
+
+Tagged errors live in `@lando/core/errors`:
+
+- `DataTransferError` — a `transfer` failed for a reason not covered by a more specific tag.
+- `DataEndpointUnsupportedError` — the `(from, to)` pair is not realizable on the active provider (missing capability and no fallback). Includes the pair and remediation.
+- `DataChecksumMismatchError` — a restored/imported archive's SHA-256 did not match the recorded digest.
+- `DataSourceOutsideRootError` — a host endpoint's realpath escaped the permitted base.
+- `DataTargetExistsError` — a non-overwrite `restore`/`import` targeted an existing volume.
+- `SnapshotNotFoundError` / `VolumeNotFoundError` — the named snapshot/volume does not exist.
+- `ArchiveFormatError` — unsupported or corrupt archive format.
+
+Provider-side data-plane failures surface as `VolumeOperationError` / `ServiceCopyError` / `ArtifactTransferError` (§5.7) and are wrapped by `DataMover` into the tags above with the provider cause attached.
+
+#### 10.11.5 Contract suite
+
+The §13.1 provider contract suite gains a data-plane section run against `TestRuntimeProvider` and every real provider: `importVolume(exportVolume(x)) == x`; `snapshot → mutate → restore` restores bytes; `copyTo`/`copyFrom` round-trips; `artifact` export/import round-trips; and capability honesty (a provider declaring `native` must not fall back). `@lando/core/testing` ships an in-memory `TestDataMover` and fixtures so embedding-host and `@lando/sql` unit tests need no real provider. Security tests cover path-escape rejection, checksum-mismatch rejection, and secret redaction in emitted events/transcripts.
 
 ---

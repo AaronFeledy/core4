@@ -336,6 +336,17 @@ storage:
 
 The v3/SPEC2 `scope: project` alias is **not** accepted in v4 core. Use `scope: app`. A config translator plugin (§7.4.1) MAY rewrite `project` → `app` when migrating older Landofiles.
 
+**Kind (`data` vs `cache`).** A storage entry carries an optional `kind:` (`data` default, or `cache`). A `kind: cache` store is a **named, cross-app-shareable, dependency-cache volume** — the declarative equivalent of mounting a persistent package-manager cache (`~/.composer`, `node_modules` caches, `.m2`, pip/npm caches) into a service so repeated installs and rebuilds reuse it:
+
+```yaml
+storage:
+  - destination: /root/.composer
+    kind: cache
+    key: composer            # cache identity; auto-names `lando-cache-<key>`
+```
+
+Cache-kind rules: a `kind: cache` store auto-names `lando-cache-<key>` (the `key:` defaults to `kebab(destination)`), is shared across apps by design, carries the `dev.lando.storage-kind: "cache"` label, and is **never removed by `lando destroy`** — only by an explicit `lando destroy --purge-caches` or the `meta:cache:*` surface. `kind: cache` is independent of `scope:` (a cache volume is global-by-nature); declaring both `scope: service` and `kind: cache` is a planning error. This is the storage-plane primitive; it is distinct from the §10.11 data-*movement* primitive (one persists a working cache, the other moves bytes in and out of volumes).
+
 **Auto-naming** (when `source` not provided):
 
 - `scope: global` → `lando-<kebab(destination)>`.

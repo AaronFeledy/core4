@@ -2387,6 +2387,168 @@
       "priority": 133,
       "passes": false,
       "notes": "PRD-09 network primitives. Depends on Downloader (US-286/US-287); pairs with US-287's Mutagen migration."
+    },
+    {
+      "id": "US-333",
+      "title": "Publish the SDK data-transfer schemas, DataMover service tag, and data-plane errors",
+      "description": "As a plugin author or embedding host, I can consume a stable `DataMover` contract, the typed `DataEndpoint` model, and the data-plane error tags instead of inventing my own byte-movement surface.",
+      "acceptanceCriteria": [
+        "A new `sdk/src/schema/data-transfer.ts` exports `DataEndpoint` (the seven-member tagged union), `ArchiveFormat` (`tar`/`tar.gz`/`tar.zst`), the volume/service/snapshot schemas (`VolumeRef`, `VolumeInfo`, `VolumeFilter`, `VolumeSnapshotSpec`, `VolumeSnapshotRef`, `VolumeRestoreSpec`, `ServiceCopyInSpec`, `ServiceCopyOutSpec`), the transfer schemas (`DataTransferSpec`, `DataTransferResult` with `accelerated`, `DataTransferProgress`), and the snapshot schemas (`SnapshotHandle`, `SnapshotInfo`, `SnapshotFilter`, `PrunePolicy`), matching §10.11.1/§10.11.2 verbatim.",
+        "`@lando/sdk/services` exports the `DataMover` Context.Service tag (`@lando/core/DataMover`) with `transfer`/`transferStream`/`snapshot`/`restore`/`listSnapshots`/`removeSnapshot`/`pruneSnapshots`, and `sdk/src/services/index.ts` carries the matching `declare class DataMover` mirror.",
+        "`@lando/sdk/errors` exports `DataTransferError`, `DataEndpointUnsupportedError`, `DataChecksumMismatchError`, `DataSourceOutsideRootError`, `DataTargetExistsError`, `SnapshotNotFoundError`, `VolumeNotFoundError`, and `ArchiveFormatError`, plus the provider-side `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` added to the `ProviderError` union (§5.7), with field names avoiding the Bun `line`/`column` gotcha.",
+        "The new persisted schemas are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES`; the §13.2 snapshot gate round-trips them and `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "`sdk/API_COMPATIBILITY.md` records the tag, schemas, and errors as additive, and the SDK export fixtures + `exports.test.ts` are updated in the same change.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 134,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.11, §5.7, §3.4). Depends on PRD-04 (SDK/schema publication discipline)."
+    },
+    {
+      "id": "US-334",
+      "title": "Extend the RuntimeProvider contract with the data plane and mount-aware ephemeral run",
+      "description": "As a provider author, I can implement the data-plane half of the provider contract — native volume/snapshot/copy/artifact methods plus a mount- and stream-aware ephemeral run — against one typed interface.",
+      "acceptanceCriteria": [
+        "`ProviderCapabilities` (`sdk/src/schema/networking.ts`) gains `volumeSnapshot` (`native`/`copy`/`none`), `serviceFileCopy` (`native`/`exec`/`none`), `artifactExport` (Boolean), `artifactImport` (Boolean), and `ephemeralMounts` (Boolean) with the §5.4 semantics documented as truthful/informational, not knobs.",
+        "`EphemeralRunSpec` gains `mounts?`, `stdinStream?`, `captureStdout?`, `env?`, and `remove?` (default true), and a `runStream` method (`Stream<ExecChunk, ProviderError, Scope.Scope>`) is added alongside `run`.",
+        "The `RuntimeProvider`/`RuntimeProviderShape` interface gains the eight data-plane methods — `snapshotVolume`, `restoreVolume`, `listVolumes`, `removeVolume`, `copyToService`, `copyFromService`, `exportArtifact`, `importArtifact` — with the §5.3 signatures.",
+        "Every capability literal is updated in lockstep: `core/src/runtime/bootstrap-layer-support.ts` and the `sdk/src/test` provider double(s) declare the five new fields and a `ProviderCapabilities` decode of each is exercised.",
+        "`bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md` records the capability, `EphemeralRunSpec`, and interface additions as additive.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 135,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §5.3, §5.4). Depends on US-333."
+    },
+    {
+      "id": "US-335",
+      "title": "Implement the data plane on TestRuntimeProvider and add the §13.1 data-plane contract suite",
+      "description": "As a maintainer, I can pin every provider's data-plane behavior — round-trip, snapshot, copy, artifact, and capability honesty — against one contract suite before any real provider is implemented.",
+      "acceptanceCriteria": [
+        "`TestRuntimeProvider` (`sdk/src/test`) implements the eight data-plane methods plus mount-/stream-aware `run`/`runStream` over an in-memory volume/service/artifact store, declaring `volumeSnapshot: copy`, `serviceFileCopy: exec`, `artifactExport`/`Import: true`, and `ephemeralMounts: true`.",
+        "`@lando/sdk/test` exports a data-plane contract section asserting `importVolume(exportVolume(x)) == x`, `snapshot → mutate → restore` restores bytes, `copyToService`/`copyFromService` round-trips, and `artifact` export/import round-trips (§10.11.5).",
+        "The suite asserts capability honesty: a provider declaring `volumeSnapshot: native` (or `serviceFileCopy: native`) must exercise the native method and not silently fall back (§5.4).",
+        "The suite covers the failure surface: an unrealizable `(from, to)` pair fails `DataEndpointUnsupportedError`, and a provider declaring `ephemeralMounts: false` with no matching native capability fails `CapabilityError`.",
+        "The suite is structured so a real provider supplies only its provider factory; no provider-specific assertions leak into the shared suite.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 136,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.11.5, §13.1). Depends on US-334."
+    },
+    {
+      "id": "US-336",
+      "title": "Extract the shared streaming-hash/atomic-write helper and migrate Downloader onto it",
+      "description": "As a maintainer, I can rely on one pure `@lando/sdk` implementation of stream → SHA-256 → temp → atomic-rename so `Downloader` and `DataMover` verify and persist identically.",
+      "acceptanceCriteria": [
+        "A pure, dependency-free `@lando/sdk` helper (same contracts-only tier as `@lando/sdk/probe` / `@lando/sdk/secrets`) exposes the stream → SHA-256 → unique-temp-file → atomic-rename path, deleting the temp file on interrupt, fetch failure, size mismatch, checksum mismatch, or persistence failure (§10.3.3, §10.11.2).",
+        "`Downloader` (PRD-09) is rewired to consume the helper for its file-download verify-and-persist path; the hand-rolled hasher/temp/rename logic in `Downloader` is removed.",
+        "The `Downloader` contract suite (§13.1) stays green with zero behavior change: scheme gating, checksum verification, atomic persistence, cache/offline semantics, redaction, and cancellation finalization are unchanged.",
+        "An import-boundary assertion proves the helper pulls neither a runtime nor `@oclif/core` into its import graph.",
+        "`sdk/API_COMPATIBILITY.md` records the helper export as additive and the SDK export fixtures are updated in the same change.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 137,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.3.3, §10.11.2). Depends on PRD-09 (HttpClient/Downloader network primitives)."
+    },
+    {
+      "id": "US-337",
+      "title": "Implement the DataMover core service: transfer/transferStream + dispatch + Data events",
+      "description": "As the runtime, I move bytes between any realizable pair of `DataEndpoint`s through one service that picks the native provider path when available, falls back to a generic helper container otherwise, verifies archives, and emits redacted lifecycle events.",
+      "acceptanceCriteria": [
+        "`core/src/data-mover/service.ts` implements `DataMoverLive` at level `provider`, `Layer.suspend`-wrapped so `lando info` pays zero cost; it is host/test-overridable but not a §4.2 plugin contribution surface, and `@lando/core/testing` ships an in-memory `TestDataMover`.",
+        "`transfer`/`transferStream` dispatch each `(from, to)` pair: native `RuntimeProvider` data-plane method when the matching §5.4 capability is `native`, else the generic helper-container `tar` path via `run`/`runStream`, else fail `DataEndpointUnsupportedError`; `DataTransferResult.accelerated` reports which path ran. All moves are `Scope`-bound and `Effect.interrupt` propagates to the underlying `kill()` and reaps children.",
+        "Archive writes compute SHA-256 via the US-336 shared helper; `transfer` to a `hostArchive`/snapshot records the digest and `restore`/`import` verifies it, failing `DataChecksumMismatchError`; there is no skip-verification flag, and `tar.gz`/`tar.zst` use Bun-native streams.",
+        "A `hostPath`/`hostArchive` whose realpath escapes the app root is rejected with `DataSourceOutsideRootError`; `restore`/`import` into an existing volume without `{ overwrite: true }` fails `DataTargetExistsError`.",
+        "`DataMover` publishes the `Data` lifecycle scope (§3.5) with payloads routed through the canonical `RedactionService` (§3.7) — `DataMover` is added to its consumer list — and DB credentials passed to a `serviceCmd` ride env, never argv.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 138,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.11.1, §10.11.2, §3.5, §3.7, §4.2). Depends on US-334, US-336, PRD-13 (RedactionService)."
+    },
+    {
+      "id": "US-338",
+      "title": "Snapshot store: snapshot/restore/list/remove/prune over PathsService + StateStore",
+      "description": "As a maintainer, I can persist and index volume snapshots through the existing Paths and durable-state primitives instead of a bespoke registry, with data-safe destroy semantics.",
+      "acceptanceCriteria": [
+        "`PathsService` / `@lando/core/paths` gain `snapshotsDir`, `appSnapshotsDir(appId)` (default `<userDataRoot>/snapshots/<app-id>/`), and `toolDownloadsDir(toolId)`, with the §7.5.1 derived-path tests extended; nothing re-derives `<userDataRoot>/snapshots/` by hand.",
+        "`snapshot` writes `<appSnapshotsDir>/<store>/<snapshot-id>.<format>` (archive, copy mode) plus a `<snapshot-id>.json` `SnapshotInfo` sidecar; a `volumeSnapshot: native` provider stores a `VolumeSnapshotRef` in the sidecar instead of an archive (§10.11.3).",
+        "The snapshot index is a `StateStore` (§12.7) bucket (`<userDataRoot>/snapshots/<app-id>/index.bin`), inheriting atomic write + version header + advisory lock + corruption quarantine — not a bespoke registry; `listSnapshots`/`pruneSnapshots` read it.",
+        "`restore`/`removeSnapshot`/`pruneSnapshots` resolve by id through the index, fail `SnapshotNotFoundError` for a missing id, and verify the recorded digest on restore.",
+        "`lando destroy --purge` removes an app's snapshot subtree; plain `lando destroy` keeps it, verified by a test asserting survival across a plain destroy and removal after `--purge`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 139,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.11.3, §7.5.1, §12.4, §12.7). Depends on US-337, PRD-13 (PathsService + StateStore)."
+    },
+    {
+      "id": "US-339",
+      "title": "Implement the native data plane on the three bundled providers",
+      "description": "As a user on any bundled provider, snapshot/restore, host↔container copy, and image save/load run through the provider's native fast path when it has one, and through the verified `tar` fallback when it does not.",
+      "acceptanceCriteria": [
+        "`@lando/provider-lando` implements a commit-based native volume snapshot/restore, native host↔container copy, and image save/load, declaring `volumeSnapshot: native`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (§5.8.1).",
+        "`@lando/provider-docker` and `@lando/provider-podman` implement copy-mode snapshot (verified `tar`), native `docker cp`/`podman cp` copy, and image save/load, declaring `volumeSnapshot: copy`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (§5.8.2/§5.8.3).",
+        "All three providers declare `ephemeralMounts: true` and honor `EphemeralRunSpec.mounts`/`stdinStream`/`captureStdout`/`env`/`remove` and `runStream` so the generic fallback works.",
+        "Every bundled provider passes the US-335 §13.1 data-plane contract suite, including the capability-honesty assertion.",
+        "Provider-side failures surface as `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` (§5.7) and are wrapped by `DataMover` into the §10.11.4 tags with the provider cause attached.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 140,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §5.4, §5.8). Depends on US-335, US-337."
+    },
+    {
+      "id": "US-340",
+      "title": "Migrate scratch --isolate=full onto DataMover and resolve the helper image via a pinned manifest",
+      "description": "As a maintainer, scratch's full-isolation copy goes through the one byte-movement primitive instead of bespoke host-FS code, and the generic fallback's helper image is pinned and offline-reusable like every other Lando-provisioned artifact.",
+      "acceptanceCriteria": [
+        "`core/src/scratch-app/service.ts` replaces `reflinkCopyAppRoot`/`copyAppRoot` with `DataMover.transfer(hostPath → hostPath)` for `--isolate=full`; the inline `cp -a --reflink=auto` + `node:fs` fallback is removed (or becomes the host-FS adapter `DataMover` calls) and existing scratch isolation tests stay green.",
+        "The `hostPath → hostPath` path preserves the invariant that teardown removes only the materialized scratch instance dir, never an `--isolate=none` source root (§21.7).",
+        "The generic-fallback `tar` helper image is resolved from a pinned `{ image, digest }` (the §10.3.4 `ToolManifest` model at the provider-image layer) through `RuntimeProvider.pullArtifact`, digest-verified, cached, and offline-reused so the §1.4 offline contract holds once warm.",
+        "A re-run whose pinned helper-image digest already matches is an idempotent no-op with no network access; a digest mismatch fails loudly before the helper runs.",
+        "The §17.2 codegen (where applicable) emits/validates the helper-image manifest with a `git diff --exit-code` staleness gate; source-mode and compiled `$bunfs` dispatch resolve the same pinned image.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 141,
+      "passes": false,
+      "notes": "Data-movement primitive (spec §10.11.2, §21.7). Depends on US-337, US-339."
+    },
+    {
+      "id": "US-341",
+      "title": "Add the cache-volume storage kind (storage[].kind: cache)",
+      "description": "As a Landofile author, I can declare a named, cross-app-shareable dependency-cache volume so repeated installs and rebuilds reuse a persistent package-manager cache.",
+      "acceptanceCriteria": [
+        "`DataStorePlan` (`sdk/src/schema/mounts.ts`) gains `kind: Schema.Literal(\"data\", \"cache\")` (default `data`) and an optional `key:`; the schema snapshot round-trips it and `bun run codegen:schema-snapshot` + `git diff --exit-code` is clean.",
+        "A `kind: cache` store auto-names `lando-cache-<key>` (`key:` defaulting to `kebab(destination)`) and is shared across apps by design, independent of `scope:` (§6.5).",
+        "Provider-created cache volumes carry the `dev.lando.storage-kind: \"cache\"` label so they are identifiable.",
+        "A `kind: cache` store is never removed by `lando destroy`; it is removed only by `lando destroy --purge-caches` (or the `meta:cache:*` surface), verified by a survival test across a plain destroy.",
+        "The planner rejects `scope: service` combined with `kind: cache` as a planning error.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 142,
+      "passes": false,
+      "notes": "Data-movement primitive / storage-plane (spec §6.5). Depends on US-337."
     }
   ]
 }
