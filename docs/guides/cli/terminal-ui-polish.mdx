@@ -16,6 +16,8 @@ tags: [beta, docs, cli, renderer]
     <Step name="status-chips">
       <Variable name="running" value="[RUNNING]" display="Active tasks and parent frames use a scanner/progress state with a text chip" />
       <Variable name="online" value="[ONLINE]" display="Completed work renders with an explicit online chip plus the existing success glyph" />
+      <Variable name="cached" value="[CACHED]" display="Completed work reused from cache renders with a cached chip plus the success glyph, derived from a delimited summary marker such as (cached) or · cached" />
+      <Variable name="skipped" value="[SKIPPED]" display="Work skipped because it was unnecessary renders with a skipped chip plus the success glyph instead of a silent omission, derived from a (skipped) or · skipped summary marker" />
       <Variable name="blocked" value="[BLOCKED]" display="Failures render with a blocked chip, exit/remediation text, and a red accent in TTY mode" />
       <Variable name="wait" value="[WAIT]" display="Declared-but-not-started children stay visible as wait-state rows" />
     </Step>

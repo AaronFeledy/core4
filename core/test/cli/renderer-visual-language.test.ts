@@ -291,6 +291,8 @@ describe("renderer visual language docs", () => {
       "cyan/teal telemetry accents",
       "[RUNNING]",
       "[ONLINE]",
+      "[CACHED]",
+      "[SKIPPED]",
       "[BLOCKED]",
       "[WAIT]",
       "80 columns",

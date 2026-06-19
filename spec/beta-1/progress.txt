@@ -1322,3 +1322,13 @@
 - Review feedback: fixed (restored the dropped README link to docs/alpha-install-and-bug-reports.md so the alpha-install-docs build test passes; no Bugbot findings)
 - Merge: merged (squash)
 ---
+
+## 2026-06-19 04:55 CDT - US-281
+- Completed the §8.9.2 task-tree contract by adding CACHED/SKIPPED completion badges to the default TTY renderer's `LandoTreePainter`. US-280 had already shipped the cockpit `LANDO OPS` tree (parent headers, WAIT/RUNNING/ONLINE/BLOCKED chips, dimmed four-line detail tails, expand/collapse events, non-TTY `[<stepId>]` prefix, first-paint skeleton); the one remaining gap was the cached/skipped badge, which now renders alongside the existing states.
+- Because the SDK `TaskCompleteEvent` schema is frozen (only `summary` + `durationMs`) and publishers must keep emitting only `task.*` events, the renderer derives the badge from a trailing, delimited, word-bounded summary marker (`(cached)`/`(skipped)` or cockpit `· cached`/`· skipped`, case-insensitive). The marker is stripped from the displayed label, the success glyph is kept, and undelimited prose (e.g. "warm cache") stays ONLINE so there are no false positives. CACHED reads cyan, SKIPPED dim-cyan; status is never color-only since the text chip carries it.
+- Documented the badges and the marker convention in the terminal UI polish guide and locked the tokens in the renderer visual-language docs test.
+- Verification: typecheck, lint, renderer-boundary + guide-coverage + guide-lint gates passed; renderer task-tree/tail/visual-language/first-paint/keybindings/runtime-input + paint-banner perf spot checks all green (no first-paint/banner-budget regression); manual tmux TTY capture at 100 columns rendered `[CACHED]`/`[SKIPPED]`/`[ONLINE]`/`[BLOCKED]` rows with `tui-check` reporting 100/100 width and aligned borders.
+- **Learnings for future iterations:**
+  - When a renderer must surface a status that has no field on a frozen event schema, derive it from a delimited trailing marker on the existing free-text `summary` and STRIP it from the label — this stays renderer-only (honors the "publishers emit only task.*" rule) and is forward-compatible: publishers opt in later by appending the marker, with no renderer change.
+  - The running `·` and pending `◌` glyphs are pinned byte-for-byte by `renderer-first-paint.test.ts`; treat them as locked contracts. New completion states must be added as new chips, never by repurposing existing glyphs.
+---
