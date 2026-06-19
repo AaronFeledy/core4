@@ -536,29 +536,25 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
     process.exitCode = 2;
     return;
   }
-  const exit = await Effect.runPromiseExit(
-    setupSpec
-      .run({
-        installDir,
-        flags: input.flags,
-      })
-      .pipe(
-        Effect.provide(
-          makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
-        ),
+  await runWithRendererHandling(
+    setupSpec.run({
+      installDir,
+      flags: input.flags,
+    }),
+    {
+      runtime: makeLandoRuntime(
+        cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
       ),
+      rendererMode: activeRendererMode,
+      deprecationWarnings: activeDeprecationWarnings,
+      renderEvents: process.stdout.isTTY === true,
+      render: (value) => setupSpec.render?.(value),
+      formatError: (error) => {
+        const message = commandErrorMessage(error);
+        return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
+      },
+    },
   );
-  if (Exit.isSuccess(exit)) {
-    const rendered = setupSpec.render?.(exit.value);
-    if (rendered !== undefined) emitResultLine(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
-  emitDiagnosticLine(
-    activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`,
-  );
-  process.exitCode = 1;
 };
 
 const runRestart = (): Promise<void> =>
