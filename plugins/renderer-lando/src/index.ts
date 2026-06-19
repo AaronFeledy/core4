@@ -51,6 +51,13 @@ export const rendererFactories: ReadonlyMap<string, RendererContributionFactory>
   ["lando", landoRendererFactory],
 ]);
 
+export const loadInteractivePromptDriver = async (): Promise<{
+  readRaw: (request: unknown) => Promise<string>;
+}> => {
+  const mod = await import("./opentui/prompt-driver.ts");
+  return mod.createOpenTuiPromptDriver();
+};
+
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
   version: "0.0.0",

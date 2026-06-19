@@ -17,6 +17,7 @@ import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipe
 import {
   type ChoicesCommandRunner,
   type PromptAnswers,
+  type PromptDriver,
   type PromptIO,
   collectPrompts,
   createStdioPromptIO,
@@ -36,6 +37,8 @@ import {
   publishTreeCompleteAsync,
   publishTreeStartAsync,
 } from "../progress.ts";
+import { resolveInteractivePromptDriver } from "../prompts/interactive-driver.ts";
+import { tryDriverConfirm } from "../prompts/interactive.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
 import { parseInitSourceFlags } from "./init-source.ts";
 
@@ -61,6 +64,7 @@ const resolveRecipeSelection = async (
   options: InitAppOptions,
   io: PromptIO | undefined,
   cwd: string,
+  driver: PromptDriver | undefined,
 ): Promise<string> => {
   if (options.recipe !== undefined && options.recipe !== "") return options.recipe;
   const interactive = options.nonInteractive !== true && io !== undefined && options.yes !== true;
@@ -72,6 +76,7 @@ const resolveRecipeSelection = async (
     nonInteractive: false,
     cwd,
     io: io as PromptIO,
+    ...(driver === undefined ? {} : { interactiveDriver: driver }),
   });
   const picked = collected[RECIPE_SELECT_PROMPT];
   return typeof picked === "string" ? picked : NODE_POSTGRES_RECIPE_ID;
@@ -99,6 +104,7 @@ export interface InitAppOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly io?: PromptIO;
+  readonly interactiveDriver?: PromptDriver;
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
@@ -155,7 +161,11 @@ const loadGitRecipe = async (options: InitAppOptions) => {
 
 const CONFIRM_YES_RE = /^(?:y|yes)$/iu;
 
-const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefined) => {
+const loadTarballRecipe = async (
+  options: InitAppOptions,
+  io: PromptIO | undefined,
+  driver: PromptDriver | undefined,
+) => {
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
     url: options.url,
@@ -168,7 +178,10 @@ const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefin
   };
   const confirmUnverified = interactive
     ? async (): Promise<boolean> => {
-        (io as PromptIO).write("Continue installing this recipe without checksum verification? [y/N] ");
+        const message = "Continue installing this recipe without checksum verification?";
+        const viaDriver = await tryDriverConfirm(driver, io as PromptIO, { message, name: "checksum" });
+        if (viaDriver !== undefined) return viaDriver;
+        (io as PromptIO).write(`${message} [y/N] `);
         const answer = await (io as PromptIO).readLine();
         return CONFIRM_YES_RE.test(answer.trim());
       }
@@ -239,9 +252,23 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
   return createStdioPromptIO();
 };
 
+const resolveDriver = async (
+  options: InitAppOptions,
+  io: PromptIO | undefined,
+): Promise<PromptDriver | undefined> => {
+  if (options.interactiveDriver !== undefined) return options.interactiveDriver;
+  if (io === undefined) return undefined;
+  return resolveInteractivePromptDriver({
+    isTTY: io.isTTY,
+    ...(options.yes === undefined ? {} : { yes: options.yes }),
+    ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
+  });
+};
+
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
   const io = resolveIO(options);
+  const driver = await resolveDriver(options, io);
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
     url: options.url,
@@ -253,12 +280,12 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const recipeRef =
     sourceOptions.source !== undefined && remoteRef !== undefined
       ? remoteRef
-      : await resolveRecipeSelection(options, io, cwd);
+      : await resolveRecipeSelection(options, io, cwd, driver);
   const { resolved, manifest } =
     sourceOptions.source === "git"
       ? await loadGitRecipe(options)
       : sourceOptions.source === "tarball"
-        ? await loadTarballRecipe(options, io)
+        ? await loadTarballRecipe(options, io, driver)
         : sourceOptions.source === "npm"
           ? await loadNpmRecipe(options)
           : sourceOptions.source === "registry"
@@ -284,6 +311,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     nonInteractive: options.nonInteractive === true || io === undefined,
     cwd,
     ...(io === undefined ? {} : { io }),
+    ...(driver === undefined ? {} : { interactiveDriver: driver }),
     ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
     ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
   });

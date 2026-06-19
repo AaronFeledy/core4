@@ -23,6 +23,7 @@ import {
   createDefaultChoicesCommandRunner,
   parseChoicesOutput,
 } from "./choices-command.ts";
+import { PromptCancelledError, type PromptDriver, type PromptDriverMode } from "./driver.ts";
 import type { PromptIO } from "./io.ts";
 
 export type PromptAnswer = string | number | boolean | ReadonlyArray<string | number | boolean>;
@@ -38,6 +39,7 @@ export interface CollectPromptsOptions {
   readonly io?: PromptIO;
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly runs?: ReadonlyArray<string>;
+  readonly interactiveDriver?: PromptDriver;
 }
 
 const ACCEPTED_BOOL_TRUE = new Set(["y", "yes", "true", "1", "on"]);
@@ -272,11 +274,69 @@ const resolveDefault = async (
   return result.value;
 };
 
+const runDriverPrompt = async (
+  prompt: RecipePrompt,
+  driver: PromptDriver,
+  mode: PromptDriverMode,
+  coerce: (effective: string) => Promise<CoerceResult> | CoerceResult,
+  choices?: ReadonlyArray<RecipePromptChoice>,
+): Promise<PromptAnswer> => {
+  const def = promptDefaultRaw(prompt);
+  let issue: string | undefined;
+  while (true) {
+    const raw = await driver.readRaw({
+      prompt,
+      mode,
+      ...(def.hasDefault ? { defaultRaw: def.raw } : {}),
+      ...(issue === undefined ? {} : { issue }),
+      ...(choices === undefined ? {} : { choices }),
+    });
+    const effective = raw === "" && def.hasDefault ? def.raw : raw;
+    if (effective === "") {
+      if (prompt.type === "multiselect") {
+        const bounds = enforceMultiSelectBounds(prompt, 0);
+        if (bounds.ok) return [];
+        issue = bounds.issue;
+        continue;
+      }
+      issue = "Value is required.";
+      continue;
+    }
+    const result = await coerce(effective);
+    if (result.ok) return result.value;
+    issue = result.issue;
+  }
+};
+
+type DriverOutcome = { readonly ok: true; readonly value: PromptAnswer } | { readonly ok: false };
+
+const tryDriverPrompt = async (run: () => Promise<PromptAnswer>): Promise<DriverOutcome> => {
+  try {
+    return { ok: true, value: await run() };
+  } catch (cause) {
+    if (cause instanceof PromptCancelledError) throw cause;
+    return { ok: false };
+  }
+};
+
 const runInteractivePrompt = async (
   prompt: RecipePrompt,
   io: PromptIO,
   cwd: string,
+  driver?: PromptDriver,
 ): Promise<PromptAnswer> => {
+  if (driver !== undefined && io.isTTY) {
+    const outcome = await tryDriverPrompt(() =>
+      runDriverPrompt(
+        prompt,
+        driver,
+        "normal",
+        (effective) => coerceAnswer(prompt, effective, cwd),
+        prompt.choices,
+      ),
+    );
+    if (outcome.ok) return outcome.value;
+  }
   const def = promptDefaultRaw(prompt);
   while (true) {
     io.write(renderPromptLine(prompt));
@@ -380,8 +440,15 @@ const runManualChoiceFallback = async (
   prompt: RecipePrompt,
   io: PromptIO,
   reason: string,
+  driver?: PromptDriver,
 ): Promise<PromptAnswer> => {
   io.writeError(`Could not load choices for "${prompt.name}" (${reason}). Enter the value manually.\n`);
+  if (driver !== undefined && io.isTTY) {
+    const outcome = await tryDriverPrompt(() =>
+      runDriverPrompt(prompt, driver, "manual-choice", (effective) => acceptManualValue(prompt, effective)),
+    );
+    if (outcome.ok) return outcome.value;
+  }
   const def = promptDefaultRaw(prompt);
   while (true) {
     io.write(renderManualChoiceLine(prompt));
@@ -425,9 +492,10 @@ const resolveDynamicChoicesPrompt = async (
     readonly yes: boolean;
     readonly cwd: string;
     readonly runs: ReadonlyArray<string> | undefined;
+    readonly driver: PromptDriver | undefined;
   },
 ): Promise<PromptAnswer> => {
-  const { supplied, runner, io, interactive, yes, cwd, runs } = context;
+  const { supplied, runner, io, interactive, yes, cwd, runs, driver } = context;
   if (supplied !== undefined) return resolveDynamicSupplied(prompt, supplied);
 
   const permission = evaluateRunPermission(runs, prompt.choicesFrom.command);
@@ -446,10 +514,11 @@ const resolveDynamicChoicesPrompt = async (
       if (def.hasDefault) return resolveDefault(effective, def.raw, cwd);
       throw missingAnswer(effective);
     }
-    return runInteractivePrompt(effective, io as PromptIO, cwd);
+    return runInteractivePrompt(effective, io as PromptIO, cwd, driver);
   }
 
-  if (interactive && !yes && io !== undefined) return runManualChoiceFallback(prompt, io, outcome.reason);
+  if (interactive && !yes && io !== undefined)
+    return runManualChoiceFallback(prompt, io, outcome.reason, driver);
 
   const def = promptDefaultRaw(prompt);
   if (def.hasDefault) return resolveDynamicSupplied(prompt, def.raw);
@@ -459,6 +528,7 @@ const resolveDynamicChoicesPrompt = async (
 export const collectPrompts = async (options: CollectPromptsOptions): Promise<PromptAnswers> => {
   const { prompts, answers = {}, yes = false, nonInteractive = false, cwd = process.cwd(), io } = options;
   const interactive = !nonInteractive && io !== undefined;
+  const driver = options.interactiveDriver;
   const choicesRunner = options.choicesRunner ?? createDefaultChoicesCommandRunner();
 
   const resolved: Record<string, PromptAnswer> = {};
@@ -474,6 +544,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
         yes,
         cwd,
         runs: options.runs,
+        driver,
       });
       continue;
     }
@@ -493,7 +564,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
       throw missingAnswer(prompt);
     }
 
-    resolved[prompt.name] = await runInteractivePrompt(prompt, io as PromptIO, cwd);
+    resolved[prompt.name] = await runInteractivePrompt(prompt, io as PromptIO, cwd, driver);
   }
   return resolved;
 };

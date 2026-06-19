@@ -27,9 +27,12 @@ import {
 
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
+  type ProviderSelectionResolution,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../../../providers/precedence.ts";
+import { PromptCancelledError } from "../../../../recipes/prompts/driver.ts";
+import { createStdioPromptIO } from "../../../../recipes/prompts/io.ts";
 import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 import {
   type SetupNetworkTrustFetch,
@@ -44,6 +47,8 @@ import {
   writeSetupReadiness,
 } from "../../../commands/setup-readiness.ts";
 import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
+import { resolveInteractivePromptDriver } from "../../../prompts/interactive-driver.ts";
+import { tryDriverSelect } from "../../../prompts/interactive.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -155,6 +160,43 @@ const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   extensions: {},
 });
 
+const SETUP_PROVIDER_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "lando", label: "Lando-managed runtime (bundled, recommended)" },
+  { value: "docker", label: "Docker (existing installation required)" },
+  { value: "podman", label: "Podman (existing installation required)" },
+];
+
+const maybeSelectSetupProvider = async (params: {
+  readonly resolution: ProviderSelectionResolution;
+  readonly yes: boolean;
+  readonly nonInteractive: boolean;
+  readonly skipProvider: boolean;
+}): Promise<ProviderId> => {
+  const fallback = params.resolution.providerId;
+  if (params.resolution.source !== "default") return fallback;
+  if (params.yes || params.nonInteractive || params.skipProvider) return fallback;
+  const io = createStdioPromptIO();
+  if (!io.isTTY) return fallback;
+  const driver = await resolveInteractivePromptDriver({
+    isTTY: io.isTTY,
+    yes: params.yes,
+    nonInteractive: params.nonInteractive,
+  });
+  if (driver === undefined) return fallback;
+  try {
+    const chosen = await tryDriverSelect(driver, io, {
+      message: "Select the container runtime provider for Lando",
+      name: "provider",
+      default: String(fallback),
+      choices: SETUP_PROVIDER_CHOICES,
+    });
+    return chosen === undefined ? fallback : ProviderId.make(chosen);
+  } catch (cause) {
+    if (cause instanceof PromptCancelledError) return fallback;
+    return fallback;
+  }
+};
+
 const fileSyncStatusLine = (status: string): string => {
   switch (status) {
     case "deferred":
@@ -192,12 +234,21 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       });
 
-      const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
+      const selectedProvider = yield* Effect.promise(() =>
+        maybeSelectSetupProvider({
+          resolution,
+          yes: inputBooleanFlag(input, "yes"),
+          nonInteractive: inputBooleanFlag(input, "no-interactive"),
+          skipProvider: inputBooleanFlag(input, "skip-provider"),
+        }),
+      );
+
+      const provider = yield* registry.select(setupProviderPlan(selectedProvider));
       const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
       const privilege = yield* Effect.serviceOption(PrivilegeService);
       const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 
-      const selectedProviderId = String(resolution.providerId);
+      const selectedProviderId = String(selectedProvider);
       const userDataRootRaw = globalConfig.userDataRoot;
       const userDataRoot =
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;

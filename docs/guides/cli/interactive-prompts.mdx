@@ -1,0 +1,36 @@
+---
+id: interactive-prompts
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, prompts]
+---
+
+<Guide>
+  <Scenario id="opentui-prompt-language" render={false} reason="Prompt-driver unit tests drive a headless OpenTUI test renderer with scripted keyboard input, so guide generation does not need to spawn an interactive TTY">
+    <Step name="controls">
+      <Variable name="input" value="OpenTUI input field" display="Free-text prompts (recipe name, description, path) render as a focused single-line field with the spaceship-console palette instead of a bare readline prompt" />
+      <Variable name="textarea" value="OpenTUI textarea" display="Multi-line answers use a textarea control so longer values stay readable while typing" />
+      <Variable name="select" value="OpenTUI vertical select" display="Choice prompts with more than a few options render as a vertical select list with arrow-key navigation and a highlighted current row" />
+      <Variable name="tabSelect" value="OpenTUI tab-select" display="Confirmations and two-to-four-option choices render as a horizontal tab-select so yes/no and small option sets read as a single line" />
+    </Step>
+    <Step name="shared-surfaces">
+      <Variable name="init" value="apps:init recipe prompts" display="Recipe prompt collection during apps:init renders every field, select, and confirmation through the same prompt treatment" />
+      <Variable name="setup" value="lando setup provider choice" display="The container runtime provider choice during lando setup uses the shared select control when the provider was not pinned by flag or environment" />
+      <Variable name="trust" value="plugin trust decision" display="The trust confirmation before a plugin runs as trusted host code uses the shared yes/no control with the same panel rhythm" />
+    </Step>
+    <Step name="bypass-gates">
+      <Variable name="yes" value="--yes" display="--yes resolves every prompt from recipe defaults and never opens an OpenTUI surface" />
+      <Variable name="nonInteractive" value="--no-interactive" display="--no-interactive disables prompting and surfaces a tagged missing-answer error when a required value has no answer or default" />
+      <Variable name="answers" value="--answer / --answers" display="Values supplied via --answer or an --answers file are validated and used directly, so the matching prompt is never shown" />
+      <Variable name="ci" value="CI and non-TTY stdin" display="A CI environment or a non-TTY stdin keeps the existing deterministic line-based path with byte-for-byte output, never the OpenTUI surface" />
+      <Variable name="escapeHatch" value="LANDO_NO_OPENTUI_PROMPTS=1" display="LANDO_NO_OPENTUI_PROMPTS=1 forces the line-based reader even on an interactive TTY, and any renderer import or probe failure degrades to the same fallback" />
+    </Step>
+    <Step name="validation-and-cancellation">
+      <Variable name="inlineIssue" value="inline validation issue" display="A value that fails the recipe constraint re-prompts in place with the validation message shown inline so context is not lost" />
+      <Variable name="taggedError" value="tagged remediation error" display="In non-interactive paths the same failure surfaces as a tagged error carrying the --answer remediation instead of an inline retry" />
+      <Variable name="cancel" value="Ctrl-C or Esc" display="Ctrl-C or Esc cancels the prompt, restores the terminal, and aborts the command rather than falling through to a partial answer" />
+      <Variable name="secret" value="secret answers stay hidden" display="Secret and multiselect prompts decline the OpenTUI surface and keep the line-based reader, so secret values are never echoed, logged, or captured in a transcript" />
+    </Step>
+  </Scenario>
+</Guide>
