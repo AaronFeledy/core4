@@ -2549,6 +2549,47 @@
       "priority": 142,
       "passes": false,
       "notes": "Data-movement primitive / storage-plane (spec §6.5). Depends on US-337."
+    },
+    {
+      "id": "US-342",
+      "title": "Freeze the TunnelService SDK contract surface",
+      "description": "As a plugin author or embedding host, I can build a public-sharing provider against a stable, frozen `TunnelService` contract — service tag, schemas, tagged errors, lifecycle events, `tunnelServices:` manifest surface, and contract suite — so the 4.1 `lando share` feature plugs in without new SDK surface after feature freeze.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` publishes the `TunnelService` `Context.Service` tag (`@lando/core/TunnelService`) with `start`/`stop`/`status`/`list` per §10.2.2, re-exported from `@lando/core/services`.",
+        "`@lando/sdk/schema` publishes `TunnelCapabilities`, `TunnelTarget` (tagged union over a resolved `RoutePlan` id/hostname, a service endpoint, and a core-created loopback URL), `TunnelStartRequest`/`TunnelStopRequest`/`TunnelStatusRequest`, `TunnelSession`, `TunnelStatus`, and `TunnelSessionFilter`; the schema snapshot round-trips them and `bun run codegen:schema-snapshot` + `git diff --exit-code` is clean.",
+        "`@lando/sdk/errors` publishes the seven §10.2.2 tagged errors (`TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError`, `TunnelAuthRequiredError`, `TunnelStartError`, `TunnelReadyTimeoutError`, `TunnelDetachedStateError`, `TunnelStopError`), each carrying redacted detail + remediation, on the additive errors barrel (not a frozen sub-barrel).",
+        "The `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, `pre-/post-tunnel-stop`, `tunnel-status`; §3.5) ships with redacted payload schemas registered in the event inventory used by the §13.x gates.",
+        "The `tunnelServices:` manifest contribution surface (§4.2/§9.5) is added to the `PluginManifest` schema (`id`/`module`/`capabilities`), validated at plugin load, and the manifest-schema snapshot is updated.",
+        "The §13.1 `TunnelService` contract suite ships from `@lando/sdk/test` (target resolution, `HttpClient` egress, tool-provisioning, scope finalization, detached `StateStore` reconciliation, redaction, probe-based readiness, no `DataMover` use), and `@lando/core/testing` ships an in-memory `TestTunnelService`.",
+        "`sdk/API_COMPATIBILITY.md` records every new export as additive and the SDK export fixtures are updated in the same change.",
+        "Contract-only: no bundled tunnel provider and no real `app:share` connector wiring ship here; a runtime with no installed `TunnelService` resolves none.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 143,
+      "passes": false,
+      "notes": "TunnelService contract freeze (spec §10.2.2, §3.4, §3.5, §4.2, §9.5, §13.1). Contract-only; the `lando share` feature + bundled provider are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore), PRD-14 (probe/events)."
+    },
+    {
+      "id": "US-343",
+      "title": "Wire app:share* commands and App.share* handle methods as provider-aware skeletons",
+      "description": "As a CLI user or embedding host, `lando share` / `App.share()` resolve a `TunnelService` through the registry and either dispatch to it or fail with actionable `TunnelProviderUnavailableError` remediation when none is installed — freezing the command, handle, result, and detached-state surface before feature freeze while the bundled provider ships in 4.1.",
+      "acceptanceCriteria": [
+        "`app:share`, `app:share:list`, and `app:share:stop` register in the canonical `LandoCommandSpec` registry (§8.2) at bootstrap `app` with the documented flags (`--target`, `--provider`, `--detach`, `--format json`), top-level alias `share` for `app:share`, and source/compiled dispatch parity (§8.4.1, the §13.1 parity layer).",
+        "`App.share`/`App.shareList`/`App.shareStop` are present on the published `App` handle (§16.3) with the §16 scope semantics (foreground `share` keeps `Scope.Scope`; `shareList`/`shareStop` are `R = never`).",
+        "With no `TunnelService` installed, every path fails with `TunnelProviderUnavailableError` carrying install remediation that lists bundled/community options; with a `TestTunnelService` injected, the commands and handle round-trip a session.",
+        "`--format json` and the `App.share*` methods return the universal machine-output/session schemas (§8.11) — never provider-specific text — and a foreground share emits `StreamFrame`s terminating in a result frame.",
+        "The `tunnel-registry` `StateStore` bucket (§12.1) and the `<userDataRoot>/run/tunnels/` artifact layout (§12.4) are created/read by `app:share:list`/`app:share:stop` and reconcile stale PID/socket entries without treating orphans as active exposure.",
+        "Results and diagnostics route through the `Renderer` seam (§13.4) with no direct `console.*`/`process.std*` writes.",
+        "No bundled connector provider ships here; the Cloudflare/ngrok `TunnelService` plugin and end-to-end `lando share` wiring are 4.1.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 144,
+      "passes": false,
+      "notes": "TunnelService CLI/handle skeleton + detached registry seam (spec §8.2, §8.11, §10.2.2, §12.1, §12.4, §16.3). Depends on US-342, PRD-11 (App handles), PRD-15 (universal JSON)."
     }
   ]
 }

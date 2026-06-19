@@ -27,8 +27,9 @@ Network-primitive work keeps its external dependencies on **BETA1-01** (setup/do
 - [`spec/04-pluggability.md`](../04-pluggability.md) §4.2 `HttpClient` and `Downloader` catalog entries and the `httpClients:` / `downloaders:` manifest contributions.
 - [`spec/03-architecture.md`](../03-architecture.md) §3.4 `HttpClient` / `Downloader` service membership and §3.5 `http-call` / download lifecycle events.
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.3.1 corporate proxy/custom CA handling, §10.3.2 outbound HTTP (`HttpClient`), §10.3.3 verified downloads (`Downloader`), §10.3.4 tool provisioning.
+- [`spec/11-subsystems.md`](../11-subsystems.md) §10.2.2 public tunnels and app sharing (`TunnelService`) — the downstream tunnel contract that consumes `HttpClient`, tool provisioning, `ProcessRunner`, `StateStore`, the probe primitive, `InteractionService`, and `RedactionService`.
 - [`spec/02-toolchain.md`](../02-toolchain.md) §2.1 egress-boundary rule and the `check:network-boundary` gate; §2.6 forbidden HTTP libraries.
-- [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 `HttpClient` and `Downloader` contract suites.
+- [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 `HttpClient`, `Downloader`, and `TunnelService` contract suites.
 - [`spec/05-runtime-providers.md`](../05-runtime-providers.md) §5.8.1 runtime-bundle source resolution.
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) §12.1 `tool-downloads` cache and §12.4 `bin/` provisioning artifacts/markers.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.2 `ToolManifest` codegen.
@@ -50,6 +51,7 @@ Network-primitive work keeps its external dependencies on **BETA1-01** (setup/do
 - Publish `HttpClient` as the single outbound-egress chokepoint for all Lando-owned network access, with the canonical network-trust resolver (proxy/CA/`NO_PROXY`) promoted to a pure `@lando/sdk` module that both `HttpClient` and `lando setup` preflight consume.
 - Rewrite `Downloader` as the verified-artifact specialization that wraps `HttpClient` (checksum/size verification, atomic persistence, scheme gating, path containment, cache/offline behavior, download progress), routing every byte of egress through `HttpClient`.
 - Ship the tool-provisioning helper (`ToolManifest` + archive extraction + `bin/` install + idempotent version markers) over `Downloader`, replacing the per-plugin extract/install code.
+- Freeze the downstream `TunnelService` contract shape now — SDK schemas/errors/events, `tunnelServices:` manifest surface, contract suite, App-handle/CLI result schemas, and detached-session state seam — so the 4.1 `lando share` feature can plug in without inventing new primitives after feature freeze.
 - Expose SDK-safe contracts and `httpClients:` / `downloaders:` manifest surfaces for audited, mirrored, sandboxed, air-gapped, and corporate-gateway implementations.
 - Migrate existing runtime-bundle, Mutagen/helper, recipe/include tarball, and self-update artifact fetches onto these primitives, and enforce the `check:network-boundary` gate banning direct `fetch` outside the `HttpClient` adapter.
 - Add mandatory contract suites so plugin-contributed `HttpClient` and `Downloader` implementations cannot weaken security or reliability guarantees, including the egress-fence (a contributed `Downloader` cannot open its own socket).
@@ -277,6 +279,39 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] The helper writes an installed-version marker plus a per-binary `.sha256` fingerprint; a re-run whose pinned `toolVersion` and fingerprints already match is an idempotent no-op with no network access (offline contract).
 - [ ] `@lando/file-sync-mutagen` ships its `mutagen-versions.json` as a `ToolManifest` asset and provisions the host CLI + agents through the helper; its bespoke fetch/extract/verify/install code is removed (paired with US-287).
 - [ ] The §17.2 codegen emits/validates the Mutagen `ToolManifest` against the canonical schema with a `git diff --exit-code` staleness gate; the `tool-downloads` cache (§12.1) and `bin/` markers (§12.4) behave as specified.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-342: Freeze the `TunnelService` SDK contract surface
+
+**Description:** As a plugin author or embedding host, I can build a public-sharing provider against a stable, frozen `TunnelService` contract — service tag, schemas, tagged errors, lifecycle events, `tunnelServices:` manifest surface, and contract suite — so the 4.1 `lando share` feature plugs in without new SDK surface after feature freeze.
+
+**Acceptance Criteria:**
+- [ ] `@lando/sdk/services` publishes the `TunnelService` `Context.Service` tag (`@lando/core/TunnelService`) with `start` / `stop` / `status` / `list` per §10.2.2, re-exported from `@lando/core/services`.
+- [ ] `@lando/sdk/schema` publishes `TunnelCapabilities`, `TunnelTarget` (tagged union over a resolved `RoutePlan` id/hostname, a service endpoint, and a core-created loopback URL), `TunnelStartRequest` / `TunnelStopRequest` / `TunnelStatusRequest`, `TunnelSession`, `TunnelStatus`, and `TunnelSessionFilter`; the schema snapshot round-trips them and `bun run codegen:schema-snapshot` + `git diff --exit-code` is clean.
+- [ ] `@lando/sdk/errors` publishes the seven §10.2.2 tagged errors (`TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError`, `TunnelAuthRequiredError`, `TunnelStartError`, `TunnelReadyTimeoutError`, `TunnelDetachedStateError`, `TunnelStopError`), each carrying redacted detail + remediation, on the additive errors barrel (not a frozen sub-barrel).
+- [ ] The `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, `pre-/post-tunnel-stop`, `tunnel-status`; §3.5) ships with redacted payload schemas registered in the event inventory used by the §13.x gates.
+- [ ] The `tunnelServices:` manifest contribution surface (§4.2/§9.5) is added to the `PluginManifest` schema (`id`/`module`/`capabilities`), validated at plugin load, and the manifest-schema snapshot is updated.
+- [ ] The §13.1 `TunnelService` contract suite ships from `@lando/sdk/test` (target resolution, `HttpClient` egress, tool-provisioning, scope finalization, detached `StateStore` reconciliation, redaction, probe-based readiness, no `DataMover` use), and `@lando/core/testing` ships an in-memory `TestTunnelService`.
+- [ ] `sdk/API_COMPATIBILITY.md` records every new export as additive and the SDK export fixtures are updated in the same change.
+- [ ] Contract-only: no bundled tunnel provider and no real `app:share` connector wiring ship here; a runtime with no installed `TunnelService` resolves none.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+### US-343: Wire `app:share*` commands and `App.share*` handle methods as provider-aware skeletons
+
+**Description:** As a CLI user or embedding host, `lando share` / `App.share()` resolve a `TunnelService` through the registry and either dispatch to it or fail with actionable `TunnelProviderUnavailableError` remediation when none is installed — freezing the command, handle, result, and detached-state surface before feature freeze while the bundled provider ships in 4.1.
+
+**Acceptance Criteria:**
+- [ ] `app:share`, `app:share:list`, and `app:share:stop` register in the canonical `LandoCommandSpec` registry (§8.2) at bootstrap `app` with the documented flags (`--target`, `--provider`, `--detach`, `--format json`), top-level alias `share` for `app:share`, and source/compiled dispatch parity (§8.4.1, the §13.1 parity layer).
+- [ ] `App.share` / `App.shareList` / `App.shareStop` are present on the published `App` handle (§16.3) with the §16 scope semantics (foreground `share` keeps `Scope.Scope`; `shareList` / `shareStop` are `R = never`).
+- [ ] With no `TunnelService` installed, every path fails with `TunnelProviderUnavailableError` carrying install remediation that lists bundled/community options; with a `TestTunnelService` injected, the commands and handle round-trip a session.
+- [ ] `--format json` and the `App.share*` methods return the universal machine-output/session schemas (§8.11) — never provider-specific text — and a foreground share emits `StreamFrame`s terminating in a result frame.
+- [ ] The `tunnel-registry` `StateStore` bucket (§12.1) and the `<userDataRoot>/run/tunnels/` artifact layout (§12.4) are created/read by `app:share:list` / `app:share:stop` and reconcile stale PID/socket entries without treating orphans as active exposure.
+- [ ] Results and diagnostics route through the `Renderer` seam (§13.4) with no direct `console.*` / `process.std*` writes.
+- [ ] No bundled connector provider ships here; the Cloudflare/ngrok `TunnelService` plugin and end-to-end `lando share` wiring are 4.1.
 - [ ] Tests pass.
 - [ ] Typecheck passes.
 - [ ] Lint passes.

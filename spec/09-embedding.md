@@ -44,7 +44,7 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 | Surface | Entry point | What it exports |
 |---|---|---|
 | Runtime factory + App handles | `@lando/core` | `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, `LandoRuntimeOptions`, `LandoRuntimeServices`, `LandoRuntime`, `BootstrapLevel`, `App`, `AppSelector`, `AppResolveError` |
-| Service tags | `@lando/core/services` | `ConfigService`, `PathsService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `StateStore`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `HttpClient`, `Downloader`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `InteractionService`, `RedactionService`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
+| Service tags | `@lando/core/services` | `ConfigService`, `PathsService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `StateStore`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `HttpClient`, `Downloader`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `InteractionService`, `RedactionService`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, `TunnelService`, plus pluggable abstraction tags (§4.2) |
 | Paths | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, and the `LandoRoots` / `LandoPaths` / `RootOverrides` types — the Effect-free root/path resolver (§7.5.1). OCLIF-free and runtime-free, so hosts can resolve roots before constructing a runtime |
 | Schemas | `@lando/core/schema` | Every schema in §7.8 (Landofile, ServiceConfig, expression AST/errors, ToolingConfig, ToolingInclude, RouteConfig, HealthcheckConfig, plugin manifest, event payloads, etc.) |
 | Landofile serializer | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, `LandofileEmitError` — the canonical block-style Landofile serializer pair (§7.8.1). Re-export of the pure `@lando/sdk/landofile` logic; hosts and config-translator plugins use it to emit, preview, and test Landofile fragments. |
@@ -245,6 +245,9 @@ export interface App {
   readonly destroy: (options?: DestroyAppOptions) => Effect.Effect<DestroyAppResult, DestroyAppError>;
   readonly info: (options?: InfoAppOptions) => Effect.Effect<InfoAppResult, InfoAppError>;
   readonly exec: (options: ExecAppOptions) => Effect.Effect<ExecAppResult, ExecAppError, Scope.Scope>;
+  readonly share: (options?: ShareAppOptions) => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
+  readonly shareList: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
+  readonly shareStop: (request: TunnelStopRequest) => Effect.Effect<void, TunnelError>;
   readonly tooling: (id: string, options?: ToolingOptions) => Effect.Effect<ToolingResult, ToolingError, Scope.Scope>;
   readonly logs: (options?: LogsAppOptions) => Stream.Stream<LogChunk, LogsAppError, Scope.Scope>;
   readonly config: AppConfigApi;
@@ -256,7 +259,7 @@ export interface App {
 
 The `App` contract is SDK-published and the implementation returned by core is opaque/branded. Embedding hosts consume `App` values returned by `resolveApp`/`runtime.app`; they do not implement the interface structurally. This keeps future method additions non-breaking inside the 4.x line while preserving the `@lando/sdk` = contracts/types and `@lando/core` = implementations split.
 
-Method inputs are option objects, never positional arguments. One-shot methods (`start`, `stop`, `info`, config reads/writes, etc.) have `R = never` after binding because the handle already carries the runtime. Methods that expose live resources or subscriptions (`exec`, `tooling`, `logs`, `events.subscribe`) keep `Scope.Scope` in `R` so the host owns the subscription lifetime. The stable API returns typed Effect successes and tagged failures directly; it does not expose the internal command-operation `{ ok, value | error }` renderer envelope. `app.start()` defaults to `detached: false`; callers must opt into detached start-state explicitly with `app.start({ detached: true })`.
+Method inputs are option objects, never positional arguments. One-shot methods (`start`, `stop`, `info`, config reads/writes, `shareList`, `shareStop`, etc.) have `R = never` after binding because the handle already carries the runtime. Methods that expose live resources or subscriptions (`exec`, foreground `share`, `tooling`, `logs`, `events.subscribe`) keep `Scope.Scope` in `R` so the host owns the subscription lifetime. Detached share sessions return after the session is recorded in the `TunnelService` registry; foreground share sessions stay bound to the caller's scope exactly like foreground CLI `lando share`. The stable API returns typed Effect successes and tagged failures directly; it does not expose the internal command-operation `{ ok, value | error }` renderer envelope. `app.start()` defaults to `detached: false`; callers must opt into detached start-state explicitly with `app.start({ detached: true })`.
 
 ### 16.4 Plugin behavior in library mode
 

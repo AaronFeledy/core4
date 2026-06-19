@@ -122,6 +122,9 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
 | `app:restart` | `restart` | `app` | Stop then start the app |
 | `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
+| `app:share` | `share` | `app` | Start a public tunnel to a resolved app route or service endpoint; `--target`, `--provider`, `--detach`, `--format json` (§10.2.2) |
+| `app:share:list` | *(none)* | `app` | List foreground/detached public tunnel sessions for the current app (§10.2.2) |
+| `app:share:stop` | *(none)* | `app` | Stop a detached public tunnel session by id, provider, or target (§10.2.2) |
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |

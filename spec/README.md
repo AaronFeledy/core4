@@ -264,6 +264,12 @@ If you are looking for…
 | `LandoPluginContext` | 10 | §9.8 |
 | Networking intent (no shared bridge in core) | 11 | §10.1 |
 | Proxy/routing service | 11 | §10.2 |
+| Public tunnels and app sharing (`TunnelService`) | 11 | §10.2.2 |
+| `tunnelServices:` plugin contribution surface | 04 + 10 | §4.2 + §9.5 |
+| `app:share` / `app:share:list` / `app:share:stop` commands | 08 | §8.2 |
+| `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, …) | 03 | §3.5 + §10.2.2 |
+| `tunnel-registry` cache (detached share sessions) | 12 | §12.1 |
+| `TunnelService` contract suite | 13 | §13.1 |
 | Certificate authority service | 11 | §10.3 |
 | Corporate proxies and outbound trust | 11 | §10.3.1 |
 | SSH and host identity (sidecar-by-default agent) | 11 | §10.4 |

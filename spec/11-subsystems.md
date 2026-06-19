@@ -65,6 +65,46 @@ Required behaviors:
 - The §10.2 `ProxyService` interface is unchanged; only the realization moved into the global app. Alternative `ProxyService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
 - A user upgrading from a pre-§20 install whose host still has a v3-style out-of-band Traefik container running gets a `LegacyProxyContainerDetected` doctor diagnostic (§10.9, §20.10.3); migration is plugin-supplied.
 
+### 10.2.2 Public tunnels and app sharing (`TunnelService`)
+
+Core owns the public-tunnel intent, schemas, tagged errors, CLI/API shape, detached-state rules, and contract suite. `TunnelService` plugins own provider-specific realization: Cloudflare quick tunnels, ngrok, Tailscale Funnel, enterprise relays, or audited no-egress implementations. This is a §4.2 pluggable abstraction because providers differ in authentication, control-plane API, connector process, URL lifetime, and policy constraints.
+
+```ts
+export class TunnelService extends Context.Service<TunnelService, {
+  readonly id: string;
+  readonly capabilities: TunnelCapabilities;
+  readonly start:  (request: TunnelStartRequest)  => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
+  readonly stop:   (request: TunnelStopRequest)   => Effect.Effect<void, TunnelError>;
+  readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
+  readonly list:   (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
+}>()("@lando/core/TunnelService") {}
+```
+
+`TunnelTarget` is a tagged union over app-local targets: a resolved `RoutePlan` id/hostname, a service endpoint (`service`, `port`, optional protocol), or an explicit loopback URL created by core from those shapes. A tunnel plugin MUST NOT accept arbitrary public-to-host-port forwarding by default; raw host-port targets require an explicit advanced option and are rejected by canonical `lando share` UX. The normal route is `public URL -> provider tunnel -> local proxy/service endpoint -> app service`, so app routing, TLS intent, and route filters remain governed by the same app plan users already see in `lando info`.
+
+Required behaviors:
+
+- `TunnelService` is selected through `tunnelServices:` manifest contributions (§9.5) using the standard §4.3 precedence: explicit command/API provider choice, Landofile/global default, then sole installed implementation. If no implementation is installed, `lando share` fails with remediation listing bundled/community options.
+- Provider control-plane calls (login/device flow, session create, session delete, metadata/status) MUST use `HttpClient` (§10.3.2). Plugins MUST NOT call `fetch` or open sockets directly for Lando-owned control-plane egress, so proxy/CA/offline/redaction policy is inherited.
+- Connector binaries (`cloudflared`, `ngrok`, etc.) MUST be acquired through the §10.3.4 tool-provisioning helper over `Downloader`, with pinned `ToolManifest` entries, checksum verification, `<userDataRoot>/bin/` install markers, and offline reuse once warm. A provider that ships no connector binary can omit this step.
+- Connector processes MUST run through `ProcessRunner` with argv-precise invocation, redacted env, and `Scope`-bound finalization. Foreground tunnels close on Ctrl+C / `Effect.interrupt`; detached tunnels persist until explicit `app:share:stop`, app destroy, or GC.
+- Detached-session state is a `StateStore` bucket at `<userCacheRoot>/tunnels/registry.bin` (§12.1) plus per-session process metadata under `<userDataRoot>/run/tunnels/`; stale PID/socket entries reconcile safely on `status`, `list`, and `gc` without treating orphaned state as active exposure.
+- Readiness waits use the §10.5.1 probe primitive against the public URL or provider status API. Tunnel implementations MUST NOT hand-roll retry/backoff loops.
+- Public URLs, provider auth URLs, bearer tokens, device codes, connector env, and local host paths are redacted through `RedactionService` before reaching logs, events, JSON output, transcripts, telemetry, support bundles, or durable state. Debug logs may include provider-native diagnostics only under the existing protected debug-log policy.
+- `TunnelService` publishes `pre-tunnel-start`, `post-tunnel-start`, `tunnel-ready`, `pre-tunnel-stop`, `post-tunnel-stop`, and `tunnel-status` events. Payloads include app id, target summary, provider id, detached/foreground mode, redacted public URL summary, readiness status, duration, and tagged failure detail.
+- `lando share --format json` and embedding-host `app.share()` return the universal machine-output/session schemas (§8.11) rather than provider-specific text. Long-running foreground share emits `StreamFrame`s and terminates with a result frame when the tunnel closes.
+- `TunnelService` is not byte movement. It does not use `DataMover` unless a higher-level feature combines sharing with data transfer. Hosting `pull`/`push` composes `HttpClient` and `DataMover`; `TunnelService` composes `HttpClient`, tool provisioning/`Downloader`, `ProcessRunner`, `StateStore`, the probe primitive, `InteractionService`, and `RedactionService`.
+
+Tagged errors:
+
+- `TunnelProviderUnavailableError` — no selected provider, provider binary unavailable, or provider policy blocks tunnel creation. Payload includes provider id when known and install/auth remediation.
+- `TunnelTargetUnresolvedError` — the requested route/service target cannot be resolved from the app plan or current runtime info.
+- `TunnelAuthRequiredError` — provider authentication is missing or expired and non-interactive mode cannot complete the prompt/device-flow step.
+- `TunnelStartError` — connector/control-plane start failed; carries redacted provider detail and remediation.
+- `TunnelReadyTimeoutError` — the provider reported/created a tunnel but the readiness probe never reached green before the deadline.
+- `TunnelDetachedStateError` — detached registry or PID/socket state is corrupt, locked, stale, or cannot be reconciled.
+- `TunnelStopError` — control-plane or connector teardown failed; best-effort local cleanup already ran where safe.
+
 ### 10.3 Certificates and CA
 
 Core owns certificate intent. `CertificateAuthority` plugins own issuance and host trust.

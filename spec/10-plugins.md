@@ -129,6 +129,15 @@ provides:
   proxyServices:
     - id: traefik
       module: ./src/proxy.ts
+  tunnelServices:
+    - id: cloudflare
+      module: ./src/tunnel/cloudflare.ts
+      capabilities:
+        connectorBinary: true                 # provisions `cloudflared` through the §10.3.4 helper
+        ephemeralUrls: true                    # account-free quick tunnels
+        stableUrls: true                       # named tunnels when authenticated
+        basicAuth: false                       # provider has no built-in auth gate
+        detached: true                         # supports `app:share --detach`
   certificateAuthorities:
     - id: mkcert
       module: ./src/ca.ts
@@ -228,6 +237,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `commands` | OCLIF + Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
+| `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
 | `certificateAuthorities` | `CertificateAuthority` impls | Certs subsystem |
 | `loggers` | `Logger` impls | Logging service |
 | `renderers` | `Renderer` impls | Renderer service |
@@ -315,6 +325,14 @@ There are no legacy autoload directories. All contributions go through the manif
 - Implementations MUST honor the §8.10.3 answer-source precedence and interactivity-mode resolution, MUST NOT echo or log `secret` answers, and MUST fail fast (never block on stdin) in non-interactive mode.
 - Implementations MUST pass the §13.1 interaction contract suite; they MUST NOT weaken the `secret`-redaction, answer-precedence, or non-interactive-fail-fast guarantees.
 - Selection follows §4.3; the `id: stdio` default implementation is reserved by core.
+
+**Tunnel service contribution rules:**
+
+- Each `tunnelServices:` entry MUST declare a unique `id`, `module`, and `capabilities` (`connectorBinary`, `ephemeralUrls`, `stableUrls`, `basicAuth`, `detached`). Declared capabilities MUST match observed behavior; the §13.1 TunnelService contract suite checks this.
+- The module MUST satisfy the published `TunnelService` tag (§10.2.2) and accept only app-local `TunnelTarget`s (a resolved `RoutePlan` id/hostname or a service endpoint). It MUST NOT accept arbitrary public→host-port forwarding except behind an explicit advanced option, and the canonical `lando share` UX never exposes that path.
+- Provider control-plane egress (login/device flow, session create/delete, status) MUST go through `HttpClient` (§10.3.2); implementations MUST NOT call `fetch` or open their own sockets for Lando-owned egress. Connector binaries MUST be provisioned through the tool-provisioning helper over `Downloader` (§10.3.4), never plugin-local downloads.
+- Connector processes MUST run through `ProcessRunner` with `Scope`-bound finalization; foreground sessions close on `Effect.interrupt`, detached sessions persist in the `tunnel-registry` `StateStore` bucket (§12.1) until explicit stop, app destroy, or GC. Readiness MUST use the §10.5.1 probe primitive; implementations MUST NOT hand-roll retry loops.
+- Implementations MUST compose the canonical `RedactionService` for public URLs, auth URLs, tokens, device codes, and local paths, and MUST NOT move local/volume bytes (`DataMover` is reserved for features that also transfer data). Selection follows §4.3; there is no core default implementation in v4.0.
 
 ### 9.6 Plugin install and update
 
