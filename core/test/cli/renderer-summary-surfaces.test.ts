@@ -124,6 +124,13 @@ describe("scratch list summary", () => {
     expect(stripAnsi(out)).toContain("[OK]");
   });
 
+  test("rolls orphan status up to the document tone", () => {
+    const entry = result[0];
+    if (entry === undefined) throw new Error("missing scratch fixture");
+    const summary = buildScratchListSummary([{ ...entry, status: "orphan" }]);
+    expect(summary.tone).toBe("error");
+  });
+
   test("renders an explicit empty state", () => {
     const out = stripAnsi(formatSummary(buildScratchListSummary([]), { columns: 50 }));
     expect(out).toContain("No scratch apps found.");
@@ -153,6 +160,26 @@ describe("global status summary", () => {
     );
     expectFramed(out, 64);
     expect(stripAnsi(out)).toContain("[OK]");
+  });
+
+  test("rolls non-running global service states up to a warning header", () => {
+    const summary = buildGlobalStatusSummary({
+      app: "global",
+      materialized: true,
+      services: [
+        {
+          app: "global",
+          service: "traefik",
+          api: 4,
+          type: "traefik",
+          provider: "lando",
+          primary: true,
+          status: "stopped",
+          endpoints: [],
+        },
+      ],
+    });
+    expect(summary.tone).toBe("warn");
   });
 
   test("frames a not-installed global app", () => {

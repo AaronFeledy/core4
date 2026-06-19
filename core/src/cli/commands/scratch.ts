@@ -19,7 +19,12 @@ import { ScratchAppService } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
 import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary.ts";
-import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
+import {
+  type SummaryDocument,
+  type SummaryTone,
+  formatSummary,
+  worstSummaryTone,
+} from "../renderer/summary.ts";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -230,28 +235,31 @@ const scratchStatusTone = (status: ScratchSummary["status"]): SummaryTone => {
   }
 };
 
-export const buildScratchListSummary = (result: ReadonlyArray<ScratchSummary>): SummaryDocument => ({
-  title: "SCRATCH APPS",
-  subtitle: `${result.length} ${result.length === 1 ? "app" : "apps"}`,
-  tone: result.length === 0 ? "info" : "ok",
-  sections: [
-    {
-      title: "instances",
-      rows: result.map((entry) => ({
-        label: entry.id,
-        tone: scratchStatusTone(entry.status),
-        value: entry.status,
-        fields: [
-          { label: "source", value: scratchSourceLabel(entry.source) },
-          { label: "mode", value: entry.mode },
-          { label: "created", value: entry.created },
-        ],
-      })),
-      ...(result.length === 0 ? { notes: ["No scratch apps found."] } : {}),
-    },
-  ],
-  footer: `${result.length} scratch apps`,
-});
+export const buildScratchListSummary = (result: ReadonlyArray<ScratchSummary>): SummaryDocument => {
+  const rows = result.map((entry) => ({
+    label: entry.id,
+    tone: scratchStatusTone(entry.status),
+    value: entry.status,
+    fields: [
+      { label: "source", value: scratchSourceLabel(entry.source) },
+      { label: "mode", value: entry.mode },
+      { label: "created", value: entry.created },
+    ],
+  }));
+  return {
+    title: "SCRATCH APPS",
+    subtitle: `${result.length} ${result.length === 1 ? "app" : "apps"}`,
+    tone: result.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone)),
+    sections: [
+      {
+        title: "instances",
+        rows,
+        ...(result.length === 0 ? { notes: ["No scratch apps found."] } : {}),
+      },
+    ],
+    footer: `${result.length} scratch apps`,
+  };
+};
 
 export const renderScratchListResult = (
   result: ReadonlyArray<ScratchSummary>,

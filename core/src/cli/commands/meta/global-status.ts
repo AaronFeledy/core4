@@ -22,7 +22,12 @@ import {
 } from "@lando/sdk/services";
 
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
-import { type SummaryDocument, type SummaryTone, formatSummary } from "../../renderer/summary.ts";
+import {
+  type SummaryDocument,
+  type SummaryTone,
+  formatSummary,
+  worstSummaryTone,
+} from "../../renderer/summary.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -162,11 +167,7 @@ export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDoc
   return {
     title: "GLOBAL APP",
     subtitle: result.app,
-    tone: result.services.some((service) => globalStatusTone(service.status) === "error")
-      ? "error"
-      : result.services.length === 0
-        ? "info"
-        : "ok",
+    tone: rows.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone)),
     sections: [
       {
         title: "services",
