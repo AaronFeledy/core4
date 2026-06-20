@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "base": {
+      "type": "string"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "text"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "data": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "kind": {
+              "enum": [
+                "structured"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "data"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "template"
+              ],
+              "type": "string"
+            },
+            "vars": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "file"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "inline"
+              ],
+              "type": "string"
+            },
+            "template": {
+              "type": "string"
+            },
+            "vars": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "template"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "format": {
+      "enum": [
+        "text",
+        "env",
+        "json",
+        "yaml",
+        "toml",
+        "ini",
+        "landofile"
+      ],
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "marker": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "file",
+        "block",
+        "keys"
+      ],
+      "type": "string"
+    },
+    "onConflict": {
+      "enum": [
+        "skip",
+        "overwrite",
+        "fail"
+      ],
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "perms": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "owner",
+    "path",
+    "mode",
+    "format",
+    "content"
+  ],
+  "type": "object"
+}

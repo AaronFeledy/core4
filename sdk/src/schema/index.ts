@@ -23,6 +23,7 @@ export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./json-schema.ts";
 export * from "./landofile.ts";
+export * from "./managed-file.ts";
 export * from "./mounts.ts";
 export * from "./networking.ts";
 export * from "./plugin.ts";

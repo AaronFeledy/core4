@@ -631,6 +631,42 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Managed File.",
+    "docsPath": "docs/reference/schemas/managed-file.mdx",
+    "id": "ManagedFile",
+    "jsonSchemaPath": "dist/schemas/managed-file.json",
+    "packageExport": "@lando/sdk/schema#ManagedFile",
+    "title": "Managed File"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Managed File Info.",
+    "docsPath": "docs/reference/schemas/managed-file-info.mdx",
+    "id": "ManagedFileInfo",
+    "jsonSchemaPath": "dist/schemas/managed-file-info.json",
+    "packageExport": "@lando/sdk/schema#ManagedFileInfo",
+    "title": "Managed File Info"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Managed File Plan.",
+    "docsPath": "docs/reference/schemas/managed-file-plan.mdx",
+    "id": "ManagedFilePlan",
+    "jsonSchemaPath": "dist/schemas/managed-file-plan.json",
+    "packageExport": "@lando/sdk/schema#ManagedFilePlan",
+    "title": "Managed File Plan"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Managed File Result.",
+    "docsPath": "docs/reference/schemas/managed-file-result.mdx",
+    "id": "ManagedFileResult",
+    "jsonSchemaPath": "dist/schemas/managed-file-result.json",
+    "packageExport": "@lando/sdk/schema#ManagedFileResult",
+    "title": "Managed File Result"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for App Id.",
     "docsPath": "docs/reference/schemas/app-id.mdx",
     "id": "AppId",

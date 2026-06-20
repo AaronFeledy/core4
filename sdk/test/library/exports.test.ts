@@ -36,6 +36,13 @@ describe("@lando/sdk package exports", () => {
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
     expect(schema.ConfigLintResult).toBeDefined();
+    expect(schema.FileFormat).toBeDefined();
+    expect(schema.ContentSource).toBeDefined();
+    expect(schema.ManagedFile).toBeDefined();
+    expect(schema.ManagedFileAction).toBeDefined();
+    expect(schema.ManagedFileInfo).toBeDefined();
+    expect(schema.ManagedFilePlan).toBeDefined();
+    expect(schema.ManagedFileResult).toBeDefined();
     expect(schema.AppId).toBeDefined();
     expect(schema.ServiceName).toBeDefined();
     expect(schema.ProviderId).toBeDefined();
@@ -73,6 +80,10 @@ describe("@lando/sdk package exports", () => {
       "GlobalConfig",
       "ConfigLintViolation",
       "ConfigLintResult",
+      "ManagedFile",
+      "ManagedFileInfo",
+      "ManagedFilePlan",
+      "ManagedFileResult",
       "AppId",
       "ServiceName",
       "ProviderId",
@@ -140,6 +151,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.LandofileExpressionEvalError).toBeDefined();
     expect(errors.LandofileLockMismatchError).toBeDefined();
     expect(errors.LandofileIncludeError).toBeDefined();
+    expect(errors.ManagedFileError).toBeDefined();
     expect(errors.PluginLoadError).toBeDefined();
     expect(errors.NoProviderInstalledError).toBeDefined();
     expect(errors.ConfigError).toBeDefined();
@@ -208,6 +220,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.LandofileService).toBeDefined();
     expect(services.GlobalAppService).toBeDefined();
     expect(services.ScratchAppService).toBeDefined();
+    expect(services.ManagedFileService).toBeDefined();
     expect(services.DeprecationService).toBeDefined();
     expect(services.markDeprecated).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();

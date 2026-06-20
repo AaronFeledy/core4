@@ -871,6 +871,42 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Managed File.",
+      "docsPath": "docs/reference/schemas/managed-file.mdx",
+      "id": "ManagedFile",
+      "jsonSchemaPath": "dist/schemas/managed-file.json",
+      "packageExport": "@lando/sdk/schema#ManagedFile",
+      "title": "Managed File"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Managed File Info.",
+      "docsPath": "docs/reference/schemas/managed-file-info.mdx",
+      "id": "ManagedFileInfo",
+      "jsonSchemaPath": "dist/schemas/managed-file-info.json",
+      "packageExport": "@lando/sdk/schema#ManagedFileInfo",
+      "title": "Managed File Info"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Managed File Plan.",
+      "docsPath": "docs/reference/schemas/managed-file-plan.mdx",
+      "id": "ManagedFilePlan",
+      "jsonSchemaPath": "dist/schemas/managed-file-plan.json",
+      "packageExport": "@lando/sdk/schema#ManagedFilePlan",
+      "title": "Managed File Plan"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Managed File Result.",
+      "docsPath": "docs/reference/schemas/managed-file-result.mdx",
+      "id": "ManagedFileResult",
+      "jsonSchemaPath": "dist/schemas/managed-file-result.json",
+      "packageExport": "@lando/sdk/schema#ManagedFileResult",
+      "title": "Managed File Result"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for App Id.",
       "docsPath": "docs/reference/schemas/app-id.mdx",
       "id": "AppId",
@@ -1729,6 +1765,10 @@
       "GlobalConfig",
       "ConfigLintViolation",
       "ConfigLintResult",
+      "ManagedFile",
+      "ManagedFileInfo",
+      "ManagedFilePlan",
+      "ManagedFileResult",
       "AppId",
       "ServiceName",
       "ProviderId",
@@ -9996,6 +10036,204 @@
         }
       },
       "required": [],
+      "type": "object"
+    },
+    "ManagedFile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": ["text"],
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "data": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "kind": {
+                  "enum": ["structured"],
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "data"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["template"],
+                  "type": "string"
+                },
+                "vars": {
+                  "additionalProperties": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "file"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": ["inline"],
+                  "type": "string"
+                },
+                "template": {
+                  "type": "string"
+                },
+                "vars": {
+                  "additionalProperties": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "template"],
+              "type": "object"
+            }
+          ]
+        },
+        "format": {
+          "enum": ["text", "env", "json", "yaml", "toml", "ini", "landofile"],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "marker": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": ["file", "block", "keys"],
+          "type": "string"
+        },
+        "onConflict": {
+          "enum": ["skip", "overwrite", "fail"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "perms": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "owner", "path", "mode", "format", "content"],
+      "type": "object"
+    },
+    "ManagedFileInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["file", "block", "keys"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "state": {
+          "enum": ["managed", "adopted", "conflict", "missing", "drifted"],
+          "type": "string"
+        }
+      },
+      "required": ["path", "owner", "mode", "state"],
+      "type": "object"
+    },
+    "ManagedFilePlan": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "path", "action"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["entries"],
+      "type": "object"
+    },
+    "ManagedFileResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+                "type": "string"
+              },
+              "backup": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "path", "action"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["entries"],
       "type": "object"
     },
     "MatcherSchema": {
