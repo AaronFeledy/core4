@@ -1403,3 +1403,10 @@
   - The SDK backward-compat gate (`sdk-backward-compatibility.test.ts`) only `toEqual`-checks the "Additive Alpha schema exports" and "Additive Alpha service tags" doc sections; the "Additive Alpha errors" / "service helpers" sections are free-form, so a subpath-only error (`LandofileEmitError`, deliberately off the frozen `@lando/sdk/errors` barrel) can be documented there without breaking the gate.
   - `ManagedFileError.operation` is a required field, so a format-level codec must still supply one; `encode`/`decode`/`mergeManaged` take an optional `operation` (defaults `apply`/`plan`/`apply`) so a consumer can tag the real lifecycle operation without the codec knowing it.
 ---
+
+## Fri Jun 19 2026 10:54 PM CDT - Babysit
+- PR: #413 https://github.com/AaronFeledy/core4/pull/413
+- CI outcome: pass
+- Review feedback: fixed (env codec now rejects keys it cannot round-trip; added Guide-Coverage-Skip for the internal serializer-extraction refactor to clear check:guide-drift)
+- Merge: merged (squash)
+---
