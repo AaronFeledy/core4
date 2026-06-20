@@ -36,6 +36,15 @@ describe("managed-file codecs — encode", () => {
     expect(await run(encode("env", { MSG: "hello world", EMPTY: "" }))).toBe('MSG="hello world"\nEMPTY=""\n');
   });
 
+  test.each(["MY-KEY", "my.key", "1KEY", "has space"])(
+    "env rejects key %p that decode cannot round-trip",
+    async (key) => {
+      const error = await failure(encode("env", { [key]: "value" }));
+      expect(error.reason).toBe("format");
+      expect(error.remediation).toContain("POSIX environment-variable name");
+    },
+  );
+
   test("yaml delegates to the @lando/sdk/landofile serializer", async () => {
     expect(await run(encode("yaml", { name: "app", runtime: 4 }))).toBe("name: app\nruntime: 4\n");
   });

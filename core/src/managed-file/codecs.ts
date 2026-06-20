@@ -57,6 +57,10 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 
 const ENV_NEEDS_QUOTING = /[\s"#=\\]/u;
 
+// Shared by encode + decode so the env round-trip stays consistent: POSIX
+// env-var names. Keys outside this set cannot decode, so encode rejects them.
+const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+
 const quoteEnvValue = (value: string): string =>
   `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/\n/gu, "\\n")}"`;
 
@@ -69,6 +73,11 @@ const encodeEnv = (
   }
   const lines: Array<string> = [];
   for (const [key, raw] of Object.entries(value)) {
+    if (!ENV_KEY_PATTERN.test(key)) {
+      return fail("format", operation, {
+        remediation: `\`env\` key "${key}" must be a POSIX environment-variable name ([A-Za-z_][A-Za-z0-9_]*).`,
+      });
+    }
     if (raw === null || raw === undefined || typeof raw === "object") {
       return fail("format", operation, {
         remediation: `\`env\` value for "${key}" must be a string, number, or boolean.`,
@@ -93,10 +102,11 @@ const decodeEnv = (text: string): Record<string, string> => {
   for (const rawLine of text.split(/\r?\n/u)) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) continue;
-    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
-    if (match === null) continue;
-    const [, key, value] = match as [string, string, string];
-    result[key] = unquoteEnvValue(value);
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq);
+    if (!ENV_KEY_PATTERN.test(key)) continue;
+    result[key] = unquoteEnvValue(line.slice(eq + 1));
   }
   return result;
 };
