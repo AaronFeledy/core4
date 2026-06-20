@@ -16,8 +16,7 @@
  * - `.json` → `@json`
  * - otherwise → `@string`
  *
- * The MVP parser supports the dependency-free Landofile subset used before a
- * full YAML parser dependency is introduced.
+ * Dependency-free Landofile YAML subset (no external YAML parser).
  */
 import { Effect } from "effect";
 

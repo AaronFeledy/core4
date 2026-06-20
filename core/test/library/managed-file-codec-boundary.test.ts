@@ -3,11 +3,8 @@ import { dirname, relative, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-// Import-boundary assertion for the shared file-format codec module (§10.13).
-// The codec module MUST stay pure and dependency-light: it constructs no
-// `LandoRuntime`, reaches no Effect runtime service / bootstrap layer, and pulls
-// no `@oclif/core`. This walks the codec's transitive STATIC import graph
-// (following only first-party edges) and fails on any forbidden edge.
+// Import-boundary assertion for `managed-file/codecs.ts`: no `LandoRuntime`,
+// Effect bootstrap layers, or `@oclif/core` in the static import graph.
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");

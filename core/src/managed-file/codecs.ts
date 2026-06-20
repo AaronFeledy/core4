@@ -1,7 +1,6 @@
-// Shared file-format codec module (§10.13). One pure place to encode/decode the
-// structured project-file formats that both `ManagedFileService` and the §6.4
-// mount materializer consume, so structured encode and the Landofile round-trip
-// exist exactly once.
+// Shared file-format codec module. One pure place to encode/decode structured
+// project-file formats for `ManagedFileService` and mount materialization, so
+// Landofile round-trip and other structured formats exist exactly once.
 //
 // This module is deliberately PURE and dependency-light: it constructs no
 // `LandoRuntime`, touches no filesystem, and imports neither an Effect runtime
@@ -56,10 +55,6 @@ const fail = (
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// ---------------------------------------------------------------------------
-// env (.env) codec — `KEY=value` lines.
-// ---------------------------------------------------------------------------
-
 const ENV_NEEDS_QUOTING = /[\s"#=\\]/u;
 
 const quoteEnvValue = (value: string): string =>
@@ -105,10 +100,6 @@ const decodeEnv = (text: string): Record<string, string> => {
   }
   return result;
 };
-
-// ---------------------------------------------------------------------------
-// encode / decode / mergeManaged
-// ---------------------------------------------------------------------------
 
 /**
  * Encode a value for the declared {@link FileFormat}. `text` is written
@@ -195,10 +186,9 @@ export const decode = (
 };
 
 /**
- * Merge an owned structured subtree into existing content (the `keys` mode).
- * This is the 4.x structural-merge seam; for Beta 1 every format is stubbed to
- * fail with `reason: "format"` and a "deferred to 4.x" remediation, so callers
- * get a clear error rather than a silent no-op.
+ * Merge an owned structured subtree into existing content (keys mode).
+ * Not implemented yet: every format fails with `reason: "format"` and a
+ * deferred-to-4.x remediation so callers get a clear error instead of a no-op.
  */
 export const mergeManaged = (
   _format: FileFormat,
