@@ -1,6 +1,6 @@
 // In-memory `ManagedFileService` test double. It shares the real decision
 // algorithm (`makeManagedFileService`) but binds an in-memory backend, so unit
-// tests and the §13.1 contract suite exercise create/update/skip/conflict/
+// tests and CLI parity suites exercise create/update/skip/conflict/
 // adopt/release/remove, marker round-trips, and `block` idempotency with no real
 // disk. Files and ledger entries are inspectable.
 

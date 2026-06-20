@@ -154,8 +154,8 @@ const renderBody = (
       return encodeFormat(mf.format, content.data, { operation });
     case "template":
     case "inline":
-      // Template/inline rendering rides `TemplateRenderer` (§7.3.2), wired with
-      // its 4.x consumers. The substrate ships `text`/`structured` content.
+      // Template/inline rendering uses `TemplateRenderer` once those content kinds
+      // have callers; until then use `text` or `structured` content.
       return fail("format", operation, {
         path: mf.path,
         remediation: `\`${content.kind}\` content rendering is wired with its consumer; use \`text\` or \`structured\` content for now.`,
@@ -386,7 +386,7 @@ const decideOne = (
   if (mf.mode === "keys") {
     return fail("format", operation, {
       path: mf.path,
-      remediation: "`keys`-mode structured merge is deferred to 4.x; use `file` or `block`.",
+      remediation: "`keys`-mode structured merge is not implemented yet; use `file` or `block`.",
     });
   }
   const marker = mf.marker ?? mf.id;

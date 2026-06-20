@@ -113,7 +113,6 @@ export const openJsonBucket = <A, I>(spec: JsonBucketSpec<A, I>): Effect.Effect<
             return handleCorrupt(new Error("Malformed state envelope."));
           }
           if (envelope.version !== spec.version) {
-            // Version mismatch invalidates (discard semantics) — durable migrators are 4.x.
             return Effect.succeed(fallback);
           }
           return decodeData(envelope.data).pipe(
