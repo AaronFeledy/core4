@@ -1433,3 +1433,10 @@
 - Review notes (deferred/rejected): JSON array/scalar self-adoption, cross-base ledger keying, non-transactional multi-file apply, and backup filename collisions are accepted as non-blocking substrate limitations for US-351; later consumers or US-353/US-354 can tighten them when those surfaces exercise the paths.
 - Verification: typecheck, lint, and focused managed-file service tests passed.
 ---
+
+## 2026-06-20 02:05 CDT - US-351 Review
+- Fixed a review-discovered ownership-matching bug in the managed-file marker helper: `isMarkerLine` matched on a `\b` word boundary, so a short id (`a`) falsely claimed a file owned by a colon-suffixed id (`a:greeting`) because the `:` after `a` forms a word boundary. Switched to a `(?=\s|$)` lookahead so an id only matches when followed by whitespace or end-of-line — exact-id ownership in both directions. Locked it with a new in-memory test asserting that applying id `a` over a file marked `a:greeting` (even with `onConflict: "fail"`) yields `skip-adopted` and leaves disk + ledger untouched.
+- Verification: typecheck, lint, `git diff --check` clean; RED proven by reverting the regex (the new test fails with a conflict), GREEN after restore; managed-file service (34) + codec-boundary (4) spot checks green.
+- **Learnings for future iterations:**
+  - Marker/fence ids are colon-namespaced (`lando-generated:a:greeting`), so never use `\b` to delimit an id in a regex — `:` is a word boundary and lets prefixes match. Anchor with `(?=\s|$)` (or the literal delimiter) instead.
+---
