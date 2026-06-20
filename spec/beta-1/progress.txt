@@ -1374,3 +1374,10 @@
   - The `render:` seam was mode-agnostic; adding `RenderContext` as the 2nd positional arg means any direct caller that previously passed a different 2nd arg (e.g. `renderUninstallResult(result, setExitCode)`) must move that arg to 3rd position. Search direct callers, not just the boundary, before changing a render fn's signature.
   - Keep the non-decorated branch calling the exact pre-existing formatter so the large existing plain/json/parity test surface stays green with zero churn; only the `lando`+TTY path is new. This made a wide six-surface change land without touching any existing assertion.
 ---
+
+## 2026-06-19 18:55 - Babysit
+- PR: #411 https://github.com/AaronFeledy/core4/pull/411
+- CI outcome: pass
+- Review feedback: fixed (guide-drift via Guide-Coverage-Skip body line; 5 Bugbot findings — scratch/global-status/doctor header+footer tone rollups now reflect worst row severity)
+- Merge: merged (squash)
+---
