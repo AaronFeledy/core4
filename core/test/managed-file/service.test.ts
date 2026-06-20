@@ -403,6 +403,21 @@ describe("ManagedFileService block mode", () => {
     expect(inside.entries[0]?.action).toBe("conflict");
   });
 
+  test("block body may contain a line that looks like the closing fence", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const body = "OWNED=1\n# <<< lando:b:settings <<<\nOWNED=2";
+
+    const first = await runScoped(store.service.apply([blockFile(body)]));
+    expect(first.entries[0]?.action).toBe("create");
+
+    const second = await runScoped(store.service.apply([blockFile(body)]));
+    expect(second.entries[0]?.action).toBe("skip-unchanged");
+
+    const changed = await runScoped(store.service.apply([blockFile(`${body}\nOWNED=3`)]));
+    expect(changed.entries[0]?.action).toBe("update");
+    expect(store.read("settings.conf")).toContain("OWNED=3");
+  });
+
   test("pre-existing file without a block fence is adopted, never appended", async () => {
     const store = await run(makeTestManagedFileStore());
     const userContent = "# user owned settings\nUSER=1\n";

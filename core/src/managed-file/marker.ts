@@ -141,7 +141,7 @@ export const findBlock = (prefix: string, marker: string, content: string): Bloc
   const closeLine = fenceClose(prefix, marker);
   const start = lines.findIndex((line) => line.trim() === openLine);
   if (start === -1) return { found: false, slice: "", before: content, after: "" };
-  const end = lines.findIndex((line, idx) => idx > start && line.trim() === closeLine);
+  const end = lines.findLastIndex((line, idx) => idx > start && line.trim() === closeLine);
   if (end === -1) return { found: false, slice: "", before: content, after: "" };
   return {
     found: true,
