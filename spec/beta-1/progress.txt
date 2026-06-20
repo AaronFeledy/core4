@@ -1440,3 +1440,10 @@
 - **Learnings for future iterations:**
   - Marker/fence ids are colon-namespaced (`lando-generated:a:greeting`), so never use `\b` to delimit an id in a regex — `:` is a word boundary and lets prefixes match. Anchor with `(?=\s|$)` (or the literal delimiter) instead.
 ---
+
+## 2026-06-20 18:30 - Babysit
+- PR: #414 https://github.com/AaronFeledy/core4/pull/414
+- CI outcome: pass
+- Review feedback: fixed (triaged 14 Bugbot findings; 13 already resolved by prior commits, fixed remaining open one — block-mode findBlock now treats body lines matching the close fence as content)
+- Merge: merged (squash)
+---
