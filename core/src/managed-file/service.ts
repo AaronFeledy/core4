@@ -464,6 +464,15 @@ const upsertEntry = (entries: ReadonlyArray<LedgerEntry>, next: LedgerEntry): Re
   next,
 ];
 
+const matchesRemoveSelector = (entry: LedgerEntry, selector: ManagedFileSelector): boolean =>
+  entry.state === "managed" &&
+  (selector.owner === undefined || entry.owner === selector.owner) &&
+  (selector.id === undefined || entry.id === selector.id) &&
+  (selector.path === undefined || entry.path === selector.path) &&
+  (selector.base === undefined
+    ? selector.path === undefined || entry.base === undefined
+    : entry.base === selector.base);
+
 export const makeManagedFileService = (
   backend: ManagedFileBackend,
 ): Effect.Effect<Context.Tag.Service<typeof ManagedFileService>> =>
@@ -554,13 +563,7 @@ export const makeManagedFileService = (
     const remove = (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
       backend.mutateLedger("remove", (entries) =>
         Effect.gen(function* () {
-          const matches = entries.filter(
-            (entry) =>
-              entry.state === "managed" &&
-              (selector.owner === undefined || entry.owner === selector.owner) &&
-              (selector.id === undefined || entry.id === selector.id) &&
-              (selector.path === undefined || entry.path === selector.path),
-          );
+          const matches = entries.filter((entry) => matchesRemoveSelector(entry, selector));
           const results: Array<ManagedFileResult["entries"][number]> = [];
           let next = entries;
           for (const entry of matches) {
@@ -584,7 +587,7 @@ export const makeManagedFileService = (
       );
 
     const status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError> = Effect.suspend(() =>
-      backend.readLedger("status").pipe(
+      backend.peekLedger("status").pipe(
         Effect.flatMap((entries) =>
           Effect.forEach(entries, (entry) =>
             backend.resolveBase(entry.base, "status").pipe(

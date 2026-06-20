@@ -9,11 +9,12 @@ import type {
   PortablePath,
 } from "../schema/index.ts";
 
-/** Selects ledger-recorded managed files for `remove`, by owner, id, or path. */
+/** Selects ledger-recorded managed files for `remove`, by owner, id, path, or base. */
 export interface ManagedFileSelector {
   readonly owner?: string;
   readonly id?: string;
   readonly path?: PortablePath;
+  readonly base?: string;
 }
 
 /** Options for `apply`. `force` overrides a detected conflict (back up then update). */

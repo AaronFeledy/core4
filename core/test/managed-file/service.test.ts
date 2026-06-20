@@ -274,6 +274,36 @@ describe("ManagedFileService (in-memory)", () => {
     expect(store.ledger()).toHaveLength(0);
   });
 
+  test("path-only remove targets the default base when duplicate relative paths exist", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const customBase = "/lando-memfs/custom-remove";
+    await runScoped(
+      store.service.apply([
+        file({ id: "a:custom-remove", path: "same.txt", base: customBase }),
+        file({ id: "a:local-remove", path: "same.txt" }),
+      ]),
+    );
+
+    const result = await run(store.service.remove({ path: "same.txt" }));
+
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]?.id).toBe("a:local-remove");
+    expect(store.ledger().map((entry) => entry.id)).toEqual(["a:custom-remove"]);
+  });
+
+  test("remove can target a custom base explicitly", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const customBase = "/lando-memfs/custom-remove-explicit";
+    await runScoped(
+      store.service.apply([file({ id: "a:custom-remove", path: "same.txt", base: customBase })]),
+    );
+
+    const result = await run(store.service.remove({ path: "same.txt", base: customBase }));
+
+    expect(result.entries).toHaveLength(1);
+    expect(store.ledger()).toHaveLength(0);
+  });
+
   test("plan matches apply for the same inputs", async () => {
     const store = await run(makeTestManagedFileStore());
     const files = [
@@ -466,6 +496,26 @@ describe("ManagedFileService (disk backend)", () => {
     });
   });
 
+  test("status does not quarantine a corrupt ledger", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      await runScoped(service.apply([file({ id: "d:status-q", path: "status-q.txt" })]));
+      const ledgerDir = join(
+        dirs.dataRoot,
+        "managed-files",
+        (await readdir(join(dirs.dataRoot, "managed-files")))[0] ?? "",
+      );
+      const ledgerPath = join(ledgerDir, "ledger.json");
+      await writeFile(ledgerPath, "{ not valid json");
+
+      await expect(run(service.status)).resolves.toEqual([]);
+
+      expect(await readFile(ledgerPath, "utf8")).toBe("{ not valid json");
+      const files = await readdir(ledgerDir);
+      expect(files.some((name) => name.includes(".corrupt-"))).toBe(false);
+    });
+  });
+
   test("rejects writes through a symlinked directory that escapes the base", async () => {
     await withTemp(async (dirs) => {
       const outside = await realpath(await mkdtemp(join(tmpdir(), "lando-mf-outside-")));
@@ -498,7 +548,7 @@ describe("ManagedFileService (disk backend)", () => {
         const info = await run(service.status);
         expect(info[0]?.state).toBe("managed");
 
-        await run(service.remove({ path: "custom.txt" }));
+        await run(service.remove({ path: "custom.txt", base: customBase }));
         const stillExists = await readFile(join(customBase, "custom.txt"), "utf8").then(
           () => true,
           () => false,
