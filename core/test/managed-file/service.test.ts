@@ -166,6 +166,22 @@ describe("ManagedFileService (in-memory)", () => {
     expect(store.read("orphan.txt")).toContain("hello world");
   });
 
+  test("marker ownership requires an exact id match", async () => {
+    const original = await run(makeTestManagedFileStore());
+    await runScoped(original.service.apply([file({ id: "a:greeting", path: "greeting.txt" })]));
+    const longOwnedDisk = original.read("greeting.txt") ?? "";
+
+    const store = await run(makeTestManagedFileStore());
+    store.seed("greeting.txt", longOwnedDisk);
+
+    const shortId = file({ id: "a", path: "greeting.txt", onConflict: "fail" });
+    const result = await runScoped(store.service.apply([shortId]));
+
+    expect(result.entries[0]?.action).toBe("skip-adopted");
+    expect(store.read("greeting.txt")).toBe(longOwnedDisk);
+    expect(store.ledger().find((entry) => entry.id === "a")?.state).toBe("adopted");
+  });
+
   test("force overrides a conflict", async () => {
     const store = await run(makeTestManagedFileStore());
     const mf = file({ id: "a:force", path: "force.txt" });

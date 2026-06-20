@@ -32,7 +32,7 @@ const markerLine = (prefix: string, marker: string): string =>
   `${prefix} ${MARKER_TAG}:${marker} — managed by Lando; delete this line to adopt this file.`;
 
 const isMarkerLine = (line: string, marker: string): boolean =>
-  new RegExp(`${MARKER_TAG}:${escapeRegExp(marker)}(?:\\b|$)`, "u").test(line);
+  new RegExp(`${MARKER_TAG}:${escapeRegExp(marker)}(?=\\s|$)`, "u").test(line);
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
