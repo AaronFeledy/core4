@@ -208,6 +208,20 @@ describe("ManagedFileService (in-memory)", () => {
     expect(result.entries[0]?.action).toBe("skip-adopted");
   });
 
+  test("adopt targets the default-base ledger entry for duplicate relative paths", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const customBase = "/lando-memfs/custom";
+    const custom = file({ id: "a:custom", path: "shared.txt", base: customBase });
+    const local = file({ id: "a:local", path: "shared.txt" });
+    await runScoped(store.service.apply([custom, local]));
+
+    await run(store.service.adopt("shared.txt"));
+
+    const entries = store.ledger();
+    expect(entries.find((entry) => entry.base === customBase)?.state).toBe("managed");
+    expect(entries.find((entry) => entry.base === undefined)?.state).toBe("adopted");
+  });
+
   test("release flips ledger ownership to adopted without touching the file", async () => {
     const store = await run(makeTestManagedFileStore());
     const mf = file({ id: "a:rel", path: "rel.txt" });
@@ -217,6 +231,20 @@ describe("ManagedFileService (in-memory)", () => {
     await run(store.service.release("rel.txt"));
     expect(store.ledger()[0]?.state).toBe("adopted");
     expect(store.read("rel.txt")).toBe(before);
+  });
+
+  test("release targets the default-base ledger entry for duplicate relative paths", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const customBase = "/lando-memfs/custom";
+    const custom = file({ id: "a:custom-release", path: "release.txt", base: customBase });
+    const local = file({ id: "a:local-release", path: "release.txt" });
+    await runScoped(store.service.apply([custom, local]));
+
+    await run(store.service.release("release.txt"));
+
+    const entries = store.ledger();
+    expect(entries.find((entry) => entry.base === customBase)?.state).toBe("managed");
+    expect(entries.find((entry) => entry.base === undefined)?.state).toBe("adopted");
   });
 
   test("removing a previously managed file deletes it and clears the ledger", async () => {
@@ -463,6 +491,25 @@ describe("ManagedFileService (disk backend)", () => {
       } finally {
         await rm(customBase, { recursive: true, force: true });
       }
+    });
+  });
+
+  test("an adopted missing file is not recreated", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      const mf = file({ id: "d:adopt-missing", path: "adopt-missing.txt" });
+      await runScoped(service.apply([mf]));
+      await run(service.adopt("adopt-missing.txt"));
+      await rm(join(dirs.base, "adopt-missing.txt"), { force: true });
+
+      const result = await runScoped(service.apply([mf]));
+      const exists = await readFile(join(dirs.base, "adopt-missing.txt"), "utf8").then(
+        () => true,
+        () => false,
+      );
+
+      expect(result.entries[0]?.action).toBe("skip-adopted");
+      expect(exists).toBe(false);
     });
   });
 });

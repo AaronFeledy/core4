@@ -240,6 +240,7 @@ const decideFile = (
       const desiredFile = composeFileContent(mf.format, marker, body);
       const desiredChecksum = sha256(desiredFile);
 
+      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
       if (disk === null) {
         return {
           action: "create",
@@ -249,7 +250,6 @@ const decideFile = (
           ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
         };
       }
-      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
 
       const markerPresent = hasFileMarker(mf.format, disk, marker);
       if (!markerPresent) {
@@ -607,7 +607,7 @@ export const makeManagedFileService = (
     const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("adopt", (entries) =>
         Effect.gen(function* () {
-          const entry = entries.find((candidate) => candidate.path === path);
+          const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
           const base = yield* backend.resolveBase(entry?.base, "adopt");
           const abs = yield* backend.resolveTarget(base, path, "adopt");
           const disk = yield* backend.readMaybe(abs, "adopt");
@@ -627,7 +627,7 @@ export const makeManagedFileService = (
 
     const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("release", (entries) => {
-        const entry = entries.find((candidate) => candidate.path === path);
+        const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
         return Effect.succeed([
           undefined,
           entry ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }) : entries,
