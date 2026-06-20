@@ -11,7 +11,7 @@
 // `PathsService.managedFileLedger` lands.
 
 import { createHash } from "node:crypto";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
@@ -604,8 +604,8 @@ const containmentError = (operation: ManagedFileOperation, path: string): Manage
 const resolveContained = async (base: string, relPath: string): Promise<string | null> => {
   if (isAbsolute(relPath)) return null;
   const target = resolve(base, relPath);
-  const real = await realpathOrSelf(target);
   const realBase = await realpathOrSelf(base);
+  const real = (await realpathIfExists(target)) ?? (await resolveMissingTargetRealPath(target));
   const rel = relative(realBase, real);
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
   return target;
@@ -614,6 +614,25 @@ const resolveContained = async (base: string, relPath: string): Promise<string |
 const realpathOrSelf = async (path: string): Promise<string> => {
   const { realpath } = await import("node:fs/promises");
   return realpath(path).catch(() => path);
+};
+
+const realpathIfExists = async (path: string): Promise<string | null> => {
+  const { realpath } = await import("node:fs/promises");
+  return realpath(path).catch((cause: { code?: string }) => {
+    if (cause.code === "ENOENT" || cause.code === "ENOTDIR") return null;
+    throw cause;
+  });
+};
+
+const resolveMissingTargetRealPath = async (target: string): Promise<string> => {
+  let ancestor = dirname(target);
+  while (true) {
+    const realAncestor = await realpathIfExists(ancestor);
+    if (realAncestor !== null) return resolve(realAncestor, relative(ancestor, target));
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return target;
+    ancestor = parent;
+  }
 };
 
 /** Build the disk-backed backend rooted at `cwd` with the ledger under userData. */

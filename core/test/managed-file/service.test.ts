@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -274,6 +274,27 @@ describe("ManagedFileService (disk backend)", () => {
       expect(result.entries[0]?.action).toBe("create");
       const files = await readdir(ledgerDir);
       expect(files.some((name) => name.includes(".corrupt-"))).toBe(true);
+    });
+  });
+
+  test("rejects writes through a symlinked directory that escapes the base", async () => {
+    await withTemp(async (dirs) => {
+      const outside = await realpath(await mkdtemp(join(tmpdir(), "lando-mf-outside-")));
+      try {
+        await symlink(outside, join(dirs.base, "linked"));
+        const service = await run(makeService(dirs));
+
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(service.apply([file({ id: "d:link", path: "linked/escape.txt" })])),
+        );
+
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+          expect(exit.cause.error.reason).toBe("path");
+        }
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -1420,3 +1420,10 @@
   - `block` mode needs a comment-capable format; `commentPrefix` returns `null` for JSON, so JSON is `file`-mode only (it injects an `x-lando-generated` key when the body is a JSON object, else falls back to the ledger). `keys`-mode structured merge and `template`/`inline` content rendering deliberately fail loudly with `ManagedFileError reason:"format"` until their 4.x consumers land.
   - Use `writeFileAtomicScoped` (`core/src/state-store/atomic.ts`), NOT cache's `writeFileAtomicViaRename`, for any new durable-state/working-tree write — the cache helper's temp cleanup never runs on `Effect.interrupt` and its Promise is not cancellable.
 ---
+
+## 2026-06-20 00:27 CDT - US-351 Review
+- Fixed a real path-containment blocker in the disk-backed ManagedFileService: a missing child below an existing symlinked directory could pass containment and then be created outside the managed-file base when the atomic write followed the symlink. Containment now resolves an existing target or the nearest existing parent before approving the path, and the disk-backend regression covers the escape.
+- Review notes (deferred/rejected): backup file mode hardening is deferred to US-352, whose AC explicitly owns backup storage/redaction; the current story only required atomic, scoped writes and non-clobbering decisions.
+- Verification: typecheck, lint, git diff --check passed; focused managed-file service test command exited 0.
+- **Learnings for future iterations:** Containment for managed writes must validate the real path of the nearest existing parent when the target file does not exist, or symlinked directories can redirect a later create outside the approved base.
+---
