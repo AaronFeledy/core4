@@ -22,8 +22,8 @@ export interface ManagedFileApplyOptions {
 }
 
 /**
- * The single chokepoint for Lando-owned writes into the user's working tree
- * (§10.13.2). Renders content, encodes structured formats, applies ownership
+ * The single chokepoint for Lando-owned writes into the user's working tree.
+ * Renders content, encodes structured formats, applies ownership
  * markers, records a `StateStore` ledger, detects drift/adoption, and refuses
  * to silently clobber a user edit. Available at bootstrap level `minimal`,
  * host/test-overridable, but not a plugin contribution surface.

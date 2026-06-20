@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 /**
- * The single tagged error raised by `ManagedFileService` (§10.13.4).
+ * The single tagged error raised by `ManagedFileService`.
  *
  * `reason` discriminates the failure: `conflict` identifies a protected
  * in-place user edit, `path` covers realpath-containment failures, `format`

@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { AbsolutePath, PortablePath } from "./primitives.ts";
 
 // Managed-file primitive shapes — the declarative model `ManagedFileService`
-// (§10.13) plans and applies against the user's working tree. A caller
+// plans and applies against the user's working tree. A caller
 // supplies one or more `ManagedFile` entries describing rendered, marked
 // project files the user can adopt (settings.php, .env, a Landofile fragment);
 // the service renders content, encodes structured formats, applies ownership
