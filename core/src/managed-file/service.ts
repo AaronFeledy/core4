@@ -356,6 +356,17 @@ const decideBlock = (
 
       if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
 
+      if (disk === null) {
+        const newContent = insertBlock(disk, desiredBlock);
+        return {
+          action: "create",
+          relPath,
+          abs,
+          write: newContent,
+          ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+        };
+      }
+
       if (!location.found) {
         if (entry) {
           // Previously managed, fence removed by the user -> adopted.
@@ -374,21 +385,11 @@ const decideBlock = (
             ),
           };
         }
-        if (disk !== null) {
-          return {
-            action: "skip-adopted",
-            relPath,
-            abs,
-            ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
-          };
-        }
-        const newContent = insertBlock(disk, desiredBlock);
         return {
-          action: "create",
+          action: "skip-adopted",
           relPath,
           abs,
-          write: newContent,
-          ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+          ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
         };
       }
 

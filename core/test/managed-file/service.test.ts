@@ -560,6 +560,30 @@ describe("ManagedFileService (disk backend)", () => {
     });
   });
 
+  test("block mode recreates deleted managed files but not deleted adopted files", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      const managed = file({ id: "d:block-managed", path: "block-managed.conf", mode: "block" });
+      await runScoped(service.apply([managed]));
+      await rm(join(dirs.base, "block-managed.conf"), { force: true });
+
+      const recreated = await runScoped(service.apply([managed]));
+      expect(recreated.entries[0]?.action).toBe("create");
+      expect(await readFile(join(dirs.base, "block-managed.conf"), "utf8")).toContain(
+        ">>> lando:d:block-managed >>>",
+      );
+
+      const adopted = file({ id: "d:block-adopted", path: "block-adopted.conf", mode: "block" });
+      await runScoped(service.apply([adopted]));
+      await run(service.adopt("block-adopted.conf"));
+      await rm(join(dirs.base, "block-adopted.conf"), { force: true });
+
+      const skipped = await runScoped(service.apply([adopted]));
+      expect(skipped.entries[0]?.action).toBe("skip-adopted");
+      await expect(readFile(join(dirs.base, "block-adopted.conf"), "utf8")).rejects.toBeDefined();
+    });
+  });
+
   test("an adopted missing file is not recreated", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
