@@ -68,8 +68,31 @@ interface Envelope {
   readonly data: unknown;
 }
 
+interface LockRecord {
+  readonly pid: number;
+  readonly token: string;
+  readonly createdAt: number;
+}
+
 const isMissing = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "ENOENT";
+
+const processIsDead = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (cause) {
+    return (cause as { readonly code?: unknown }).code === "ESRCH";
+  }
+};
+
+const readLock = async (path: string): Promise<LockRecord | null> => {
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as LockRecord;
+  } catch {
+    return null;
+  }
+};
 
 const ioError = (path: string, cause: unknown): StateBucketError =>
   new StateBucketError({ reason: "io", path, cause });
@@ -145,8 +168,12 @@ export const openJsonBucket = <A, I>(spec: JsonBucketSpec<A, I>): Effect.Effect<
               } catch (cause) {
                 if ((cause as { code?: string }).code !== "EEXIST") throw cause;
                 // Possible stale lock: take over when the holder is old or dead.
-                const info = await stat(lockPath).catch(() => null);
-                if (info && Date.now() - info.mtimeMs > LOCK_STALE_MS) {
+                const current = await readLock(lockPath);
+                if (
+                  current === null ||
+                  Date.now() - current.createdAt > LOCK_STALE_MS ||
+                  processIsDead(current.pid)
+                ) {
                   await unlink(lockPath).catch(() => undefined);
                 }
                 return false;
