@@ -425,6 +425,7 @@ const decideOne = (
   entries: ReadonlyArray<LedgerEntry>,
   operation: ManagedFileOperation,
   force: boolean,
+  pendingDisk?: ReadonlyMap<string, string | null>,
 ): Effect.Effect<Decision, ManagedFileError> => {
   if (mf.mode === "keys") {
     return fail("format", operation, {
@@ -433,21 +434,19 @@ const decideOne = (
     });
   }
   const marker = mf.marker ?? mf.id;
-  return backend.resolveBase(mf.base, operation).pipe(
-    Effect.flatMap((base) => backend.resolveTarget(base, mf.path, operation)),
-    Effect.flatMap((abs) =>
-      backend.readMaybe(abs, operation).pipe(
-        Effect.flatMap((disk) => {
-          const entry = entries.find((candidate) =>
-            sameLedgerTarget(candidate, { path: mf.path, base: mf.base }),
-          );
-          return mf.mode === "file"
-            ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
-            : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
-        }),
-      ),
-    ),
-  );
+  return Effect.gen(function* () {
+    const base = yield* backend.resolveBase(mf.base, operation);
+    const abs = yield* backend.resolveTarget(base, mf.path, operation);
+    const disk = pendingDisk?.has(abs)
+      ? (pendingDisk.get(abs) ?? null)
+      : yield* backend.readMaybe(abs, operation);
+    const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path: mf.path, base: mf.base }));
+    const decision =
+      mf.mode === "file"
+        ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
+        : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
+    return yield* decision;
+  });
 };
 
 // ----- Service factory ----------------------------------------------------
@@ -463,16 +462,23 @@ export const makeManagedFileService = (
   Effect.sync(() => {
     const plan = (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
       backend.peekLedger("plan").pipe(
-        Effect.flatMap((entries) =>
-          Effect.forEach(files, (mf) => decideOne(backend, mf, entries, "plan", false)).pipe(
-            Effect.map((decisions) => ({
-              entries: decisions.map((decision, index) => ({
-                id: files[index]?.id ?? "",
+        Effect.flatMap((initial) =>
+          Effect.gen(function* () {
+            let entries = initial;
+            const pendingDisk = new Map<string, string | null>();
+            const results: Array<ManagedFilePlan["entries"][number]> = [];
+            for (const mf of files) {
+              const decision = yield* decideOne(backend, mf, entries, "plan", false, pendingDisk);
+              if (decision.ledgerNext) entries = upsertEntry(entries, decision.ledgerNext);
+              if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
+              results.push({
+                id: mf.id,
                 path: decision.relPath as PortablePath,
                 action: decision.action,
-              })),
-            })),
-          ),
+              });
+            }
+            return { entries: results };
+          }),
         ),
       );
 
@@ -483,10 +489,18 @@ export const makeManagedFileService = (
       backend.mutateLedger("apply", (initial) =>
         Effect.gen(function* () {
           let entries = initial;
+          const pendingDisk = new Map<string, string | null>();
           const prepared: Array<PreparedDecision> = [];
           const results: Array<ManagedFileResult["entries"][number]> = [];
           for (const mf of files) {
-            const decision = yield* decideOne(backend, mf, entries, "apply", opts?.force ?? false);
+            const decision = yield* decideOne(
+              backend,
+              mf,
+              entries,
+              "apply",
+              opts?.force ?? false,
+              pendingDisk,
+            );
             if (decision.failConflict) {
               return yield* fail("conflict", "apply", {
                 path: decision.relPath,
@@ -503,6 +517,7 @@ export const makeManagedFileService = (
                   : decision.ledgerNext,
               );
             }
+            if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
             prepared.push({ mf, decision });
             results.push({
               id: mf.id,

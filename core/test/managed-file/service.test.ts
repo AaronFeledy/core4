@@ -241,6 +241,21 @@ describe("ManagedFileService (in-memory)", () => {
     expect(planned.entries.map((e) => e.action)).toEqual(applied.entries.map((e) => e.action));
   });
 
+  test("plan accounts for earlier ledger updates in the same batch", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const original = file({ id: "a:batch", path: "batch.txt", content: { kind: "text", value: "old\n" } });
+    await runScoped(store.service.apply([original]));
+
+    const changed = file({ id: "a:batch", path: "batch.txt", content: { kind: "text", value: "new\n" } });
+    const files = [changed, changed];
+    const planned = await run(store.service.plan(files));
+    const applied = await runScoped(store.service.apply(files));
+
+    expect(planned.entries.map((e) => e.action)).toEqual(["update", "skip-unchanged"]);
+    expect(applied.entries.map((e) => e.action)).toEqual(planned.entries.map((e) => e.action));
+    expect(store.read("batch.txt")).toContain("new");
+  });
+
   test("path escaping the base is rejected with reason path", async () => {
     const store = await run(makeTestManagedFileStore());
     const mf = file({ id: "a:esc", path: "../escape.txt" });
