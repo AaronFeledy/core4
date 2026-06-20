@@ -1,0 +1,711 @@
+// `ManagedFileServiceLive`: the single chokepoint for Lando-owned writes into
+// the user's working tree. It renders + encodes content, applies an ownership
+// marker (`file` mode) or a fenced region (`block` mode), records a durable
+// ledger, detects drift/adoption, and refuses to silently clobber a user edit.
+//
+// The decision algorithm and marker handling are backend-agnostic: the service
+// is built over a `ManagedFileBackend` so the real disk-backed `Live` layer and
+// the in-memory `TestManagedFileStore` share one implementation. The ledger is
+// realized through the generic durable JSON state bucket (not a bespoke
+// registry/lock/quarantine); root resolution uses `resolveUserDataRoot()` until
+// `PathsService.managedFileLedger` lands.
+
+import { createHash } from "node:crypto";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+
+import { type Context, Effect, Layer, Schema } from "effect";
+
+import { ManagedFileError } from "@lando/sdk/errors";
+import type {
+  FileFormat,
+  ManagedFile,
+  ManagedFileInfo,
+  ManagedFilePlan,
+  ManagedFileResult,
+  PortablePath,
+} from "@lando/sdk/schema";
+import {
+  type ManagedFileApplyOptions,
+  type ManagedFileSelector,
+  ManagedFileService,
+} from "@lando/sdk/services";
+
+import { resolveUserDataRoot } from "../config/roots.ts";
+import { writeFileAtomicScoped } from "../state-store/atomic.ts";
+import { type JsonBucket, openJsonBucket } from "../state-store/json-bucket.ts";
+import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
+import {
+  commentPrefix,
+  composeBlock,
+  composeFileContent,
+  findBlock,
+  hasFileMarker,
+  insertBlock,
+  removeBlock,
+  replaceBlock,
+  stripFileMarker,
+} from "./marker.ts";
+
+// ----- Ledger model -------------------------------------------------------
+
+const LedgerEntrySchema = Schema.Struct({
+  id: Schema.String,
+  owner: Schema.String,
+  path: Schema.String,
+  mode: Schema.Literal("file", "block", "keys"),
+  format: Schema.Literal("text", "env", "json", "yaml", "toml", "ini", "landofile"),
+  marker: Schema.String,
+  lastWrittenChecksum: Schema.String,
+  sourceHash: Schema.String,
+  state: Schema.Literal("managed", "adopted"),
+  backup: Schema.optional(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export type LedgerEntry = typeof LedgerEntrySchema.Type;
+
+const LedgerStateSchema = Schema.Struct({ entries: Schema.Array(LedgerEntrySchema) });
+export type LedgerState = typeof LedgerStateSchema.Type;
+
+const LEDGER_VERSION = 1;
+
+// ----- Backend seam (disk vs in-memory) -----------------------------------
+
+/**
+ * The IO + ledger seam the service is built over. The disk `Live` backend and
+ * the in-memory test backend implement it so the decision algorithm is shared.
+ */
+export interface ManagedFileBackend {
+  /** Resolve the effective base (app root); `undefined` uses the backend default. */
+  readonly resolveBase: (
+    base: string | undefined,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<string, ManagedFileError>;
+  /** Join + realpath-contain `relPath` under `base`; reject escapes with `reason:"path"`. */
+  readonly resolveTarget: (
+    base: string,
+    relPath: string,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<string, ManagedFileError>;
+  /** Read file content, or `null` when absent. */
+  readonly readMaybe: (
+    abs: string,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<string | null, ManagedFileError>;
+  /** Atomic, interrupt-safe write. */
+  readonly writeAtomic: (
+    abs: string,
+    content: string,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<void, ManagedFileError>;
+  /** Delete a file (no-op when absent). */
+  readonly removeFile: (
+    abs: string,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<void, ManagedFileError>;
+  /** Ledger read with corruption quarantine (apply paths). */
+  readonly readLedger: (
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError>;
+  /** Side-effect-free ledger read (plan paths; never quarantines). */
+  readonly peekLedger: (
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError>;
+  /** Replace the ledger contents. */
+  readonly writeLedger: (
+    entries: ReadonlyArray<LedgerEntry>,
+    operation: ManagedFileOperation,
+  ) => Effect.Effect<void, ManagedFileError>;
+}
+
+const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+const fail = (
+  reason: ManagedFileError["reason"],
+  operation: ManagedFileOperation,
+  detail: { readonly path?: string; readonly remediation?: string; readonly cause?: unknown } = {},
+): Effect.Effect<never, ManagedFileError> =>
+  Effect.fail(new ManagedFileError({ reason, operation, ...detail }));
+
+// ----- Content rendering --------------------------------------------------
+
+const renderBody = (
+  mf: ManagedFile,
+  operation: ManagedFileOperation,
+): Effect.Effect<string, ManagedFileError> => {
+  const content = mf.content;
+  switch (content.kind) {
+    case "text":
+      return Effect.succeed(content.value);
+    case "structured":
+      return encodeFormat(mf.format, content.data, { operation });
+    case "template":
+    case "inline":
+      // Template/inline rendering rides `TemplateRenderer` (§7.3.2), wired with
+      // its 4.x consumers. The substrate ships `text`/`structured` content.
+      return fail("format", operation, {
+        path: mf.path,
+        remediation: `\`${content.kind}\` content rendering is wired with its consumer; use \`text\` or \`structured\` content for now.`,
+      });
+  }
+};
+
+// ----- Decision algorithm -------------------------------------------------
+
+interface Decision {
+  readonly action: ManagedFileResult["entries"][number]["action"];
+  readonly relPath: string;
+  readonly abs: string;
+  /** Full file content to write (apply only). */
+  readonly write?: string;
+  /** Ledger entry to upsert (apply only). */
+  readonly ledgerNext?: LedgerEntry;
+  /** Prior content to back up + relative backup path (overwrite only). */
+  readonly backup?: { readonly content: string; readonly path: string };
+  /** When set, apply must fail with this conflict error. */
+  readonly failConflict?: boolean;
+}
+
+const nowIso = (): string => new Date().toISOString();
+
+const buildEntry = (
+  mf: ManagedFile,
+  relPath: string,
+  marker: string,
+  lastWrittenChecksum: string,
+  sourceHash: string,
+  state: "managed" | "adopted",
+  existing: LedgerEntry | undefined,
+  backup?: string,
+): LedgerEntry => ({
+  id: mf.id,
+  owner: mf.owner,
+  path: relPath,
+  mode: mf.mode,
+  format: mf.format,
+  marker,
+  lastWrittenChecksum,
+  sourceHash,
+  state,
+  backup,
+  createdAt: existing?.createdAt ?? nowIso(),
+  updatedAt: nowIso(),
+});
+
+const resolveConflict = (mf: ManagedFile, force: boolean): "overwrite" | "skip" | "fail" => {
+  const policy = mf.onConflict ?? "skip";
+  if (force || policy === "overwrite") return "overwrite";
+  return policy === "fail" ? "fail" : "skip";
+};
+
+const decideFile = (
+  mf: ManagedFile,
+  relPath: string,
+  abs: string,
+  marker: string,
+  disk: string | null,
+  entry: LedgerEntry | undefined,
+  operation: ManagedFileOperation,
+  force: boolean,
+): Effect.Effect<Decision, ManagedFileError> =>
+  renderBody(mf, operation).pipe(
+    Effect.map((body): Decision => {
+      const sourceHash = sha256(body);
+      const desiredFile = composeFileContent(mf.format, marker, body);
+      const desiredChecksum = sha256(desiredFile);
+
+      if (disk === null) {
+        return {
+          action: "create",
+          relPath,
+          abs,
+          write: desiredFile,
+          ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+        };
+      }
+      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+
+      const markerPresent = hasFileMarker(mf.format, disk, marker);
+      if (!markerPresent) {
+        // Pre-existing user file, or a previously managed file whose marker was removed.
+        const action: Decision["action"] = entry ? "adopt-detected" : "skip-adopted";
+        return {
+          action,
+          relPath,
+          abs,
+          ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+        };
+      }
+
+      const currentChecksum = sha256(disk);
+      const baseline = entry?.lastWrittenChecksum;
+      if (baseline !== undefined && currentChecksum !== baseline) {
+        const mode = resolveConflict(mf, force);
+        if (mode === "overwrite") {
+          return {
+            action: "update",
+            relPath,
+            abs,
+            write: desiredFile,
+            ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+            backup: { content: disk, path: `${relPath}.lando-backup-${Date.now()}` },
+          };
+        }
+        return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
+      }
+
+      if (desiredChecksum === currentChecksum) {
+        return {
+          action: "skip-unchanged",
+          relPath,
+          abs,
+          ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+        };
+      }
+      return {
+        action: "update",
+        relPath,
+        abs,
+        write: desiredFile,
+        ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+      };
+    }),
+  );
+
+const decideBlock = (
+  mf: ManagedFile,
+  relPath: string,
+  abs: string,
+  marker: string,
+  disk: string | null,
+  entry: LedgerEntry | undefined,
+  operation: ManagedFileOperation,
+  force: boolean,
+): Effect.Effect<Decision, ManagedFileError> => {
+  const prefix = commentPrefix(mf.format);
+  if (prefix === null) {
+    return fail("format", operation, {
+      path: mf.path,
+      remediation: "`block` mode needs a comment-capable format; use `file` mode for JSON.",
+    });
+  }
+  return renderBody(mf, operation).pipe(
+    Effect.map((body): Decision => {
+      const sourceHash = sha256(body);
+      const desiredBlock = composeBlock(prefix, marker, body);
+      const desiredSliceHash = sha256(desiredBlock);
+      const location =
+        disk === null ? { found: false, slice: "", before: "", after: "" } : findBlock(prefix, marker, disk);
+
+      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+
+      if (!location.found) {
+        if (entry) {
+          // Previously managed, fence removed by the user -> adopted.
+          return {
+            action: "adopt-detected",
+            relPath,
+            abs,
+            ledgerNext: buildEntry(
+              mf,
+              relPath,
+              marker,
+              entry.lastWrittenChecksum,
+              sourceHash,
+              "adopted",
+              entry,
+            ),
+          };
+        }
+        const newContent = insertBlock(disk, desiredBlock);
+        return {
+          action: "create",
+          relPath,
+          abs,
+          write: newContent,
+          ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+        };
+      }
+
+      const currentSliceHash = sha256(location.slice);
+      const baseline = entry?.lastWrittenChecksum;
+      if (baseline !== undefined && currentSliceHash !== baseline) {
+        const mode = resolveConflict(mf, force);
+        if (mode === "overwrite") {
+          return {
+            action: "update",
+            relPath,
+            abs,
+            write: replaceBlock(location, desiredBlock),
+            ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+            backup: { content: location.slice, path: `${relPath}.lando-backup-${Date.now()}` },
+          };
+        }
+        return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
+      }
+
+      if (desiredSliceHash === currentSliceHash) {
+        return {
+          action: "skip-unchanged",
+          relPath,
+          abs,
+          ledgerNext: buildEntry(mf, relPath, marker, currentSliceHash, sourceHash, "managed", entry),
+        };
+      }
+      return {
+        action: "update",
+        relPath,
+        abs,
+        write: replaceBlock(location, desiredBlock),
+        ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+      };
+    }),
+  );
+};
+
+const decideOne = (
+  backend: ManagedFileBackend,
+  mf: ManagedFile,
+  entries: ReadonlyArray<LedgerEntry>,
+  operation: ManagedFileOperation,
+  force: boolean,
+): Effect.Effect<Decision, ManagedFileError> => {
+  if (mf.mode === "keys") {
+    return fail("format", operation, {
+      path: mf.path,
+      remediation: "`keys`-mode structured merge is deferred to 4.x; use `file` or `block`.",
+    });
+  }
+  const marker = mf.marker ?? mf.id;
+  return backend.resolveBase(mf.base, operation).pipe(
+    Effect.flatMap((base) => backend.resolveTarget(base, mf.path, operation)),
+    Effect.flatMap((abs) =>
+      backend.readMaybe(abs, operation).pipe(
+        Effect.flatMap((disk) => {
+          const entry = entries.find((candidate) => candidate.path === mf.path);
+          return mf.mode === "file"
+            ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
+            : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
+        }),
+      ),
+    ),
+  );
+};
+
+// ----- Service factory ----------------------------------------------------
+
+const upsertEntry = (entries: ReadonlyArray<LedgerEntry>, next: LedgerEntry): ReadonlyArray<LedgerEntry> => [
+  ...entries.filter((entry) => entry.path !== next.path),
+  next,
+];
+
+export const makeManagedFileService = (
+  backend: ManagedFileBackend,
+): Effect.Effect<Context.Tag.Service<typeof ManagedFileService>> =>
+  Effect.sync(() => {
+    const plan = (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
+      backend.peekLedger("plan").pipe(
+        Effect.flatMap((entries) =>
+          Effect.forEach(files, (mf) => decideOne(backend, mf, entries, "plan", false)).pipe(
+            Effect.map((decisions) => ({
+              entries: decisions.map((decision, index) => ({
+                id: files[index]?.id ?? "",
+                path: decision.relPath as PortablePath,
+                action: decision.action,
+              })),
+            })),
+          ),
+        ),
+      );
+
+    const apply = (
+      files: ReadonlyArray<ManagedFile>,
+      opts?: ManagedFileApplyOptions,
+    ): Effect.Effect<ManagedFileResult, ManagedFileError> =>
+      backend.readLedger("apply").pipe(
+        Effect.flatMap((initial) =>
+          Effect.gen(function* () {
+            let entries = initial;
+            const results: Array<ManagedFileResult["entries"][number]> = [];
+            for (const mf of files) {
+              const decision = yield* decideOne(backend, mf, entries, "apply", opts?.force ?? false);
+              if (decision.failConflict) {
+                return yield* fail("conflict", "apply", {
+                  path: decision.relPath,
+                  remediation:
+                    "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
+                });
+              }
+              let backup: PortablePath | undefined;
+              if (decision.backup) {
+                const backupAbs = yield* backend.resolveTarget(
+                  yield* backend.resolveBase(mf.base, "apply"),
+                  decision.backup.path,
+                  "apply",
+                );
+                yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
+                backup = decision.backup.path as PortablePath;
+              }
+              if (decision.write !== undefined) {
+                yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+              }
+              if (decision.ledgerNext) {
+                entries = upsertEntry(
+                  entries,
+                  decision.backup
+                    ? { ...decision.ledgerNext, backup: decision.backup.path }
+                    : decision.ledgerNext,
+                );
+              }
+              results.push({
+                id: mf.id,
+                path: decision.relPath as PortablePath,
+                action: decision.action,
+                backup,
+              });
+            }
+            yield* backend.writeLedger(entries, "apply");
+            return { entries: results };
+          }),
+        ),
+      );
+
+    const remove = (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
+      backend.readLedger("remove").pipe(
+        Effect.flatMap((entries) =>
+          Effect.gen(function* () {
+            const matches = entries.filter(
+              (entry) =>
+                entry.state === "managed" &&
+                (selector.owner === undefined || entry.owner === selector.owner) &&
+                (selector.id === undefined || entry.id === selector.id) &&
+                (selector.path === undefined || entry.path === selector.path),
+            );
+            const results: Array<ManagedFileResult["entries"][number]> = [];
+            let next = entries;
+            for (const entry of matches) {
+              const base = yield* backend.resolveBase(undefined, "remove");
+              const abs = yield* backend.resolveTarget(base, entry.path, "remove");
+              if (entry.mode === "block") {
+                const disk = yield* backend.readMaybe(abs, "remove");
+                if (disk !== null) {
+                  const prefix = commentPrefix(entry.format) ?? "#";
+                  const location = findBlock(prefix, entry.marker, disk);
+                  if (location.found) yield* backend.writeAtomic(abs, removeBlock(location), "remove");
+                }
+              } else {
+                yield* backend.removeFile(abs, "remove");
+              }
+              next = next.filter((candidate) => candidate.path !== entry.path);
+              results.push({ id: entry.id, path: entry.path as PortablePath, action: "update" });
+            }
+            yield* backend.writeLedger(next, "remove");
+            return { entries: results };
+          }),
+        ),
+      );
+
+    const status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError> = Effect.suspend(() =>
+      backend.readLedger("status").pipe(
+        Effect.flatMap((entries) =>
+          Effect.forEach(entries, (entry) =>
+            backend.resolveBase(undefined, "status").pipe(
+              Effect.flatMap((base) => backend.resolveTarget(base, entry.path, "status")),
+              Effect.flatMap((abs) => backend.readMaybe(abs, "status")),
+              Effect.map(
+                (disk): ManagedFileInfo => ({
+                  path: entry.path as PortablePath,
+                  owner: entry.owner,
+                  mode: entry.mode,
+                  state: computeState(entry, disk),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
+      backend.readLedger("adopt").pipe(
+        Effect.flatMap((entries) =>
+          Effect.gen(function* () {
+            const entry = entries.find((candidate) => candidate.path === path);
+            const base = yield* backend.resolveBase(undefined, "adopt");
+            const abs = yield* backend.resolveTarget(base, path, "adopt");
+            const disk = yield* backend.readMaybe(abs, "adopt");
+            if (disk !== null && entry) {
+              const stripped =
+                entry.mode === "block"
+                  ? stripBlockFences(entry.format, entry.marker, disk)
+                  : stripFileMarker(entry.format, disk, entry.marker);
+              if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
+            }
+            if (entry) {
+              yield* backend.writeLedger(
+                upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }),
+                "adopt",
+              );
+            }
+          }),
+        ),
+      );
+
+    const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
+      backend.readLedger("release").pipe(
+        Effect.flatMap((entries) => {
+          const entry = entries.find((candidate) => candidate.path === path);
+          if (!entry) return Effect.void;
+          return backend.writeLedger(
+            upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }),
+            "release",
+          );
+        }),
+      );
+
+    return { plan, apply, remove, status, adopt, release } satisfies Context.Tag.Service<
+      typeof ManagedFileService
+    >;
+  });
+
+const stripBlockFences = (format: FileFormat, marker: string, content: string): string => {
+  const prefix = commentPrefix(format) ?? "#";
+  const location = findBlock(prefix, marker, content);
+  if (!location.found) return content;
+  const inner = location.slice.split(/\r?\n/u).slice(1, -1).join("\n");
+  const before = location.before === "" ? "" : `${location.before}\n`;
+  const after = location.after === "" ? "" : `\n${location.after.replace(/^\n+/u, "")}`;
+  return `${before}${inner}${after}`.replace(/\n*$/u, "\n");
+};
+
+const computeState = (entry: LedgerEntry, disk: string | null): ManagedFileInfo["state"] => {
+  if (disk === null) return "missing";
+  if (entry.state === "adopted") return "adopted";
+  if (entry.mode === "block") {
+    const prefix = commentPrefix(entry.format) ?? "#";
+    const location = findBlock(prefix, entry.marker, disk);
+    if (!location.found) return "adopted";
+    return sha256(location.slice) === entry.lastWrittenChecksum ? "managed" : "conflict";
+  }
+  if (!hasFileMarker(entry.format, disk, entry.marker)) return "adopted";
+  return sha256(disk) === entry.lastWrittenChecksum ? "managed" : "conflict";
+};
+
+// ----- Disk-backed Live backend + Layer -----------------------------------
+
+const containmentError = (operation: ManagedFileOperation, path: string): ManagedFileError =>
+  new ManagedFileError({
+    reason: "path",
+    operation,
+    path,
+    remediation: "Managed-file paths must stay inside the resolved base (app root).",
+  });
+
+const resolveContained = async (base: string, relPath: string): Promise<string | null> => {
+  if (isAbsolute(relPath)) return null;
+  const target = resolve(base, relPath);
+  const real = await realpathOrSelf(target);
+  const realBase = await realpathOrSelf(base);
+  const rel = relative(realBase, real);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return target;
+};
+
+const realpathOrSelf = async (path: string): Promise<string> => {
+  const { realpath } = await import("node:fs/promises");
+  return realpath(path).catch(() => path);
+};
+
+/** Build the disk-backed backend rooted at `cwd` with the ledger under userData. */
+export const makeDiskBackend = (options: {
+  readonly defaultBase: () => string;
+  readonly ledgerRoot: () => string;
+}): Effect.Effect<ManagedFileBackend> =>
+  Effect.gen(function* () {
+    const ledgerBucketFor = (base: string): Effect.Effect<JsonBucket<LedgerState>> =>
+      openJsonBucket({
+        dir: join(options.ledgerRoot(), "managed-files", deriveAppId(base)),
+        key: "ledger.json",
+        version: LEDGER_VERSION,
+        schema: LedgerStateSchema,
+        lock: "advisory",
+        onCorrupt: "quarantine",
+        default: { entries: [] },
+      });
+
+    const ledgerEntries = (
+      mutate: boolean,
+      operation: ManagedFileOperation,
+    ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> =>
+      ledgerBucketFor(options.defaultBase()).pipe(
+        Effect.flatMap((bucket) => (mutate ? bucket.get : bucket.peek)),
+        Effect.map((state) => state?.entries ?? []),
+        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
+      );
+
+    return {
+      resolveBase: (base) => Effect.succeed(base ?? options.defaultBase()),
+      resolveTarget: (base, relPath, operation) =>
+        Effect.tryPromise({
+          try: () => resolveContained(base, relPath),
+          catch: (cause) => new ManagedFileError({ reason: "io", operation, path: relPath, cause }),
+        }).pipe(
+          Effect.flatMap((abs) =>
+            abs === null ? Effect.fail(containmentError(operation, relPath)) : Effect.succeed(abs),
+          ),
+        ),
+      readMaybe: (abs, operation) =>
+        Effect.tryPromise({
+          try: async () => {
+            const { readFile } = await import("node:fs/promises");
+            return (await readFile(abs, "utf8")) as string;
+          },
+          catch: (cause) =>
+            (cause as { code?: string }).code === "ENOENT"
+              ? new ManagedFileError({ reason: "io", operation, path: abs, cause: "ENOENT" })
+              : new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+        }).pipe(
+          Effect.catchIf(
+            (error) => error.cause === "ENOENT",
+            () => Effect.succeed<string | null>(null),
+          ),
+        ),
+      writeAtomic: (abs, content, operation) =>
+        writeFileAtomicScoped(abs, content).pipe(
+          Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
+        ),
+      removeFile: (abs, operation) =>
+        Effect.tryPromise({
+          try: async () => {
+            const { unlink } = await import("node:fs/promises");
+            await unlink(abs).catch((cause: { code?: string }) => {
+              if (cause.code !== "ENOENT") throw cause;
+            });
+          },
+          catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+        }),
+      readLedger: (operation) => ledgerEntries(true, operation),
+      peekLedger: (operation) => ledgerEntries(false, operation),
+      writeLedger: (entries, operation) =>
+        ledgerBucketFor(options.defaultBase()).pipe(
+          Effect.flatMap((bucket) => bucket.set({ entries })),
+          Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
+        ),
+    } satisfies ManagedFileBackend;
+  });
+
+const deriveAppId = (base: string): string => {
+  const name = (base.split(/[\\/]/u).filter(Boolean).pop() ?? "app").replace(/[^A-Za-z0-9._-]/gu, "-");
+  return `${name}-${sha256(resolve(base)).slice(0, 12)}`;
+};
+
+/**
+ * The disk-backed `ManagedFileService` layer, available at bootstrap `minimal`.
+ * Constructing it touches no provider, network, or plugin module.
+ */
+export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.effect(
+  ManagedFileService,
+  makeDiskBackend({ defaultBase: () => process.cwd(), ledgerRoot: () => resolveUserDataRoot() }).pipe(
+    Effect.flatMap(makeManagedFileService),
+  ),
+);

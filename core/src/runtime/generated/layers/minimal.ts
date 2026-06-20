@@ -18,6 +18,7 @@ import { CacheServiceLive } from "../../../cache/service.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { LoggerLive } from "../../../logging/service.ts";
+import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
 import { EventServiceLive } from "../../../services/event-service.ts";
@@ -45,5 +46,6 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     ProcessRunnerLive,
     PrivilegeServiceLive,
     SecretStoreLive,
+    Layer.suspend(() => ManagedFileServiceLive),
   );
 };
