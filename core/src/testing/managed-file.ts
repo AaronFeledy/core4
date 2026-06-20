@@ -69,6 +69,13 @@ export const makeTestManagedFileStore = (
       removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
       readLedger: () => Effect.succeed(entries),
       peekLedger: () => Effect.succeed(entries),
+      mutateLedger: (_operation, f) =>
+        f(entries).pipe(
+          Effect.map(([result, next]) => {
+            entries = next;
+            return result;
+          }),
+        ),
       writeLedger: (next) =>
         Effect.sync(() => {
           entries = next;

@@ -111,6 +111,13 @@ export interface ManagedFileBackend {
   readonly peekLedger: (
     operation: ManagedFileOperation,
   ) => Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError>;
+  /** Locked read-modify-write of the ledger. */
+  readonly mutateLedger: <A>(
+    operation: ManagedFileOperation,
+    f: (
+      entries: ReadonlyArray<LedgerEntry>,
+    ) => Effect.Effect<readonly [A, ReadonlyArray<LedgerEntry>], ManagedFileError>,
+  ) => Effect.Effect<A, ManagedFileError>;
   /** Replace the ledger contents. */
   readonly writeLedger: (
     entries: ReadonlyArray<LedgerEntry>,
@@ -126,6 +133,12 @@ const fail = (
   detail: { readonly path?: string; readonly remediation?: string; readonly cause?: unknown } = {},
 ): Effect.Effect<never, ManagedFileError> =>
   Effect.fail(new ManagedFileError({ reason, operation, ...detail }));
+
+const isManagedFileError = (cause: unknown): cause is ManagedFileError =>
+  typeof cause === "object" &&
+  cause !== null &&
+  "_tag" in cause &&
+  (cause as { readonly _tag?: unknown })._tag === "ManagedFileError";
 
 // ----- Content rendering --------------------------------------------------
 
@@ -422,87 +435,81 @@ export const makeManagedFileService = (
       files: ReadonlyArray<ManagedFile>,
       opts?: ManagedFileApplyOptions,
     ): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-      backend.readLedger("apply").pipe(
-        Effect.flatMap((initial) =>
-          Effect.gen(function* () {
-            let entries = initial;
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            for (const mf of files) {
-              const decision = yield* decideOne(backend, mf, entries, "apply", opts?.force ?? false);
-              if (decision.failConflict) {
-                return yield* fail("conflict", "apply", {
-                  path: decision.relPath,
-                  remediation:
-                    "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
-                });
-              }
-              let backup: PortablePath | undefined;
-              if (decision.backup) {
-                const backupAbs = yield* backend.resolveTarget(
-                  yield* backend.resolveBase(mf.base, "apply"),
-                  decision.backup.path,
-                  "apply",
-                );
-                yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
-                backup = decision.backup.path as PortablePath;
-              }
-              if (decision.write !== undefined) {
-                yield* backend.writeAtomic(decision.abs, decision.write, "apply");
-              }
-              if (decision.ledgerNext) {
-                entries = upsertEntry(
-                  entries,
-                  decision.backup
-                    ? { ...decision.ledgerNext, backup: decision.backup.path }
-                    : decision.ledgerNext,
-                );
-              }
-              results.push({
-                id: mf.id,
-                path: decision.relPath as PortablePath,
-                action: decision.action,
-                backup,
+      backend.mutateLedger("apply", (initial) =>
+        Effect.gen(function* () {
+          let entries = initial;
+          const results: Array<ManagedFileResult["entries"][number]> = [];
+          for (const mf of files) {
+            const decision = yield* decideOne(backend, mf, entries, "apply", opts?.force ?? false);
+            if (decision.failConflict) {
+              return yield* fail("conflict", "apply", {
+                path: decision.relPath,
+                remediation:
+                  "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
               });
             }
-            yield* backend.writeLedger(entries, "apply");
-            return { entries: results };
-          }),
-        ),
+            let backup: PortablePath | undefined;
+            if (decision.backup) {
+              const backupAbs = yield* backend.resolveTarget(
+                yield* backend.resolveBase(mf.base, "apply"),
+                decision.backup.path,
+                "apply",
+              );
+              yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
+              backup = decision.backup.path as PortablePath;
+            }
+            if (decision.write !== undefined) {
+              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+            }
+            if (decision.ledgerNext) {
+              entries = upsertEntry(
+                entries,
+                decision.backup
+                  ? { ...decision.ledgerNext, backup: decision.backup.path }
+                  : decision.ledgerNext,
+              );
+            }
+            results.push({
+              id: mf.id,
+              path: decision.relPath as PortablePath,
+              action: decision.action,
+              backup,
+            });
+          }
+          return [{ entries: results }, entries] as const;
+        }),
       );
 
     const remove = (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-      backend.readLedger("remove").pipe(
-        Effect.flatMap((entries) =>
-          Effect.gen(function* () {
-            const matches = entries.filter(
-              (entry) =>
-                entry.state === "managed" &&
-                (selector.owner === undefined || entry.owner === selector.owner) &&
-                (selector.id === undefined || entry.id === selector.id) &&
-                (selector.path === undefined || entry.path === selector.path),
-            );
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            let next = entries;
-            for (const entry of matches) {
-              const base = yield* backend.resolveBase(undefined, "remove");
-              const abs = yield* backend.resolveTarget(base, entry.path, "remove");
-              if (entry.mode === "block") {
-                const disk = yield* backend.readMaybe(abs, "remove");
-                if (disk !== null) {
-                  const prefix = commentPrefix(entry.format) ?? "#";
-                  const location = findBlock(prefix, entry.marker, disk);
-                  if (location.found) yield* backend.writeAtomic(abs, removeBlock(location), "remove");
-                }
-              } else {
-                yield* backend.removeFile(abs, "remove");
+      backend.mutateLedger("remove", (entries) =>
+        Effect.gen(function* () {
+          const matches = entries.filter(
+            (entry) =>
+              entry.state === "managed" &&
+              (selector.owner === undefined || entry.owner === selector.owner) &&
+              (selector.id === undefined || entry.id === selector.id) &&
+              (selector.path === undefined || entry.path === selector.path),
+          );
+          const results: Array<ManagedFileResult["entries"][number]> = [];
+          let next = entries;
+          for (const entry of matches) {
+            const base = yield* backend.resolveBase(undefined, "remove");
+            const abs = yield* backend.resolveTarget(base, entry.path, "remove");
+            if (entry.mode === "block") {
+              const disk = yield* backend.readMaybe(abs, "remove");
+              if (disk !== null) {
+                const prefix = commentPrefix(entry.format) ?? "#";
+                const location = findBlock(prefix, entry.marker, disk);
+                if (location.found) yield* backend.writeAtomic(abs, removeBlock(location), "remove");
               }
-              next = next.filter((candidate) => candidate.path !== entry.path);
-              results.push({ id: entry.id, path: entry.path as PortablePath, action: "update" });
+            } else {
+              yield* backend.removeFile(abs, "remove");
             }
-            yield* backend.writeLedger(next, "remove");
-            return { entries: results };
-          }),
-        ),
+            next = next.filter((candidate) => candidate.path !== entry.path);
+            results.push({ id: entry.id, path: entry.path as PortablePath, action: "update" });
+          }
+          return [{ entries: results }, next] as const;
+        }),
       );
 
     const status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError> = Effect.suspend(() =>
@@ -527,41 +534,34 @@ export const makeManagedFileService = (
     );
 
     const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
-      backend.readLedger("adopt").pipe(
-        Effect.flatMap((entries) =>
-          Effect.gen(function* () {
-            const entry = entries.find((candidate) => candidate.path === path);
-            const base = yield* backend.resolveBase(undefined, "adopt");
-            const abs = yield* backend.resolveTarget(base, path, "adopt");
-            const disk = yield* backend.readMaybe(abs, "adopt");
-            if (disk !== null && entry) {
-              const stripped =
-                entry.mode === "block"
-                  ? stripBlockFences(entry.format, entry.marker, disk)
-                  : stripFileMarker(entry.format, disk, entry.marker);
-              if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
-            }
-            if (entry) {
-              yield* backend.writeLedger(
-                upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }),
-                "adopt",
-              );
-            }
-          }),
-        ),
+      backend.mutateLedger("adopt", (entries) =>
+        Effect.gen(function* () {
+          const entry = entries.find((candidate) => candidate.path === path);
+          const base = yield* backend.resolveBase(undefined, "adopt");
+          const abs = yield* backend.resolveTarget(base, path, "adopt");
+          const disk = yield* backend.readMaybe(abs, "adopt");
+          if (disk !== null && entry) {
+            const stripped =
+              entry.mode === "block"
+                ? stripBlockFences(entry.format, entry.marker, disk)
+                : stripFileMarker(entry.format, disk, entry.marker);
+            if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
+          }
+          const next = entry
+            ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() })
+            : entries;
+          return [undefined, next] as const;
+        }),
       );
 
     const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
-      backend.readLedger("release").pipe(
-        Effect.flatMap((entries) => {
-          const entry = entries.find((candidate) => candidate.path === path);
-          if (!entry) return Effect.void;
-          return backend.writeLedger(
-            upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }),
-            "release",
-          );
-        }),
-      );
+      backend.mutateLedger("release", (entries) => {
+        const entry = entries.find((candidate) => candidate.path === path);
+        return Effect.succeed([
+          undefined,
+          entry ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }) : entries,
+        ] as const);
+      });
 
     return { plan, apply, remove, status, adopt, release } satisfies Context.Tag.Service<
       typeof ManagedFileService
@@ -705,6 +705,17 @@ export const makeDiskBackend = (options: {
         }),
       readLedger: (operation) => ledgerEntries(true, operation),
       peekLedger: (operation) => ledgerEntries(false, operation),
+      mutateLedger: (operation, f) =>
+        ledgerBucketFor(options.defaultBase()).pipe(
+          Effect.flatMap((bucket) =>
+            bucket.modify((state) =>
+              f(state?.entries ?? []).pipe(Effect.map(([result, entries]) => [result, { entries }] as const)),
+            ),
+          ),
+          Effect.mapError((cause) =>
+            isManagedFileError(cause) ? cause : new ManagedFileError({ reason: "io", operation, cause }),
+          ),
+        ),
       writeLedger: (entries, operation) =>
         ledgerBucketFor(options.defaultBase()).pipe(
           Effect.flatMap((bucket) => bucket.set({ entries })),

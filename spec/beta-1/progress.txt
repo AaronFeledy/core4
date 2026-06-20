@@ -1427,3 +1427,9 @@
 - Verification: typecheck, lint, git diff --check passed; focused managed-file service test command exited 0.
 - **Learnings for future iterations:** Containment for managed writes must validate the real path of the nearest existing parent when the target file does not exist, or symlinked directories can redirect a later create outside the approved base.
 ---
+
+## 2026-06-20 01:06 CDT - US-351 Review
+- Fixed the review-discovered ledger locking gap: the JSON bucket's advisory lock is now used for effectful ledger read-modify-write operations, and `ManagedFileService` routes apply/remove/adopt/release through that locked mutation seam instead of separate get/set calls.
+- Review notes (deferred/rejected): JSON array/scalar self-adoption, cross-base ledger keying, non-transactional multi-file apply, and backup filename collisions are accepted as non-blocking substrate limitations for US-351; later consumers or US-353/US-354 can tighten them when those surfaces exercise the paths.
+- Verification: typecheck, lint, and focused managed-file service tests passed.
+---
