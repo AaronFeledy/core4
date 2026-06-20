@@ -21,6 +21,13 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
+import {
+  type SummaryDocument,
+  type SummaryTone,
+  formatSummary,
+  worstSummaryTone,
+} from "../../renderer/summary.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -118,11 +125,68 @@ const endpointText = (endpoint: EndpointPlan): string => {
 const jsonReplacer = (_key: string, value: unknown): unknown =>
   typeof value === "bigint" ? value.toString() : value;
 
+const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
+  switch (status) {
+    case "running":
+    case "healthy":
+      return "ok";
+    case "starting":
+      return "pending";
+    case "stopped":
+      return "skipped";
+    case "unhealthy":
+    case "error":
+      return "error";
+    default:
+      return "info";
+  }
+};
+
+export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDocument => {
+  if (!result.materialized) {
+    return {
+      title: "GLOBAL APP",
+      tone: "info",
+      sections: [{ title: "status", rows: [], notes: ["Global app is not installed."] }],
+      footer: "not installed",
+    };
+  }
+  const rows = result.services.map((service) => ({
+    label: service.service,
+    tone: globalStatusTone(service.status),
+    value: service.status,
+    fields: [
+      { label: "type", value: service.type },
+      { label: "provider", value: service.provider },
+      {
+        label: "endpoints",
+        value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
+      },
+    ],
+  }));
+  return {
+    title: "GLOBAL APP",
+    subtitle: result.app,
+    tone: rows.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone)),
+    sections: [
+      {
+        title: "services",
+        rows,
+        ...(rows.length === 0 ? { notes: ["No global services are running."] } : {}),
+      },
+    ],
+    footer: `${result.services.length} services`,
+  };
+};
+
 export const renderGlobalStatusResult = (
   result: GlobalStatusResult,
   format: "json" | "table" = "table",
+  ctx?: RenderContext,
 ): string => {
   if (format === "json") return JSON.stringify(result, jsonReplacer, 2);
+  if (isDecoratedContext(ctx))
+    return formatSummary(buildGlobalStatusSummary(result), { columns: ctx?.columns });
   if (!result.materialized) return "Global app is not installed.\n(no services)";
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {

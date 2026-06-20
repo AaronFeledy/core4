@@ -144,6 +144,7 @@ import { updateOptionsFromInput } from "./oclif/commands/meta/update.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
 import {
+  type RenderContext,
   makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
@@ -434,7 +435,7 @@ const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<string>)
 const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
-  render: (value: A) => string | undefined,
+  render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
     readonly renderEvents?: boolean;
     readonly plainTaskEvents?: "detail-only";
@@ -548,7 +549,7 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       rendererMode: activeRendererMode,
       deprecationWarnings: activeDeprecationWarnings,
       renderEvents: process.stdout.isTTY === true,
-      render: (value) => setupSpec.render?.(value),
+      render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
       formatError: (error) => {
         const message = commandErrorMessage(error);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
@@ -764,10 +765,12 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(format === undefined ? {} : { format }),
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
-    (value) => {
+    (value, ctx) => {
       if (format === "json") return renderDoctorReportAsJson(value);
       if (format === "yaml") return renderDoctorReportAsYaml(value);
-      return activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value);
+      return activeRendererMode === "json"
+        ? renderDoctorReportAsNdjson(value)
+        : renderDoctorReport(value, ctx);
     },
     {
       suppressDeprecationDiagnostics: format === "json" || format === "yaml",
@@ -1112,7 +1115,7 @@ const scratchRuntimeLayer = () =>
 
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
-  render: (result: A) => string | undefined,
+  render: (result: A, ctx: RenderContext) => string | undefined,
 ): Promise<void> =>
   runWithRendererHandling(operation, {
     runtime: scratchRuntimeLayer(),
@@ -1153,8 +1156,8 @@ const runAppsScratchDestroy = async (argv: ReadonlyArray<string>): Promise<void>
 
 const runAppsScratchList = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = scratchCommandInput("apps:scratch:list", argv);
-  await runScratchEffect(scratchList(), (result) =>
-    renderScratchListResult(result, scratchListFormatFromInput(input)),
+  await runScratchEffect(scratchList(), (result, ctx) =>
+    renderScratchListResult(result, scratchListFormatFromInput(input), ctx),
   );
 };
 
@@ -1194,7 +1197,7 @@ const runMetaGlobalStatus = (argv: ReadonlyArray<string>): Promise<void> => {
   return runCompiledCommand(
     globalStatus(globalStatusOptionsFromInput(input)),
     globalRuntimeLayer(),
-    (value) => renderGlobalStatusResult(value, globalStatusFormatFromInput(input)),
+    (value, ctx) => renderGlobalStatusResult(value, globalStatusFormatFromInput(input), ctx),
   );
 };
 

@@ -31,6 +31,14 @@ import {
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
+import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
+import {
+  type SummaryDocument,
+  type SummaryRow,
+  type SummaryTone,
+  formatSummary,
+  worstSummaryTone,
+} from "../renderer/summary.ts";
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -105,7 +113,54 @@ const endpointText = (service: ServicePlan, endpoint: EndpointPlan): ReadonlyArr
   return [`${endpoint.protocol}://localhost:${endpoint.port}`];
 };
 
-export const renderInfoAppResult = (result: InfoAppResult): string => {
+const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
+  switch (status) {
+    case "running":
+    case "healthy":
+      return "ok";
+    case "starting":
+      return "pending";
+    case "stopped":
+      return "skipped";
+    case "unhealthy":
+    case "error":
+      return "error";
+    default:
+      return "info";
+  }
+};
+
+export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
+  const rows: SummaryRow[] = result.services.map((service) => ({
+    label: service.service,
+    tone: infoStatusTone(service.status),
+    value: service.status,
+    fields: [
+      { label: "type", value: service.type },
+      { label: "provider", value: service.provider },
+      {
+        label: "endpoints",
+        value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
+      },
+    ],
+  }));
+  return {
+    title: "APP INFO",
+    subtitle: result.app,
+    tone: result.services.length === 0 ? "info" : worstSummaryTone(rows.map((row) => row.tone ?? "info")),
+    sections: [
+      {
+        title: "services",
+        rows,
+        ...(rows.length === 0 ? { notes: ["No services are defined for this app."] } : {}),
+      },
+    ],
+    footer: `${result.services.length} services`,
+  };
+};
+
+export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
+  if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), { columns: ctx?.columns });
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {
     const endpoints = service.endpoints;

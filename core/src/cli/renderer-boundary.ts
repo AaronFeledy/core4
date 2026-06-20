@@ -90,6 +90,16 @@ export const writeResultLine = (text: string): Effect.Effect<void> =>
 export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
+export interface RenderContext {
+  readonly mode: RendererMode;
+  readonly columns: number | undefined;
+  readonly isTTY: boolean;
+}
+
+/** Decorated grouped summaries apply only in the default `lando` renderer on a TTY. */
+export const isDecoratedContext = (ctx?: RenderContext): boolean =>
+  ctx?.mode === "lando" && ctx.isTTY === true;
+
 export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
   readonly rendererMode: RendererMode;
@@ -98,7 +108,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
-  readonly render?: (value: A) => string | undefined;
+  readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
 }
@@ -206,13 +216,19 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
-  const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, options.io);
+  const io = options.io ?? createStdioRendererIO();
+  const renderContext: RenderContext = {
+    mode: options.rendererMode,
+    columns: io.terminalColumns,
+    isTTY: io.isTTY === true,
+  };
+  const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, io);
   const commandLayer = (
     options.renderEvents === true
       ? Layer.mergeAll(
           options.runtime,
           Layer.provideMerge(
-            makeRendererEventConsumerLiveForMode(options.rendererMode, options.io, {
+            makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
               ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
             }),
             EventServiceLive,
@@ -251,7 +267,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     }
     const exit = providedExit.value;
     if (Exit.isSuccess(exit)) {
-      const rendered = options.render?.(exit.value);
+      const rendered = options.render?.(exit.value, renderContext);
       if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
       return;
     }

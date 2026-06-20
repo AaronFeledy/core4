@@ -1494,8 +1494,8 @@
         "Lint passes."
       ],
       "priority": 84,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Grouped spaceship-console summaries for setup/uninstall/app:info/scratch-list/global-status/doctor render only in the default lando renderer on a TTY. New core-internal model + formatter (core/src/cli/renderer/summary.ts) over CJK-aware box/width primitives (console-layout.ts); decoration gated by RenderContext (mode===lando && isTTY) threaded through runWithRendererHandling + both dispatch paths. plain/json/non-TTY reuse the existing render functions byte-identical, so dual-dispatch parity is unchanged. Polished meta:global:status (not the deferred meta:global:list)."
     },
     {
       "id": "US-284",

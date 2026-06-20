@@ -11,7 +11,7 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => infoApp(),
-  render: (result) => renderInfoAppResult(result as InfoAppResult),
+  render: (result, _input, ctx) => renderInfoAppResult(result as InfoAppResult, ctx),
 };
 
 export default class InfoCommand extends LandoCommandBase {

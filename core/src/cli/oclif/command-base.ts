@@ -12,6 +12,7 @@ import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import {
+  type RenderContext,
   makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
@@ -75,7 +76,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
-  readonly render?: (result: unknown, input?: unknown) => string | undefined;
+  readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
 
@@ -282,7 +283,7 @@ export abstract class LandoCommandBase extends Command {
       rendererMode,
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
-      render: (value) => spec.render?.(value, input),
+      render: (value, ctx) => spec.render?.(value, input, ctx),
       formatError: (error) =>
         formatCommandError({
           error,

@@ -11,6 +11,7 @@ import {
   renderDoctorReportAsYaml,
 } from "../../../commands/doctor-report.ts";
 import type { DoctorOptions } from "../../../commands/doctor.ts";
+import type { RenderContext } from "../../../renderer-boundary.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -38,12 +39,12 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   };
 };
 
-const renderDoctorReportForInput = (report: DoctorReport, input: unknown): string => {
+const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: RenderContext): string => {
   const options = inputDoctorOptions(input);
   if (options.format === "json") return renderDoctorReportAsJson(report);
   if (options.format === "yaml") return renderDoctorReportAsYaml(report);
   const rendererMode = (input as { readonly rendererMode?: unknown } | undefined)?.rendererMode;
-  return rendererMode === "json" ? renderDoctorReportAsNdjson(report) : renderDoctorReport(report);
+  return rendererMode === "json" ? renderDoctorReportAsNdjson(report) : renderDoctorReport(report, ctx);
 };
 
 const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
@@ -62,7 +63,7 @@ export const metaDoctorSpec: LandoCommandSpec<
   topLevelAlias: true,
   bootstrap: "provider",
   run: (input) => doctorReport(inputDoctorOptions(input)),
-  render: (result, input) => renderDoctorReportForInput(result as DoctorReport, input),
+  render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };
 
