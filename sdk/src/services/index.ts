@@ -12,7 +12,12 @@ import type {
   GlobalConfig,
   HostPlatform,
   LandofileShape,
+  ManagedFile,
+  ManagedFileInfo,
+  ManagedFilePlan,
+  ManagedFileResult,
   PluginManifest,
+  PortablePath,
   ProviderCapabilities,
   ProviderId,
   RecipeManifest,
@@ -32,6 +37,7 @@ import type {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  ManagedFileError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginLoadError,
@@ -60,6 +66,7 @@ import type { LandoEvent } from "./events.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
+import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
 import type {
   CertificateAuthorityShape,
   HealthcheckRunnerShape,
@@ -122,6 +129,7 @@ export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
 export * from "./landofile.ts";
+export * from "./managed-file.ts";
 export * from "./planner.ts";
 export * from "./platform.ts";
 export * from "./plugins.ts";
@@ -239,6 +247,21 @@ export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchA
       options?: ScratchDestroyOptions,
     ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
     readonly gc: (options?: ScratchGcOptions) => Effect.Effect<ScratchGcReport, ScratchAppError>;
+  }
+>() {}
+
+export declare class ManagedFileService extends Context.Tag("@lando/core/ManagedFileService")<
+  ManagedFileService,
+  {
+    readonly plan: (files: ReadonlyArray<ManagedFile>) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
+    readonly apply: (
+      files: ReadonlyArray<ManagedFile>,
+      opts?: ManagedFileApplyOptions,
+    ) => Effect.Effect<ManagedFileResult, ManagedFileError, Scope.Scope>;
+    readonly remove: (selector: ManagedFileSelector) => Effect.Effect<ManagedFileResult, ManagedFileError>;
+    readonly status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError>;
+    readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+    readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
   }
 >() {}
 

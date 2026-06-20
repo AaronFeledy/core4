@@ -7,6 +7,7 @@ export * from "./global.ts";
 export * from "./guide.ts";
 export * from "./healthcheck.ts";
 export * from "./landofile.ts";
+export * from "./managed-file.ts";
 export * from "./plugin.ts";
 export * from "./process.ts";
 export * from "./provider.ts";

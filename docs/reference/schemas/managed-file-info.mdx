@@ -1,0 +1,17 @@
+---
+title: Managed File Info
+description: Public Lando schema contract for Managed File Info.
+---
+
+# Managed File Info
+
+Public Lando schema contract for Managed File Info.
+
+[JSON Schema artifact](../../../dist/schemas/managed-file-info.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `path` | Yes | `string` | a string | — | — | — | — |
+| `owner` | Yes | `string` | a string | — | — | — | — |
+| `mode` | Yes | `string` | — | — | `file`, `block`, `keys` | — | — |
+| `state` | Yes | `string` | — | — | `managed`, `adopted`, `conflict`, `missing`, `drifted` | — | — |

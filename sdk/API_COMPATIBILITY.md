@@ -92,6 +92,13 @@
 - `IncludeEntry`
 - `InspectProps`
 - `IsolateMode`
+- `ContentSource`
+- `FileFormat`
+- `ManagedFile`
+- `ManagedFileAction`
+- `ManagedFileInfo`
+- `ManagedFilePlan`
+- `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
 - `publicSchemaMetadataIndex`
 - `publicSchemaRegistry`
@@ -227,6 +234,7 @@
 - `LandofileExpressionParseError`
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
+- `ManagedFileError`
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
 - `SecretNotFoundError`
@@ -241,6 +249,7 @@
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`
+- `ManagedFileService`
 - `PluginSource`
 - `PluginTrustStore`
 - `PrivilegeService`

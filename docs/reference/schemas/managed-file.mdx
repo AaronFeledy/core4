@@ -1,0 +1,23 @@
+---
+title: Managed File
+description: Public Lando schema contract for Managed File.
+---
+
+# Managed File
+
+Public Lando schema contract for Managed File.
+
+[JSON Schema artifact](../../../dist/schemas/managed-file.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | a string | — | — | — | — |
+| `owner` | Yes | `string` | a string | — | — | — | — |
+| `path` | Yes | `string` | a string | — | — | — | — |
+| `mode` | Yes | `string` | — | — | `file`, `block`, `keys` | — | — |
+| `format` | Yes | `string` | — | — | `text`, `env`, `json`, `yaml`, `toml`, `ini`, `landofile` | — | — |
+| `content` | Yes | `object` | — | — | — | — | — |
+| `marker` | No | `string` | — | — | — | — | — |
+| `perms` | No | `string` | — | — | — | — | — |
+| `onConflict` | No | `string` | — | — | `skip`, `overwrite`, `fail` | — | — |
+| `base` | No | `string` | — | — | — | — | — |
