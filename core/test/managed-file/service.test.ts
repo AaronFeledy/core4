@@ -329,6 +329,19 @@ describe("ManagedFileService block mode", () => {
     expect(inside.entries[0]?.action).toBe("conflict");
   });
 
+  test("pre-existing file without a block fence is adopted, never appended", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const userContent = "# user owned settings\nUSER=1\n";
+    store.seed("settings.conf", userContent);
+
+    const result = await runScoped(store.service.apply([blockFile("OWNED=1")]));
+
+    expect(result.entries[0]?.action).toBe("skip-adopted");
+    expect(store.read("settings.conf")).toBe(userContent);
+    expect(store.read("settings.conf")).not.toContain(">>> lando:b:settings >>>");
+    expect(store.ledger()[0]?.state).toBe("adopted");
+  });
+
   test("present fence without a ledger is treated as a conflict", async () => {
     const original = await run(makeTestManagedFileStore());
     await runScoped(original.service.apply([blockFile("STALE=1")]));

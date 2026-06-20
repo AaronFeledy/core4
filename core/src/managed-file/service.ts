@@ -374,6 +374,14 @@ const decideBlock = (
             ),
           };
         }
+        if (disk !== null) {
+          return {
+            action: "skip-adopted",
+            relPath,
+            abs,
+            ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+          };
+        }
         const newContent = insertBlock(disk, desiredBlock);
         return {
           action: "create",
