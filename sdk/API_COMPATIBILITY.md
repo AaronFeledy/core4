@@ -229,6 +229,7 @@
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
 - `DeprecatedSurfaceError`
+- `LandofileEmitError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
@@ -268,7 +269,10 @@
 
 ## Additive Alpha service helpers
 
+- `emitLandofileYaml`
+- `emitLandofileYamlEither`
 - `markDeprecated`
+- `parseLandofile`
 
 ## Additive Beta test helper exports
 

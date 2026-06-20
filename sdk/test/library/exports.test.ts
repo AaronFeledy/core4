@@ -255,6 +255,15 @@ describe("@lando/sdk package exports", () => {
     expect(template.TemplateEngineUnresolvedError).toBeDefined();
   });
 
+  test("landofile entry point exports the canonical serializer pair", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+
+    expect(landofile.emitLandofileYaml).toBeDefined();
+    expect(landofile.emitLandofileYamlEither).toBeDefined();
+    expect(landofile.parseLandofile).toBeDefined();
+    expect(landofile.LandofileEmitError).toBeDefined();
+  });
+
   test("test entry point exports provider contract helpers", async () => {
     const sdkTest = await import("@lando/sdk/test");
 
