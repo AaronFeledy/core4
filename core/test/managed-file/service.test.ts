@@ -98,6 +98,35 @@ describe("ManagedFileService (in-memory)", () => {
     }
   });
 
+  test("present marker without a ledger is treated as a conflict", async () => {
+    const original = await run(makeTestManagedFileStore());
+    const stale = file({
+      id: "a:orphan",
+      path: "orphan.txt",
+      content: { kind: "text", value: "stale body\n" },
+    });
+    await runScoped(original.service.apply([stale]));
+    const orphanedDisk = original.read("orphan.txt") ?? "";
+
+    const store = await run(makeTestManagedFileStore());
+    store.seed("orphan.txt", orphanedDisk);
+    const desired = file({ id: "a:orphan", path: "orphan.txt", onConflict: "fail" });
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([desired])));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      expect(exit.cause.error.reason).toBe("conflict");
+    }
+    expect(store.read("orphan.txt")).toBe(orphanedDisk);
+
+    const forced = await runScoped(store.service.apply([desired], { force: true }));
+    const backup = forced.entries[0]?.backup;
+    expect(forced.entries[0]?.action).toBe("update");
+    expect(backup).toBeDefined();
+    expect(backup === undefined ? null : store.read(backup)).toBe(orphanedDisk);
+    expect(store.read("orphan.txt")).toContain("hello world");
+  });
+
   test("force overrides a conflict", async () => {
     const store = await run(makeTestManagedFileStore());
     const mf = file({ id: "a:force", path: "force.txt" });
@@ -193,8 +222,14 @@ describe("ManagedFileService (in-memory)", () => {
 });
 
 describe("ManagedFileService block mode", () => {
-  const blockFile = (value: string): ManagedFile =>
-    file({ id: "b:settings", path: "settings.conf", mode: "block", content: { kind: "text", value } });
+  const blockFile = (value: string, overrides: Partial<ManagedFile> = {}): ManagedFile =>
+    file({
+      id: "b:settings",
+      path: "settings.conf",
+      mode: "block",
+      content: { kind: "text", value },
+      ...overrides,
+    });
 
   test("create then re-apply is idempotent", async () => {
     const store = await run(makeTestManagedFileStore());
@@ -219,6 +254,30 @@ describe("ManagedFileService block mode", () => {
     store.seed("settings.conf", (store.read("settings.conf") ?? "").replace("OWNED=1", "HACKED=1"));
     const inside = await runScoped(store.service.apply([blockFile("OWNED=1")]));
     expect(inside.entries[0]?.action).toBe("conflict");
+  });
+
+  test("present fence without a ledger is treated as a conflict", async () => {
+    const original = await run(makeTestManagedFileStore());
+    await runScoped(original.service.apply([blockFile("STALE=1")]));
+    const orphanedDisk = original.read("settings.conf") ?? "";
+
+    const store = await run(makeTestManagedFileStore());
+    store.seed("settings.conf", orphanedDisk);
+    const desired = blockFile("OWNED=1", { onConflict: "fail" });
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([desired])));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      expect(exit.cause.error.reason).toBe("conflict");
+    }
+    expect(store.read("settings.conf")).toBe(orphanedDisk);
+
+    const forced = await runScoped(store.service.apply([desired], { force: true }));
+    const backup = forced.entries[0]?.backup;
+    expect(forced.entries[0]?.action).toBe("update");
+    expect(backup).toBeDefined();
+    expect(backup === undefined ? null : store.read(backup)).toContain("STALE=1");
+    expect(store.read("settings.conf")).toContain("OWNED=1");
   });
 });
 

@@ -252,7 +252,15 @@ const decideFile = (
 
       const currentChecksum = sha256(disk);
       const baseline = entry?.lastWrittenChecksum;
-      if (baseline !== undefined && currentChecksum !== baseline) {
+      if (desiredChecksum === currentChecksum) {
+        return {
+          action: "skip-unchanged",
+          relPath,
+          abs,
+          ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+        };
+      }
+      if (baseline === undefined || currentChecksum !== baseline) {
         const mode = resolveConflict(mf, force);
         if (mode === "overwrite") {
           return {
@@ -265,15 +273,6 @@ const decideFile = (
           };
         }
         return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
-      }
-
-      if (desiredChecksum === currentChecksum) {
-        return {
-          action: "skip-unchanged",
-          relPath,
-          abs,
-          ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
-        };
       }
       return {
         action: "update",
@@ -342,7 +341,15 @@ const decideBlock = (
 
       const currentSliceHash = sha256(location.slice);
       const baseline = entry?.lastWrittenChecksum;
-      if (baseline !== undefined && currentSliceHash !== baseline) {
+      if (desiredSliceHash === currentSliceHash) {
+        return {
+          action: "skip-unchanged",
+          relPath,
+          abs,
+          ledgerNext: buildEntry(mf, relPath, marker, currentSliceHash, sourceHash, "managed", entry),
+        };
+      }
+      if (baseline === undefined || currentSliceHash !== baseline) {
         const mode = resolveConflict(mf, force);
         if (mode === "overwrite") {
           return {
@@ -355,15 +362,6 @@ const decideBlock = (
           };
         }
         return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
-      }
-
-      if (desiredSliceHash === currentSliceHash) {
-        return {
-          action: "skip-unchanged",
-          relPath,
-          abs,
-          ledgerNext: buildEntry(mf, relPath, marker, currentSliceHash, sourceHash, "managed", entry),
-        };
       }
       return {
         action: "update",
