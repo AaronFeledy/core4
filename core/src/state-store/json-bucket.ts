@@ -10,7 +10,7 @@
 // then the managed-file ledger is realized through this generic bucket rather
 // than a bespoke per-consumer store.
 
-import { open, readFile, rename, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
@@ -53,6 +53,10 @@ export interface JsonBucket<A> {
   readonly peek: Effect.Effect<A | null, StateBucketError>;
   /** Atomic replace. */
   readonly set: (value: A) => Effect.Effect<void, StateBucketError>;
+  /** Locked (when `advisory`) effectful read-modify-write. */
+  readonly modify: <B, E>(
+    f: (current: A | null) => Effect.Effect<readonly [B, A], E>,
+  ) => Effect.Effect<B, E | StateBucketError>;
   /** Locked (when `advisory`) read-modify-write. */
   readonly update: (f: (current: A | null) => A) => Effect.Effect<A, StateBucketError>;
   readonly remove: Effect.Effect<void, StateBucketError>;
@@ -134,6 +138,7 @@ export const openJsonBucket = <A, I>(spec: JsonBucketSpec<A, I>): Effect.Effect<
           const acquired = yield* Effect.tryPromise({
             try: async () => {
               try {
+                await mkdir(spec.dir, { recursive: true });
                 const handle = await open(lockPath, "wx");
                 await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }));
                 await handle.close();
@@ -168,22 +173,40 @@ export const openJsonBucket = <A, I>(spec: JsonBucketSpec<A, I>): Effect.Effect<
         }
       });
 
-    const update = (f: (current: A | null) => A): Effect.Effect<A, StateBucketError> => {
-      const run = readRaw(true).pipe(Effect.map(f), Effect.tap(writeValue));
-      if ((spec.lock ?? "none") === "none") return run;
+    const withLock = <B, E>(effect: Effect.Effect<B, E>): Effect.Effect<B, E | StateBucketError> => {
+      if ((spec.lock ?? "none") === "none") return effect;
       const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       return Effect.acquireUseRelease(
         acquireLock(token),
-        () => run,
+        () => effect,
         () => releaseLock(token),
       );
     };
+
+    const modify = <B, E>(
+      f: (current: A | null) => Effect.Effect<readonly [B, A], E>,
+    ): Effect.Effect<B, E | StateBucketError> =>
+      withLock(
+        readRaw(true).pipe(
+          Effect.flatMap((current) => f(current)),
+          Effect.flatMap(([result, next]) => writeValue(next).pipe(Effect.as(result))),
+        ),
+      );
+
+    const update = (f: (current: A | null) => A): Effect.Effect<A, StateBucketError> =>
+      modify((current) =>
+        Effect.sync(() => {
+          const next = f(current);
+          return [next, next] as const;
+        }),
+      );
 
     return {
       path,
       get: readRaw(true),
       peek: readRaw(false),
       set: writeValue,
+      modify,
       update,
       remove: Effect.tryPromise({ try: () => unlink(path), catch: (cause) => ioError(path, cause) }).pipe(
         Effect.catchIf(
