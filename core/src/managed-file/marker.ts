@@ -53,7 +53,7 @@ export const composeFileContent = (format: FileFormat, marker: string, body: str
     try {
       const parsed = JSON.parse(body) as unknown;
       if (isPlainObject(parsed)) {
-        return `${JSON.stringify({ [JSON_MARKER_KEY]: marker, ...parsed }, null, 2)}\n`;
+        return `${JSON.stringify({ ...parsed, [JSON_MARKER_KEY]: marker }, null, 2)}\n`;
       }
     } catch {
       // Not a JSON object — fall through to verbatim.
@@ -61,6 +61,17 @@ export const composeFileContent = (format: FileFormat, marker: string, body: str
     return ensureTrailingNewline(body);
   }
   return `${markerLine(prefix, marker)}\n${ensureTrailingNewline(body)}`;
+};
+
+/** Whether this full-file content shape has a user-removable marker slot. */
+export const canCarryFileMarker = (format: FileFormat, content: string): boolean => {
+  const prefix = commentPrefix(format);
+  if (prefix !== null) return true;
+  try {
+    return isPlainObject(JSON.parse(content) as unknown);
+  } catch {
+    return false;
+  }
 };
 
 /** Whether `content` already carries `file`-mode ownership for `marker`. */

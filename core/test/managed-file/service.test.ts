@@ -48,6 +48,45 @@ describe("ManagedFileService (in-memory)", () => {
     expect(store.read("cfg.txt")).toContain("new body");
   });
 
+  test("JSON without a marker slot still follows a managed ledger", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const mf = file({
+      id: "a:json-array",
+      path: "array.json",
+      format: "json",
+      content: { kind: "structured", data: ["old"] },
+    });
+    await runScoped(store.service.apply([mf]));
+    expect(store.read("array.json")).not.toContain("x-lando-generated");
+
+    const changed = file({
+      id: "a:json-array",
+      path: "array.json",
+      format: "json",
+      content: { kind: "structured", data: ["new"] },
+    });
+    const result = await runScoped(store.service.apply([changed]));
+    expect(result.entries[0]?.action).toBe("update");
+    expect(store.ledger()[0]?.state).toBe("managed");
+    expect(store.read("array.json")).toContain("new");
+  });
+
+  test("JSON body data cannot override the ownership marker", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const mf = file({
+      id: "a:json-marker",
+      path: "marker.json",
+      format: "json",
+      content: { kind: "structured", data: { "x-lando-generated": "user", value: true } },
+    });
+
+    await runScoped(store.service.apply([mf]));
+    expect(JSON.parse(store.read("marker.json") ?? "{}")["x-lando-generated"]).toBe("a:json-marker");
+    const second = await runScoped(store.service.apply([mf]));
+    expect(second.entries[0]?.action).toBe("skip-unchanged");
+    expect(store.ledger()[0]?.state).toBe("managed");
+  });
+
   test("pre-existing unmarked user file is adopted, never clobbered", async () => {
     const store = await run(makeTestManagedFileStore());
     store.seed("user.txt", "i wrote this by hand\n");
@@ -135,6 +174,25 @@ describe("ManagedFileService (in-memory)", () => {
 
     const result = await runScoped(store.service.apply([mf], { force: true }));
     expect(result.entries[0]?.action).toBe("update");
+  });
+
+  test("multi-file apply resolves conflicts before writing", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const first = file({ id: "a:first", path: "first.txt", content: { kind: "text", value: "before\n" } });
+    const second = file({ id: "a:second", path: "second.txt", onConflict: "fail" });
+    await runScoped(store.service.apply([first, second]));
+    const firstBefore = store.read("first.txt");
+    store.seed("second.txt", `${store.read("second.txt")}tampered\n`);
+
+    const changedFirst = file({
+      id: "a:first",
+      path: "first.txt",
+      content: { kind: "text", value: "after\n" },
+    });
+    const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([changedFirst, second])));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(store.read("first.txt")).toBe(firstBefore);
   });
 
   test("adopt strips the marker so future applies skip", async () => {
@@ -353,6 +411,29 @@ describe("ManagedFileService (disk backend)", () => {
         }
       } finally {
         await rm(outside, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("lifecycle operations honor a managed file custom base", async () => {
+    await withTemp(async (dirs) => {
+      const customBase = await realpath(await mkdtemp(join(tmpdir(), "lando-mf-custom-")));
+      try {
+        const service = await run(makeService(dirs));
+        const mf = file({ id: "d:custom", path: "custom.txt", base: customBase });
+        await runScoped(service.apply([mf]));
+
+        const info = await run(service.status);
+        expect(info[0]?.state).toBe("managed");
+
+        await run(service.remove({ path: "custom.txt" }));
+        const stillExists = await readFile(join(customBase, "custom.txt"), "utf8").then(
+          () => true,
+          () => false,
+        );
+        expect(stillExists).toBe(false);
+      } finally {
+        await rm(customBase, { recursive: true, force: true });
       }
     });
   });

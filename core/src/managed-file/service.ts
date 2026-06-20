@@ -35,6 +35,7 @@ import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { type JsonBucket, openJsonBucket } from "../state-store/json-bucket.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
+  canCarryFileMarker,
   commentPrefix,
   composeBlock,
   composeFileContent,
@@ -58,6 +59,7 @@ const LedgerEntrySchema = Schema.Struct({
   lastWrittenChecksum: Schema.String,
   sourceHash: Schema.String,
   state: Schema.Literal("managed", "adopted"),
+  base: Schema.optional(Schema.String),
   backup: Schema.optional(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -179,6 +181,11 @@ interface Decision {
   readonly failConflict?: boolean;
 }
 
+interface PreparedDecision {
+  readonly mf: ManagedFile;
+  readonly decision: Decision;
+}
+
 const nowIso = (): string => new Date().toISOString();
 
 const buildEntry = (
@@ -200,6 +207,7 @@ const buildEntry = (
   lastWrittenChecksum,
   sourceHash,
   state,
+  base: mf.base,
   backup,
   createdAt: existing?.createdAt ?? nowIso(),
   updatedAt: nowIso(),
@@ -210,6 +218,11 @@ const resolveConflict = (mf: ManagedFile, force: boolean): "overwrite" | "skip" 
   if (force || policy === "overwrite") return "overwrite";
   return policy === "fail" ? "fail" : "skip";
 };
+
+const sameLedgerTarget = (
+  entry: Pick<LedgerEntry, "path" | "base">,
+  target: Pick<LedgerEntry, "path" | "base">,
+): boolean => entry.path === target.path && entry.base === target.base;
 
 const decideFile = (
   mf: ManagedFile,
@@ -240,6 +253,38 @@ const decideFile = (
 
       const markerPresent = hasFileMarker(mf.format, disk, marker);
       if (!markerPresent) {
+        if (entry?.state === "managed" && !canCarryFileMarker(mf.format, disk)) {
+          const currentChecksum = sha256(disk);
+          if (currentChecksum === entry.lastWrittenChecksum) {
+            if (desiredChecksum === currentChecksum) {
+              return {
+                action: "skip-unchanged",
+                relPath,
+                abs,
+                ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+              };
+            }
+            return {
+              action: "update",
+              relPath,
+              abs,
+              write: desiredFile,
+              ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+            };
+          }
+          const mode = resolveConflict(mf, force);
+          if (mode === "overwrite") {
+            return {
+              action: "update",
+              relPath,
+              abs,
+              write: desiredFile,
+              ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+              backup: { content: disk, path: `${relPath}.lando-backup-${Date.now()}` },
+            };
+          }
+          return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
+        }
         // Pre-existing user file, or a previously managed file whose marker was removed.
         const action: Decision["action"] = entry ? "adopt-detected" : "skip-adopted";
         return {
@@ -393,7 +438,9 @@ const decideOne = (
     Effect.flatMap((abs) =>
       backend.readMaybe(abs, operation).pipe(
         Effect.flatMap((disk) => {
-          const entry = entries.find((candidate) => candidate.path === mf.path);
+          const entry = entries.find((candidate) =>
+            sameLedgerTarget(candidate, { path: mf.path, base: mf.base }),
+          );
           return mf.mode === "file"
             ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
             : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
@@ -406,7 +453,7 @@ const decideOne = (
 // ----- Service factory ----------------------------------------------------
 
 const upsertEntry = (entries: ReadonlyArray<LedgerEntry>, next: LedgerEntry): ReadonlyArray<LedgerEntry> => [
-  ...entries.filter((entry) => entry.path !== next.path),
+  ...entries.filter((entry) => !sameLedgerTarget(entry, next)),
   next,
 ];
 
@@ -436,6 +483,7 @@ export const makeManagedFileService = (
       backend.mutateLedger("apply", (initial) =>
         Effect.gen(function* () {
           let entries = initial;
+          const prepared: Array<PreparedDecision> = [];
           const results: Array<ManagedFileResult["entries"][number]> = [];
           for (const mf of files) {
             const decision = yield* decideOne(backend, mf, entries, "apply", opts?.force ?? false);
@@ -446,19 +494,7 @@ export const makeManagedFileService = (
                   "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
               });
             }
-            let backup: PortablePath | undefined;
-            if (decision.backup) {
-              const backupAbs = yield* backend.resolveTarget(
-                yield* backend.resolveBase(mf.base, "apply"),
-                decision.backup.path,
-                "apply",
-              );
-              yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
-              backup = decision.backup.path as PortablePath;
-            }
-            if (decision.write !== undefined) {
-              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
-            }
+            const backup = decision.backup?.path as PortablePath | undefined;
             if (decision.ledgerNext) {
               entries = upsertEntry(
                 entries,
@@ -467,12 +503,26 @@ export const makeManagedFileService = (
                   : decision.ledgerNext,
               );
             }
+            prepared.push({ mf, decision });
             results.push({
               id: mf.id,
               path: decision.relPath as PortablePath,
               action: decision.action,
               backup,
             });
+          }
+          for (const { mf, decision } of prepared) {
+            if (decision.backup) {
+              const backupAbs = yield* backend.resolveTarget(
+                yield* backend.resolveBase(mf.base, "apply"),
+                decision.backup.path,
+                "apply",
+              );
+              yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
+            }
+            if (decision.write !== undefined) {
+              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+            }
           }
           return [{ entries: results }, entries] as const;
         }),
@@ -491,7 +541,7 @@ export const makeManagedFileService = (
           const results: Array<ManagedFileResult["entries"][number]> = [];
           let next = entries;
           for (const entry of matches) {
-            const base = yield* backend.resolveBase(undefined, "remove");
+            const base = yield* backend.resolveBase(entry.base, "remove");
             const abs = yield* backend.resolveTarget(base, entry.path, "remove");
             if (entry.mode === "block") {
               const disk = yield* backend.readMaybe(abs, "remove");
@@ -503,7 +553,7 @@ export const makeManagedFileService = (
             } else {
               yield* backend.removeFile(abs, "remove");
             }
-            next = next.filter((candidate) => candidate.path !== entry.path);
+            next = next.filter((candidate) => !sameLedgerTarget(candidate, entry));
             results.push({ id: entry.id, path: entry.path as PortablePath, action: "update" });
           }
           return [{ entries: results }, next] as const;
@@ -514,7 +564,7 @@ export const makeManagedFileService = (
       backend.readLedger("status").pipe(
         Effect.flatMap((entries) =>
           Effect.forEach(entries, (entry) =>
-            backend.resolveBase(undefined, "status").pipe(
+            backend.resolveBase(entry.base, "status").pipe(
               Effect.flatMap((base) => backend.resolveTarget(base, entry.path, "status")),
               Effect.flatMap((abs) => backend.readMaybe(abs, "status")),
               Effect.map(
@@ -535,7 +585,7 @@ export const makeManagedFileService = (
       backend.mutateLedger("adopt", (entries) =>
         Effect.gen(function* () {
           const entry = entries.find((candidate) => candidate.path === path);
-          const base = yield* backend.resolveBase(undefined, "adopt");
+          const base = yield* backend.resolveBase(entry?.base, "adopt");
           const abs = yield* backend.resolveTarget(base, path, "adopt");
           const disk = yield* backend.readMaybe(abs, "adopt");
           if (disk !== null && entry) {
@@ -585,7 +635,8 @@ const computeState = (entry: LedgerEntry, disk: string | null): ManagedFileInfo[
     if (!location.found) return "adopted";
     return sha256(location.slice) === entry.lastWrittenChecksum ? "managed" : "conflict";
   }
-  if (!hasFileMarker(entry.format, disk, entry.marker)) return "adopted";
+  if (!hasFileMarker(entry.format, disk, entry.marker) && canCarryFileMarker(entry.format, disk))
+    return "adopted";
   return sha256(disk) === entry.lastWrittenChecksum ? "managed" : "conflict";
 };
 
