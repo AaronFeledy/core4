@@ -1459,3 +1459,10 @@
   - The redaction guarantee is structural: keep event payloads content-free (no rendered/disk content, no slices, no secret-bearing checksums) so a secret cannot leak even when the value-redactor is a no-op. Test it both ways: a content-free integration assertion (secret absent end-to-end through the real bus) AND an injected `redactText` spy proving every string field is routed through the redactor before publish.
   - To attach an optional service to a frozen-tag `Layer`, resolve it with `Effect.serviceOption` in the layer effect and `Layer.provide` it on THAT sub-layer in the generator — a sibling in `Layer.mergeAll` is invisible to the optional lookup and silently no-ops.
 ---
+
+## 2026-06-20 22:02 CDT - Babysit
+- PR: #415 https://github.com/AaronFeledy/core4/pull/415
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium: event summaries claimed "[prior content backed up]" before the backup was written; made backup wording event-aware — pre/conflict say "will be backed up", post says "backed up" — with regression assertions)
+- Merge: merged (squash)
+---
