@@ -1,0 +1,5 @@
+⟨bold⟩⟨cyan⟩╭─ LANDO OPS [BLOCKED] Build blocked (1 ✓ · 1 ✗) (1.5s) ───────────────────────────────────────────╮⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ composer install (12.4s)                                                              │⟨reset⟩
+⟨red⟩│ [BLOCKED] ✗ npm ci (exit 1) (1.3s)                                                               │⟨reset⟩
+⟨dim⟩│   ↳ see lando logs node --build                                                                  │⟨dim-off⟩⟨reset⟩
+⟨dim⟩⟨cyan⟩╰─ telemetry 1 ONLINE · 1 BLOCKED (1.5s) ──────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩

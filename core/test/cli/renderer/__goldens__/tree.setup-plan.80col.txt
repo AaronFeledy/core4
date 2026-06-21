@@ -1,0 +1,6 @@
+⟨bold⟩⟨cyan⟩╭─ LANDO OPS [RUNNING] Setting up Lando runtime (1/3 running) ─────────────────╮⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ Verify runtime bundle (42ms)                                      │⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ Proxy and CA trust ready (42ms)                                   │⟨reset⟩
+⟨cyan⟩│ [RUNNING] · Persist setup readiness summary                                  │⟨reset⟩
+⟨dim⟩│   readiness.json updated without secrets                                     │⟨dim-off⟩⟨reset⟩
+⟨dim⟩⟨cyan⟩╰─ telemetry 1/3 RUNNING ──────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩

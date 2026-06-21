@@ -1,0 +1,43 @@
+---
+id: terminal-renderer-visual-qa
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, contributing, renderer]
+---
+
+<Guide>
+  <Scenario id="terminal-renderer-visual-qa" render={false} reason="The visual QA gate is itself a deterministic unit suite that captures committed golden frames with no TTY, provider, or network, so guide generation does not spawn a terminal">
+    <Step name="what-the-gate-is">
+      <Variable name="harness" value="core/test/cli/renderer/visual-qa-harness.ts" display="The harness captures deterministic golden frames for the default lando renderer's task-tree progress and grouped result summaries, the surfaces shipped by the terminal UI polish work" />
+      <Variable name="suite" value="core/test/cli/renderer/visual-qa.test.ts" display="The suite asserts every captured frame against its committed golden, proves the readable diff classifies regressions, and pins the provider-free pipeline and undecorated machine modes" />
+      <Variable name="goldens" value="core/test/cli/renderer/__goldens__/<kind>.<fixture>.<cols>col.txt" display="Committed reference frames a reviewer reads directly, so output that is technically structured but visually drab can be rejected in review" />
+    </Step>
+    <Step name="why-tokenized-goldens">
+      <Variable name="tokens" value="ANSI SGR rewritten to readable markers" display="Color and intensity escapes become inline markers such as bold, cyan, green, amber, dim, so the committed golden stays human readable and a color-token regression shows up as a marker change in the text diff" />
+      <Variable name="noEscape" value="no raw escape byte in any golden" display="Cursor-control redraw bytes and carriage returns are stripped during capture, so goldens never carry invisible control characters that corrupt a diff" />
+      <Variable name="widthRule" value="width asserted on the ANSI-stripped frame" display="Display-width invariants are checked on the stripped raw frame, never on the tokenized string, because the readable markers change column counts" />
+    </Step>
+    <Step name="regression-classes">
+      <Variable name="spacing" value="spacing" display="A change in padding or alignment while the trimmed text is unchanged" />
+      <Variable name="colorToken" value="color-token" display="A change in the sequence of color and intensity markers on a line" />
+      <Variable name="truncation" value="truncation" display="An ellipsis that appears or disappears as content crosses the width budget" />
+      <Variable name="wideCharacter" value="wide-character" display="A display-width drift caused by a CJK or other wide glyph counted as one column instead of two" />
+    </Step>
+    <Step name="provider-free">
+      <Variable name="testProvider" value="TestRuntimeProvider" display="The gate constructs the pure in-memory provider whose lifecycle methods resolve without a real container runtime, network, signing credentials, or host mutation" />
+      <Variable name="injectedEvents" value="injected renderer events" display="Frames are produced from fixed-timestamp task and message events fed through the event service and the bundled lando renderer, so captures are deterministic and need no live command" />
+    </Step>
+    <Step name="renderer-only-scope">
+      <Variable name="scope" value="renderer output only" display="The visual gate snapshots the decorated TTY renderer surfaces, not machine logs" />
+      <Variable name="undecorated" value="json, plain, and non-TTY stay undecorated" display="Regression fixtures prove the json renderer emits plain NDJSON, plain output carries no ANSI or panel framing, and the non-TTY lando renderer degrades to undecorated text" />
+    </Step>
+    <Step name="updating-goldens">
+      <Variable name="update" value="LANDO_UPDATE_VISUAL_QA=1 bun test core/test/cli/renderer/visual-qa.test.ts" display="Regenerate committed goldens after an intentional renderer change, then review the diff so a visual regression is never rubber-stamped" />
+      <Variable name="default" value="read-only by default" display="Without the update flag the gate is read-only and a missing golden is a hard failure, never a silent create, so CI can never regenerate a golden it should be checking" />
+    </Step>
+    <Step name="maintenance">
+      <Variable name="driftNote" value="renderer changes must touch this guide" display="Editing core/src/cli/renderer or core/test/cli/renderer requires touching this owned guide or recording a Guide-Coverage-Skip reason, per the guide drift gate" />
+    </Step>
+  </Scenario>
+</Guide>
