@@ -29,6 +29,7 @@ import type {
   GlobalAppService,
   LandofileService,
   Logger,
+  ManagedFileService,
   PluginRegistry,
   PluginTrustStore,
   PrivilegeService,
@@ -122,6 +123,7 @@ type MinimalRuntimeServices =
   | ConfigService
   | FileSystem
   | CacheService
+  | ManagedFileService
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner;

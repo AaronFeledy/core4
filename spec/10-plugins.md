@@ -388,8 +388,11 @@ export interface LandoPluginContext {
   readonly platform: HostPlatform;
   readonly logger: Logger.Logger<unknown, unknown>;
   readonly stateStore: PluginStateStore;      // §12.7 StateStore, pre-namespaced to plugins/<id>/
+  readonly managedFiles: PluginManagedFiles;  // §10.13 ManagedFileService, pre-namespaced to owner:<id>
 }
 ```
+
+The `managedFiles` accessor is a `ManagedFileService` (§10.13) view **pre-namespaced** to the plugin's `owner` id: every managed file the plugin writes is recorded with `owner:<id>`, `status` is filtered to that owner, and the plugin can neither remove, adopt, nor release a file owned by another plugin or by core (such a cross-owner operation fails with `ManagedFileError reason:"conflict"`).
 
 The `stateStore` factory is a `StateStore` (§12.7) **pre-namespaced** to `plugins/<id>/` under `userData`: every bucket a plugin opens is rooted inside its own subtree, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a plugin to persist durable state with atomic-write, schema-validation, versioning, corruption-quarantine, and advisory-lock guarantees — e.g. a `SecretStore` caching resolved tokens, an `UpdateService` recording channel metadata, or a `ConfigTranslator` writing a sidecar lockfile. Plugins MUST NOT hand-roll atomic writes or lockfiles outside this surface.
 

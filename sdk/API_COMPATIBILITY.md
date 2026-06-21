@@ -288,6 +288,7 @@
 - `FileSyncContractMatrixReport`
 - `HealthcheckExpectation`
 - `HostPlatformId`
+- `ManagedFileContractHarness`
 - `PluginContractInput`
 - `ServiceContractExpectations`
 - `ServiceContractInput`
@@ -306,6 +307,7 @@
 - `UnsupportedServiceContractCell`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
+- `runManagedFileContract`
 - `runPluginContract`
 - `runProviderContractMatrix`
 - `runServiceContract`

@@ -895,6 +895,7 @@ Required behaviors:
 - **Containment.** The resolved file realpath MUST stay under `base` (app root by default). Symlink escapes and `../` escapes fail with `ManagedFileError reason:"path"` via the shared containment helper.
 - **Events.** The `ManagedFile` lifecycle scope (§3.5) publishes `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, and `managed-file-skipped`. Payloads carry path/owner/action/summary only, never file content, and are routed through `RedactionService` before publish/history/transcript.
 - **Removal/adoption.** `remove(selector)` deletes only files/blocks the ledger records as Lando-owned. `adopt(path)` / `release(path)` flip ledger ownership state and `adopt` strips the marker so future applies skip.
+- **Plugin and host exposure.** Plugins receive a `managedFiles` accessor on `LandoPluginContext` (§9.8) pre-namespaced to the plugin's `owner` id: every write is recorded with `owner:<plugin-id>`, `status` is filtered to that owner, and a cross-owner `remove`/`adopt`/`release` (or a write declaring a foreign owner) is refused with `ManagedFileError reason:"conflict"`. Embedding hosts resolve the `ManagedFileService` tag from `makeLandoRuntime` (exposed from level `minimal`) and operate under an isolated `base` (app root).
 
 #### 10.13.3 Marker, StateStore ledger, and decision algorithm
 
