@@ -6,14 +6,22 @@
  * calls `fetch` and never resolves proxy/CA itself, so overriding `HttpClient`
  * governs downloads too. On top of that it adds checksum/size verification,
  * atomic temp-file persistence, cache/offline short-circuiting, and scheme
- * gating. Lifecycle events, redaction, and the downloader contract suite are
- * not wired here yet.
+ * gating.
+ *
+ * Lifecycle events (`pre-download`, `download-progress`, `post-download`) are
+ * published through a redacted event seam baked into the `Live` layer closure
+ * (mirrors `ManagedFileService`): `EventService` is resolved via
+ * `Effect.serviceOption`, so the frozen `Downloader` SDK tag's `R` channel stays
+ * `Scope` only. Event payloads carry a scheme+host `urlOrigin` only — never
+ * userinfo, path, query, proxy credentials, or bearer tokens — and every
+ * free-string field is routed through a per-call redactor seeded with the
+ * request's `redactionTokens`.
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { join } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Cause, type Context, DateTime, Effect, type Exit, Layer, Option, Ref, Stream } from "effect";
 
 import {
   DownloadChecksumError,
@@ -23,8 +31,10 @@ import {
   DownloadSizeMismatchError,
   DownloadSourceForbiddenError,
 } from "@lando/sdk/errors";
+import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "@lando/sdk/events";
 import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@lando/sdk/schema";
-import { Downloader, type DownloaderShape } from "@lando/sdk/services";
+import { createSecretRedactor } from "@lando/sdk/secrets";
+import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { HttpClient } from "../http-client/service.ts";
 import { type VerifiedStreamError, collectVerifiedStream, persistVerifiedStream } from "./verified-stream.ts";
@@ -154,74 +164,173 @@ type DownloadError =
   | DownloadOfflineError
   | DownloadSourceForbiddenError;
 
-export const DownloaderLive: Layer.Layer<Downloader, never, HttpClient> = Layer.effect(
-  Downloader,
-  Effect.gen(function* () {
-    const http = yield* HttpClient;
+// ----- Event seam (redact -> publish) -------------------------------------
 
-    const service: DownloaderShape = {
-      id: "core-downloader",
-      capabilities: CAPABILITIES,
-      download: (request) => {
-        const origin = urlOrigin(request.url);
+/**
+ * The redacted-event seam the downloader publishes its lifecycle scope through.
+ * `redactText` masks secret values out of every free-string payload field
+ * BEFORE construction; `publish` forwards the content-free event to the
+ * `EventService` (failures swallowed — events are observational only). Both deps
+ * live in the `Live` layer closure so the frozen SDK tag is unwidened.
+ */
+export interface DownloaderEvents {
+  readonly redactText: (text: string) => string;
+  readonly publish: (event: LandoEvent) => Effect.Effect<void>;
+}
 
-        return Effect.gen(function* () {
-          const sourceError = validateSource(request);
-          if (sourceError !== undefined) return yield* Effect.fail(sourceError);
+const noopDownloaderEvents: DownloaderEvents = {
+  redactText: (text) => text,
+  publish: () => Effect.void,
+};
 
-          if (request.destination.kind === "file") {
-            const { directory, filename } = request.destination;
-            const destinationError = validateDestinationFilename(filename);
-            if (destinationError !== undefined) return yield* Effect.fail(destinationError);
-            const destinationPath = join(directory, filename);
+/** Build a redacted, fail-open event seam from an optional `EventService`. */
+export const makeLiveDownloaderEvents = (
+  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+): DownloaderEvents => {
+  const { redact } = createSecretRedactor([]);
+  const publish: DownloaderEvents["publish"] = Option.isSome(eventService)
+    ? (event) => eventService.value.publish(event).pipe(Effect.catchAllCause(() => Effect.void))
+    : () => Effect.void;
+  return { redactText: redact, publish };
+};
 
-            if (request.expectedSha256 !== undefined) {
-              const existing = yield* hashExistingFile(destinationPath);
-              if (
-                existing !== undefined &&
-                existing.sha256 === request.expectedSha256 &&
-                (request.expectedSizeBytes === undefined || existing.sizeBytes === request.expectedSizeBytes)
-              ) {
-                return {
-                  url: request.url,
-                  kind: "file",
-                  path: destinationPath,
-                  sha256: existing.sha256,
-                  sizeBytes: existing.sizeBytes,
-                  fromCache: true,
-                } satisfies DownloadResult;
-              }
+/** Controlled, content-free failure summary — never raw URLs, query, or causes. */
+const failureDetailForError = (error: DownloadError): string => {
+  switch (error._tag) {
+    case "DownloadFetchError":
+      return error.status === undefined ? "fetch-failed" : `fetch-failed status=${error.status}`;
+    case "DownloadChecksumError":
+      return "checksum-mismatch";
+    case "DownloadSizeMismatchError":
+      return "size-mismatch";
+    case "DownloadPersistError":
+      return `persist-failed operation=${error.operation}`;
+    case "DownloadOfflineError":
+      return "offline-cache-miss";
+    case "DownloadSourceForbiddenError":
+      return `source-forbidden reason=${error.reason}`;
+  }
+};
+
+const isDownloadError = (value: unknown): value is DownloadError =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  typeof (value as { _tag?: unknown })._tag === "string" &&
+  (value as { _tag: string })._tag.startsWith("Download");
+
+/** Map a failed/interrupted exit cause to a controlled, content-free detail. */
+const failureDetailFromExitCause = (cause: Cause.Cause<DownloadError>): string => {
+  const failure = Option.getOrUndefined(Cause.failureOption(cause));
+  if (failure !== undefined && isDownloadError(failure)) return failureDetailForError(failure);
+  if (Cause.isInterrupted(cause)) return "interrupted";
+  return "error";
+};
+
+interface PostEventInput {
+  readonly origin: string;
+  readonly callerId: string | undefined;
+  readonly outcome: "success" | "failure";
+  readonly fromCache: boolean;
+  readonly bytesDownloaded: number | undefined;
+  readonly sha256: string | undefined;
+  readonly durationMs: number;
+  readonly failureDetail: string | undefined;
+  readonly redact: (text: string) => string;
+}
+
+// ----- Service factory ----------------------------------------------------
+
+/**
+ * Build a `Downloader` service over a resolved `HttpClient` and event seam. The
+ * `events` seam defaults to a no-op so library callers without an
+ * `EventService` keep working byte-for-byte.
+ */
+export const makeDownloaderService = (
+  http: Context.Tag.Service<typeof HttpClient>,
+  events: DownloaderEvents = noopDownloaderEvents,
+): DownloaderShape => ({
+  id: "core-downloader",
+  capabilities: CAPABILITIES,
+  download: (request) => {
+    const origin = urlOrigin(request.url);
+    const { redact: tokenRedact } = createSecretRedactor(request.redactionTokens ?? []);
+    const redact = (text: string): string => tokenRedact(events.redactText(text));
+    const callerId = request.callerId;
+
+    const preEvent = (): LandoEvent =>
+      PreDownloadEvent.make({
+        eventName: "pre-download" as const,
+        urlOrigin: origin,
+        ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
+        ...(request.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: request.expectedSizeBytes }),
+        timestamp: DateTime.unsafeMake(Date.now()),
+      });
+
+    const progressEvent = (bytesDownloaded: number): LandoEvent =>
+      DownloadProgressEvent.make({
+        eventName: "download-progress" as const,
+        urlOrigin: origin,
+        ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
+        bytesDownloaded,
+        ...(request.expectedSizeBytes === undefined ? {} : { totalBytes: request.expectedSizeBytes }),
+        timestamp: DateTime.unsafeMake(Date.now()),
+      });
+
+    const postEvent = (input: PostEventInput): LandoEvent =>
+      PostDownloadEvent.make({
+        eventName: "post-download" as const,
+        urlOrigin: input.origin,
+        ...(input.callerId === undefined ? {} : { callerId: input.redact(input.callerId) }),
+        ...(input.bytesDownloaded === undefined ? {} : { bytesDownloaded: input.bytesDownloaded }),
+        fromCache: input.fromCache,
+        ...(input.sha256 === undefined ? {} : { sha256: input.sha256 }),
+        durationMs: input.durationMs,
+        outcome: input.outcome,
+        ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
+        timestamp: DateTime.unsafeMake(Date.now()),
+      });
+
+    return Effect.gen(function* () {
+      const startedAt = Date.now();
+      const progress = yield* Ref.make(0);
+      yield* events.publish(preEvent());
+
+      const tapProgress = <E>(body: Stream.Stream<Uint8Array, E>): Stream.Stream<Uint8Array, E> =>
+        body.pipe(
+          Stream.tap((chunk) =>
+            Ref.updateAndGet(progress, (total) => total + chunk.length).pipe(
+              Effect.flatMap((total) => events.publish(progressEvent(total))),
+            ),
+          ),
+        );
+
+      const core = Effect.gen(function* () {
+        const sourceError = validateSource(request);
+        if (sourceError !== undefined) return yield* Effect.fail(sourceError);
+
+        if (request.destination.kind === "file") {
+          const { directory, filename } = request.destination;
+          const destinationError = validateDestinationFilename(filename);
+          if (destinationError !== undefined) return yield* Effect.fail(destinationError);
+          const destinationPath = join(directory, filename);
+
+          if (request.expectedSha256 !== undefined) {
+            const existing = yield* hashExistingFile(destinationPath);
+            if (
+              existing !== undefined &&
+              existing.sha256 === request.expectedSha256 &&
+              (request.expectedSizeBytes === undefined || existing.sizeBytes === request.expectedSizeBytes)
+            ) {
+              return {
+                url: request.url,
+                kind: "file",
+                path: destinationPath,
+                sha256: existing.sha256,
+                sizeBytes: existing.sizeBytes,
+                fromCache: true,
+              } satisfies DownloadResult;
             }
-
-            if (request.offline === true) {
-              return yield* Effect.fail(
-                new DownloadOfflineError({
-                  message: "Offline mode is enabled and the artifact is not present in the verified cache.",
-                  urlOrigin: origin,
-                }),
-              );
-            }
-
-            const response = yield* http.stream({
-              url: request.url,
-              allowFileSource: request.allowFileSource ?? false,
-            });
-            const httpError = statusError(response.status, origin);
-            if (httpError !== undefined) return yield* Effect.fail(httpError);
-            const result = yield* persistVerifiedStream({
-              body: response.body,
-              destinationPath,
-              expectedSha256: request.expectedSha256,
-              expectedSizeBytes: request.expectedSizeBytes,
-            });
-            return {
-              url: request.url,
-              kind: "file",
-              path: destinationPath,
-              sha256: result.sha256,
-              sizeBytes: result.sizeBytes,
-              fromCache: false,
-            } satisfies DownloadResult;
           }
 
           if (request.offline === true) {
@@ -239,35 +348,110 @@ export const DownloaderLive: Layer.Layer<Downloader, never, HttpClient> = Layer.
           });
           const httpError = statusError(response.status, origin);
           if (httpError !== undefined) return yield* Effect.fail(httpError);
-          const result = yield* collectVerifiedStream({
-            body: response.body,
+          const result = yield* persistVerifiedStream({
+            body: tapProgress(response.body),
+            destinationPath,
             expectedSha256: request.expectedSha256,
             expectedSizeBytes: request.expectedSizeBytes,
           });
           return {
             url: request.url,
-            kind: "memory",
+            kind: "file",
+            path: destinationPath,
             sha256: result.sha256,
             sizeBytes: result.sizeBytes,
             fromCache: false,
           } satisfies DownloadResult;
-        }).pipe(
-          Effect.catchTags({
-            HttpStreamError: (error) =>
-              Effect.fail(
-                new DownloadFetchError({
-                  message: error.message,
-                  urlOrigin: origin,
-                  ...(error.status === undefined ? {} : { status: error.status }),
-                  ...(error.cause === undefined ? {} : { cause: error.cause }),
-                }),
-              ),
-            VerifiedStreamError: (error) => Effect.fail(mapVerifiedError(error, origin)),
-          }),
-        );
-      },
-    };
+        }
 
-    return service;
+        if (request.offline === true) {
+          return yield* Effect.fail(
+            new DownloadOfflineError({
+              message: "Offline mode is enabled and the artifact is not present in the verified cache.",
+              urlOrigin: origin,
+            }),
+          );
+        }
+
+        const response = yield* http.stream({
+          url: request.url,
+          allowFileSource: request.allowFileSource ?? false,
+        });
+        const httpError = statusError(response.status, origin);
+        if (httpError !== undefined) return yield* Effect.fail(httpError);
+        const result = yield* collectVerifiedStream({
+          body: tapProgress(response.body),
+          expectedSha256: request.expectedSha256,
+          expectedSizeBytes: request.expectedSizeBytes,
+        });
+        return {
+          url: request.url,
+          kind: "memory",
+          sha256: result.sha256,
+          sizeBytes: result.sizeBytes,
+          fromCache: false,
+        } satisfies DownloadResult;
+      }).pipe(
+        Effect.catchTags({
+          HttpStreamError: (error) =>
+            Effect.fail(
+              new DownloadFetchError({
+                message: error.message,
+                urlOrigin: origin,
+                ...(error.status === undefined ? {} : { status: error.status }),
+                ...(error.cause === undefined ? {} : { cause: error.cause }),
+              }),
+            ),
+          VerifiedStreamError: (error) => Effect.fail(mapVerifiedError(error, origin)),
+        }),
+      );
+
+      const publishPost = (exit: Exit.Exit<DownloadResult, DownloadError>): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          const bytes = yield* Ref.get(progress);
+          const durationMs = Date.now() - startedAt;
+          if (exit._tag === "Success") {
+            const value = exit.value;
+            yield* events.publish(
+              postEvent({
+                origin,
+                callerId,
+                outcome: "success",
+                fromCache: value.fromCache,
+                bytesDownloaded: value.fromCache ? 0 : value.sizeBytes,
+                sha256: value.sha256,
+                durationMs,
+                failureDetail: undefined,
+                redact,
+              }),
+            );
+            return;
+          }
+          yield* events.publish(
+            postEvent({
+              origin,
+              callerId,
+              outcome: "failure",
+              fromCache: false,
+              bytesDownloaded: bytes > 0 ? bytes : undefined,
+              sha256: undefined,
+              durationMs,
+              failureDetail: failureDetailFromExitCause(exit.cause),
+              redact,
+            }),
+          );
+        });
+
+      return yield* core.pipe(Effect.onExit(publishPost));
+    });
+  },
+});
+
+export const DownloaderLive: Layer.Layer<Downloader, never, HttpClient> = Layer.effect(
+  Downloader,
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    const eventService = yield* Effect.serviceOption(EventService);
+    return makeDownloaderService(http, makeLiveDownloaderEvents(eventService));
   }),
 );

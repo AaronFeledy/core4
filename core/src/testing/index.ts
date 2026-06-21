@@ -4,6 +4,7 @@
  * and `@lando/core/docs/redactions` subpaths remain unstable until GA.
  */
 
+export * from "./downloader.ts";
 export * from "./managed-file.ts";
 export * from "./scenario-context.ts";
 export * from "./test-runtime.ts";
