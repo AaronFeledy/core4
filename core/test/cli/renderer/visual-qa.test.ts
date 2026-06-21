@@ -58,7 +58,7 @@ describe("visual-qa tokenizer", () => {
 });
 
 // ---------------------------------------------------------------------------
-// S1 — task-tree golden frames (US-280/US-281 surfaces)
+// S1 — task-tree golden frames
 // ---------------------------------------------------------------------------
 describe("task-tree visual golden frames", () => {
   for (const fixture of TREE_FIXTURES) {
@@ -91,7 +91,7 @@ describe("task-tree visual golden frames", () => {
 });
 
 // ---------------------------------------------------------------------------
-// S2 — grouped summary golden frames (US-283 surfaces)
+// S2 — grouped summary golden frames
 // ---------------------------------------------------------------------------
 describe("summary visual golden frames", () => {
   for (const fixture of SUMMARY_FIXTURES) {
