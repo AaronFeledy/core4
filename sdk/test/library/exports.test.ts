@@ -312,6 +312,12 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runManagedFileContract).toBeDefined();
   });
 
+  test("test entry point exports the downloader contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runDownloaderContract).toBeDefined();
+  });
+
   test("test entry point documents plugin contract runner arguments", async () => {
     const source = await readFile(new URL("../../src/test/index.ts", import.meta.url), "utf8");
 

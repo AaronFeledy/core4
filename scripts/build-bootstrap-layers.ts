@@ -83,7 +83,7 @@ const renderMinimal = (): string =>
     "    PrivilegeServiceLive,",
     "    SecretStoreLive,",
     "    Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),",
-    "    DownloaderLive.pipe(Layer.provide(HttpClientBasicLive)),",
+    "    DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive))),",
     "  );",
     "};",
     "",
