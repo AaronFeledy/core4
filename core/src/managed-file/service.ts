@@ -510,9 +510,13 @@ const matchesRemoveSelector = (entry: LedgerEntry, selector: ManagedFileSelector
     ? selector.path === undefined || entry.base === undefined
     : entry.base === selector.base);
 
-const eventSummary = (mf: ManagedFile, decision: Decision): string => {
+const eventSummary = (mf: ManagedFile, decision: Decision, kind: ManagedFileEventKind): string => {
   const bytes = decision.write !== undefined ? ` (${Buffer.byteLength(decision.write, "utf8")}B)` : "";
-  const backedUp = decision.backup ? " [prior content backed up]" : "";
+  const backedUp = decision.backup
+    ? kind === "post-managed-file-write"
+      ? " [prior content backed up]"
+      : " [prior content will be backed up]"
+    : "";
   return `${decision.action} ${mf.mode}/${mf.format}${bytes}${backedUp}`;
 };
 
@@ -557,7 +561,7 @@ export const makeManagedFileService = (
           path: events.redactText(decision.relPath) as PortablePath,
           owner: events.redactText(mf.owner),
           action: decision.action,
-          summary: events.redactText(eventSummary(mf, decision)),
+          summary: events.redactText(eventSummary(mf, decision, kind)),
         }),
       );
     const plan = (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>

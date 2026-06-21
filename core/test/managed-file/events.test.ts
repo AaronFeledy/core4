@@ -77,11 +77,15 @@ describe("ManagedFile lifecycle events", () => {
     const before = store.events().length;
 
     await runScoped(store.service.apply([mf]));
-    expect(names(store.events().slice(before))).toEqual([
+    const emitted = store.events().slice(before);
+    expect(names(emitted)).toEqual([
       "managed-file-conflict-detected",
       "pre-managed-file-write",
       "post-managed-file-write",
     ]);
+    expect(String(emitted[0]?.summary)).toContain("[prior content will be backed up]");
+    expect(String(emitted[1]?.summary)).toContain("[prior content will be backed up]");
+    expect(String(emitted[2]?.summary)).toContain("[prior content backed up]");
   });
 
   test("onConflict fail emits conflict-detected before failing", async () => {
