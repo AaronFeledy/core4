@@ -115,6 +115,42 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(store.read("cfg.txt")).toBeNull();
   });
 
+  test("plugin path spellings are normalized before reaching the ledger", async () => {
+    const planStore = await run(makeTestManagedFileStore());
+    const planPlugin = makeLandoPluginContext({ id: "plugin-a", managedFileService: planStore.service });
+    const plan = await run(planPlugin.managedFiles.plan([pluginFile("a:cfg", "./cfg.txt")]));
+
+    expect(plan.entries[0]?.path).toBe("cfg.txt");
+
+    const removeStore = await run(makeTestManagedFileStore());
+    const removePlugin = makeLandoPluginContext({
+      id: "plugin-a",
+      managedFileService: removeStore.service,
+    });
+    await runScoped(removePlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
+    const removed = await run(removePlugin.managedFiles.remove({ path: "./cfg.txt" as PortablePath }));
+
+    expect(removed.entries).toHaveLength(1);
+    expect(removeStore.read("cfg.txt")).toBeNull();
+
+    const adoptStore = await run(makeTestManagedFileStore());
+    const adoptPlugin = makeLandoPluginContext({ id: "plugin-a", managedFileService: adoptStore.service });
+    await runScoped(adoptPlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
+    await run(adoptPlugin.managedFiles.adopt("./cfg.txt" as PortablePath));
+
+    expect(adoptStore.ledger()[0]?.state).toBe("adopted");
+
+    const releaseStore = await run(makeTestManagedFileStore());
+    const releasePlugin = makeLandoPluginContext({
+      id: "plugin-a",
+      managedFileService: releaseStore.service,
+    });
+    await runScoped(releasePlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
+    await run(releasePlugin.managedFiles.release("./cfg.txt" as PortablePath));
+
+    expect(releaseStore.ledger()[0]?.state).toBe("adopted");
+  });
+
   test("an explicitly declared remove base is rejected, not allowed to miss the plugin ledger entry", async () => {
     const store = await run(makeTestManagedFileStore());
     const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });

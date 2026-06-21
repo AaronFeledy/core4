@@ -122,7 +122,8 @@ export const makePluginManagedFiles = (
       }),
     );
 
-  const withOwner = (file: PluginManagedFile): ManagedFile => ({ ...file, owner: ownerId }) as ManagedFile;
+  const withOwner = (file: PluginManagedFile): ManagedFile =>
+    ({ ...file, path: normalizeManagedPath(file.path) as PortablePath, owner: ownerId }) as ManagedFile;
 
   const plan: PluginManagedFiles["plan"] = (files) =>
     rejectDeclaredForeignOwner(files, "plan").pipe(
@@ -166,13 +167,15 @@ export const makePluginManagedFiles = (
         ),
       );
     }
+    const normalizedPath =
+      selector.path === undefined ? undefined : (normalizeManagedPath(selector.path) as PortablePath);
     const scoped: ManagedFileSelector = {
       ...(selector.id === undefined ? {} : { id: selector.id }),
-      ...(selector.path === undefined ? {} : { path: selector.path }),
+      ...(normalizedPath === undefined ? {} : { path: normalizedPath }),
       owner: ownerId,
     };
     const pathCheck =
-      selector.path === undefined ? Effect.void : assertNoForeignPath([selector.path], "remove");
+      normalizedPath === undefined ? Effect.void : assertNoForeignPath([normalizedPath], "remove");
     return pathCheck.pipe(Effect.zipRight(service.remove(scoped)));
   };
 
@@ -180,11 +183,19 @@ export const makePluginManagedFiles = (
     Effect.map((infos) => infos.filter((info) => info.owner === ownerId)),
   );
 
-  const adopt: PluginManagedFiles["adopt"] = (path) =>
-    assertNoForeignPath([path], "adopt").pipe(Effect.zipRight(service.adopt(path)));
+  const adopt: PluginManagedFiles["adopt"] = (path) => {
+    const normalizedPath = normalizeManagedPath(path) as PortablePath;
+    return assertNoForeignPath([normalizedPath], "adopt").pipe(
+      Effect.zipRight(service.adopt(normalizedPath)),
+    );
+  };
 
-  const release: PluginManagedFiles["release"] = (path) =>
-    assertNoForeignPath([path], "release").pipe(Effect.zipRight(service.release(path)));
+  const release: PluginManagedFiles["release"] = (path) => {
+    const normalizedPath = normalizeManagedPath(path) as PortablePath;
+    return assertNoForeignPath([normalizedPath], "release").pipe(
+      Effect.zipRight(service.release(normalizedPath)),
+    );
+  };
 
   return { plan, apply, remove, status, adopt, release };
 };
