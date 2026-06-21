@@ -1546,3 +1546,10 @@
   - Event payload schemas live in `@lando/sdk/events` and are registered in the public JSON-schema registry, but are NOT re-exported from the `@lando/sdk/schema` barrel and NOT listed under API_COMPATIBILITY's "Additive Alpha schema exports" (that list is the runtime `@lando/sdk/schema` export surface, gated by `sdk-backward-compatibility.test.ts`). Follow the managed-file-events precedent.
   - The spec says `provides.downloaders[]` but the repo manifest key is `contributes`; add object-shaped contribution arrays under `contributes` mirroring `GlobalServiceContribution`, and refactor `normalizeExternalContributionModules` to normalize every module-bearing array (it previously early-returned unless `globalServices` was present).
 ---
+
+## 2026-06-21 07:50 CDT - Babysit
+- PR: #419 https://github.com/AaronFeledy/core4/pull/419
+- CI outcome: pass (after fix; initially guide-scenarios-* failed on guide-drift gate)
+- Review feedback: fixed (registry.ts touched a guide-covered surface with no behavior change; added Guide-Coverage-Skip line to PR body and re-ran CI clean)
+- Merge: merged (squash)
+---
