@@ -48,6 +48,22 @@ describe("PluginManifest", () => {
         providers: [{ id: "legacy-provider", deprecated: notice }],
         proxies: [{ id: "legacy-proxy", deprecated: notice }],
         globalServices: [{ id: "legacy-global", deprecated: notice }],
+        downloaders: [
+          {
+            id: "legacy-downloader",
+            module: "./downloader.ts",
+            capabilities: {
+              schemes: ["https"],
+              memoryDownload: true,
+              cacheAware: true,
+              offline: false,
+              mirror: false,
+            },
+            enabledByDefault: true,
+            summary: "Legacy downloader.",
+            deprecated: notice,
+          },
+        ],
         setup: {
           flags: [{ name: "legacy-flag", type: "boolean", deprecated: notice }],
         },
@@ -57,6 +73,10 @@ describe("PluginManifest", () => {
     expect(decoded.contributes?.commands?.[0]).toEqual({ id: "meta:legacy", deprecated: notice });
     expect(decoded.contributes?.globalServices?.[0]).toMatchObject({
       id: "legacy-global",
+      deprecated: notice,
+    });
+    expect(decoded.contributes?.downloaders?.[0]).toMatchObject({
+      id: "legacy-downloader",
       deprecated: notice,
     });
     expect(decoded.contributes?.setup?.flags?.[0]).toMatchObject({ name: "legacy-flag", deprecated: notice });

@@ -62,6 +62,7 @@ import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../e
 
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
+import type { DownloaderShape } from "./downloader.ts";
 import type { LandoEvent } from "./events.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
@@ -124,6 +125,7 @@ export * from "./cli.ts";
 export * from "./config-translator.ts";
 export * from "./config.ts";
 export * from "./deprecation.ts";
+export * from "./downloader.ts";
 export * from "./events.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
@@ -599,6 +601,11 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
 export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
   FileSyncEngine,
   FileSyncEngineShape
+>() {}
+
+export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
+  Downloader,
+  DownloaderShape
 >() {}
 
 export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<

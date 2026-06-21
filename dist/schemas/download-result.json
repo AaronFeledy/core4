@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "fromCache": {
+      "type": "boolean"
+    },
+    "kind": {
+      "enum": [
+        "file",
+        "memory"
+      ],
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "sizeBytes": {
+      "type": "number"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "url",
+    "kind",
+    "sha256",
+    "sizeBytes",
+    "fromCache"
+  ],
+  "type": "object"
+}

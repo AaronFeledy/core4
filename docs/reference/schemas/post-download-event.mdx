@@ -1,0 +1,24 @@
+---
+title: Post Download Event
+description: Public Lando schema contract for Post Download Event.
+---
+
+# Post Download Event
+
+Public Lando schema contract for Post Download Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-download-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-download` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-download` | — | — |
+| `urlOrigin` | Yes | `string` | a string | — | — | — | — |
+| `callerId` | No | `string` | — | — | — | — | — |
+| `bytesDownloaded` | No | `number` | — | — | — | — | — |
+| `fromCache` | Yes | `boolean` | a boolean | — | — | — | — |
+| `sha256` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

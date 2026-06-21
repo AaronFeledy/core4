@@ -2,6 +2,7 @@ export * from "./app.ts";
 export * from "./bootstrap.ts";
 export * from "./cli.ts";
 export * from "./deprecation.ts";
+export * from "./download.ts";
 export * from "./global.ts";
 export * from "./lifecycle.ts";
 export * from "./managed-file.ts";

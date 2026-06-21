@@ -511,6 +511,15 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Artifact Manifest Entry.",
+      "docsPath": "docs/reference/schemas/artifact-manifest-entry.mdx",
+      "id": "ArtifactManifestEntry",
+      "jsonSchemaPath": "dist/schemas/artifact-manifest-entry.json",
+      "packageExport": "@lando/sdk/schema#ArtifactManifestEntry",
+      "title": "Artifact Manifest Entry"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Build Script.",
       "docsPath": "docs/reference/schemas/build-script.mdx",
       "id": "BuildScript",
@@ -868,6 +877,33 @@
       "jsonSchemaPath": "dist/schemas/config-lint-result.json",
       "packageExport": "@lando/sdk/schema#ConfigLintResult",
       "title": "Config Lint Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Download Request.",
+      "docsPath": "docs/reference/schemas/download-request.mdx",
+      "id": "DownloadRequest",
+      "jsonSchemaPath": "dist/schemas/download-request.json",
+      "packageExport": "@lando/sdk/schema#DownloadRequest",
+      "title": "Download Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Download Result.",
+      "docsPath": "docs/reference/schemas/download-result.mdx",
+      "id": "DownloadResult",
+      "jsonSchemaPath": "dist/schemas/download-result.json",
+      "packageExport": "@lando/sdk/schema#DownloadResult",
+      "title": "Download Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Downloader Capabilities.",
+      "docsPath": "docs/reference/schemas/downloader-capabilities.mdx",
+      "id": "DownloaderCapabilities",
+      "jsonSchemaPath": "dist/schemas/downloader-capabilities.json",
+      "packageExport": "@lando/sdk/schema#DownloaderCapabilities",
+      "title": "Downloader Capabilities"
     },
     {
       "deprecated": false,
@@ -1537,6 +1573,33 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Pre Download Event.",
+      "docsPath": "docs/reference/schemas/pre-download-event.mdx",
+      "id": "PreDownloadEvent",
+      "jsonSchemaPath": "dist/schemas/pre-download-event.json",
+      "packageExport": "@lando/sdk/schema#PreDownloadEvent",
+      "title": "Pre Download Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Download Progress Event.",
+      "docsPath": "docs/reference/schemas/download-progress-event.mdx",
+      "id": "DownloadProgressEvent",
+      "jsonSchemaPath": "dist/schemas/download-progress-event.json",
+      "packageExport": "@lando/sdk/schema#DownloadProgressEvent",
+      "title": "Download Progress Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Download Event.",
+      "docsPath": "docs/reference/schemas/post-download-event.mdx",
+      "id": "PostDownloadEvent",
+      "jsonSchemaPath": "dist/schemas/post-download-event.json",
+      "packageExport": "@lando/sdk/schema#PostDownloadEvent",
+      "title": "Post Download Event"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Pre Provider Apply Event.",
       "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
       "id": "PreProviderApplyEvent",
@@ -1761,6 +1824,7 @@
       "AppRef",
       "ArtifactRef",
       "ArtifactBuildSpec",
+      "ArtifactManifestEntry",
       "BuildScript",
       "BuildPlan",
       "BuildStep",
@@ -1801,6 +1865,9 @@
       "GlobalConfig",
       "ConfigLintViolation",
       "ConfigLintResult",
+      "DownloadRequest",
+      "DownloadResult",
+      "DownloaderCapabilities",
       "ManagedFile",
       "ManagedFileInfo",
       "ManagedFilePlan",
@@ -1875,6 +1942,9 @@
       "PostManagedFileWriteEvent",
       "ManagedFileConflictDetectedEvent",
       "ManagedFileSkippedEvent",
+      "PreDownloadEvent",
+      "DownloadProgressEvent",
+      "PostDownloadEvent",
       "PreProviderApplyEvent",
       "PostProviderApplyEvent",
       "PreProviderExecEvent",
@@ -2659,6 +2729,26 @@
         }
       },
       "required": ["kind", "context"],
+      "type": "object"
+    },
+    "ArtifactManifestEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "number"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "sha256", "filename"],
       "type": "object"
     },
     "ArtifactRef": {
@@ -3518,6 +3608,160 @@
       },
       "$ref": "#/$defs/DeprecationUsedEvent",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "DownloaderCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "cacheAware": {
+          "type": "boolean"
+        },
+        "memoryDownload": {
+          "type": "boolean"
+        },
+        "mirror": {
+          "type": "boolean"
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["schemes", "memoryDownload", "cacheAware", "offline", "mirror"],
+      "type": "object"
+    },
+    "DownloadProgressEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["download-progress"],
+          "type": "string"
+        },
+        "bytesDownloaded": {
+          "type": "number"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["download-progress"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "totalBytes": {
+          "type": "number"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "eventName", "urlOrigin", "bytesDownloaded", "timestamp"],
+      "type": "object"
+    },
+    "DownloadRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allowFileSource": {
+          "type": "boolean"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "directory": {
+                  "type": "string"
+                },
+                "filename": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["file"],
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "directory", "filename"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": ["memory"],
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "expectedSha256": {
+          "type": "string"
+        },
+        "expectedSizeBytes": {
+          "type": "number"
+        },
+        "offline": {
+          "type": "boolean"
+        },
+        "redactionTokens": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "destination"],
+      "type": "object"
+    },
+    "DownloadResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "fromCache": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": ["file", "memory"],
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "number"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "kind", "sha256", "sizeBytes", "fromCache"],
+      "type": "object"
     },
     "EmbeddingPluginPolicy": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8825,6 +9069,106 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-download"],
+              "type": "string"
+            },
+            "callerId": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-download"],
+              "type": "string"
+            },
+            "expectedSizeBytes": {
+              "type": "number"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "urlOrigin": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "urlOrigin", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["download-progress"],
+              "type": "string"
+            },
+            "bytesDownloaded": {
+              "type": "number"
+            },
+            "callerId": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["download-progress"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "totalBytes": {
+              "type": "number"
+            },
+            "urlOrigin": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "urlOrigin", "bytesDownloaded", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-download"],
+              "type": "string"
+            },
+            "bytesDownloaded": {
+              "type": "number"
+            },
+            "callerId": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["post-download"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "fromCache": {
+              "type": "boolean"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "urlOrigin": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "urlOrigin", "fromCache", "outcome", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-provider-apply"],
               "type": "string"
             },
@@ -10999,6 +11343,56 @@
           },
           "type": "array"
         },
+        "downloaders": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "cacheAware": {
+                    "type": "boolean"
+                  },
+                  "memoryDownload": {
+                    "type": "boolean"
+                  },
+                  "mirror": {
+                    "type": "boolean"
+                  },
+                  "offline": {
+                    "type": "boolean"
+                  },
+                  "schemes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": ["schemes", "memoryDownload", "cacheAware", "offline", "mirror"],
+                "type": "object"
+              },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "fileSyncEngines": {
           "items": {
             "anyOf": [
@@ -11367,6 +11761,56 @@
                     "type": "object"
                   }
                 ]
+              },
+              "type": "array"
+            },
+            "downloaders": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cacheAware": {
+                        "type": "boolean"
+                      },
+                      "memoryDownload": {
+                        "type": "boolean"
+                      },
+                      "mirror": {
+                        "type": "boolean"
+                      },
+                      "offline": {
+                        "type": "boolean"
+                      },
+                      "schemes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": ["schemes", "memoryDownload", "cacheAware", "offline", "mirror"],
+                    "type": "object"
+                  },
+                  "deprecated": {
+                    "$ref": "#/$defs/DeprecationNotice"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "type": "object"
               },
               "type": "array"
             },
@@ -12044,6 +12488,56 @@
         }
       },
       "required": ["_tag", "app", "timestamp"],
+      "type": "object"
+    },
+    "PostDownloadEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-download"],
+          "type": "string"
+        },
+        "bytesDownloaded": {
+          "type": "number"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": ["post-download"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "fromCache": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "eventName", "urlOrigin", "fromCache", "outcome", "timestamp"],
       "type": "object"
     },
     "PostGlobalStartEvent": {
@@ -14049,6 +14543,40 @@
         }
       },
       "required": ["_tag", "app", "timestamp"],
+      "type": "object"
+    },
+    "PreDownloadEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-download"],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-download"],
+          "type": "string"
+        },
+        "expectedSizeBytes": {
+          "type": "number"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "eventName", "urlOrigin", "timestamp"],
       "type": "object"
     },
     "PreGlobalStartEvent": {

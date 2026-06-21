@@ -15,6 +15,7 @@ import {
 import { BeforeExitEvent, PostBootstrapEvent, PreBootstrapEvent, ReadyEvent } from "./bootstrap.ts";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "./cli.ts";
 import { DeprecationUsedEvent } from "./deprecation.ts";
+import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "./download.ts";
 import {
   PostGlobalStartEvent,
   PostGlobalStopEvent,
@@ -91,6 +92,9 @@ export const LandoEvent = Schema.Union(
   PostManagedFileWriteEvent,
   ManagedFileConflictDetectedEvent,
   ManagedFileSkippedEvent,
+  PreDownloadEvent,
+  DownloadProgressEvent,
+  PostDownloadEvent,
   PreProviderApplyEvent,
   PostProviderApplyEvent,
   PreProviderExecEvent,
