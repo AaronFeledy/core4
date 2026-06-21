@@ -4,6 +4,8 @@ import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
 import { NoProviderInstalledError } from "@lando/core/errors";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { DownloaderLive } from "../../src/downloader/service.ts";
+import { HttpClientBasicLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 
@@ -43,6 +45,7 @@ const registryLayer = (defaultProviderId: "lando" | "docker" | "missing") => {
 
   return RuntimeProviderRegistryLive.pipe(
     Layer.provideMerge(PluginRegistryLive),
+    Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive))),
     Layer.provideMerge(Layer.succeed(ConfigService, configService)),
   );
 };
