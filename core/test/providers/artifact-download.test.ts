@@ -4,8 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
+import { ProviderBundleChecksumError } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
 import { DownloaderLive } from "../../src/downloader/service.ts";
@@ -42,21 +43,33 @@ const captureFetch = (
   return { fetchImpl, init: () => captured };
 };
 
+const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
+  Effect.gen(function* () {
+    const downloader = yield* Downloader;
+    const artifactDownload = makeArtifactDownload(downloader);
+    const effect = artifactDownload({
+      url: "https://example.test/lando-runtime.zip",
+      expectedSha256: sha256Hex(BUNDLE),
+      directory,
+      filename: "bundle.zip",
+      allowFileSource: false,
+    });
+    return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
+  }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientBasicLive(fetchImpl)))));
+
 const runArtifactDownload = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const downloader = yield* Downloader;
-      const artifactDownload = makeArtifactDownload(downloader);
-      const effect = artifactDownload({
-        url: "https://example.test/lando-runtime.zip",
-        expectedSha256: sha256Hex(BUNDLE),
-        directory,
-        filename: "bundle.zip",
-        allowFileSource: false,
-      });
-      return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
-    }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientBasicLive(fetchImpl))))),
-  );
+  Effect.runPromise(artifactDownloadEffect(fetchImpl, directory, trust));
+
+const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
+  if (!Exit.isFailure(exit)) {
+    throw new Error("expected effect to fail");
+  }
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag !== "Some") {
+    throw new Error(`expected a typed failure, got ${JSON.stringify(exit.cause)}`);
+  }
+  return failure.value;
+};
 
 describe("makeArtifactDownload", () => {
   test("downloads + verifies through the core Downloader and applies ambient network trust", async () => {
@@ -86,12 +99,14 @@ describe("makeArtifactDownload", () => {
     expect(capture.init()?.tls).toBeUndefined();
   });
 
-  test("fails with ProviderUnavailableError when the downloaded bytes do not match the expected checksum", async () => {
+  test("preserves provider-lando checksum remediation when the downloaded bytes mismatch", async () => {
     const directory = await makeTempDir();
     const capture = captureFetch(new Uint8Array([1, 1, 1]));
 
-    await expect(runArtifactDownload(capture.fetchImpl, directory)).rejects.toThrow(
-      /Failed to download the provider-lando runtime bundle/,
+    const failure = expectFailure(
+      await Effect.runPromiseExit(artifactDownloadEffect(capture.fetchImpl, directory)),
     );
+    expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
+    expect((failure as ProviderBundleChecksumError).remediation).toContain("pinned SHA-256");
   });
 });

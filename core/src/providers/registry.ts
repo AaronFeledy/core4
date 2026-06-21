@@ -7,10 +7,12 @@ import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provide
 import {
   type ArtifactDownload,
   type ArtifactDownloadResult,
+  ProviderBundleChecksumError,
   makeRuntimeProvider as makeLandoRuntimeProvider,
 } from "@lando/provider-lando";
 import { makeRuntimeProvider as makePodmanRuntimeProvider } from "@lando/provider-podman";
 import {
+  DownloadChecksumError,
   NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderConfigError,
@@ -78,6 +80,18 @@ const toProviderUnavailableFromCapability = (
   });
 };
 
+const toRuntimeBundleDownloadError = (cause: unknown): ProviderUnavailableError => {
+  if (cause instanceof DownloadChecksumError) {
+    return new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", cause);
+  }
+  return new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "setup",
+    message: "Failed to download the provider-lando runtime bundle.",
+    cause,
+  });
+};
+
 export const makeArtifactDownload =
   (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
   (req) =>
@@ -94,17 +108,7 @@ export const makeArtifactDownload =
         const bytes = yield* Effect.promise(() => readFile(path));
         return { bytes: new Uint8Array(bytes), sha256: result.sha256, path } satisfies ArtifactDownloadResult;
       }),
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderUnavailableError({
-            providerId: "lando",
-            operation: "setup",
-            message: "Failed to download the provider-lando runtime bundle.",
-            cause,
-          }),
-      ),
-    );
+    ).pipe(Effect.mapError(toRuntimeBundleDownloadError));
 
 const makeRuntimeProviderRegistry = (
   configService: Context.Tag.Service<typeof ConfigService>,
