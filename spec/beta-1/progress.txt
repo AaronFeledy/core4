@@ -1633,3 +1633,10 @@
   - The egress fence is a unit-level byte-provenance + call-count invariant (every byte through the resolved `HttpClient`, exactly one stream per miss); proving arbitrary plugin code cannot ALSO open a raw socket needs the static `check:network-boundary` gate, which lands with the public `HttpClient` story (US-331).
   - Keep `NetworkTrust`/`fetchInitForNetwork` out of `@lando/sdk/test`: proxy/CA/`NO_PROXY` assertions belong in a core-only canary against `DownloaderLive + HttpClientBasicLive(injected fetchImpl)`, not in the cross-implementation public contract.
 ---
+
+## 2026-06-21 18:16 CDT - Babysit
+- PR: #422 https://github.com/AaronFeledy/core4/pull/422
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate flagged internal-only EventServiceLive wiring in recipes/tarball-source.ts; added sanctioned Guide-Coverage-Skip PR-body line and re-triggered CI via empty commit so workflow re-read the body)
+- Merge: merged (squash)
+---
