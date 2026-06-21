@@ -1516,3 +1516,10 @@
 - Review notes (deferred/rejected): owner/path disclosure in conflict remediation remains accepted as non-blocking for trusted in-process plugins; full service-side resolved-target owner enforcement is a broader hardening seam, while this story’s plugin boundary now blocks the confirmed bypass.
 - Verification: typecheck, lint, `check:managed-file-boundary`, and focused managed-file/plugin/runtime/SDK export spot checks passed; TypeScript LSP diagnostics unavailable in this environment.
 ---
+
+## 2026-06-21 04:04 CDT - Babysit
+- PR: #417 https://github.com/AaronFeledy/core4/pull/417
+- CI outcome: pass
+- Review feedback: fixed (normalized plugin managed-file ledger operations so plan/apply/adopt/release/remove use the same normalized path keys as the cross-owner check, resolving the open Bugbot path-normalization finding; two earlier Bugbot findings were already resolved by prior commits)
+- Merge: merged (squash)
+---
