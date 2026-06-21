@@ -2305,7 +2305,7 @@ const MANAGED_FILE_CONTRACT_OWNER = "contract";
  * `ManagedFile`; `read`/`seed` inspect and pre-populate the working tree
  * relative to `base`; `events` returns every `ManagedFile` lifecycle event
  * emitted so far. The same suite runs against `ManagedFileServiceLive`,
- * `TestManagedFileStore`, and any host/test override (§10.13).
+ * `TestManagedFileStore`, and any host or test override of the service.
  */
 export interface ManagedFileContractHarness {
   readonly name?: string;

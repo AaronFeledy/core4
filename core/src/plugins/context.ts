@@ -1,11 +1,8 @@
-// The constrained context a plugin receives instead of internal core objects
-// (spec §9.8). Today it exposes a single accessor: `managedFiles`, a
-// `ManagedFileService` view pre-namespaced to the plugin's `owner` id. A
-// plugin's managed files are always recorded with `owner: <plugin-id>` and a
-// plugin can neither see, remove, nor adopt files owned by another plugin or by
-// core. The future StateStore story appends a `stateStore` accessor here; the
-// ownership logic lives in `makePluginManagedFiles` so that addition is
-// independent of this surface.
+// Constrained context plugins receive instead of internal core objects. Exposes
+// `managedFiles`, a `ManagedFileService` view pre-namespaced to the plugin id.
+// Plugin writes always record `owner: <plugin-id>`; a plugin cannot see, remove,
+// or adopt files owned by another plugin or by core. A future `stateStore`
+// accessor can be added here; ownership rules live in `makePluginManagedFiles`.
 
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
@@ -170,7 +167,7 @@ export const makePluginManagedFiles = (
   return { plan, apply, remove, status, adopt, release };
 };
 
-/** The constrained context a plugin receives (spec §9.8). */
+/** Constrained context a plugin receives at runtime. */
 export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
