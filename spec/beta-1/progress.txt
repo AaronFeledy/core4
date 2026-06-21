@@ -1581,3 +1581,10 @@
 - Review notes (deferred/rejected): raw URL/cause redaction in fetch errors and redirect re-validation/streaming byte caps are real defense-in-depth notes, but they belong to the explicitly deferred redaction/contract and HttpClient network-trust stories (US-288/US-331), not this verified-wrapper story. Minor diagnostics precision for `DownloadPersistError.operation` and mode/chmod test coverage were left as non-blocking.
 - Verification: typecheck and lint passed; focused downloader/http-client tests passed (28); `git diff --check` passed; LSP diagnostics could not run because the TypeScript LSP is not installed and was previously declined.
 ---
+
+## 2026-06-21 12:30 CDT - Babysit
+- PR: #420 https://github.com/AaronFeledy/core4/pull/420
+- CI outcome: pass
+- Review feedback: fixed (Bugbot High-severity "rename temp while handle open" — close verified temp file before rename so Windows persistence does not EPERM)
+- Merge: merged (squash)
+---
