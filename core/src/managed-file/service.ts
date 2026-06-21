@@ -906,9 +906,8 @@ const deriveAppId = (base: string): string => {
 const makeLiveManagedFileEvents = (
   eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
 ): ManagedFileEvents => {
-  // Canonical `@lando/sdk/secrets` redactor seam. The active secret value-set is
-  // supplied by the `RedactionService` (BETA1-06); until that lands the set is
-  // empty, and the content-free payloads are what actually prevent secret leaks.
+  // `@lando/sdk/secrets` value redactor; value-set may be empty until a global
+  // redaction feed is wired — content-free payloads still prevent secret leaks.
   const { redact } = createSecretRedactor([]);
   return {
     redactText: redact,

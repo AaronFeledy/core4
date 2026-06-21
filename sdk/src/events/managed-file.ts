@@ -4,12 +4,11 @@ import { ManagedFileAction } from "../schema/managed-file.ts";
 import { PortablePath } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
-// `ManagedFile` lifecycle event scope (§3.5/§10.13). `ManagedFileService`
-// publishes one of these for every managed working-tree file write/skip/conflict
-// decision. Payloads carry only `path`, `owner`, `action`, and a redacted,
-// content-free `summary` — never the rendered file content or the on-disk
-// content — so a secret-bearing managed file (a DB password in `settings.php`)
-// can never leak through an event, the event history, or a transcript.
+// Managed working-tree file lifecycle events. `ManagedFileService` publishes
+// one of these for every write/skip/conflict decision. Payloads carry only
+// `path`, `owner`, `action`, and a redacted, content-free `summary` — never
+// rendered or on-disk file content — so secrets cannot leak via events or
+// transcripts.
 
 export const PreManagedFileWriteEvent = Schema.TaggedStruct("pre-managed-file-write", {
   eventName: Schema.Literal("pre-managed-file-write"),
