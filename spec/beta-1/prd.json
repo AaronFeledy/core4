@@ -1549,8 +1549,8 @@
         "Lint passes."
       ],
       "priority": 87,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Core-private provisional HttpClient tag (core/src/http-client/service.ts, Context.Tag(\"@lando/core/HttpClient\") with stream only) + HttpClientBasicLive (core/src/http-client/live.ts, the sole fetch call site; file:// gated by allowFileSource; scope-bound readers; inert construction). Full HttpClient SDK surface/trust-resolver/network-boundary gate remain US-330/US-331 (the tag is intentionally NOT published from @lando/sdk/services nor the core barrel). DownloaderLive (core/src/downloader/service.ts) is Layer.effect(Downloader) closing over HttpClient; download() R stays Scope.Scope. Pre-flight order: scheme/source gating (https default; file:// only with allowFileSource; reason scheme|file-source|destination-escape) -> verified-cache short-circuit (existing dest hashed vs expectedSha256[/size], zero network) -> offline fail-fast -> HttpClient.stream -> verified-stream helper. The pure stream->SHA-256->temp->atomic-rename + memory-buffer helper (core/src/downloader/verified-stream.ts) removes temp on stream failure, checksum/size mismatch, persist failure, and Effect.interrupt; kept core-internal (the spec's shared @lando/sdk helper waits for the DataMover second consumer). Events/redaction/contract suite deferred to US-288; memory mode is verify-only (no bytes field added to DownloadResult). Wired provided-only into the minimal bootstrap layer via the generator (HttpClientBasicLive provided into DownloaderLive, not a top-level service); Downloader added to MinimalRuntimeServices. SDK source untouched."
     },
     {
       "id": "US-287",

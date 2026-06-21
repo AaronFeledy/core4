@@ -24,6 +24,7 @@ import type {
   CacheService,
   CommandRegistry,
   ConfigService,
+  Downloader,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -126,7 +127,8 @@ type MinimalRuntimeServices =
   | ManagedFileService
   | PluginTrustStore
   | PrivilegeService
-  | ProcessRunner;
+  | ProcessRunner
+  | Downloader;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =

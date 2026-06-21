@@ -17,6 +17,8 @@ import { Renderer } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
+import { DownloaderLive } from "../../../downloader/service.ts";
+import { HttpClientBasicLive } from "../../../http-client/live.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
@@ -47,5 +49,6 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     PrivilegeServiceLive,
     SecretStoreLive,
     Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),
+    DownloaderLive.pipe(Layer.provide(HttpClientBasicLive)),
   );
 };
