@@ -154,6 +154,7 @@ export const persistVerifiedStream = <E>(
       Effect.tryPromise({
         try: async () => {
           await handle.sync().catch(() => undefined);
+          await handle.close();
           await rename(tempPath, params.destinationPath);
         },
         catch: (cause) =>
