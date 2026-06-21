@@ -15,6 +15,7 @@
 - `AbsolutePath`
 - `AppMountPlan`
 - `ArtifactBuildSpec`
+- `ArtifactManifestEntry`
 - `ArtifactRef`
 - `assertJsonSchemaDeprecationsValid`
 - `assertPublicSchemaAnnotations`
@@ -33,6 +34,11 @@
 - `ComposeSecretConfig`
 - `ConfigLintResult`
 - `ConfigLintViolation`
+- `DownloadDestination`
+- `DownloadRequest`
+- `DownloadResult`
+- `DownloaderCapabilities`
+- `DownloaderContribution`
 - `ContributionRef`
 - `CleanupProps`
 - `DataStoreMountPlan`
@@ -222,10 +228,18 @@
 - `LandofileShape.x-*`
 - `PluginManifest.deprecated`
 - `PluginManifest.requires`
+- `PluginContribution.downloaders` is a new additive optional field.
 
 ## Additive Alpha errors
 
 - `ConfigTranslateError`
+- `DownloadChecksumError`
+- `DownloadFetchError`
+- `DownloadOfflineError`
+- `DownloadPersistError`
+- `DownloadSizeMismatchError`
+- `DownloadSourceForbiddenError`
+- `DownloaderUnavailableError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
@@ -248,6 +262,7 @@
 - `CommandRegistry`
 - `ConfigTranslator`
 - `DeprecationService`
+- `Downloader`
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`

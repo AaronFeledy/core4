@@ -4617,6 +4617,139 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-download"
+          ],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-download"
+          ],
+          "type": "string"
+        },
+        "expectedSizeBytes": {
+          "type": "number"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "urlOrigin",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "download-progress"
+          ],
+          "type": "string"
+        },
+        "bytesDownloaded": {
+          "type": "number"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "download-progress"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "totalBytes": {
+          "type": "number"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "urlOrigin",
+        "bytesDownloaded",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-download"
+          ],
+          "type": "string"
+        },
+        "bytesDownloaded": {
+          "type": "number"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": [
+            "post-download"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "fromCache": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "urlOrigin",
+        "fromCache",
+        "outcome",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-provider-apply"
           ],
           "type": "string"

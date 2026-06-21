@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
+import { DownloaderCapabilities } from "./downloader.ts";
 import { PluginName } from "./primitives.ts";
 
 export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
@@ -70,6 +71,27 @@ export const GlobalServiceContribution = Schema.Struct({
 });
 export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 
+/**
+ * Plugin-contributed verified downloader entry.
+ *
+ * Plugins use `downloaders:` to register verified-download implementations for
+ * later runtime selection by the `Downloader` service.
+ */
+export const DownloaderContribution = Schema.Struct({
+  /** Downloader id registered by the plugin. MUST be unique across plugins. */
+  id: Schema.String,
+  /** Path to the module that produces the downloader implementation. */
+  module: Schema.optional(Schema.String),
+  /** Static capabilities advertised by this downloader implementation. */
+  capabilities: Schema.optional(DownloaderCapabilities),
+  /** Initial enabled state when the plugin is first installed. */
+  enabledByDefault: Schema.optional(Schema.Boolean),
+  /** One-line description surfaced in downloader listings / diagnostics. */
+  summary: Schema.optional(Schema.String),
+  deprecated: Schema.optional(DeprecationNotice),
+});
+export type DownloaderContribution = typeof DownloaderContribution.Type;
+
 export const PluginSetupFlagContribution = Schema.Struct({
   name: Schema.String,
   type: Schema.Literal("boolean", "option"),
@@ -108,6 +130,8 @@ export const PluginContribution = Schema.Struct({
   commands: Schema.optional(Schema.Array(ContributionRef)),
   /** Global-app service contributions added by plugins. */
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
+  /** Verified-download implementations registered. */
+  downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
   setup: Schema.optional(PluginSetupContribution),
 });
 export type PluginContribution = typeof PluginContribution.Type;

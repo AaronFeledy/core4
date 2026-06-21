@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "cacheAware": {
+      "type": "boolean"
+    },
+    "memoryDownload": {
+      "type": "boolean"
+    },
+    "mirror": {
+      "type": "boolean"
+    },
+    "offline": {
+      "type": "boolean"
+    },
+    "schemes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemes",
+    "memoryDownload",
+    "cacheAware",
+    "offline",
+    "mirror"
+  ],
+  "type": "object"
+}

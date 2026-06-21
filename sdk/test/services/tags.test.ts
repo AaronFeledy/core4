@@ -9,6 +9,7 @@ import {
   BuildOrchestrator,
   CacheService,
   ConfigService,
+  Downloader,
   EventService,
   FileSystem,
   LandofileService,
@@ -59,6 +60,7 @@ const EXPECTED_TAGS = [
     methods: ["list", "capabilities", "select"],
   },
   { tag: ConfigService, key: "@lando/core/ConfigService", methods: ["load", "get"] },
+  { tag: Downloader, key: "@lando/core/Downloader", methods: ["download"] },
   { tag: LandofileService, key: "@lando/core/LandofileService", methods: ["discover"] },
   { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
   { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build"] },
@@ -143,6 +145,7 @@ describe("Effect service tags", () => {
       ],
       ["list", "capabilities", "select"],
       ["load", "get"],
+      ["download"],
       ["discover"],
       ["plan"],
       ["build"],
@@ -279,6 +282,9 @@ describe("Effect service tags", () => {
       assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof LandofileService>["discover"]>>>(
         true,
       ),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof Downloader>["download"]>>>
+      >(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof AppPlanner>["plan"]>>>
       >(true),

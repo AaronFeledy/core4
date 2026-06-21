@@ -108,6 +108,64 @@
           },
           "type": "array"
         },
+        "downloaders": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "cacheAware": {
+                    "type": "boolean"
+                  },
+                  "memoryDownload": {
+                    "type": "boolean"
+                  },
+                  "mirror": {
+                    "type": "boolean"
+                  },
+                  "offline": {
+                    "type": "boolean"
+                  },
+                  "schemes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "schemes",
+                  "memoryDownload",
+                  "cacheAware",
+                  "offline",
+                  "mirror"
+                ],
+                "type": "object"
+              },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "fileSyncEngines": {
           "items": {
             "anyOf": [

@@ -87,20 +87,47 @@ const normalizeExternalContributionModules = async (
   packageRoot: string,
   manifest: PluginManifest,
 ): Promise<PluginManifest> => {
-  if (manifest.contributes?.globalServices === undefined) return manifest;
-  return Promise.all(
-    manifest.contributes.globalServices.map(async (contribution) => {
-      if (contribution.module === undefined) return contribution;
-      const resolved = await resolvePluginModulePath(packageRoot, String(manifest.name), contribution.module);
-      return { ...contribution, module: pathToFileURL(resolved).href };
-    }),
-  ).then((globalServices) => ({
+  const globalServices = manifest.contributes?.globalServices;
+  const downloaders = manifest.contributes?.downloaders;
+  if (globalServices === undefined && downloaders === undefined) return manifest;
+
+  const normalizedGlobalServices =
+    globalServices === undefined
+      ? undefined
+      : await Promise.all(
+          globalServices.map(async (contribution) => {
+            if (contribution.module === undefined) return contribution;
+            const resolved = await resolvePluginModulePath(
+              packageRoot,
+              String(manifest.name),
+              contribution.module,
+            );
+            return { ...contribution, module: pathToFileURL(resolved).href };
+          }),
+        );
+  const normalizedDownloaders =
+    downloaders === undefined
+      ? undefined
+      : await Promise.all(
+          downloaders.map(async (contribution) => {
+            if (contribution.module === undefined) return contribution;
+            const resolved = await resolvePluginModulePath(
+              packageRoot,
+              String(manifest.name),
+              contribution.module,
+            );
+            return { ...contribution, module: pathToFileURL(resolved).href };
+          }),
+        );
+
+  return {
     ...manifest,
     contributes: {
       ...manifest.contributes,
-      globalServices,
+      ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
+      ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
     },
-  }));
+  };
 };
 
 const loadInstalledPluginManifest = async (packageRootInput: string): Promise<PluginManifest> => {

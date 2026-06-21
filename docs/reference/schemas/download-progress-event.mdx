@@ -1,0 +1,20 @@
+---
+title: Download Progress Event
+description: Public Lando schema contract for Download Progress Event.
+---
+
+# Download Progress Event
+
+Public Lando schema contract for Download Progress Event.
+
+[JSON Schema artifact](../../../dist/schemas/download-progress-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `download-progress` | — | — |
+| `eventName` | Yes | `string` | — | — | `download-progress` | — | — |
+| `urlOrigin` | Yes | `string` | a string | — | — | — | — |
+| `callerId` | No | `string` | — | — | — | — | — |
+| `bytesDownloaded` | Yes | `number` | a number | — | — | — | — |
+| `totalBytes` | No | `number` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

@@ -1530,8 +1530,8 @@
         "Lint passes."
       ],
       "priority": 86,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Surface-only per the PRD's US-285/US-286 split: published the Downloader Context.Tag (@lando/core/Downloader) with download(request)=>Effect<DownloadResult,DownloadError,Scope.Scope> (HttpClient-independent; the live-value HttpClient dependency is US-286). @lando/sdk/schema publishes ArtifactManifestEntry/DownloadRequest/DownloadResult/DownloaderCapabilities; @lando/sdk/events publishes pre-download/download-progress/post-download payloads (registered public JSON schemas, matching the managed-file-events precedent); @lando/sdk/errors publishes the seven tagged download errors. Plugin manifests accept contributes.downloaders[] (capability metadata + deprecation) with core registry module-path containment. API_COMPATIBILITY, export/tags fixtures, schema registry, and schema snapshot/dist/docs artifacts updated."
     },
     {
       "id": "US-286",

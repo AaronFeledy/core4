@@ -36,6 +36,10 @@ describe("@lando/sdk package exports", () => {
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
     expect(schema.ConfigLintResult).toBeDefined();
+    expect(schema.ArtifactManifestEntry).toBeDefined();
+    expect(schema.DownloadRequest).toBeDefined();
+    expect(schema.DownloadResult).toBeDefined();
+    expect(schema.DownloaderCapabilities).toBeDefined();
     expect(schema.FileFormat).toBeDefined();
     expect(schema.ContentSource).toBeDefined();
     expect(schema.ManagedFile).toBeDefined();
@@ -152,6 +156,13 @@ describe("@lando/sdk package exports", () => {
     expect(errors.LandofileLockMismatchError).toBeDefined();
     expect(errors.LandofileIncludeError).toBeDefined();
     expect(errors.ManagedFileError).toBeDefined();
+    expect(errors.DownloadFetchError).toBeDefined();
+    expect(errors.DownloadChecksumError).toBeDefined();
+    expect(errors.DownloadSizeMismatchError).toBeDefined();
+    expect(errors.DownloadPersistError).toBeDefined();
+    expect(errors.DownloadOfflineError).toBeDefined();
+    expect(errors.DownloadSourceForbiddenError).toBeDefined();
+    expect(errors.DownloaderUnavailableError).toBeDefined();
     expect(errors.PluginLoadError).toBeDefined();
     expect(errors.NoProviderInstalledError).toBeDefined();
     expect(errors.ConfigError).toBeDefined();
@@ -210,6 +221,9 @@ describe("@lando/sdk package exports", () => {
     expect(events.PostManagedFileWriteEvent).toBeDefined();
     expect(events.ManagedFileConflictDetectedEvent).toBeDefined();
     expect(events.ManagedFileSkippedEvent).toBeDefined();
+    expect(events.PreDownloadEvent).toBeDefined();
+    expect(events.DownloadProgressEvent).toBeDefined();
+    expect(events.PostDownloadEvent).toBeDefined();
     expect(events.DeprecationUsedEvent).toBeDefined();
     expect(events.LandoEvent).toBeDefined();
   });
@@ -235,6 +249,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
+    expect(services.Downloader).toBeDefined();
   });
 
   test("secrets entry point exports the single value redactor", async () => {

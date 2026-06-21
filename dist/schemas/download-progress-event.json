@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "download-progress"
+      ],
+      "type": "string"
+    },
+    "bytesDownloaded": {
+      "type": "number"
+    },
+    "callerId": {
+      "type": "string"
+    },
+    "eventName": {
+      "enum": [
+        "download-progress"
+      ],
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    },
+    "totalBytes": {
+      "type": "number"
+    },
+    "urlOrigin": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "urlOrigin",
+    "bytesDownloaded",
+    "timestamp"
+  ],
+  "type": "object"
+}
