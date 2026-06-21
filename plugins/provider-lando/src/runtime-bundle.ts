@@ -192,6 +192,7 @@ export interface RuntimeBundleDownloaderOptions {
   readonly entry: RuntimeBundleEntry;
   readonly runtimeVersion: string;
   readonly artifactDownload: ArtifactDownload;
+  readonly skipSizeCheck?: boolean;
 }
 
 export const makeRuntimeBundleDownloader = (
@@ -205,7 +206,7 @@ export const makeRuntimeBundleDownloader = (
     const artifact = yield* options.artifactDownload({
       url: entry.url,
       expectedSha256: entry.sha256,
-      expectedSizeBytes: entry.sizeBytes,
+      ...(options.skipSizeCheck === true ? {} : { expectedSizeBytes: entry.sizeBytes }),
       directory: dirname(cachePath),
       filename: entry.filename,
       allowFileSource: entry.url.startsWith("file://"),
@@ -291,6 +292,7 @@ export const makeDefaultRuntimeBundleDownloader = (
       entry: finalEntry,
       runtimeVersion,
       artifactDownload: options.artifactDownload,
+      skipSizeCheck: options.url !== undefined,
     });
     return yield* inner.download;
   });

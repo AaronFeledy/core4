@@ -231,7 +231,7 @@ describe("makeRuntimeBundleDownloader", () => {
 });
 
 describe("makeDefaultRuntimeBundleDownloader", () => {
-  test("env manifest plus paired URL/SHA override passes the final entry to artifactDownload", async () => {
+  test("env manifest plus paired URL/SHA override skips the manifest size check", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-paired-"));
     try {
       const manifestBytes = new TextEncoder().encode("manifest bytes");
@@ -260,13 +260,15 @@ describe("makeDefaultRuntimeBundleDownloader", () => {
       expect(bundle.bytes).toEqual(overrideBytes);
       expect(bundle.sha256).toBe(overrideSha);
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toMatchObject({
+      const call = calls[0];
+      if (call === undefined) throw new Error("expected one artifactDownload call");
+      expect(call).toMatchObject({
         url: overrideUrl,
         expectedSha256: overrideSha,
-        expectedSizeBytes: manifestEntry.sizeBytes,
         filename: manifestEntry.filename,
         allowFileSource: false,
       });
+      expect("expectedSizeBytes" in call).toBe(false);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
