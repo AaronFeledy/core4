@@ -13,10 +13,9 @@
  * applies Bun `fetch` `proxy`/`tls.ca` options. When the tag is absent the
  * fetch stays a bare request, byte-for-byte the prior behavior.
  *
- * The canonical public network-trust resolver (proxy precedence, `NO_PROXY`,
- * CA loading) is a later story (`HttpClient` SDK publication / network-trust
- * resolver); this module carries only the resolved shape + application helpers
- * needed today and uses the stable tag id so promotion does not force renames.
+ * A full config-driven resolver (proxy precedence, `NO_PROXY`, CA loading) may
+ * ship on the public HttpClient surface later; this module only carries the
+ * resolved shape and Bun `fetch` application helpers.
  */
 import { Context } from "effect";
 

@@ -50,7 +50,7 @@ export const RUNTIME_BUNDLE_MANIFEST: RuntimeBundleManifest =
  * Points at an alternate manifest (identical shape to the bundled one, but
  * `file://` URLs are permitted). Verification stays enforced against each
  * entry's pinned SHA-256 — the override redirects verification, it never
- * disables it. See spec §5.8.1 / §13.5.
+ * disables it.
  */
 export const RUNTIME_BUNDLE_MANIFEST_ENV = "LANDO_RUNTIME_BUNDLE_MANIFEST";
 
