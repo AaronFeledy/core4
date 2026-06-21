@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import {
+  type ArtifactDownload,
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
@@ -243,10 +244,15 @@ describe("provider-lando setup", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-override-bundle-"));
     const calls: string[] = [];
     let fetchedUrl: string | undefined;
-    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
-      fetchedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      return Promise.resolve(new Response(new TextEncoder().encode("tampered override runtime bundle")));
-    }) as typeof fetch;
+    const artifactDownload: ArtifactDownload = (request) =>
+      Effect.sync(() => {
+        fetchedUrl = request.url;
+        return {
+          bytes: new TextEncoder().encode("tampered override runtime bundle"),
+          sha256: request.expectedSha256,
+          path: `${request.directory}/${request.filename}`,
+        };
+      });
 
     try {
       const provider = await Effect.runPromise(
@@ -255,7 +261,7 @@ describe("provider-lando setup", () => {
           podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
           podmanCommand: podmanCommand("podman version 5.2.0"),
           podmanMachine: machineRunner("running", calls),
-          runtimeBundleFetchImpl: fetchImpl,
+          artifactDownload,
           stateDir,
         }),
       );
@@ -287,10 +293,15 @@ describe("provider-lando setup", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-default-bundle-"));
     const calls: string[] = [];
     let fetchedUrl: string | undefined;
-    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
-      fetchedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      return Promise.resolve(new Response(new TextEncoder().encode("tampered windows runtime bundle")));
-    }) as typeof fetch;
+    const artifactDownload: ArtifactDownload = (request) =>
+      Effect.sync(() => {
+        fetchedUrl = request.url;
+        return {
+          bytes: new TextEncoder().encode("tampered windows runtime bundle"),
+          sha256: request.expectedSha256,
+          path: `${request.directory}/${request.filename}`,
+        };
+      });
 
     try {
       const provider = await Effect.runPromise(
@@ -299,7 +310,7 @@ describe("provider-lando setup", () => {
           podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
           podmanCommand: podmanCommand("podman version 5.2.0"),
           podmanMachine: machineRunner("running", calls),
-          runtimeBundleFetchImpl: fetchImpl,
+          artifactDownload,
           stateDir,
         }),
       );

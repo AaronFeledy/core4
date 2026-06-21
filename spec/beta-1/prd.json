@@ -1569,8 +1569,8 @@
         "Lint passes."
       ],
       "priority": 88,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Migrated Lando-owned download call sites onto the core Downloader: provider-lando runtime-bundle (injected artifactDownload backed by Downloader via RuntimeProviderRegistryLive), recipe + include npm tarball fetchers, and self-update manifest/binary/checksum/signature byte-fetches. Network trust preserved (no regression) via a core-private ambient NetworkTrust tag consumed by HttpClientBasicLive; setup preflight provides resolved trust around provider.setup. Duplicate fetchInitForNetwork/shouldBypassProxy consolidated into core/src/http-client/network-trust.ts. file-sync-mutagen acquisition and plugin install/update (BunSelfRunner) remain their own seams; cosign/GPG verification and git/npm-registry seams unchanged."
     },
     {
       "id": "US-288",

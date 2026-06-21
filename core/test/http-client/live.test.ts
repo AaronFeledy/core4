@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit, type Scope, Stream } from "effect";
 
-import { HttpClientBasicLive } from "../../src/http-client/live.ts";
+import { HttpClientBasicLive, makeHttpClientBasicLive } from "../../src/http-client/live.ts";
+import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
 import {
   HttpClient,
   HttpStreamError,
@@ -121,5 +122,72 @@ describe("HttpClientBasicLive", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+describe("HttpClientBasicLive network trust", () => {
+  const CA_PEM = "-----BEGIN CERTIFICATE-----\nMOCKCA\n-----END CERTIFICATE-----";
+
+  const captureFetch = (): {
+    readonly fetchImpl: typeof fetch;
+    readonly init: () => BunFetchRequestInit | undefined;
+  } => {
+    let captured: BunFetchRequestInit | undefined;
+    const fetchImpl = ((_input: unknown, requestInit?: BunFetchRequestInit) => {
+      captured = requestInit;
+      return Promise.resolve(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    }) as typeof fetch;
+    return { fetchImpl, init: () => captured };
+  };
+
+  const drive = (
+    fetchImpl: typeof fetch,
+    request: HttpStreamRequest,
+    trust?: ResolvedNetworkTrust,
+  ): Promise<void> => {
+    const base = streamAndCollect(request).pipe(
+      Effect.asVoid,
+      Effect.provide(makeHttpClientBasicLive(fetchImpl)),
+    );
+    const program = trust === undefined ? base : base.pipe(Effect.provideService(NetworkTrust, trust));
+    return Effect.runPromise(Effect.scoped(program));
+  };
+
+  test("applies resolved proxy and CA trust to the fetch init", async () => {
+    const capture = captureFetch();
+    await drive(
+      capture.fetchImpl,
+      { url: "https://example.com/artifact" },
+      {
+        proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: [] },
+        caPems: [CA_PEM],
+      },
+    );
+
+    expect(capture.init()?.proxy).toBe("http://proxy:3128");
+    expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
+  });
+
+  test("bypasses the proxy for NO_PROXY hosts while still applying the CA", async () => {
+    const capture = captureFetch();
+    await drive(
+      capture.fetchImpl,
+      { url: "https://example.com/artifact" },
+      {
+        proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: ["example.com"] },
+        caPems: [CA_PEM],
+      },
+    );
+
+    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
+  });
+
+  test("leaves the fetch init free of proxy/tls when no NetworkTrust is provided", async () => {
+    const capture = captureFetch();
+    await drive(capture.fetchImpl, { url: "https://example.com/artifact" });
+
+    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.tls).toBeUndefined();
   });
 });

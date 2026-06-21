@@ -19,7 +19,7 @@ import {
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
-import { makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
@@ -86,6 +86,9 @@ export {
   runtimeBundleCachePath,
 } from "./runtime-bundle.ts";
 export type {
+  ArtifactDownload,
+  ArtifactDownloadRequest,
+  ArtifactDownloadResult,
   DefaultRuntimeBundleDownloaderOptions,
   OverrideRuntimeBundleManifest,
   RuntimeBundleDownloaderOptions,
@@ -149,7 +152,7 @@ export interface ProviderLayerOptions {
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
-  readonly runtimeBundleFetchImpl?: typeof fetch;
+  readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly socketPath?: string;
   readonly eventService?: BringUpOptions["eventService"];
@@ -167,10 +170,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
+  const artifactDownloadMissing = (): ProviderUnavailableError =>
+    new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "setup",
+      message: "provider-lando runtime-bundle setup requires an injected artifactDownload function.",
+      remediation:
+        "Construct the provider through the core runtime provider registry so the shared artifact downloader can be injected.",
+    });
+  const missingArtifactDownload: ArtifactDownload = () => Effect.fail(artifactDownloadMissing());
   const makeSetupRuntimeBundleDownloader = (
     url?: string,
     sha256?: string,
-    network?: Parameters<typeof makeDefaultRuntimeBundleDownloader>[0]["network"],
   ): RuntimeBundleDownloader | undefined =>
     stateDir === undefined
       ? undefined
@@ -179,10 +190,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           platform,
           ...(url === undefined ? {} : { url }),
           ...(sha256 === undefined ? {} : { sha256 }),
-          ...(network === undefined ? {} : { network }),
-          ...(options.runtimeBundleFetchImpl === undefined
-            ? {}
-            : { fetchImpl: options.runtimeBundleFetchImpl }),
+          artifactDownload: options.artifactDownload ?? missingArtifactDownload,
         });
   const capabilities =
     podmanApi === undefined
@@ -227,16 +235,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
+            ...(options.artifactDownload === undefined ? {} : { artifactDownload: options.artifactDownload }),
             platform,
             ...(() => {
               const setupRuntimeBundleDownloader =
                 setupOptions.runtimeBundleUrl === undefined
                   ? (options.runtimeBundleDownloader ??
-                    makeSetupRuntimeBundleDownloader(undefined, undefined, setupOptions.network))
+                    makeSetupRuntimeBundleDownloader(undefined, undefined))
                   : makeSetupRuntimeBundleDownloader(
                       setupOptions.runtimeBundleUrl,
                       setupOptions.runtimeBundleSha256,
-                      setupOptions.network,
                     );
               return setupRuntimeBundleDownloader === undefined
                 ? {}

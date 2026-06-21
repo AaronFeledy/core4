@@ -15,7 +15,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
-import { ProviderBundleChecksumError } from "./runtime-bundle.ts";
+import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
@@ -110,6 +110,7 @@ export interface SetupOptions {
   readonly platform?: HostPlatform;
   readonly socketPath?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
+  readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly eventService?: EventPublisher;
 }

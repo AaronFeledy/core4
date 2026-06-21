@@ -4,6 +4,8 @@ import { Data, Effect } from "effect";
 
 import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
 
+import { type ResolvedNetworkTrust, fetchInitForNetwork } from "../../http-client/network-trust.ts";
+
 export type SetupNetworkFailureKind =
   | "tls-interception"
   | "proxy-authentication"
@@ -118,39 +120,11 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
       }),
   });
 
-const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): boolean => {
-  const parsedUrl = new URL(url);
-  const host = parsedUrl.hostname.toLowerCase();
-  const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
-  const hostWithPort = `${host}:${port}`;
-  return noProxy.some((raw) => {
-    const pattern = raw.toLowerCase();
-    if (pattern === "*") return true;
-    if (pattern === host || pattern === hostWithPort) return true;
-    if (pattern.startsWith(".")) return host.endsWith(pattern);
-    return host.endsWith(`.${pattern}`);
-  });
-};
-
-const fetchInitForNetwork = (
-  url: string,
-  network: ResolvedSetupNetworkTrust,
-): BunFetchRequestInit | undefined => {
-  const parsedUrl = new URL(url);
-  const bypassProxy = shouldBypassProxy(url, network.proxy.noProxy);
-  const proxyCandidate = bypassProxy
-    ? undefined
-    : parsedUrl.protocol === "https:"
-      ? (network.proxy.https ?? network.proxy.http)
-      : (network.proxy.http ?? network.proxy.https);
-  const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
-  const ca = network.ca.loadedCerts.map((cert) => cert.pem);
-  if (proxy === undefined && ca.length === 0) return undefined;
-  return {
-    ...(proxy === undefined ? {} : { proxy }),
-    ...(ca.length === 0 ? {} : { tls: { ca } }),
-  };
-};
+/** Adapt setup's resolved trust onto the core-private `ResolvedNetworkTrust` consumed by `HttpClient`. */
+export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => ({
+  proxy: network.proxy,
+  caPems: network.ca.loadedCerts.map((cert) => cert.pem),
+});
 
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
@@ -232,7 +206,7 @@ export const makeSetupNetworkTrustProbe =
         const response = await fetchImpl(SETUP_NETWORK_PROBE_URL, {
           method: "HEAD",
           redirect: "manual",
-          ...fetchInitForNetwork(SETUP_NETWORK_PROBE_URL, network),
+          ...fetchInitForNetwork(SETUP_NETWORK_PROBE_URL, networkTrustFromResolved(network)),
         });
         if (response.status === 407) {
           throw new Error(`HTTP 407 Proxy Authentication Required probing ${SETUP_NETWORK_PROBE_URL}`);

@@ -14,15 +14,18 @@
  *     decline aborts with `checksum-unverified`.
  */
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, Downloader } from "@lando/sdk/services";
 
+import { DownloaderLive } from "../downloader/service.ts";
+import { HttpClientBasicLive } from "../http-client/live.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { publish } from "./git-source.ts";
 import type { ResolvedRecipe } from "./source.ts";
@@ -113,13 +116,24 @@ const fileExists = async (path: string): Promise<boolean> =>
   );
 
 export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
-  fetch: async (url) => {
-    const response = await fetch(url, { redirect: "follow" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  },
+  fetch: (url) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const directory = yield* Effect.acquireRelease(
+            Effect.promise(() => mkdtemp(join(tmpdir(), "lando-tarball-fetch-"))),
+            (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+          );
+          const downloader = yield* Downloader;
+          const result = yield* downloader.download({
+            url,
+            destination: { kind: "file", directory, filename: "archive" },
+          });
+          const bytes = yield* Effect.promise(() => readFile(result.path ?? join(directory, "archive")));
+          return new Uint8Array(bytes);
+        }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive)))),
+      ),
+    ),
 };
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;

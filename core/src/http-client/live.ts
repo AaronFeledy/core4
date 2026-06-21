@@ -1,8 +1,9 @@
 import type { ReadStream } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { Effect, Layer, type Scope, Stream } from "effect";
+import { Effect, Layer, Option, type Scope, Stream } from "effect";
 
+import { NetworkTrust, fetchInitForNetwork } from "./network-trust.ts";
 import {
   HttpClient,
   type HttpClientShape,
@@ -96,11 +97,14 @@ const responseBodyStream = (
 };
 
 const streamHttp = (
+  fetchImpl: typeof fetch,
   request: HttpStreamRequest,
 ): Effect.Effect<HttpStreamResponse, HttpStreamError, Scope.Scope> =>
   Effect.gen(function* () {
+    const trust = yield* Effect.serviceOption(NetworkTrust);
+    const trustInit = Option.isSome(trust) ? fetchInitForNetwork(request.url, trust.value) : undefined;
     const response = yield* Effect.tryPromise({
-      try: () => fetch(request.url, { headers: headersInit(request.headers) }),
+      try: () => fetchImpl(request.url, { headers: headersInit(request.headers), ...trustInit }),
       catch: (cause) => streamError(request.url, `Failed to fetch ${request.url}`, cause),
     });
     const body = yield* responseBodyStream(request, response);
@@ -158,17 +162,23 @@ const streamFile = (
   });
 };
 
-const stream: HttpClientShape["stream"] = (request) => {
-  const url = parseUrl(request.url);
-  if (url === undefined) return Effect.fail(unsupportedScheme(request.url));
+const makeStream =
+  (fetchImpl: typeof fetch): HttpClientShape["stream"] =>
+  (request) => {
+    const url = parseUrl(request.url);
+    if (url === undefined) return Effect.fail(unsupportedScheme(request.url));
 
-  if (url.protocol === "http:" || url.protocol === "https:") return streamHttp(request);
-  if (url.protocol === "file:") return streamFile(request, url);
+    if (url.protocol === "http:" || url.protocol === "https:") return streamHttp(fetchImpl, request);
+    if (url.protocol === "file:") return streamFile(request, url);
 
-  return Effect.fail(unsupportedScheme(request.url));
-};
+    return Effect.fail(unsupportedScheme(request.url));
+  };
 
-export const HttpClientBasicLive: Layer.Layer<HttpClient> = Layer.succeed(HttpClient, {
-  id: "core-http-client-basic",
-  stream,
-});
+/** Construction stays inert: proxy/CA trust is applied per-request from the ambient `NetworkTrust` tag, never read at layer build. `fetchImpl` is injectable for tests. */
+export const makeHttpClientBasicLive = (fetchImpl: typeof fetch = fetch): Layer.Layer<HttpClient> =>
+  Layer.succeed(HttpClient, {
+    id: "core-http-client-basic",
+    stream: makeStream(fetchImpl),
+  });
+
+export const HttpClientBasicLive: Layer.Layer<HttpClient> = makeHttpClientBasicLive();
