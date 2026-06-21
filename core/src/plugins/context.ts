@@ -25,8 +25,11 @@ export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
   readonly base?: never;
 };
 
-/** A `remove` selector a plugin declares; `owner` is forced to the plugin id. */
-export type PluginManagedFileSelector = Omit<ManagedFileSelector, "owner"> & { readonly owner?: never };
+/** A `remove` selector a plugin declares; `owner` and base are supplied by the surface. */
+export type PluginManagedFileSelector = Omit<ManagedFileSelector, "owner" | "base"> & {
+  readonly owner?: never;
+  readonly base?: never;
+};
 
 /** The owner-scoped `ManagedFileService` view a plugin operates through. */
 export interface PluginManagedFiles {
@@ -148,7 +151,20 @@ export const makePluginManagedFiles = (
         ),
       );
     }
-    const scoped: ManagedFileSelector = { ...selector, owner: ownerId };
+    if ("base" in selector && selector.base !== undefined) {
+      return Effect.fail(
+        ownershipError(
+          "remove",
+          selector.path,
+          `Plugin "${ownerId}" cannot declare a managed-file base; plugin files are rooted by the host app.`,
+        ),
+      );
+    }
+    const scoped: ManagedFileSelector = {
+      ...(selector.id === undefined ? {} : { id: selector.id }),
+      ...(selector.path === undefined ? {} : { path: selector.path }),
+      owner: ownerId,
+    };
     const pathCheck =
       selector.path === undefined ? Effect.void : assertNoForeignPath([selector.path], "remove");
     return pathCheck.pipe(Effect.zipRight(service.remove(scoped)));

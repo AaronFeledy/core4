@@ -88,6 +88,23 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(store.read("cfg.txt")).toBeNull();
   });
 
+  test("an explicitly declared remove base is rejected, not allowed to miss the plugin ledger entry", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+
+    await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
+
+    const result = await exit(
+      a.managedFiles.remove({ path: "cfg.txt" as PortablePath, base: "/other/app" } as unknown as {
+        readonly path: PortablePath;
+      }),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(store.ledger()).toHaveLength(1);
+    expect(store.read("cfg.txt")).not.toBeNull();
+  });
+
   test("an explicitly declared foreign owner is rejected, not coerced", async () => {
     const store = await run(makeTestManagedFileStore());
     const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
