@@ -4417,6 +4417,206 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-managed-file-write"
+          ],
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "skip-unchanged",
+            "skip-adopted",
+            "conflict",
+            "adopt-detected"
+          ],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-managed-file-write"
+          ],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "path",
+        "owner",
+        "action",
+        "summary",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-managed-file-write"
+          ],
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "skip-unchanged",
+            "skip-adopted",
+            "conflict",
+            "adopt-detected"
+          ],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-managed-file-write"
+          ],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "path",
+        "owner",
+        "action",
+        "summary",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "managed-file-conflict-detected"
+          ],
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "skip-unchanged",
+            "skip-adopted",
+            "conflict",
+            "adopt-detected"
+          ],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "managed-file-conflict-detected"
+          ],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "path",
+        "owner",
+        "action",
+        "summary",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "managed-file-skipped"
+          ],
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "create",
+            "update",
+            "skip-unchanged",
+            "skip-adopted",
+            "conflict",
+            "adopt-detected"
+          ],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "managed-file-skipped"
+          ],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "path",
+        "owner",
+        "action",
+        "summary",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-provider-apply"
           ],
           "type": "string"

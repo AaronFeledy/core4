@@ -33,6 +33,12 @@ import {
   PreStartEvent,
   PreStopEvent,
 } from "./lifecycle.ts";
+import {
+  ManagedFileConflictDetectedEvent,
+  ManagedFileSkippedEvent,
+  PostManagedFileWriteEvent,
+  PreManagedFileWriteEvent,
+} from "./managed-file.ts";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "./message.ts";
 import {
   PostProviderApplyEvent,
@@ -81,6 +87,10 @@ export const LandoEvent = Schema.Union(
   PostServiceStopEvent,
   PreBuildEvent,
   PostBuildEvent,
+  PreManagedFileWriteEvent,
+  PostManagedFileWriteEvent,
+  ManagedFileConflictDetectedEvent,
+  ManagedFileSkippedEvent,
   PreProviderApplyEvent,
   PostProviderApplyEvent,
   PreProviderExecEvent,

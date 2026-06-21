@@ -2753,8 +2753,8 @@
         "Lint passes."
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "ManagedFileService.apply now publishes the four content-free redacted ManagedFile lifecycle event schemas (published as snapshot-gated @lando/sdk/events surface) through a ManagedFileEvents seam baked into the Live layer closure (frozen tag unwidened); EventService resolved via Effect.serviceOption with the bootstrap generator Layer.provide(EventServiceLive). Payloads carry path/owner/action + a byte-count-only summary, never file content; every string field routed through the canonical @lando/sdk/secrets redactor before publish. Conflict-detected fires on fail + overwrite-with-backup; skipped on skip/adopt-detected; overwrite backups written 0600 (chmod-before-rename). A secret in a settings.php block is proven absent from every emitted event (test double + real EventServiceLive integration + waitFor-capable bus). Canonical-surface deferrals per the established stand-in convention (US-351 used resolveUserDataRoot vs PathsService): the canonical RedactionService Context.Tag + the §13.4 redaction lint gate/consumer-list are BETA1-06 (US-300/301, unshipped) and the bounded redacted history + EventService.query are BETA1-14 (US-318, unshipped); the §3.7 spec consumer list already names ManagedFileService and waitFor is satisfied today."
     },
     {
       "id": "US-353",

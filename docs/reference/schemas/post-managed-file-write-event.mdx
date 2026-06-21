@@ -1,0 +1,20 @@
+---
+title: Post Managed File Write Event
+description: Public Lando schema contract for Post Managed File Write Event.
+---
+
+# Post Managed File Write Event
+
+Public Lando schema contract for Post Managed File Write Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-managed-file-write-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-managed-file-write` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-managed-file-write` | — | — |
+| `path` | Yes | `string` | a string | — | — | — | — |
+| `owner` | Yes | `string` | a string | — | — | — | — |
+| `action` | Yes | `string` | — | — | `create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, `adopt-detected` | — | — |
+| `summary` | Yes | `string` | a string | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
