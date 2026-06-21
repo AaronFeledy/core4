@@ -1575,3 +1575,9 @@
 - Verification: typecheck and lint passed; bootstrap-layer codegen drift-free; downloader + http-client spot tests green (28); manual end-to-end QA drove the real `DownloaderLive`+`HttpClientBasicLive` over a temp dir — real `file://` bytes landed on disk, the re-run short-circuited from cache, and a checksum mismatch left no artifact or temp.
 - **Learnings for future iterations:**
   - `Downloader` is https-only by scheme gate, so a plain `http://` loopback server cannot exercise the verified-download path end-to-end (it is correctly rejected with `DownloadSourceForbiddenError` reason `scheme`); test the non-2xx status path with a fake `HttpClient` returning the status, or an https surface, not a plain-http loopback.
+
+## 2026-06-21 11:29 CDT - US-286 Review
+- Reviewed the two-commit `DownloaderLive` branch against PRD-09 via the 5-lane review-work pass. Goal, QA, code-quality, security, and context-mining lanes all passed; the review fixed one repo-invariant issue in the new `HttpClientBasicLive` cleanup paths by replacing empty `catch {}` blocks with explicit best-effort discards while preserving release semantics.
+- Review notes (deferred/rejected): raw URL/cause redaction in fetch errors and redirect re-validation/streaming byte caps are real defense-in-depth notes, but they belong to the explicitly deferred redaction/contract and HttpClient network-trust stories (US-288/US-331), not this verified-wrapper story. Minor diagnostics precision for `DownloadPersistError.operation` and mode/chmod test coverage were left as non-blocking.
+- Verification: typecheck and lint passed; focused downloader/http-client tests passed (28); `git diff --check` passed; LSP diagnostics could not run because the TypeScript LSP is not installed and was previously declined.
+---

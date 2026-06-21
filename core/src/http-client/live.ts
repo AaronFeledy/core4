@@ -65,11 +65,15 @@ const releaseWebReader = (reader: WebBodyReader) =>
   Effect.promise(async () => {
     try {
       await reader.cancel();
-    } catch {}
+    } catch (cause) {
+      void cause;
+    }
 
     try {
       reader.releaseLock();
-    } catch {}
+    } catch (cause) {
+      void cause;
+    }
   });
 
 const responseBodyStream = (
@@ -129,7 +133,9 @@ const releaseFileStream = ({ handle, stream }: FileStreamResource) =>
 
     try {
       await handle.close();
-    } catch {}
+    } catch (cause) {
+      void cause;
+    }
   });
 
 const streamFile = (
