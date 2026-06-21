@@ -25,6 +25,7 @@ import {
   SshService,
 } from "@lando/sdk/services";
 
+import { NetworkTrust } from "../../../../http-client/network-trust.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionResolution,
@@ -38,6 +39,7 @@ import {
   type SetupNetworkTrustFetch,
   type SetupNetworkTrustProbe,
   makeSetupNetworkTrustProbe,
+  networkTrustFromResolved,
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
 import {
@@ -327,7 +329,10 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
             ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
           }),
-        ).pipe(Effect.tapError((cause) => recordFailure("provider", cause)));
+        ).pipe(
+          Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
+          Effect.tapError((cause) => recordFailure("provider", cause)),
+        );
         yield* recordReadiness({
           id: "provider",
           status: "satisfied",

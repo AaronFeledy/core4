@@ -37,6 +37,7 @@ import SetupCommand, {
 } from "../../src/cli/oclif/commands/meta/setup.ts";
 import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
@@ -259,6 +260,45 @@ describe("meta:setup command", () => {
         network: expect.objectContaining({ ca: expect.objectContaining({ certs: [] }) }),
       }),
     ]);
+  });
+
+  test("provides resolved network trust to the provider setup fiber so downloads honor proxy/CA", async () => {
+    const observed: Array<ResolvedNetworkTrust | undefined> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.gen(function* () {
+          const trust = yield* Effect.serviceOption(NetworkTrust);
+          observed.push(trust._tag === "Some" ? trust.value : undefined);
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          _networkFetch: async () => new Response(null, { status: 204 }),
+          flags: {},
+        })
+        .pipe(
+          Effect.provide(
+            buildSetupLayers(registry, {
+              network: {
+                proxy: { https: "http://proxy.example:8080", noProxy: [] },
+                ca: { certs: [], trustHost: true },
+              },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+    );
+
+    expect(observed).toEqual([{ proxy: { https: "http://proxy.example:8080", noProxy: [] }, caPems: [] }]);
   });
 
   test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {

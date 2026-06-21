@@ -18,6 +18,7 @@ import {
   UpdatePermissionError,
   type UpdateWindowsReplacementSpawnInput,
   buildWindowsReplacementScript,
+  defaultFetchManifestBytes,
   resolveUpdateManifestUrl,
   scheduleWindowsReplacement,
   update,
@@ -1279,5 +1280,22 @@ describe("update signed manifest", () => {
       channel: "dev",
       dryRun: true,
     });
+  });
+});
+
+describe("defaultFetchManifestBytes", () => {
+  test("rejects non-https sources by routing through the Downloader scheme gate", async () => {
+    const server = Bun.serve({
+      fetch: () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+      hostname: "127.0.0.1",
+      port: 0,
+    });
+    try {
+      await expect(
+        defaultFetchManifestBytes(`http://127.0.0.1:${server.port}/stable.json`),
+      ).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
   });
 });

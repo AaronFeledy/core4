@@ -11,7 +11,7 @@ import { chmod, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Either, Layer, Schema } from "effect";
 
 import type { LandoCommandError } from "@lando/sdk/errors";
 import {
@@ -20,9 +20,11 @@ import {
   type UpdateManifestSchema as UpdateManifest,
   UpdateManifestSchema,
 } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
+import { DownloaderLive } from "../../downloader/service.ts";
+import { HttpClientBasicLive } from "../../http-client/live.ts";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../../telemetry/events.ts";
 import { scrubTelemetryValue } from "../../telemetry/redaction.ts";
 import { CORE_VERSION } from "../../version.ts";
@@ -252,11 +254,24 @@ const updateManifestPlatform = (host: UpdateHostPlatform = process): keyof Updat
 const isPlaceholderBinary = (binary: UpdateManifest["binaries"][keyof UpdateManifest["binaries"]]): boolean =>
   binary.size === 0 || binary.sha256 === "" || /^0+$/u.test(binary.sha256);
 
-const defaultFetchManifestBytes: UpdateManifestFetcher = async (url) => {
-  const response = await fetch(url, { redirect: "follow" });
-  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-  return new Uint8Array(await response.arrayBuffer());
-};
+export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(join(tmpdir(), "lando-update-fetch-"))),
+          (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+        );
+        const downloader = yield* Downloader;
+        const result = yield* downloader.download({
+          url,
+          destination: { kind: "file", directory, filename: "artifact" },
+        });
+        const bytes = yield* Effect.promise(() => readFile(result.path ?? join(directory, "artifact")));
+        return new Uint8Array(bytes);
+      }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive)))),
+    ),
+  );
 
 const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = ({
   certificateBytes,

@@ -3,19 +3,28 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
+import { Downloader } from "@lando/sdk/services";
 
 import {
   RUNTIME_BUNDLE_TARGETS,
   buildRuntimeBundleManifest,
   computeBundleEntry,
 } from "../../../scripts/build-runtime-bundle.ts";
+import { DownloaderLive } from "../../src/downloader/service.ts";
+import { HttpClientBasicLive } from "../../src/http-client/live.ts";
+import { makeArtifactDownload } from "../../src/providers/registry.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const fileUrl = (path: string): string => new URL(`file://${path}`).href;
+
+const coreArtifactDownload = Effect.gen(function* () {
+  const downloader = yield* Downloader;
+  return makeArtifactDownload(downloader);
+}).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive))));
 
 describe("RUNTIME_BUNDLE_TARGETS", () => {
   test("covers every supported host platform key with a basename-only filename", () => {
@@ -89,9 +98,15 @@ describe("buildRuntimeBundleManifest (--local)", () => {
       await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
       const stateDir = join(dir, "state");
+      const artifactDownload = await Effect.runPromise(coreArtifactDownload);
       const bundle = await Effect.runPromise(
-        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
-          .download,
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          manifestPath,
+          artifactDownload,
+        }).download,
       );
 
       expect(bundle.bytes).toEqual(bytes);

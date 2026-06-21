@@ -221,6 +221,8 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+> **Scope resolution (Mutagen acquisition → US-332):** Criterion 2 (the `@lando/file-sync-mutagen` host-CLI/agent migration) is the headline deliverable of US-332 — *"Ship the tool-provisioning helper and migrate Mutagen onto it"*, whose AC4 already owns this exact migration and marks it *"(paired with US-287)"*. That migration cannot land without the helper US-332 ships: the canonical `ToolManifest`/`ToolArtifactEntry` SDK schemas, the `ToolExtractError`/`ToolInstallPathError`/`ToolManifestError` errors, the §17.2 `ToolManifest` codegen staleness gate, and the idempotent `bin/` version/fingerprint markers. US-287 owns and completes the direct `Downloader` call-site migrations (provider-lando runtime bundle, recipe/include tarballs, self-update byte fetches), the `BunSelfRunner` package-manager carve-out, and removing the bespoke proxy/SHA/persistence copies from those migrated sites. The file-sync bespoke download/extract/verify/install path is therefore the paired US-332 deliverable, not a US-287 omission — implementing it here would mean building most of US-332 as a second story.
+
 ### US-288: Enforce the Downloader contract suite, events, redaction, and acceptance coverage
 
 **Description:** As a maintainer or security reviewer, I can prove every built-in or plugin-contributed Downloader preserves the security and reliability guarantees required by the spec.

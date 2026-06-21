@@ -8,7 +8,11 @@ import { RecipeManifestService } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
-import { type TarballRecipeFetcher, resolveTarballRecipeSource } from "../../src/recipes/tarball-source.ts";
+import {
+  type TarballRecipeFetcher,
+  defaultTarballRecipeFetcher,
+  resolveTarballRecipeSource,
+} from "../../src/recipes/tarball-source.ts";
 
 const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe
@@ -390,6 +394,23 @@ describe("initApp tarball source boundary", () => {
       expect(caught).toBeInstanceOf(Error);
       expect((caught as Error).message).toContain("Recipe file rendering");
       expect((caught as Error).message).toContain("https://example.test/recipe.tar.gz");
+    });
+  });
+
+  describe("defaultTarballRecipeFetcher", () => {
+    test("rejects non-https sources by routing through the Downloader scheme gate", async () => {
+      const server = Bun.serve({
+        fetch: () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+        hostname: "127.0.0.1",
+        port: 0,
+      });
+      try {
+        await expect(
+          defaultTarballRecipeFetcher.fetch(`http://127.0.0.1:${server.port}/archive.tgz`),
+        ).rejects.toThrow();
+      } finally {
+        server.stop(true);
+      }
     });
   });
 });

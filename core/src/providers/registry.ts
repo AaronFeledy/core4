@@ -1,9 +1,18 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { type Context, Effect, Layer } from "effect";
 
 import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
-import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";
+import {
+  type ArtifactDownload,
+  type ArtifactDownloadResult,
+  ProviderBundleChecksumError,
+  makeRuntimeProvider as makeLandoRuntimeProvider,
+} from "@lando/provider-lando";
 import { makeRuntimeProvider as makePodmanRuntimeProvider } from "@lando/provider-podman";
 import {
+  DownloadChecksumError,
   NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderConfigError,
@@ -12,6 +21,7 @@ import {
 import { ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
+  Downloader,
   EventService,
   PluginRegistry,
   RuntimeProvider,
@@ -70,11 +80,44 @@ const toProviderUnavailableFromCapability = (
   });
 };
 
+const toRuntimeBundleDownloadError = (cause: unknown): ProviderUnavailableError => {
+  if (cause instanceof DownloadChecksumError) {
+    return new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", cause);
+  }
+  return new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "setup",
+    message: "Failed to download the provider-lando runtime bundle.",
+    cause,
+  });
+};
+
+export const makeArtifactDownload =
+  (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
+  (req) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const result = yield* downloader.download({
+          url: req.url,
+          destination: { kind: "file", directory: req.directory, filename: req.filename },
+          expectedSha256: req.expectedSha256,
+          ...(req.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: req.expectedSizeBytes }),
+          allowFileSource: req.allowFileSource,
+        });
+        const path = result.path ?? join(req.directory, req.filename);
+        const bytes = yield* Effect.promise(() => readFile(path));
+        return { bytes: new Uint8Array(bytes), sha256: result.sha256, path } satisfies ArtifactDownloadResult;
+      }),
+    ).pipe(Effect.mapError(toRuntimeBundleDownloadError));
+
 const makeRuntimeProviderRegistry = (
   configService: Context.Tag.Service<typeof ConfigService>,
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   eventService: EventPublisher | undefined,
+  downloader: Context.Tag.Service<typeof Downloader>,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
+  const artifactDownload = makeArtifactDownload(downloader);
+
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
       manifests
@@ -108,6 +151,7 @@ const makeRuntimeProviderRegistry = (
           ? yield* makeLandoRuntimeProvider({
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
               ...(eventService === undefined ? {} : { eventService }),
+              artifactDownload,
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
           : providerIdText === "docker"
             ? yield* makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
@@ -146,10 +190,12 @@ export const RuntimeProviderRegistryLive = Layer.effect(
     const configService = yield* ConfigService;
     const pluginRegistry = yield* PluginRegistry;
     const eventService = yield* Effect.serviceOption(EventService);
+    const downloader = yield* Downloader;
     return makeRuntimeProviderRegistry(
       configService,
       pluginRegistry,
       eventService._tag === "Some" ? eventService.value : undefined,
+      downloader,
     );
   }),
 );

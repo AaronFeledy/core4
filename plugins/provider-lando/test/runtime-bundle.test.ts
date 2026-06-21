@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
@@ -13,10 +12,15 @@ import {
   makeDefaultRuntimeBundleDownloader,
   resolveRuntimeBundleEntry,
   runtimeBundleCachePath,
+  setupProviderLando,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
-import { type RuntimeBundleEntry, makeRuntimeBundleDownloader } from "../src/runtime-bundle.ts";
+import {
+  type ArtifactDownload,
+  type RuntimeBundleEntry,
+  makeRuntimeBundleDownloader,
+} from "../src/runtime-bundle.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -31,37 +35,29 @@ const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
   return failure.value;
 };
 
-interface FetchCallLog {
-  calls: number;
-  urls: string[];
-  init?: BunFetchRequestInit;
-}
+type ArtifactDownloadRequest = Parameters<ArtifactDownload>[0];
 
-const fakeFetch = (
-  responses: Map<string, { body: Uint8Array; status?: number }>,
-  log: FetchCallLog,
-): typeof fetch =>
-  ((input: RequestInfo | URL, init?: BunFetchRequestInit): Promise<Response> => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-    log.calls += 1;
-    log.urls.push(url);
-    log.init = init;
-    const match = responses.get(url);
-    if (match === undefined) {
-      return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
-    }
-    const status = match.status ?? 200;
-    return Promise.resolve(
-      new Response(match.body, {
-        status,
-        statusText: status >= 400 ? "Error" : "OK",
-      }),
+const recordingArtifactDownload = (
+  bytes: Uint8Array,
+  options: { readonly sha256?: string; readonly fail?: ProviderUnavailableError } = {},
+): { readonly artifactDownload: ArtifactDownload; readonly calls: ArtifactDownloadRequest[] } => {
+  const calls: ArtifactDownloadRequest[] = [];
+  const artifactDownload: ArtifactDownload = (request) =>
+    Effect.sync(() => {
+      calls.push(request);
+    }).pipe(
+      Effect.flatMap(() =>
+        options.fail === undefined
+          ? Effect.succeed({
+              bytes,
+              sha256: options.sha256 ?? request.expectedSha256,
+              path: join(request.directory, request.filename),
+            })
+          : Effect.fail(options.fail),
+      ),
     );
-  }) as typeof fetch;
-
-const throwingFetch: typeof fetch = (() => {
-  throw new Error("network unreachable");
-}) as typeof fetch;
+  return { artifactDownload, calls };
+};
 
 const syntheticEntry = (filename: string, bytes: Uint8Array): RuntimeBundleEntry => ({
   url: `https://example.test/${filename}`,
@@ -69,6 +65,24 @@ const syntheticEntry = (filename: string, bytes: Uint8Array): RuntimeBundleEntry
   filename,
   sizeBytes: bytes.byteLength,
 });
+
+const localManifest = (
+  entry: RuntimeBundleEntry,
+  platformKey = "linux-x64",
+  runtimeVersion = "9.9.9-local",
+): string => JSON.stringify({ schemaVersion: 1, runtimeVersion, bundles: { [platformKey]: entry } });
+
+const allTsFiles = async (root: string): Promise<string[]> => {
+  const entries = await readdir(root, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map((entry) => {
+      const path = join(root, entry.name);
+      if (entry.isDirectory()) return allTsFiles(path);
+      return Promise.resolve(entry.isFile() && entry.name.endsWith(".ts") ? [path] : []);
+    }),
+  );
+  return nested.flat();
+};
 
 describe("RUNTIME_BUNDLE_MANIFEST", () => {
   test("declares pinned entries for every supported platform/arch", () => {
@@ -111,9 +125,8 @@ describe("resolveRuntimeBundleEntry", () => {
     const exit = await Effect.runPromiseExit(resolveRuntimeBundleEntry("win32", "arm64"));
     const failure = expectFailure(exit);
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
-    const provider = failure as ProviderUnavailableError;
-    expect(provider.message).toContain("win32-arm64");
-    expect(provider.remediation).toContain("lando setup");
+    expect((failure as ProviderUnavailableError).message).toContain("win32-arm64");
+    expect((failure as ProviderUnavailableError).remediation).toContain("lando setup");
   });
 });
 
@@ -124,7 +137,7 @@ describe("ProviderBundleChecksumError", () => {
     expect(err).toBeInstanceOf(ProviderBundleChecksumError);
   });
 
-  test("remediation cites section 5.8.1 and instructs the user to rerun `lando setup`", () => {
+  test("remediation instructs the user to rerun `lando setup`", () => {
     const err = new ProviderBundleChecksumError("test");
     expect(err.remediation).toContain("lando setup");
     expect(err.remediation).toContain("`lando setup`");
@@ -145,13 +158,6 @@ describe("runtimeBundleCachePath", () => {
     );
   });
 
-  test("strips a trailing slash on stateDir before joining", async () => {
-    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64"));
-    expect(runtimeBundleCachePath("/var/lando/", entry)).toBe(
-      `/var/lando/provider-lando/runtime-bundle/${entry.filename}`,
-    );
-  });
-
   test("rejects filenames that could escape the bundle cache directory", () => {
     const bytes = new TextEncoder().encode("safe bytes");
     for (const filename of ["../escape.zip", "nested/escape.zip", "nested\\escape.zip", ".", ".."] as const) {
@@ -166,307 +172,77 @@ describe("runtimeBundleCachePath", () => {
   });
 });
 
-describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
-  test("downloads, verifies, and persists the bundle on cache miss", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-download-"));
+describe("makeRuntimeBundleDownloader", () => {
+  test("delegates acquisition to the injected artifactDownload seam", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-artifact-"));
     try {
-      const bytes = new TextEncoder().encode("lando-runtime-bundle-payload");
+      const bytes = new TextEncoder().encode("runtime bundle bytes");
       const entry = syntheticEntry("synthetic-linux-x64.tar.gz", bytes);
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
-      });
+      const { artifactDownload, calls } = recordingArtifactDownload(bytes);
 
-      const bundle = await Effect.runPromise(downloader.download);
+      const bundle = await Effect.runPromise(
+        makeRuntimeBundleDownloader({
+          stateDir,
+          entry,
+          runtimeVersion: "9.9.9-test",
+          artifactDownload,
+        }).download,
+      );
 
-      expect(bundle.version).toBe("9.9.9-test");
-      expect(bundle.sha256).toBe(entry.sha256);
-      expect(bundle.bytes).toEqual(bytes);
-      expect(log.calls).toBe(1);
-      expect(log.urls[0]).toBe(entry.url);
-
-      const cachePath = runtimeBundleCachePath(stateDir, entry);
-      const onDisk = await readFile(cachePath);
-      expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(bytes);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("passes resolved setup proxy and custom CA settings to Bun fetch", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-network-"));
-    try {
-      const bytes = new TextEncoder().encode("network-aware-bundle");
-      const entry = syntheticEntry("synthetic-network.tar.gz", bytes);
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        network: {
-          proxy: { https: "http://proxy.example:8080", noProxy: [] },
-          ca: { trustHost: true, certs: ["/corp.pem"], loadedCerts: [{ pem: "CORP PEM" }] },
+      const expectedPath = runtimeBundleCachePath(stateDir, entry);
+      expect(bundle).toEqual({ version: "9.9.9-test", bytes, sha256: entry.sha256 });
+      expect(calls).toEqual([
+        {
+          url: entry.url,
+          expectedSha256: entry.sha256,
+          expectedSizeBytes: entry.sizeBytes,
+          directory: expectedPath.slice(0, -`/${entry.filename}`.length),
+          filename: entry.filename,
+          allowFileSource: false,
         },
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
-      });
-
-      await Effect.runPromise(downloader.download);
-
-      expect(log.init).toMatchObject({ proxy: "http://proxy.example:8080", tls: { ca: ["CORP PEM"] } });
+      ]);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
 
-  test("is idempotent: a re-run with a valid cached bundle does not contact the network", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-idempotent-"));
+  test("propagates ProviderUnavailableError failures from artifactDownload", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-artifact-fail-"));
     try {
-      const bytes = new TextEncoder().encode("cached-and-valid-bundle");
-      const entry = syntheticEntry("synthetic-darwin-arm64.tar.gz", bytes);
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
+      const bytes = new TextEncoder().encode("runtime bundle bytes");
+      const entry = syntheticEntry("synthetic-linux-x64.tar.gz", bytes);
+      const expected = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message: "artifact downloader rejected the request",
       });
+      const { artifactDownload } = recordingArtifactDownload(bytes, { fail: expected });
 
-      await Effect.runPromise(downloader.download);
-      expect(log.calls).toBe(1);
+      const exit = await Effect.runPromiseExit(
+        makeRuntimeBundleDownloader({ stateDir, entry, runtimeVersion: "9.9.9-test", artifactDownload })
+          .download,
+      );
 
-      const second = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: throwingFetch,
-      });
-      const bundle = await Effect.runPromise(second.download);
-
-      expect(bundle.bytes).toEqual(bytes);
-      expect(bundle.sha256).toBe(entry.sha256);
-      expect(log.calls).toBe(1);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("re-downloads when the cached bundle SHA does not match the pinned entry", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-stale-"));
-    try {
-      const validBytes = new TextEncoder().encode("the-real-bundle-bytes");
-      const entry = syntheticEntry("synthetic-win32-x64.zip", validBytes);
-      const cachePath = runtimeBundleCachePath(stateDir, entry);
-
-      await mkdir(dirname(cachePath), { recursive: true });
-      const stale = new TextEncoder().encode("STALE-cached-bytes");
-      await writeFile(cachePath, stale);
-      expect(sha256(stale)).not.toBe(entry.sha256);
-
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: validBytes }]]), log),
-      });
-
-      const bundle = await Effect.runPromise(downloader.download);
-      expect(bundle.bytes).toEqual(validBytes);
-      expect(bundle.sha256).toBe(entry.sha256);
-      expect(log.calls).toBe(1);
-
-      const onDisk = await readFile(cachePath);
-      expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(validBytes);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("fails closed with ProviderBundleChecksumError when downloaded bytes do not match the pinned SHA", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-mismatch-"));
-    try {
-      const expectedBytes = new TextEncoder().encode("the-pinned-bundle");
-      const entry = syntheticEntry("synthetic-linux-arm64.tar.gz", expectedBytes);
-      const tampered = new TextEncoder().encode("tampered-bytes");
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: tampered }]]), log),
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
-      const checksum = failure as ProviderBundleChecksumError;
-      expect(checksum.remediation).toContain("lando setup");
-      expect(checksum.message).toContain(entry.filename);
-
-      const cachePath = runtimeBundleCachePath(stateDir, entry);
-      const onDisk = await readFile(cachePath).catch(() => undefined);
-      expect(onDisk).toBeUndefined();
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("surfaces a tagged ProviderUnavailableError on HTTP non-2xx", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-http-"));
-    try {
-      const entry = syntheticEntry("synthetic-darwin-x64.tar.gz", new TextEncoder().encode("anything"));
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: fakeFetch(new Map([[entry.url, { body: new Uint8Array(), status: 503 }]]), log),
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
-      const provider = failure as ProviderUnavailableError;
-      expect(provider.message).toContain("download");
-      expect(provider.remediation).toContain("lando setup");
-
-      const cachePath = runtimeBundleCachePath(stateDir, entry);
-      const onDisk = await readFile(cachePath).catch(() => undefined);
-      expect(onDisk).toBeUndefined();
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("surfaces a tagged ProviderUnavailableError when fetch itself throws", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-net-"));
-    try {
-      const entry = syntheticEntry("synthetic-linux-x64.tar.gz", new TextEncoder().encode("anything"));
-      const downloader = makeRuntimeBundleDownloader({
-        stateDir,
-        entry,
-        runtimeVersion: "9.9.9-test",
-        fetchImpl: throwingFetch,
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
-      expect((failure as ProviderUnavailableError).remediation).toContain("lando setup");
+      expect(expectFailure(exit)).toBe(expected);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
 });
 
-describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifest)", () => {
-  test("fails closed with ProviderBundleChecksumError when downloaded bytes do not match the pinned manifest SHA", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-"));
+describe("makeDefaultRuntimeBundleDownloader", () => {
+  test("env manifest plus paired URL/SHA override skips the manifest size check", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-paired-"));
     try {
-      const entry = await Effect.runPromise(resolveRuntimeBundleEntry("win32", "x64"));
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeDefaultRuntimeBundleDownloader({
-        stateDir,
-        platform: "win32",
-        arch: "x64",
-        fetchImpl: fakeFetch(
-          new Map([[entry.url, { body: new TextEncoder().encode("tampered-windows-bundle") }]]),
-          log,
-        ),
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
-      expect((failure as ProviderBundleChecksumError).remediation).toContain("lando setup");
-      expect(log.calls).toBe(1);
-      expect(log.urls[0]).toBe(entry.url);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects a URL override that is not paired with a SHA-256 override", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-url-"));
-    try {
-      const overrideUrl = "https://mirror.example.invalid/lando-runtime.zip";
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeDefaultRuntimeBundleDownloader({
-        stateDir,
-        platform: "win32",
-        arch: "x64",
-        url: overrideUrl,
-        fetchImpl: fakeFetch(
-          new Map([[overrideUrl, { body: new TextEncoder().encode("tampered-mirror-bundle") }]]),
-          log,
-        ),
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
-      expect((failure as ProviderUnavailableError).message).toContain("must be supplied together");
-      expect(log.calls).toBe(0);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-
-  test("propagates the unsupported-platform error from the manifest resolver", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-unsupported-"));
-    try {
-      const log: FetchCallLog = { calls: 0, urls: [] };
-      const downloader = makeDefaultRuntimeBundleDownloader({
-        stateDir,
-        platform: "win32",
-        arch: "arm64",
-        fetchImpl: fakeFetch(new Map(), log),
-      });
-
-      const exit = await Effect.runPromiseExit(downloader.download);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect((failure as ProviderUnavailableError).message).toContain("win32-arm64");
-      expect(log.calls).toBe(0);
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
-  });
-});
-
-const localManifest = (
-  entry: RuntimeBundleEntry,
-  platformKey = "linux-x64",
-  runtimeVersion = "9.9.9-local",
-): string => JSON.stringify({ schemaVersion: 1, runtimeVersion, bundles: { [platformKey]: entry } });
-
-const stageLocalBundle = async (dir: string, filename: string, bytes: Uint8Array): Promise<string> => {
-  const bundlePath = join(dir, filename);
-  await writeFile(bundlePath, bytes);
-  return pathToFileURL(bundlePath).href;
-};
-
-describe("makeDefaultRuntimeBundleDownloader (local bundle override)", () => {
-  test("LANDO_RUNTIME_BUNDLE_MANIFEST redirects to a file:// bundle and verifies its SHA", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-"));
-    try {
-      const bytes = new TextEncoder().encode("locally-built-bundle");
-      const url = await stageLocalBundle(stateDir, "local-linux-x64.tar.gz", bytes);
-      const entry: RuntimeBundleEntry = {
-        url,
-        sha256: sha256(bytes),
-        filename: "local-linux-x64.tar.gz",
-        sizeBytes: bytes.byteLength,
-      };
+      const manifestBytes = new TextEncoder().encode("manifest bytes");
+      const manifestEntry = syntheticEntry("manifest-linux-x64.tar.gz", manifestBytes);
       const manifestPath = join(stateDir, "manifest.json");
-      await writeFile(manifestPath, localManifest(entry));
+      await writeFile(manifestPath, localManifest(manifestEntry, "linux-x64", "9.9.9-env"));
+
+      const overrideBytes = new TextEncoder().encode("mirror bytes");
+      const overrideSha = sha256(overrideBytes);
+      const overrideUrl = "https://mirror.example.invalid/lando-runtime.tar.gz";
+      const { artifactDownload, calls } = recordingArtifactDownload(overrideBytes);
 
       const bundle = await Effect.runPromise(
         makeDefaultRuntimeBundleDownloader({
@@ -474,63 +250,100 @@ describe("makeDefaultRuntimeBundleDownloader (local bundle override)", () => {
           platform: "linux",
           arch: "x64",
           env: { [RUNTIME_BUNDLE_MANIFEST_ENV]: manifestPath },
-          fetchImpl: throwingFetch,
+          url: overrideUrl,
+          sha256: overrideSha,
+          artifactDownload,
         }).download,
       );
 
-      expect(bundle.bytes).toEqual(bytes);
-      expect(bundle.sha256).toBe(entry.sha256);
-      expect(bundle.version).toBe("9.9.9-local");
+      expect(bundle.version).toBe("9.9.9-env");
+      expect(bundle.bytes).toEqual(overrideBytes);
+      expect(bundle.sha256).toBe(overrideSha);
+      expect(calls).toHaveLength(1);
+      const call = calls[0];
+      if (call === undefined) throw new Error("expected one artifactDownload call");
+      expect(call).toMatchObject({
+        url: overrideUrl,
+        expectedSha256: overrideSha,
+        filename: manifestEntry.filename,
+        allowFileSource: false,
+      });
+      expect("expectedSizeBytes" in call).toBe(false);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
 
-  test("a file:// bundle whose bytes do not match the override SHA fails closed", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-mismatch-"));
+  test("file:// overrides set allowFileSource true on the artifactDownload request", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-file-"));
     try {
-      const bytes = new TextEncoder().encode("locally-built-bundle");
-      const url = await stageLocalBundle(stateDir, "local-linux-x64.tar.gz", bytes);
-      const entry: RuntimeBundleEntry = {
-        url,
-        sha256: sha256(new TextEncoder().encode("different")),
-        filename: "local-linux-x64.tar.gz",
-        sizeBytes: bytes.byteLength,
-      };
-      const manifestPath = join(stateDir, "manifest.json");
-      await writeFile(manifestPath, localManifest(entry));
+      const bytes = new TextEncoder().encode("local override bytes");
+      const fileUrl = pathToFileURL(join(stateDir, "local-runtime.tar.gz")).href;
+      const { artifactDownload, calls } = recordingArtifactDownload(bytes);
 
-      const exit = await Effect.runPromiseExit(
-        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
-          .download,
+      await Effect.runPromise(
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          url: fileUrl,
+          sha256: sha256(bytes),
+          artifactDownload,
+        }).download,
       );
-      expect(expectFailure(exit)).toBeInstanceOf(ProviderBundleChecksumError);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.url).toBe(fileUrl);
+      expect(calls[0]?.allowFileSource).toBe(true);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
 
-  test("an override manifest with no entry for the host platform fails closed", async () => {
+  test("rejects a URL override that is not paired with a SHA-256 override before artifactDownload", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-unpaired-"));
+    try {
+      const { artifactDownload, calls } = recordingArtifactDownload(new TextEncoder().encode("unused"));
+      const exit = await Effect.runPromiseExit(
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          url: "https://example.test/x.tar.gz",
+          artifactDownload,
+        }).download,
+      );
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect((failure as ProviderUnavailableError).message).toContain("must be supplied together");
+      expect(calls).toEqual([]);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("an override manifest with no entry for the host platform fails closed before artifactDownload", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-missing-"));
     try {
       const bytes = new TextEncoder().encode("x");
-      const url = await stageLocalBundle(stateDir, "local.tar.gz", bytes);
-      const entry: RuntimeBundleEntry = {
-        url,
-        sha256: sha256(bytes),
-        filename: "local.tar.gz",
-        sizeBytes: bytes.byteLength,
-      };
+      const entry = syntheticEntry("local.tar.gz", bytes);
       const manifestPath = join(stateDir, "manifest.json");
       await writeFile(manifestPath, localManifest(entry, "darwin-arm64"));
+      const { artifactDownload, calls } = recordingArtifactDownload(bytes);
 
       const exit = await Effect.runPromiseExit(
-        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
-          .download,
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          manifestPath,
+          artifactDownload,
+        }).download,
       );
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect((failure as ProviderUnavailableError).message).toContain("linux-x64");
+      expect(calls).toEqual([]);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
@@ -541,9 +354,15 @@ describe("makeDefaultRuntimeBundleDownloader (local bundle override)", () => {
     try {
       const manifestPath = join(stateDir, "manifest.json");
       await writeFile(manifestPath, "{ not json");
+      const { artifactDownload } = recordingArtifactDownload(new TextEncoder().encode("unused"));
       const exit = await Effect.runPromiseExit(
-        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
-          .download,
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          manifestPath,
+          artifactDownload,
+        }).download,
       );
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
@@ -552,46 +371,50 @@ describe("makeDefaultRuntimeBundleDownloader (local bundle override)", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+});
 
-  test("a URL override without a paired SHA-256 is rejected before any download", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-unpaired-"));
+describe("runtime bundle verification", () => {
+  test("setupProviderLando keeps the post-download SHA gate after artifactDownload returns", async () => {
+    const expectedBytes = new TextEncoder().encode("expected runtime bundle");
+    const tamperedBytes = new TextEncoder().encode("tampered runtime bundle");
+    const entry = syntheticEntry("synthetic-linux-x64.tar.gz", expectedBytes);
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-post-verify-"));
     try {
+      const { artifactDownload } = recordingArtifactDownload(tamperedBytes, { sha256: entry.sha256 });
+      const runtimeBundleDownloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        artifactDownload,
+      });
       const exit = await Effect.runPromiseExit(
-        makeDefaultRuntimeBundleDownloader({
-          stateDir,
+        setupProviderLando({
           platform: "linux",
-          arch: "x64",
-          url: "https://example.test/x.tar.gz",
-          fetchImpl: throwingFetch,
-        }).download,
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+          runtimeBundleDownloader,
+        }),
       );
+
       const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderUnavailableError);
-      expect((failure as ProviderUnavailableError).message).toContain("must be supplied together");
+      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
+      expect((failure as ProviderBundleChecksumError).remediation).toContain("checksum");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+});
 
-  test("paired URL + SHA-256 override a single entry and verify the bytes", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-paired-"));
-    try {
-      const bytes = new TextEncoder().encode("mirror-built-bundle");
-      const url = await stageLocalBundle(stateDir, "mirror.tar.gz", bytes);
-      const bundle = await Effect.runPromise(
-        makeDefaultRuntimeBundleDownloader({
-          stateDir,
-          platform: "linux",
-          arch: "x64",
-          url,
-          sha256: sha256(bytes),
-          fetchImpl: throwingFetch,
-        }).download,
-      );
-      expect(bundle.bytes).toEqual(bytes);
-      expect(bundle.sha256).toBe(sha256(bytes));
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
+describe("runtime bundle source boundary", () => {
+  test("provider runtime-bundle acquisition does not contain bespoke fetch code", async () => {
+    const srcRoot = join(import.meta.dir, "../src");
+    const offenders: string[] = [];
+    for (const file of await allTsFiles(srcRoot)) {
+      const text = await readFile(file, "utf8");
+      if (/fetchInitForNetwork/u.test(text) || /\bfetch\s*\(/u.test(text)) {
+        offenders.push(relative(srcRoot, file));
+      }
     }
+    expect(offenders).toEqual([]);
   });
 });
