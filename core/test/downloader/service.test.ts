@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -357,6 +357,102 @@ describe("DownloaderLive", () => {
       expect(result.fromCache).toBe(false);
       expect(await readdir(dir)).toEqual([]);
       expect(fake.calls.length).toBe(1);
+    });
+  });
+
+  test("S10 non-2xx HTTP status: DownloadFetchError, no temp, no destination", async () => {
+    await withTempDir(async (dir) => {
+      const url = "https://example.test/notfound.bin";
+      const fake = makeFakeHttpClient({
+        status: 404,
+        bodies: { [url]: () => Stream.fromIterable([bytes("<html>404 Not Found</html>")]) },
+      });
+
+      const error = expectLeft(
+        await download(
+          { url, destination: { kind: "file", directory: dir, filename: "notfound.bin" } },
+          fake.layer,
+        ),
+      );
+
+      expect(error._tag).toBe("DownloadFetchError");
+      expect(await readdir(dir)).toEqual([]);
+    });
+  });
+
+  test("S10b non-2xx HTTP status (memory): DownloadFetchError", async () => {
+    await withTempDir(async () => {
+      const url = "https://example.test/notfound-mem.bin";
+      const fake = makeFakeHttpClient({
+        status: 500,
+        bodies: { [url]: () => Stream.fromIterable([bytes("oops")]) },
+      });
+
+      const error = expectLeft(await download({ url, destination: { kind: "memory" } }, fake.layer));
+
+      expect(error._tag).toBe("DownloadFetchError");
+    });
+  });
+
+  test("S11 path containment: traversing filename rejected before any network", async () => {
+    await withTempDir(async (dir) => {
+      const url = "https://example.test/evil.bin";
+      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("x")]) } });
+
+      const error = expectLeft(
+        await download(
+          { url, destination: { kind: "file", directory: dir, filename: "../escape.bin" } },
+          fake.layer,
+        ),
+      );
+
+      expect(error._tag).toBe("DownloadSourceForbiddenError");
+      expect(error.reason).toBe("destination-escape");
+      expect(fake.calls.length).toBe(0);
+    });
+  });
+
+  test("S12 stale cache: existing destination with wrong hash re-downloads, not short-circuit", async () => {
+    await withTempDir(async (dir) => {
+      await writeFile(join(dir, "stale.bin"), bytes("stale contents"));
+      const payload = bytes("fresh verified contents");
+      const url = "https://example.test/stale.bin";
+      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([payload]) } });
+
+      const result = expectRight(
+        await download(
+          {
+            url,
+            destination: { kind: "file", directory: dir, filename: "stale.bin" },
+            expectedSha256: sha256Hex(payload),
+          },
+          fake.layer,
+        ),
+      );
+
+      expect(result.fromCache).toBe(false);
+      expect(result.sha256).toBe(sha256Hex(payload));
+      expect(fake.calls.length).toBe(1);
+      expect(new Uint8Array(await readFile(join(dir, "stale.bin")))).toEqual(payload);
+    });
+  });
+
+  test("S13 persistence failure: rename onto a directory yields DownloadPersistError, no temp", async () => {
+    await withTempDir(async (dir) => {
+      // Pre-create a directory at the destination path so the final rename fails.
+      await mkdir(join(dir, "busy.bin"));
+      const url = "https://example.test/busy.bin";
+      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("payload")]) } });
+
+      const error = expectLeft(
+        await download(
+          { url, destination: { kind: "file", directory: dir, filename: "busy.bin" } },
+          fake.layer,
+        ),
+      );
+
+      expect(error._tag).toBe("DownloadPersistError");
+      expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
     });
   });
 

@@ -47,6 +47,15 @@ const urlOrigin = (url: string): string => {
   }
 };
 
+const statusError = (status: number, origin: string): DownloadFetchError | undefined =>
+  status >= 200 && status < 300
+    ? undefined
+    : new DownloadFetchError({
+        message: `The download request failed with HTTP status ${status}.`,
+        urlOrigin: origin,
+        status,
+      });
+
 const validateSource = (request: DownloadRequest): DownloadSourceForbiddenError | undefined => {
   let parsed: URL;
   try {
@@ -197,6 +206,8 @@ export const DownloaderLive: Layer.Layer<Downloader, never, HttpClient> = Layer.
               url: request.url,
               allowFileSource: request.allowFileSource ?? false,
             });
+            const httpError = statusError(response.status, origin);
+            if (httpError !== undefined) return yield* Effect.fail(httpError);
             const result = yield* persistVerifiedStream({
               body: response.body,
               destinationPath,
@@ -226,6 +237,8 @@ export const DownloaderLive: Layer.Layer<Downloader, never, HttpClient> = Layer.
             url: request.url,
             allowFileSource: request.allowFileSource ?? false,
           });
+          const httpError = statusError(response.status, origin);
+          if (httpError !== undefined) return yield* Effect.fail(httpError);
           const result = yield* collectVerifiedStream({
             body: response.body,
             expectedSha256: request.expectedSha256,
