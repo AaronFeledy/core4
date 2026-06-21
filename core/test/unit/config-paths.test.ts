@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { resolveUserConfRoot, resolveUserDataRoot } from "../../src/config/roots.ts";
+import {
+  managedFileLedger,
+  managedFilesRoot,
+  resolveUserConfRoot,
+  resolveUserDataRoot,
+} from "../../src/config/roots.ts";
 
 const ENV_KEYS = [
   "HOME",
@@ -193,5 +198,32 @@ describe("config.yml userDataRoot layer (spec §7.5)", () => {
     } finally {
       rmSync(ignoredRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("managed-file ledger derived paths (spec §7.5.1)", () => {
+  test("managedFilesRoot derives <userDataRoot>/managed-files/<appId> from the resolved root", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data" });
+
+    expect(managedFilesRoot("my-app")).toBe("/xdg/data/lando/managed-files/my-app");
+  });
+
+  test("managedFileLedger appends ledger.json under the managed-files app dir", () => {
+    setEnv({ HOME: "/home/test", LANDO_USER_DATA_ROOT: "/lando/data" });
+
+    expect(managedFileLedger("my-app")).toBe("/lando/data/managed-files/my-app/ledger.json");
+  });
+
+  test("an explicit userDataRoot override wins over the resolved root", () => {
+    setEnv({ HOME: "/home/test", LANDO_USER_DATA_ROOT: "/ignored" });
+
+    expect(managedFilesRoot("acme", "/explicit/root")).toBe("/explicit/root/managed-files/acme");
+    expect(managedFileLedger("acme", "/explicit/root")).toBe("/explicit/root/managed-files/acme/ledger.json");
+  });
+
+  test("managedFileLedger honors the config.yml userDataRoot layer", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data" });
+
+    expect(managedFileLedger("app", "/from/config")).toBe("/from/config/managed-files/app/ledger.json");
   });
 });

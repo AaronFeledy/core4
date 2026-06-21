@@ -26,6 +26,7 @@ const runSpawnedCli = async (args: ReadonlyArray<string>, cwd: string): Promise<
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
     cwd,
+    env: { ...process.env, LANDO_USER_DATA_ROOT: join(cwd, "lando-data") },
     stdout: "pipe",
     stderr: "pipe",
   });

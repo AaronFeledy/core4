@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -14,10 +14,14 @@ import { BUILTIN_RECIPE_RENDERERS, builtinRecipeIds } from "../../src/recipes/bu
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-canonical-")));
   const previousCwd = process.cwd();
+  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  process.env.LANDO_USER_DATA_ROOT = join(dir, "lando-data");
   try {
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
+    if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -276,4 +280,44 @@ describe("lando init — canonical common-stack recipes", () => {
       });
     });
   }
+});
+
+describe("lando init — managed-file ownership markers (US-353)", () => {
+  test("node-postgres scaffold carries format-correct ownership markers and a ledger", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "node-postgres",
+        nonInteractive: true,
+        yes: true,
+        answers: { name: "marker-app" },
+        userDataRoot: join(dir, "lando-data"),
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+
+      const landofile = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(landofile.split("\n")[0]).toBe(
+        "# lando-generated:node-postgres:.lando.yml — managed by Lando; delete this line to adopt this file.",
+      );
+
+      const packageJson = JSON.parse(await Bun.file(join(result.directory, "package.json")).text());
+      expect(packageJson["x-lando-generated"]).toBe("node-postgres:package.json");
+      expect(packageJson.name).toBe("marker-app");
+
+      const serverJs = await Bun.file(join(result.directory, "server.js")).text();
+      expect(serverJs.split("\n")[0]).toBe(
+        "// lando-generated:node-postgres:server.js — managed by Lando; delete this line to adopt this file.",
+      );
+
+      const ledgerDir = (await readdir(join(dir, "lando-data", "managed-files")))[0];
+      const ledger = JSON.parse(
+        await Bun.file(join(dir, "lando-data", "managed-files", ledgerDir ?? "", "ledger.json")).text(),
+      );
+      const owners = (ledger.data.entries as Array<{ owner: string; format: string }>).map(
+        (entry) => entry.format,
+      );
+      expect(owners.sort()).toEqual(["javascript", "json", "landofile"]);
+    });
+  });
 });

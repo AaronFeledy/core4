@@ -51,6 +51,9 @@ ${setupBunSteps}
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
+      - name: Managed-file boundary lint
+        run: bun run check:managed-file-boundary
+
       - name: Telemetry inventory lint
         run: bun run check:telemetry-inventory
 

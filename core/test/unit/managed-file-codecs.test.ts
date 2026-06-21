@@ -24,6 +24,13 @@ describe("managed-file codecs — encode", () => {
     expect(await run(encode("text", "hello\nworld\n"))).toBe("hello\nworld\n");
   });
 
+  test("javascript and typescript are written verbatim", async () => {
+    expect(await run(encode("javascript", "export const x = 1;\n"))).toBe("export const x = 1;\n");
+    expect(await run(encode("typescript", "export const x: number = 1;\n"))).toBe(
+      "export const x: number = 1;\n",
+    );
+  });
+
   test("json pretty-prints with a trailing newline", async () => {
     expect(await run(encode("json", { a: 1, b: ["x"] }))).toBe('{\n  "a": 1,\n  "b": [\n    "x"\n  ]\n}\n');
   });
@@ -86,6 +93,11 @@ describe("managed-file codecs — encode", () => {
 describe("managed-file codecs — decode", () => {
   test("text is returned verbatim", async () => {
     expect(await run(decode("text", "raw bytes\n"))).toBe("raw bytes\n");
+  });
+
+  test("javascript and typescript decode verbatim", async () => {
+    expect(await run(decode("javascript", "const a = 1;\n"))).toBe("const a = 1;\n");
+    expect(await run(decode("typescript", "const a: number = 1;\n"))).toBe("const a: number = 1;\n");
   });
 
   test("json round-trips through encode", async () => {

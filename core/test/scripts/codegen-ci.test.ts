@@ -329,6 +329,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run lint");
       expect(workflow).toContain("- name: Renderer boundary lint");
       expect(workflow).toContain("run: bun run check:renderer-boundary");
+      expect(workflow).toContain("- name: Managed-file boundary lint");
+      expect(workflow).toContain("run: bun run check:managed-file-boundary");
       expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
       expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
       expect(workflow).toContain("US-189");

@@ -54,3 +54,12 @@ export const resolveUserConfRoot = (): string => {
   if (process.env.LANDO_USER_CONF_ROOT !== undefined) return process.env.LANDO_USER_CONF_ROOT;
   return `${process.env.HOME ?? "."}/.lando`;
 };
+
+// The single place the `managed-files/` segment + `ledger.json` filename are
+// spelled out (spec §7.5.1); the optional `userDataRoot` lets a caller that
+// already resolved the data root (e.g. an injected test seam) reuse it.
+export const managedFilesRoot = (appId: string, userDataRoot?: string): string =>
+  join(userDataRoot ?? resolveUserDataRoot(), "managed-files", appId);
+
+export const managedFileLedger = (appId: string, userDataRoot?: string): string =>
+  join(managedFilesRoot(appId, userDataRoot), "ledger.json");

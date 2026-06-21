@@ -15,7 +15,8 @@ const JSON_MARKER_KEY = "x-lando-generated";
 
 /**
  * The line-comment prefix for a format, or `null` for formats without line
- * comments (JSON). `text`/`env`/`yaml`/`landofile` use `#`.
+ * comments (JSON). `javascript`/`typescript` use `//`, `ini` uses `;`, and
+ * `text`/`env`/`yaml`/`landofile` use `#`.
  */
 export const commentPrefix = (format: FileFormat): string | null => {
   switch (format) {
@@ -23,6 +24,9 @@ export const commentPrefix = (format: FileFormat): string | null => {
       return null;
     case "ini":
       return ";";
+    case "javascript":
+    case "typescript":
+      return "//";
     default:
       return "#";
   }

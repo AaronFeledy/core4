@@ -12,6 +12,7 @@ Every platform cell runs the fork-safe portable static gates:
 bun run typecheck
 bun run lint
 bun run check:renderer-boundary
+bun run check:managed-file-boundary
 bun run check:telemetry-inventory
 ```
 

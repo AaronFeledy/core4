@@ -6,6 +6,7 @@ import { Effect, Exit } from "effect";
 
 import type { ManagedFile } from "@lando/sdk/schema";
 
+import { managedFileLedger } from "../../src/config/roots.ts";
 import { makeDiskBackend, makeManagedFileService } from "../../src/managed-file/service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
@@ -35,6 +36,42 @@ describe("ManagedFileService (in-memory)", () => {
 
     const second = await runScoped(store.service.apply([mf]));
     expect(second.entries[0]?.action).toBe("skip-unchanged");
+  });
+
+  test("javascript/typescript carry a // marker line and a managed ledger entry", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const js = file({
+      id: "r:server.js",
+      path: "server.js",
+      format: "javascript",
+      content: { kind: "text", value: "console.log('hi');\n" },
+    });
+    const ts = file({
+      id: "r:.lando.ts",
+      path: ".lando.ts",
+      format: "typescript",
+      content: { kind: "text", value: "export default {};\n" },
+    });
+
+    await runScoped(store.service.apply([js, ts]));
+
+    const jsContent = store.read("server.js") ?? "";
+    expect(jsContent.split("\n")[0]).toBe(
+      "// lando-generated:r:server.js — managed by Lando; delete this line to adopt this file.",
+    );
+    expect(jsContent).toContain("console.log('hi');");
+    expect(store.read(".lando.ts")?.split("\n")[0]).toBe(
+      "// lando-generated:r:.lando.ts — managed by Lando; delete this line to adopt this file.",
+    );
+
+    const entries = store.ledger();
+    expect(entries.find((entry) => entry.id === "r:server.js")?.format).toBe("javascript");
+    expect(entries.find((entry) => entry.id === "r:.lando.ts")?.format).toBe("typescript");
+
+    expect((await runScoped(store.service.apply([js, ts]))).entries.map((entry) => entry.action)).toEqual([
+      "skip-unchanged",
+      "skip-unchanged",
+    ]);
   });
 
   test("changed desired content produces update", async () => {
@@ -485,9 +522,9 @@ describe("ManagedFileService (disk backend)", () => {
       expect(baseEntries.some((name) => name.includes(".tmp-"))).toBe(false);
 
       const ledgerDir = (await readdir(join(dirs.dataRoot, "managed-files")))[0];
-      const ledger = JSON.parse(
-        await readFile(join(dirs.dataRoot, "managed-files", ledgerDir ?? "", "ledger.json"), "utf8"),
-      );
+      const ledgerPath = join(dirs.dataRoot, "managed-files", ledgerDir ?? "", "ledger.json");
+      expect(ledgerPath).toBe(managedFileLedger(ledgerDir ?? "", dirs.dataRoot));
+      const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
       expect(ledger.version).toBe(1);
       expect(ledger.data.entries[0].id).toBe("d:1");
     });

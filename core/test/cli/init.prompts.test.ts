@@ -33,6 +33,7 @@ const runCli = async (
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
     cwd,
+    env: { ...process.env, LANDO_USER_DATA_ROOT: join(cwd, "lando-data") },
     stdout: "pipe",
     stderr: "pipe",
     stdin: options.stdin === undefined ? "ignore" : "pipe",

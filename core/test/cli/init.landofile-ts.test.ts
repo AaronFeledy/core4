@@ -56,10 +56,14 @@ const providerCapabilities = {
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-node-ts-")));
   const previousCwd = process.cwd();
+  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  process.env.LANDO_USER_DATA_ROOT = join(dir, "lando-data");
   try {
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
+    if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -230,7 +234,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
     expect(tsSource).toContain(`name: ${JSON.stringify(trickyName)},`);
   });
 
-  test("rendered .lando.ts file on disk matches the renderer output byte-for-byte", async () => {
+  test("rendered .lando.ts file on disk is the renderer output under a // ownership marker", async () => {
     await withTempCwd(async (dir) => {
       const result = await initApp({
         cwd: dir,
@@ -242,8 +246,11 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
       });
 
       const onDisk = await readFile(join(result.directory, ".lando.ts"), "utf8");
-      const expected = nodeTsRenderer.render({ appName: "byte-parity-app", answers: {} }).get(".lando.ts");
-      expect(onDisk).toBe(expected ?? "");
+      const body = nodeTsRenderer.render({ appName: "byte-parity-app", answers: {} }).get(".lando.ts") ?? "";
+      const markerLine =
+        "// lando-generated:node-ts:.lando.ts — managed by Lando; delete this line to adopt this file.";
+      expect(onDisk.split("\n")[0]).toBe(markerLine);
+      expect(onDisk.slice(markerLine.length + 1)).toBe(body.endsWith("\n") ? body : `${body}\n`);
     });
   });
 });

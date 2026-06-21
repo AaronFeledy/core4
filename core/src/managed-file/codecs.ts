@@ -112,10 +112,11 @@ const decodeEnv = (text: string): Record<string, string> => {
 };
 
 /**
- * Encode a value for the declared {@link FileFormat}. `text` is written
- * verbatim, `json` is pretty-printed, `env` becomes `KEY=value` lines, and
- * `yaml`/`landofile` delegate to the canonical `@lando/sdk/landofile` serializer.
- * `toml`/`ini` are reserved and fail with `reason: "format"` until 4.x.
+ * Encode a value for the declared {@link FileFormat}. `text`/`javascript`/
+ * `typescript` are written verbatim, `json` is pretty-printed, `env` becomes
+ * `KEY=value` lines, and `yaml`/`landofile` delegate to the canonical
+ * `@lando/sdk/landofile` serializer. `toml`/`ini` are reserved and fail with
+ * `reason: "format"` until 4.x.
  */
 export const encode = (
   format: FileFormat,
@@ -125,9 +126,11 @@ export const encode = (
   const operation = opts.operation ?? "apply";
   switch (format) {
     case "text":
+    case "javascript":
+    case "typescript":
       return typeof value === "string"
         ? Effect.succeed(value)
-        : fail("format", operation, { remediation: "`text` content must be a string." });
+        : fail("format", operation, { remediation: `\`${format}\` content must be a string.` });
     case "json":
       return Effect.try({
         try: () => `${JSON.stringify(value, null, 2)}\n`,
@@ -162,9 +165,10 @@ export const encode = (
 
 /**
  * Decode existing on-disk content of the declared {@link FileFormat} back to a
- * structured value. `text` is returned verbatim, `json` is parsed, `env` is read
- * into a string map, and `yaml`/`landofile` delegate to the canonical
- * `@lando/sdk/landofile` parser. `toml`/`ini` are reserved until 4.x.
+ * structured value. `text`/`javascript`/`typescript` are returned verbatim,
+ * `json` is parsed, `env` is read into a string map, and `yaml`/`landofile`
+ * delegate to the canonical `@lando/sdk/landofile` parser. `toml`/`ini` are
+ * reserved until 4.x.
  */
 export const decode = (
   format: FileFormat,
@@ -174,6 +178,8 @@ export const decode = (
   const operation = opts.operation ?? "plan";
   switch (format) {
     case "text":
+    case "javascript":
+    case "typescript":
       return Effect.succeed(text);
     case "json":
       return Effect.try({
