@@ -9,16 +9,15 @@ import { parseMinimalYaml } from "./yaml-min.ts";
  * runtime or loading the full `ConfigService`.
  *
  * `resolveUserDataRoot` runs on the cold-start fast path (`lando shellenv`,
- * bootstrap `none`, no Effect runtime — spec §8.4 / PRD-02 US-004), so it cannot
- * use `ConfigService` (that module imports Effect). It instead locates the file
- * with the SAME overlay-aware conf-root resolver (`resolveConfigFileRoot`, so
- * `LANDO_CONFIG__user_conf_root` is honored) and parses it with the SAME YAML
- * subset parser `ConfigService` uses, so the config.yml layer required by the
- * resolution order in spec §7.5 (`spec/07-landofile-and-config.md`) is honored
- * identically on both paths. Any missing/unreadable/malformed file falls back to
- * `undefined`, and only a non-empty string value is accepted — a nested block,
- * `null`, or boolean falls back like the merged config layer would, so shell
- * startup never breaks.
+ * bootstrap `none`, no Effect runtime), so it cannot use `ConfigService` (that
+ * module imports Effect). It locates the file with the same overlay-aware
+ * conf-root resolver (`resolveConfigFileRoot`, so `LANDO_CONFIG__user_conf_root`
+ * is honored) and parses it with the same YAML subset parser `ConfigService`
+ * uses, so env → config.yml → platform default resolution matches the merged
+ * config layer on both paths. Any missing/unreadable/malformed file falls back
+ * to `undefined`, and only a non-empty string value is accepted — a nested
+ * block, `null`, or boolean falls back like the merged config layer would, so
+ * shell startup never breaks.
  */
 const readConfigYamlString = (key: string): string | undefined => {
   const confRoot = resolveConfigFileRoot(resolveUserConfRoot(), envOverlay());
@@ -39,9 +38,9 @@ const readConfigYamlString = (key: string): string | undefined => {
 };
 
 export const resolveUserDataRoot = (): string => {
-  // Spec §7.5 resolution order: explicit env override → config.yml → platform
-  // default. The env check short-circuits before any file IO so the fast path
-  // stays IO-free when `LANDO_USER_DATA_ROOT` is set.
+  // Resolution order: explicit env override → config.yml → platform default.
+  // The env check short-circuits before any file IO so the fast path stays
+  // IO-free when `LANDO_USER_DATA_ROOT` is set.
   if (process.env.LANDO_USER_DATA_ROOT !== undefined) return process.env.LANDO_USER_DATA_ROOT;
   const configured = readConfigYamlString("userDataRoot");
   if (configured !== undefined && configured !== "") return configured;
@@ -55,9 +54,9 @@ export const resolveUserConfRoot = (): string => {
   return `${process.env.HOME ?? "."}/.lando`;
 };
 
-// The single place the `managed-files/` segment + `ledger.json` filename are
-// spelled out (spec §7.5.1); the optional `userDataRoot` lets a caller that
-// already resolved the data root (e.g. an injected test seam) reuse it.
+// Single place the `managed-files/` segment and `ledger.json` filename are
+// spelled out; optional `userDataRoot` lets a caller that already resolved the
+// data root (e.g. an injected test seam) reuse it.
 export const managedFilesRoot = (appId: string, userDataRoot?: string): string =>
   join(userDataRoot ?? resolveUserDataRoot(), "managed-files", appId);
 

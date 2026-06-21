@@ -81,7 +81,7 @@ describe("config root resolution", () => {
   });
 });
 
-describe("config.yml userDataRoot layer (spec §7.5)", () => {
+describe("config.yml userDataRoot layer", () => {
   let confRoot: string;
 
   const writeConfig = (contents: string) => {
@@ -201,7 +201,7 @@ describe("config.yml userDataRoot layer (spec §7.5)", () => {
   });
 });
 
-describe("managed-file ledger derived paths (spec §7.5.1)", () => {
+describe("managed-file ledger derived paths", () => {
   test("managedFilesRoot derives <userDataRoot>/managed-files/<appId> from the resolved root", () => {
     setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data" });
 
