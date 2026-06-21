@@ -22,8 +22,11 @@ import type { ManagedFileApplyOptions, ManagedFileSelector, ManagedFileService }
 
 type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
 
-/** A `ManagedFile` a plugin declares; the `owner` is supplied by the surface. */
-export type PluginManagedFile = Omit<ManagedFile, "owner"> & { readonly owner?: never };
+/** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
+export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
+  readonly owner?: never;
+  readonly base?: never;
+};
 
 /** A `remove` selector a plugin declares; `owner` is forced to the plugin id. */
 export type PluginManagedFileSelector = Omit<ManagedFileSelector, "owner"> & { readonly owner?: never };
@@ -78,6 +81,15 @@ export const makePluginManagedFiles = (
             operation,
             file.path,
             `Plugin "${ownerId}" cannot manage files on behalf of owner "${String(declared)}".`,
+          ),
+        );
+      }
+      if ("base" in file && file.base !== undefined) {
+        return Effect.fail(
+          ownershipError(
+            operation,
+            file.path,
+            `Plugin "${ownerId}" cannot declare a managed-file base; plugin files are rooted by the host app.`,
           ),
         );
       }

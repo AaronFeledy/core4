@@ -100,4 +100,17 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(result._tag).toBe("Failure");
     expect(store.ledger()).toHaveLength(0);
   });
+
+  test("an explicitly declared base is rejected, not recorded", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+
+    const withBase = { ...pluginFile("a:cfg", "cfg.txt"), base: "/other/app" };
+    const result = await exit(
+      Effect.scoped(a.managedFiles.apply([withBase as unknown as ReturnType<typeof pluginFile>])),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(store.ledger()).toHaveLength(0);
+  });
 });

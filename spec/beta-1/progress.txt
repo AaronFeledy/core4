@@ -1491,3 +1491,10 @@
   - `LandoPluginContext` is spec-only and co-owned by the unshipped StateStore stories; keep it core-side (do not freeze it in `@lando/sdk`) so the StateStore story can append its `stateStore` accessor to the same type without a frozen-surface change.
   - Editing `spec/beta-1/prd.json` with `json.dump(..., ensure_ascii=False)` rewrites every `\u00a7` to `§` and produces a ~350-line spurious diff; flip a single `passes` flag with a line-scoped `sed` instead.
 ---
+
+## 2026-06-21 01:18 CDT - US-354 Review
+- Fixed the review-discovered plugin boundary gap: `LandoPluginContext.managedFiles` now rejects any plugin-declared per-file `base` instead of recording a ledger entry that the same plugin cannot later `remove`/`adopt`/`release` through path-keyed lookups. The plugin surface already forced `owner:<plugin-id>` and rejected foreign owners; the boundary now also enforces the documented app-root-only base rule.
+- Review notes (deferred/rejected): review-work's TOCTOU note on `status` preflight vs apply is accepted as non-blocking because `ManagedFileService` remains the durable conflict boundary and plugins are trusted in-process code; owner/path disclosure in conflict remediation is accepted for the same trust model and because owner ids/managed paths are not secrets.
+- Verification: typecheck, lint, `check:managed-file-boundary`, and focused managed-file/plugin/runtime/SDK export spot checks passed.
+- **Learnings for future iterations:** If a plugin accessor relies on path-keyed SDK methods whose selector shape cannot carry all internal ledger dimensions, reject unsupported dimensions at the accessor boundary rather than documenting a caller convention.
+---
