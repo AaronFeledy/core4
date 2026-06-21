@@ -1,0 +1,174 @@
+// The constrained context a plugin receives instead of internal core objects
+// (spec §9.8). Today it exposes a single accessor: `managedFiles`, a
+// `ManagedFileService` view pre-namespaced to the plugin's `owner` id. A
+// plugin's managed files are always recorded with `owner: <plugin-id>` and a
+// plugin can neither see, remove, nor adopt files owned by another plugin or by
+// core. The future StateStore story appends a `stateStore` accessor here; the
+// ownership logic lives in `makePluginManagedFiles` so that addition is
+// independent of this surface.
+
+import { Effect } from "effect";
+import type { Context, Scope } from "effect";
+
+import { ManagedFileError } from "@lando/sdk/errors";
+import type {
+  ManagedFile,
+  ManagedFileInfo,
+  ManagedFilePlan,
+  ManagedFileResult,
+  PortablePath,
+} from "@lando/sdk/schema";
+import type { ManagedFileApplyOptions, ManagedFileSelector, ManagedFileService } from "@lando/sdk/services";
+
+type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
+
+/** A `ManagedFile` a plugin declares; the `owner` is supplied by the surface. */
+export type PluginManagedFile = Omit<ManagedFile, "owner"> & { readonly owner?: never };
+
+/** A `remove` selector a plugin declares; `owner` is forced to the plugin id. */
+export type PluginManagedFileSelector = Omit<ManagedFileSelector, "owner"> & { readonly owner?: never };
+
+/** The owner-scoped `ManagedFileService` view a plugin operates through. */
+export interface PluginManagedFiles {
+  readonly plan: (
+    files: ReadonlyArray<PluginManagedFile>,
+  ) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
+  readonly apply: (
+    files: ReadonlyArray<PluginManagedFile>,
+    opts?: ManagedFileApplyOptions,
+  ) => Effect.Effect<ManagedFileResult, ManagedFileError, Scope.Scope>;
+  readonly remove: (
+    selector?: PluginManagedFileSelector,
+  ) => Effect.Effect<ManagedFileResult, ManagedFileError>;
+  readonly status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError>;
+  readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+  readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+}
+
+type PluginManagedFileOperation = "plan" | "apply" | "remove" | "adopt" | "release";
+
+const ownerOf = (value: { readonly owner?: unknown }): unknown => value.owner;
+
+/**
+ * Build a `ManagedFileService` view that forces `owner: ownerId` on every write
+ * and refuses to touch another owner's files. A foreign `owner` passed by a
+ * non-typed (JS) caller is rejected rather than silently coerced, and any
+ * path-keyed operation (`apply`/`plan`/`remove({ path })`/`adopt`/`release`)
+ * fails when the ledger already records that path under a different owner.
+ */
+export const makePluginManagedFiles = (
+  ownerId: string,
+  service: ManagedFileServiceImpl,
+): PluginManagedFiles => {
+  const ownershipError = (
+    operation: PluginManagedFileOperation,
+    path: PortablePath | undefined,
+    remediation: string,
+  ): ManagedFileError => new ManagedFileError({ reason: "conflict", operation, path, remediation });
+
+  const rejectDeclaredForeignOwner = (
+    files: ReadonlyArray<PluginManagedFile>,
+    operation: PluginManagedFileOperation,
+  ): Effect.Effect<void, ManagedFileError> => {
+    for (const file of files) {
+      const declared = ownerOf(file);
+      if (declared !== undefined && declared !== ownerId) {
+        return Effect.fail(
+          ownershipError(
+            operation,
+            file.path,
+            `Plugin "${ownerId}" cannot manage files on behalf of owner "${String(declared)}".`,
+          ),
+        );
+      }
+    }
+    return Effect.void;
+  };
+
+  const assertNoForeignPath = (
+    paths: ReadonlyArray<PortablePath>,
+    operation: PluginManagedFileOperation,
+  ): Effect.Effect<void, ManagedFileError> =>
+    service.status.pipe(
+      Effect.flatMap((infos) => {
+        const foreign = infos.find((info) => paths.includes(info.path) && info.owner !== ownerId);
+        return foreign === undefined
+          ? Effect.void
+          : Effect.fail(
+              ownershipError(
+                operation,
+                foreign.path,
+                `Managed file "${foreign.path}" is owned by "${foreign.owner}", not "${ownerId}".`,
+              ),
+            );
+      }),
+    );
+
+  const withOwner = (file: PluginManagedFile): ManagedFile => ({ ...file, owner: ownerId }) as ManagedFile;
+
+  const plan: PluginManagedFiles["plan"] = (files) =>
+    rejectDeclaredForeignOwner(files, "plan").pipe(
+      Effect.zipRight(
+        assertNoForeignPath(
+          files.map((file) => file.path),
+          "plan",
+        ),
+      ),
+      Effect.zipRight(service.plan(files.map(withOwner))),
+    );
+
+  const apply: PluginManagedFiles["apply"] = (files, opts) =>
+    rejectDeclaredForeignOwner(files, "apply").pipe(
+      Effect.zipRight(
+        assertNoForeignPath(
+          files.map((file) => file.path),
+          "apply",
+        ),
+      ),
+      Effect.zipRight(service.apply(files.map(withOwner), opts)),
+    );
+
+  const remove: PluginManagedFiles["remove"] = (selector = {}) => {
+    const declared = ownerOf(selector);
+    if (declared !== undefined && declared !== ownerId) {
+      return Effect.fail(
+        ownershipError(
+          "remove",
+          selector.path,
+          `Plugin "${ownerId}" cannot remove files owned by "${String(declared)}".`,
+        ),
+      );
+    }
+    const scoped: ManagedFileSelector = { ...selector, owner: ownerId };
+    const pathCheck =
+      selector.path === undefined ? Effect.void : assertNoForeignPath([selector.path], "remove");
+    return pathCheck.pipe(Effect.zipRight(service.remove(scoped)));
+  };
+
+  const status: PluginManagedFiles["status"] = service.status.pipe(
+    Effect.map((infos) => infos.filter((info) => info.owner === ownerId)),
+  );
+
+  const adopt: PluginManagedFiles["adopt"] = (path) =>
+    assertNoForeignPath([path], "adopt").pipe(Effect.zipRight(service.adopt(path)));
+
+  const release: PluginManagedFiles["release"] = (path) =>
+    assertNoForeignPath([path], "release").pipe(Effect.zipRight(service.release(path)));
+
+  return { plan, apply, remove, status, adopt, release };
+};
+
+/** The constrained context a plugin receives (spec §9.8). */
+export interface LandoPluginContext {
+  readonly id: string;
+  readonly managedFiles: PluginManagedFiles;
+}
+
+/** Build a `LandoPluginContext` whose `managedFiles` is scoped to `id`. */
+export const makeLandoPluginContext = (input: {
+  readonly id: string;
+  readonly managedFileService: ManagedFileServiceImpl;
+}): LandoPluginContext => ({
+  id: input.id,
+  managedFiles: makePluginManagedFiles(input.id, input.managedFileService),
+});
