@@ -1,0 +1,9 @@
+⟨bold⟩⟨cyan⟩╭─ APP INFO [INFO]  myapp · running ───────────────────────────────────────────╮⟨reset⟩
+⟨cyan⟩├─ services ───────────────────────────────────────────────────────────────────┤⟨reset⟩
+⟨green⟩│ [OK] 你好世界-appserver · running                                            │⟨reset⟩
+⟨amber⟩│ [WARN] 데이터베이스-primary · starting                                       │⟨reset⟩
+⟨green⟩│ [OK] キャッシュ-redis · running                                              │⟨reset⟩
+⟨cyan⟩├─ urls ───────────────────────────────────────────────────────────────────────┤⟨reset⟩
+⟨green⟩│ [OK] appserver · https://myapp.lando.site                                    │⟨reset⟩
+⟨dim⟩⟨cyan⟩│   internal : http://appserver.myapp.internal:8080                            │⟨dim-off⟩⟨reset⟩
+⟨dim⟩⟨cyan⟩╰─ 3 services · 1 url ─────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩

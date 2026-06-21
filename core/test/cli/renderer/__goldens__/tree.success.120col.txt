@@ -1,0 +1,4 @@
+⟨bold⟩⟨cyan⟩╭─ LANDO OPS [ONLINE] App online (2 ✓ · 0 ✗) (1.5s) ───────────────────────────────────────────────────────────────────╮⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ appserver online (820ms)                                                                                  │⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ database online (540ms)                                                                                   │⟨reset⟩
+⟨dim⟩⟨cyan⟩╰─ telemetry 2 ONLINE · 0 BLOCKED (1.5s) ──────────────────────────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩
