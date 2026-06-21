@@ -1,0 +1,20 @@
+---
+title: Managed File Skipped Event
+description: Public Lando schema contract for Managed File Skipped Event.
+---
+
+# Managed File Skipped Event
+
+Public Lando schema contract for Managed File Skipped Event.
+
+[JSON Schema artifact](../../../dist/schemas/managed-file-skipped-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `managed-file-skipped` | — | — |
+| `eventName` | Yes | `string` | — | — | `managed-file-skipped` | — | — |
+| `path` | Yes | `string` | a string | — | — | — | — |
+| `owner` | Yes | `string` | a string | — | — | — | — |
+| `action` | Yes | `string` | — | — | `create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, `adopt-detected` | — | — |
+| `summary` | Yes | `string` | a string | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

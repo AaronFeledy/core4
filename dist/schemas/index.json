@@ -1261,6 +1261,42 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Pre Managed File Write Event.",
+    "docsPath": "docs/reference/schemas/pre-managed-file-write-event.mdx",
+    "id": "PreManagedFileWriteEvent",
+    "jsonSchemaPath": "dist/schemas/pre-managed-file-write-event.json",
+    "packageExport": "@lando/sdk/schema#PreManagedFileWriteEvent",
+    "title": "Pre Managed File Write Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Managed File Write Event.",
+    "docsPath": "docs/reference/schemas/post-managed-file-write-event.mdx",
+    "id": "PostManagedFileWriteEvent",
+    "jsonSchemaPath": "dist/schemas/post-managed-file-write-event.json",
+    "packageExport": "@lando/sdk/schema#PostManagedFileWriteEvent",
+    "title": "Post Managed File Write Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Managed File Conflict Detected Event.",
+    "docsPath": "docs/reference/schemas/managed-file-conflict-detected-event.mdx",
+    "id": "ManagedFileConflictDetectedEvent",
+    "jsonSchemaPath": "dist/schemas/managed-file-conflict-detected-event.json",
+    "packageExport": "@lando/sdk/schema#ManagedFileConflictDetectedEvent",
+    "title": "Managed File Conflict Detected Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Managed File Skipped Event.",
+    "docsPath": "docs/reference/schemas/managed-file-skipped-event.mdx",
+    "id": "ManagedFileSkippedEvent",
+    "jsonSchemaPath": "dist/schemas/managed-file-skipped-event.json",
+    "packageExport": "@lando/sdk/schema#ManagedFileSkippedEvent",
+    "title": "Managed File Skipped Event"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Pre Provider Apply Event.",
     "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
     "id": "PreProviderApplyEvent",

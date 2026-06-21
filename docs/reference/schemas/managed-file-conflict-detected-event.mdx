@@ -1,0 +1,20 @@
+---
+title: Managed File Conflict Detected Event
+description: Public Lando schema contract for Managed File Conflict Detected Event.
+---
+
+# Managed File Conflict Detected Event
+
+Public Lando schema contract for Managed File Conflict Detected Event.
+
+[JSON Schema artifact](../../../dist/schemas/managed-file-conflict-detected-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `managed-file-conflict-detected` | — | — |
+| `eventName` | Yes | `string` | — | — | `managed-file-conflict-detected` | — | — |
+| `path` | Yes | `string` | a string | — | — | — | — |
+| `owner` | Yes | `string` | a string | — | — | — | — |
+| `action` | Yes | `string` | — | — | `create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, `adopt-detected` | — | — |
+| `summary` | Yes | `string` | a string | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

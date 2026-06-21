@@ -4,6 +4,7 @@ export * from "./cli.ts";
 export * from "./deprecation.ts";
 export * from "./global.ts";
 export * from "./lifecycle.ts";
+export * from "./managed-file.ts";
 export * from "./message.ts";
 export * from "./provider.ts";
 export * from "./renderer.ts";

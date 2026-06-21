@@ -13,18 +13,28 @@
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { type Context, Effect, Layer, Schema } from "effect";
+import { type Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
+import {
+  ManagedFileConflictDetectedEvent,
+  ManagedFileSkippedEvent,
+  PostManagedFileWriteEvent,
+  PreManagedFileWriteEvent,
+} from "@lando/sdk/events";
 import type {
   FileFormat,
   ManagedFile,
+  ManagedFileAction,
   ManagedFileInfo,
   ManagedFilePlan,
   ManagedFileResult,
   PortablePath,
 } from "@lando/sdk/schema";
+import { createSecretRedactor } from "@lando/sdk/secrets";
 import {
+  EventService,
+  type LandoEvent,
   type ManagedFileApplyOptions,
   type ManagedFileSelector,
   ManagedFileService,
@@ -94,11 +104,12 @@ export interface ManagedFileBackend {
     abs: string,
     operation: ManagedFileOperation,
   ) => Effect.Effect<string | null, ManagedFileError>;
-  /** Atomic, interrupt-safe write. */
+  /** Atomic, interrupt-safe write; `mode` pins exact POSIX perms (e.g. `0o600` backups). */
   readonly writeAtomic: (
     abs: string,
     content: string,
     operation: ManagedFileOperation,
+    mode?: number,
   ) => Effect.Effect<void, ManagedFileError>;
   /** Delete a file (no-op when absent). */
   readonly removeFile: (
@@ -126,6 +137,31 @@ export interface ManagedFileBackend {
     operation: ManagedFileOperation,
   ) => Effect.Effect<void, ManagedFileError>;
 }
+
+// ----- Event seam (redact -> publish) -------------------------------------
+
+/**
+ * The redacted-event seam the service publishes its `ManagedFile` lifecycle
+ * scope through. `redactText` masks secret values out of every free-string
+ * payload field BEFORE construction; `publish` forwards the content-free event
+ * to the `EventService` (failures swallowed — events are observational only).
+ * Both deps live in the `Live` layer closure so the frozen SDK tag is unwidened.
+ */
+export interface ManagedFileEvents {
+  readonly redactText: (text: string) => string;
+  readonly publish: (event: LandoEvent) => Effect.Effect<void>;
+}
+
+const noopManagedFileEvents: ManagedFileEvents = {
+  redactText: (text) => text,
+  publish: () => Effect.void,
+};
+
+type ManagedFileEventKind =
+  | "pre-managed-file-write"
+  | "post-managed-file-write"
+  | "managed-file-conflict-detected"
+  | "managed-file-skipped";
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
@@ -474,10 +510,60 @@ const matchesRemoveSelector = (entry: LedgerEntry, selector: ManagedFileSelector
     ? selector.path === undefined || entry.base === undefined
     : entry.base === selector.base);
 
+const eventSummary = (mf: ManagedFile, decision: Decision, kind: ManagedFileEventKind): string => {
+  const bytes = decision.write !== undefined ? ` (${Buffer.byteLength(decision.write, "utf8")}B)` : "";
+  const backedUp = decision.backup
+    ? kind === "post-managed-file-write"
+      ? " [prior content backed up]"
+      : " [prior content will be backed up]"
+    : "";
+  return `${decision.action} ${mf.mode}/${mf.format}${bytes}${backedUp}`;
+};
+
+const makeLifecycleEvent = (
+  kind: ManagedFileEventKind,
+  fields: {
+    readonly path: PortablePath;
+    readonly owner: string;
+    readonly action: ManagedFileAction;
+    readonly summary: string;
+  },
+): LandoEvent => {
+  const timestamp = DateTime.unsafeMake(Date.now());
+  const payload = { eventName: kind, ...fields, timestamp } as const;
+  switch (kind) {
+    case "pre-managed-file-write":
+      return PreManagedFileWriteEvent.make({ ...payload, eventName: "pre-managed-file-write" });
+    case "post-managed-file-write":
+      return PostManagedFileWriteEvent.make({ ...payload, eventName: "post-managed-file-write" });
+    case "managed-file-conflict-detected":
+      return ManagedFileConflictDetectedEvent.make({
+        ...payload,
+        eventName: "managed-file-conflict-detected",
+      });
+    case "managed-file-skipped":
+      return ManagedFileSkippedEvent.make({ ...payload, eventName: "managed-file-skipped" });
+  }
+};
+
 export const makeManagedFileService = (
   backend: ManagedFileBackend,
+  events: ManagedFileEvents = noopManagedFileEvents,
 ): Effect.Effect<Context.Tag.Service<typeof ManagedFileService>> =>
   Effect.sync(() => {
+    const publishLifecycle = (
+      kind: ManagedFileEventKind,
+      mf: ManagedFile,
+      decision: Decision,
+    ): Effect.Effect<void> =>
+      events.publish(
+        makeLifecycleEvent(kind, {
+          path: events.redactText(decision.relPath) as PortablePath,
+          owner: events.redactText(mf.owner),
+          action: decision.action,
+          summary: events.redactText(eventSummary(mf, decision, kind)),
+        }),
+      );
     const plan = (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
       backend.peekLedger("plan").pipe(
         Effect.flatMap((initial) =>
@@ -520,6 +606,7 @@ export const makeManagedFileService = (
               pendingDisk,
             );
             if (decision.failConflict) {
+              yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
               return yield* fail("conflict", "apply", {
                 path: decision.relPath,
                 remediation:
@@ -546,16 +633,31 @@ export const makeManagedFileService = (
           }
           for (const { mf, decision } of prepared) {
             if (decision.backup) {
+              yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+            }
+            if (decision.write === undefined) {
+              if (
+                decision.action === "skip-unchanged" ||
+                decision.action === "skip-adopted" ||
+                decision.action === "adopt-detected"
+              ) {
+                yield* publishLifecycle("managed-file-skipped", mf, decision);
+              } else if (decision.action === "conflict") {
+                yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+              }
+              continue;
+            }
+            yield* publishLifecycle("pre-managed-file-write", mf, decision);
+            if (decision.backup) {
               const backupAbs = yield* backend.resolveTarget(
                 yield* backend.resolveBase(mf.base, "apply"),
                 decision.backup.path,
                 "apply",
               );
-              yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply");
+              yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply", 0o600);
             }
-            if (decision.write !== undefined) {
-              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
-            }
+            yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+            yield* publishLifecycle("post-managed-file-write", mf, decision);
           }
           return [{ entries: results }, entries] as const;
         }),
@@ -765,8 +867,8 @@ export const makeDiskBackend = (options: {
             () => Effect.succeed<string | null>(null),
           ),
         ),
-      writeAtomic: (abs, content, operation) =>
-        writeFileAtomicScoped(abs, content).pipe(
+      writeAtomic: (abs, content, operation, mode) =>
+        writeFileAtomicScoped(abs, content, mode === undefined ? {} : { mode }).pipe(
           Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
         ),
       removeFile: (abs, operation) =>
@@ -805,13 +907,38 @@ const deriveAppId = (base: string): string => {
   return `${name}-${sha256(resolve(base)).slice(0, 12)}`;
 };
 
+const makeLiveManagedFileEvents = (
+  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+): ManagedFileEvents => {
+  // `@lando/sdk/secrets` value redactor; value-set may be empty until a global
+  // redaction feed is wired — content-free payloads still prevent secret leaks.
+  const { redact } = createSecretRedactor([]);
+  return {
+    redactText: redact,
+    publish: Option.match(eventService, {
+      onNone: () => () => Effect.void,
+      onSome:
+        (service) =>
+        (event): Effect.Effect<void> =>
+          service.publish(event).pipe(Effect.catchAllCause(() => Effect.void)),
+    }),
+  };
+};
+
 /**
  * The disk-backed `ManagedFileService` layer, available at bootstrap `minimal`.
- * Constructing it touches no provider, network, or plugin module.
+ * Constructing it touches no provider, network, or plugin module. `EventService`
+ * is resolved optionally from the layer build context (the bootstrap layer
+ * `Layer.provide`s it) so library callers without an `EventService` still work.
  */
 export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.effect(
   ManagedFileService,
-  makeDiskBackend({ defaultBase: () => process.cwd(), ledgerRoot: () => resolveUserDataRoot() }).pipe(
-    Effect.flatMap(makeManagedFileService),
-  ),
+  Effect.gen(function* () {
+    const backend = yield* makeDiskBackend({
+      defaultBase: () => process.cwd(),
+      ledgerRoot: () => resolveUserDataRoot(),
+    });
+    const eventService = yield* Effect.serviceOption(EventService);
+    return yield* makeManagedFileService(backend, makeLiveManagedFileEvents(eventService));
+  }),
 );

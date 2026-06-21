@@ -8,7 +8,7 @@
 // leaves no torn live file and no orphan temp.
 
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect, Ref } from "effect";
@@ -29,7 +29,7 @@ const removeIfPresent = (path: string): Promise<void> =>
 export const writeFileAtomicScoped = (
   path: string,
   content: string | Uint8Array,
-  options: { readonly randomId?: () => string } = {},
+  options: { readonly randomId?: () => string; readonly mode?: number } = {},
 ): Effect.Effect<void, unknown, never> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -47,7 +47,9 @@ export const writeFileAtomicScoped = (
       yield* Effect.uninterruptible(
         Effect.tryPromise(async () => {
           await mkdir(dirname(path), { recursive: true });
-          await writeFile(tempPath, content);
+          await writeFile(tempPath, content, options.mode === undefined ? undefined : { mode: options.mode });
+          // umask masks `writeFile`'s create mode; chmod before rename pins exact perms (0600 backups).
+          if (options.mode !== undefined) await chmod(tempPath, options.mode);
           await rename(tempPath, path);
         }),
       );

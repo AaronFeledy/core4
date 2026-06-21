@@ -11,9 +11,12 @@ import { type Context, Effect, Layer } from "effect";
 import { ManagedFileError } from "@lando/sdk/errors";
 import { ManagedFileService } from "@lando/sdk/services";
 
+import type { LandoEvent } from "@lando/sdk/services";
+
 import {
   type LedgerEntry,
   type ManagedFileBackend,
+  type ManagedFileEvents,
   makeManagedFileService,
 } from "../managed-file/service.ts";
 
@@ -30,16 +33,23 @@ export interface TestManagedFileStore {
   readonly seed: (relPath: string, content: string) => void;
   /** Snapshot of the current ledger entries. */
   readonly ledger: () => ReadonlyArray<LedgerEntry>;
+  /** Redacted `ManagedFile` lifecycle events published since construction. */
+  readonly events: () => ReadonlyArray<LandoEvent>;
 }
 
 /** Build an in-memory `ManagedFileService` for tests. */
 export const makeTestManagedFileStore = (
-  options: { readonly base?: string } = {},
+  options: { readonly base?: string; readonly redactText?: (text: string) => string } = {},
 ): Effect.Effect<TestManagedFileStore> =>
   Effect.gen(function* () {
     const base = options.base ?? "/lando-memfs/app";
     const files = new Map<string, string>();
     let entries: ReadonlyArray<LedgerEntry> = [];
+    const published: Array<LandoEvent> = [];
+    const eventSink: ManagedFileEvents = {
+      redactText: options.redactText ?? ((text) => text),
+      publish: (event) => Effect.sync(() => void published.push(event)),
+    };
 
     const contain = (root: string, relPath: string): string | null => {
       if (isAbsolute(relPath)) return null;
@@ -82,7 +92,7 @@ export const makeTestManagedFileStore = (
         }),
     };
 
-    const service = yield* makeManagedFileService(backend);
+    const service = yield* makeManagedFileService(backend, eventSink);
 
     return {
       service,
@@ -97,5 +107,6 @@ export const makeTestManagedFileStore = (
         if (abs !== null) files.set(abs, content);
       },
       ledger: () => entries,
+      events: () => published,
     } satisfies TestManagedFileStore;
   });

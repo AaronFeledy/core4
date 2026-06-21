@@ -1501,6 +1501,42 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Pre Managed File Write Event.",
+      "docsPath": "docs/reference/schemas/pre-managed-file-write-event.mdx",
+      "id": "PreManagedFileWriteEvent",
+      "jsonSchemaPath": "dist/schemas/pre-managed-file-write-event.json",
+      "packageExport": "@lando/sdk/schema#PreManagedFileWriteEvent",
+      "title": "Pre Managed File Write Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Managed File Write Event.",
+      "docsPath": "docs/reference/schemas/post-managed-file-write-event.mdx",
+      "id": "PostManagedFileWriteEvent",
+      "jsonSchemaPath": "dist/schemas/post-managed-file-write-event.json",
+      "packageExport": "@lando/sdk/schema#PostManagedFileWriteEvent",
+      "title": "Post Managed File Write Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Managed File Conflict Detected Event.",
+      "docsPath": "docs/reference/schemas/managed-file-conflict-detected-event.mdx",
+      "id": "ManagedFileConflictDetectedEvent",
+      "jsonSchemaPath": "dist/schemas/managed-file-conflict-detected-event.json",
+      "packageExport": "@lando/sdk/schema#ManagedFileConflictDetectedEvent",
+      "title": "Managed File Conflict Detected Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Managed File Skipped Event.",
+      "docsPath": "docs/reference/schemas/managed-file-skipped-event.mdx",
+      "id": "ManagedFileSkippedEvent",
+      "jsonSchemaPath": "dist/schemas/managed-file-skipped-event.json",
+      "packageExport": "@lando/sdk/schema#ManagedFileSkippedEvent",
+      "title": "Managed File Skipped Event"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Pre Provider Apply Event.",
       "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
       "id": "PreProviderApplyEvent",
@@ -1835,6 +1871,10 @@
       "PostServiceStopEvent",
       "PreBuildEvent",
       "PostBuildEvent",
+      "PreManagedFileWriteEvent",
+      "PostManagedFileWriteEvent",
+      "ManagedFileConflictDetectedEvent",
+      "ManagedFileSkippedEvent",
       "PreProviderApplyEvent",
       "PostProviderApplyEvent",
       "PreProviderExecEvent",
@@ -8661,6 +8701,130 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-managed-file-write"],
+              "type": "string"
+            },
+            "action": {
+              "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-managed-file-write"],
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-managed-file-write"],
+              "type": "string"
+            },
+            "action": {
+              "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-managed-file-write"],
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["managed-file-conflict-detected"],
+              "type": "string"
+            },
+            "action": {
+              "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["managed-file-conflict-detected"],
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["managed-file-skipped"],
+              "type": "string"
+            },
+            "action": {
+              "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["managed-file-skipped"],
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-provider-apply"],
               "type": "string"
             },
@@ -10155,6 +10319,44 @@
       "required": ["id", "owner", "path", "mode", "format", "content"],
       "type": "object"
     },
+    "ManagedFileConflictDetectedEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["managed-file-conflict-detected"],
+          "type": "string"
+        },
+        "action": {
+          "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["managed-file-conflict-detected"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+      "type": "object"
+    },
     "ManagedFileInfo": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -10234,6 +10436,44 @@
         }
       },
       "required": ["entries"],
+      "type": "object"
+    },
+    "ManagedFileSkippedEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["managed-file-skipped"],
+          "type": "string"
+        },
+        "action": {
+          "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["managed-file-skipped"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
       "type": "object"
     },
     "MatcherSchema": {
@@ -12600,6 +12840,44 @@
       "required": ["_tag", "app", "timestamp"],
       "type": "object"
     },
+    "PostManagedFileWriteEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-managed-file-write"],
+          "type": "string"
+        },
+        "action": {
+          "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-managed-file-write"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
+      "type": "object"
+    },
     "PostProviderApplyEvent": {
       "$defs": {
         "DateTimeUtc": {
@@ -14579,6 +14857,44 @@
         }
       },
       "required": ["_tag", "app", "timestamp"],
+      "type": "object"
+    },
+    "PreManagedFileWriteEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-managed-file-write"],
+          "type": "string"
+        },
+        "action": {
+          "enum": ["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"],
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-managed-file-write"],
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "path", "owner", "action", "summary", "timestamp"],
       "type": "object"
     },
     "PreProviderApplyEvent": {

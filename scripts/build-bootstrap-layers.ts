@@ -80,7 +80,7 @@ const renderMinimal = (): string =>
     "    ProcessRunnerLive,",
     "    PrivilegeServiceLive,",
     "    SecretStoreLive,",
-    "    Layer.suspend(() => ManagedFileServiceLive),",
+    "    Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),",
     "  );",
     "};",
     "",

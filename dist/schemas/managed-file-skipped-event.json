@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "managed-file-skipped"
+      ],
+      "type": "string"
+    },
+    "action": {
+      "enum": [
+        "create",
+        "update",
+        "skip-unchanged",
+        "skip-adopted",
+        "conflict",
+        "adopt-detected"
+      ],
+      "type": "string"
+    },
+    "eventName": {
+      "enum": [
+        "managed-file-skipped"
+      ],
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "path",
+    "owner",
+    "action",
+    "summary",
+    "timestamp"
+  ],
+  "type": "object"
+}
