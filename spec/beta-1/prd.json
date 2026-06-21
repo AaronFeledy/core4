@@ -1569,8 +1569,8 @@
         "Lint passes."
       ],
       "priority": 88,
-      "passes": true,
-      "notes": "Migrated Lando-owned download call sites onto the core Downloader: provider-lando runtime-bundle (injected artifactDownload backed by Downloader via RuntimeProviderRegistryLive), recipe + include npm tarball fetchers, and self-update manifest/binary/checksum/signature byte-fetches. Network trust preserved (no regression) via a core-private ambient NetworkTrust tag consumed by HttpClientBasicLive; setup preflight provides resolved trust around provider.setup. Duplicate fetchInitForNetwork/shouldBypassProxy consolidated into core/src/http-client/network-trust.ts. file-sync-mutagen acquisition and plugin install/update (BunSelfRunner) remain their own seams; cosign/GPG verification and git/npm-registry seams unchanged."
+      "passes": false,
+      "notes": "Review found the implemented Downloader migration is green for provider-lando runtime-bundle, recipe/include tarball fetchers, self-update byte-fetches, setup network-trust propagation, and package-manager carve-outs, but the source PRD still requires @lando/file-sync-mutagen acquisition to move to the US-332 tool-provisioning helper and remove its bespoke download/extract/verify/install code. That plugin path remains intentionally deferred and US-332 is not complete, so US-287 cannot be passes:true against the source PRD until the scope is corrected or the file-sync migration lands."
     },
     {
       "id": "US-288",
