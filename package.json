@@ -34,6 +34,7 @@
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
     "check:renderer-boundary": "bun run scripts/check-renderer-boundary.ts",
+    "check:managed-file-boundary": "bun run scripts/check-managed-file-boundary.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",

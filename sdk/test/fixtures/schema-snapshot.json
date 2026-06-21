@@ -10289,7 +10289,7 @@
           ]
         },
         "format": {
-          "enum": ["text", "env", "json", "yaml", "toml", "ini", "landofile"],
+          "enum": ["text", "env", "json", "yaml", "toml", "ini", "landofile", "javascript", "typescript"],
           "type": "string"
         },
         "id": {

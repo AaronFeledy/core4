@@ -10,11 +10,22 @@ import { AbsolutePath, PortablePath } from "./primitives.ts";
 // markers, records a ledger, and never silently clobbers a user edit.
 
 /**
- * Encoding of a managed file. `text` is written verbatim; `env`/`json`/`yaml`/
+ * Encoding of a managed file. `text`/`javascript`/`typescript` are written
+ * verbatim (with a `//` ownership marker for code); `env`/`json`/`yaml`/
  * `landofile` round-trip structured content through the shared codec module;
  * `toml`/`ini` are reserved and fail with a `format` remediation until 4.x.
  */
-export const FileFormat = Schema.Literal("text", "env", "json", "yaml", "toml", "ini", "landofile");
+export const FileFormat = Schema.Literal(
+  "text",
+  "env",
+  "json",
+  "yaml",
+  "toml",
+  "ini",
+  "landofile",
+  "javascript",
+  "typescript",
+);
 export type FileFormat = typeof FileFormat.Type;
 
 const TextContentSource = Schema.Struct({

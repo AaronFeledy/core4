@@ -21,10 +21,14 @@ interface RunResult {
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-scenario-")));
   const previousCwd = process.cwd();
+  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  process.env.LANDO_USER_DATA_ROOT = join(dir, "lando-data");
   try {
     return await run(dir);
   } finally {
     process.chdir(previousCwd);
+    if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -33,6 +37,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
     cwd,
+    env: { ...process.env, LANDO_USER_DATA_ROOT: join(cwd, "lando-data") },
     stdout: "pipe",
     stderr: "pipe",
   });

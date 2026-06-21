@@ -7,11 +7,11 @@
 // is built over a `ManagedFileBackend` so the real disk-backed `Live` layer and
 // the in-memory `TestManagedFileStore` share one implementation. The ledger is
 // realized through the generic durable JSON state bucket (not a bespoke
-// registry/lock/quarantine); root resolution uses `resolveUserDataRoot()` until
-// `PathsService.managedFileLedger` lands.
+// registry/lock/quarantine); the ledger path is derived once by the paths
+// primitive (`managedFilesRoot`), never re-spelled here.
 
 import { createHash } from "node:crypto";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { type Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
@@ -31,6 +31,7 @@ import type {
   ManagedFileResult,
   PortablePath,
 } from "@lando/sdk/schema";
+import { FileFormat as FileFormatSchema } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import {
   EventService,
@@ -40,7 +41,7 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { resolveUserDataRoot } from "../config/roots.ts";
+import { managedFilesRoot, resolveUserDataRoot } from "../config/roots.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { type JsonBucket, openJsonBucket } from "../state-store/json-bucket.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
@@ -64,7 +65,7 @@ const LedgerEntrySchema = Schema.Struct({
   owner: Schema.String,
   path: Schema.String,
   mode: Schema.Literal("file", "block", "keys"),
-  format: Schema.Literal("text", "env", "json", "yaml", "toml", "ini", "landofile"),
+  format: FileFormatSchema,
   marker: Schema.String,
   lastWrittenChecksum: Schema.String,
   sourceHash: Schema.String,
@@ -821,7 +822,7 @@ export const makeDiskBackend = (options: {
   Effect.gen(function* () {
     const ledgerBucketFor = (base: string): Effect.Effect<JsonBucket<LedgerState>> =>
       openJsonBucket({
-        dir: join(options.ledgerRoot(), "managed-files", deriveAppId(base)),
+        dir: managedFilesRoot(deriveAppId(base), options.ledgerRoot()),
         key: "ledger.json",
         version: LEDGER_VERSION,
         schema: LedgerStateSchema,

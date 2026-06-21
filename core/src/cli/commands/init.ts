@@ -1,12 +1,20 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
+import { join } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
-import type { RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
+import type {
+  FileFormat,
+  ManagedFile,
+  PortablePath,
+  RecipePrompt,
+  RecipePromptChoice,
+} from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
+import { resolveUserDataRoot } from "../../config/roots.ts";
+import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
@@ -44,6 +52,18 @@ import { parseInitSourceFlags } from "./init-source.ts";
 
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";
+
+// Code files map to js/ts so their ownership marker is a valid `//` line, not a
+// `#` that would corrupt the scaffolded source.
+export const inferRecipeScaffoldFormat = (dest: string): FileFormat => {
+  if (dest.endsWith(".lando.yml") || dest.endsWith(".lando.yaml")) return "landofile";
+  if (dest.endsWith(".yml") || dest.endsWith(".yaml")) return "yaml";
+  if (dest.endsWith(".json")) return "json";
+  if (dest.endsWith(".js") || dest.endsWith(".cjs") || dest.endsWith(".mjs")) return "javascript";
+  if (dest.endsWith(".ts") || dest.endsWith(".cts") || dest.endsWith(".mts")) return "typescript";
+  if (dest.endsWith(".env")) return "env";
+  return "text";
+};
 
 const buildRecipeSelectPrompt = (): RecipePrompt => {
   const catalog = getRecipeCatalog();
@@ -382,17 +402,36 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
     await mkdir(directory, { recursive: true });
 
-    for (const file of files) {
+    const managedFiles = files.map((file): ManagedFile => {
       const content = rendered.get(file.dest);
       if (content === undefined) {
         throw new Error(
           `Recipe "${recipeRef}" lists file dest "${file.dest}" in its manifest but its renderer did not produce content for it.`,
         );
       }
-      const destPath = join(directory, file.dest);
-      await mkdir(dirname(destPath), { recursive: true });
-      await writeFile(destPath, content);
-    }
+      return {
+        id: `${manifest.id}:${file.dest}`,
+        owner: manifest.id,
+        path: file.dest as PortablePath,
+        mode: "file",
+        format: inferRecipeScaffoldFormat(file.dest),
+        content: { kind: "text", value: content },
+        onConflict: "fail",
+      };
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const backend = yield* makeDiskBackend({
+            defaultBase: () => directory,
+            ledgerRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
+          });
+          const service = yield* makeManagedFileService(backend);
+          yield* service.apply(managedFiles);
+        }),
+      ),
+    );
   } catch (cause) {
     if (cause instanceof InitTargetExistsError) throw cause;
 

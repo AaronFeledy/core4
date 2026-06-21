@@ -112,7 +112,9 @@
         "yaml",
         "toml",
         "ini",
-        "landofile"
+        "landofile",
+        "javascript",
+        "typescript"
       ],
       "type": "string"
     },
