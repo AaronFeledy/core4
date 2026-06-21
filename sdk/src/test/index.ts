@@ -4,6 +4,8 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
+import { createHash } from "node:crypto";
+
 import { type Context, DateTime, Duration, Effect, Either, Fiber, Layer, Schema, Stream } from "effect";
 
 import { type ManagedFileError, PluginLoadError, PluginManifestError } from "../errors/index.ts";
@@ -12,6 +14,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type DownloadResult,
   type EndpointPlan,
   type HealthcheckPlan,
   type HostPlatform,
@@ -28,7 +31,7 @@ import {
   ServiceName,
   ServicePlan,
 } from "../schema/index.ts";
-import type { ManagedFileService } from "../services/index.ts";
+import type { DownloaderShape, ManagedFileService } from "../services/index.ts";
 import type {
   ExecChunk,
   LandoEvent,
@@ -2611,11 +2614,6 @@ export const runManagedFileContract = (
     );
   });
 
-import { createHash } from "node:crypto";
-
-import type { DownloadResult } from "../schema/index.ts";
-import type { DownloaderShape } from "../services/index.ts";
-
 const downloaderContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `Downloader contract failed: ${assertion}`, assertion, details });
 
@@ -2690,7 +2688,6 @@ export const runDownloaderContract = (
       service.capabilities,
     );
 
-    // 1. a verified https download streams fresh bytes (fromCache:false).
     const payload = new TextEncoder().encode("contract artifact payload");
     const expectedSha256 = sha256HexDigest(payload);
     const okUrl = "https://contract.test/artifact.bin";
@@ -2716,7 +2713,6 @@ export const runDownloaderContract = (
       onDisk?.length,
     );
 
-    // 2. an identical re-request is served from the verified cache, no egress.
     const cacheCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
     const cached = yield* download({
       url: okUrl,
@@ -2737,7 +2733,6 @@ export const runDownloaderContract = (
       });
     }
 
-    // 3. offline + uncached fails with DownloadOfflineError and issues no egress.
     const offlineUrl = "https://contract.test/offline.bin";
     yield* harness.serveSource(offlineUrl, payload);
     const offlineCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
@@ -2763,7 +2758,6 @@ export const runDownloaderContract = (
       );
     }
 
-    // 4. a checksum mismatch is rejected.
     const checksumUrl = "https://contract.test/checksum.bin";
     yield* harness.serveSource(checksumUrl, payload);
     const checksumResult = yield* Effect.either(
@@ -2780,7 +2774,6 @@ export const runDownloaderContract = (
       checksumResult,
     );
 
-    // 5. a size mismatch is rejected.
     const sizeUrl = "https://contract.test/size.bin";
     yield* harness.serveSource(sizeUrl, payload);
     const sizeResult = yield* Effect.either(
@@ -2796,7 +2789,6 @@ export const runDownloaderContract = (
       sizeResult,
     );
 
-    // 6. http:// is rejected (scheme gating).
     const schemeResult = yield* Effect.either(
       download({ url: "http://contract.test/insecure.bin", destination: { kind: "memory" } }),
     );
@@ -2808,7 +2800,6 @@ export const runDownloaderContract = (
       schemeResult,
     );
 
-    // 7. file:// is rejected unless allowed (file gating).
     const fileResult = yield* Effect.either(
       download({ url: "file:///tmp/contract.bin", destination: { kind: "memory" } }),
     );
@@ -2820,7 +2811,6 @@ export const runDownloaderContract = (
       fileResult,
     );
 
-    // 8. a destination filename escaping the directory is rejected.
     const escapeResult = yield* Effect.either(
       download({
         url: okUrl,
@@ -2836,7 +2826,6 @@ export const runDownloaderContract = (
       escapeResult,
     );
 
-    // 9. a successful file download leaves no temp file (atomic rename).
     const afterSuccess = yield* harness.listDir();
     yield* requireDownloaderContract(
       afterSuccess.includes("artifact.bin") && !afterSuccess.some((f) => f.includes(".tmp-")),
@@ -2844,7 +2833,6 @@ export const runDownloaderContract = (
       afterSuccess,
     );
 
-    // 10. an interrupted file download leaves no temp file and is never torn.
     const interruptUrl = "https://contract.test/interrupt.bin";
     yield* harness.serveSource(interruptUrl, payload);
     const fiber = yield* Effect.fork(
@@ -2868,7 +2856,6 @@ export const runDownloaderContract = (
       interruptedFile?.length,
     );
 
-    // 11. lifecycle events are published and never leak URL/caller secrets.
     const secret = "ULW-DLC-SECRET-d41d8cd9f00b2";
     const secretUrl = `https://user:${secret}@contract.test/s?token=${secret}`;
     yield* harness.serveSource(secretUrl, payload);
@@ -2891,7 +2878,6 @@ export const runDownloaderContract = (
       { sample: events[0] },
     );
 
-    // 12. egress fence (when observable): a network miss flows through one stream call.
     if (harness.egress) {
       const egressUrl = "https://contract.test/egress.bin";
       yield* harness.serveSource(egressUrl, payload);

@@ -1,14 +1,4 @@
-/**
- * `TestDownloader` — an in-memory `Downloader` double for plugin authors and
- * embedding hosts.
- *
- * It reuses the real `makeDownloaderService` over an in-memory `HttpClient`
- * (mirroring how `TestManagedFileStore` reuses the real service over an
- * in-memory backend), so scheme gating, checksum/size verification, cache,
- * offline, and event publication exercise the production code path. It never
- * opens a socket; the source map is the only stand-in for the network. File
- * destinations write to the real filesystem so cache-hit hashing is faithful.
- */
+/** In-memory `Downloader` double: production `makeDownloaderService` over a stub `HttpClient`. */
 import { Effect, Stream } from "effect";
 
 import { createSecretRedactor } from "@lando/sdk/secrets";

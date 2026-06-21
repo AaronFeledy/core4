@@ -85,8 +85,8 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
     expect(installPs1).not.toContain("Downloader");
   });
 
-  // Mutagen host-CLI/agent acquisition migrates onto the tool-provisioning
-  // helper (which provisions through Downloader) under US-332; until that helper
-  // ships, the file-sync-mutagen download path is the documented carve-out.
-  test.todo("file-sync-mutagen host CLI + agent downloads route through Downloader (paired with US-332)");
+  // Mutagen host-CLI/agent acquisition will move onto the tool-provisioning helper
+  // (which provisions through Downloader); until that helper ships, file-sync-mutagen
+  // keeps its own download path as the documented carve-out.
+  test.todo("file-sync-mutagen host CLI + agent downloads route through Downloader");
 });

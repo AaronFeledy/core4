@@ -8,14 +8,10 @@
  * atomic temp-file persistence, cache/offline short-circuiting, and scheme
  * gating.
  *
- * Lifecycle events (`pre-download`, `download-progress`, `post-download`) are
- * published through a redacted event seam baked into the `Live` layer closure
- * (mirrors `ManagedFileService`): `EventService` is resolved via
- * `Effect.serviceOption`, so the frozen `Downloader` SDK tag's `R` channel stays
- * `Scope` only. Event payloads carry a scheme+host `urlOrigin` only — never
- * userinfo, path, query, proxy credentials, or bearer tokens — and every
- * free-string field is routed through a per-call redactor seeded with the
- * request's `redactionTokens`.
+ * Lifecycle events are published through a redacted event seam in the `Live`
+ * layer closure; `EventService` is optional via `Effect.serviceOption`. Payloads
+ * use scheme+host `urlOrigin` only, with free-string fields passed through the
+ * request's `redactionTokens` redactor.
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
