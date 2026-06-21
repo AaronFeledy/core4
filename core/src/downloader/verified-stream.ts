@@ -9,10 +9,9 @@
  * fires until both checks pass, so an existing destination is never clobbered by
  * a bad fetch.
  *
- * This is the pure, dependency-injectable shape the spec earmarks for an
- * eventual shared `@lando/sdk` helper (consumed by `DataMover` too); it stays
- * core-internal until that second consumer exists. It calls no network and
- * resolves no services.
+ * Pure, dependency-injectable streaming hash + persist helper. Stays
+ * core-internal until a second consumer (e.g. bulk data moves) justifies
+ * lifting it into the SDK. No network I/O and no runtime services.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, rename, unlink } from "node:fs/promises";

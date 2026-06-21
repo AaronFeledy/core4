@@ -6,8 +6,8 @@
  * calls `fetch` and never resolves proxy/CA itself, so overriding `HttpClient`
  * governs downloads too. On top of that it adds checksum/size verification,
  * atomic temp-file persistence, cache/offline short-circuiting, and scheme
- * gating. Lifecycle events, redaction, and the contract suite are owned by a
- * later story and are intentionally absent here.
+ * gating. Lifecycle events, redaction, and the downloader contract suite are
+ * not wired here yet.
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";

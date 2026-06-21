@@ -4,12 +4,11 @@
  * This is the single outbound-egress chokepoint that `Downloader` issues its
  * byte-fetch through, so overriding `HttpClient` governs downloads too. It is
  * intentionally NOT published from `@lando/sdk/services` and NOT re-exported
- * from `core/src/services/index.ts`: the public `HttpClient` SDK surface
- * (request/upload/capabilities, schemas, events, the canonical network-trust
- * resolver, and the `httpClients[]` manifest contribution) is owned by a later
- * story. This provisional tag carries only the streaming primitive `Downloader`
- * needs today; the string id `@lando/core/HttpClient` is chosen so consumers do
- * not have to be renamed when the SDK tag is published and this one is promoted.
+ * from `core/src/services/index.ts`. The full SDK `HttpClient` surface
+ * (request/upload/capabilities, schemas, events, network-trust resolver, and
+ * manifest contributions) is not published yet. This tag carries only the
+ * streaming primitive downloads need today; the id `@lando/core/HttpClient` is
+ * stable so promotion to the public SDK tag does not force consumer renames.
  *
  * Trust resolution (proxy/CA/`NO_PROXY`), lifecycle events, redaction, buffered
  * request/response, and upload deliberately live nowhere here.
