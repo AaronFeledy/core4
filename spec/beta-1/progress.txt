@@ -1498,3 +1498,15 @@
 - Verification: typecheck, lint, `check:managed-file-boundary`, and focused managed-file/plugin/runtime/SDK export spot checks passed.
 - **Learnings for future iterations:** If a plugin accessor relies on path-keyed SDK methods whose selector shape cannot carry all internal ledger dimensions, reject unsupported dimensions at the accessor boundary rather than documenting a caller convention.
 ---
+
+## 2026-06-21 03:03 CDT - Babysit
+- PR: #417 https://github.com/AaronFeledy/core4/pull/417
+- CI outcome: pass
+- Review feedback: fixed Bugbot #1 (plugin `remove` now scopes the selector so a stray `base` cannot turn an owner's remove into a silent no-op that strands the file); Bugbot #2 (path-only cross-owner preflight in `assertNoForeignPath`) triaged as documented intentional design per AGENTS.md §10.13.5 — it errs safe (over-rejects, never strands) and a fix would require exposing `base` on `ManagedFileInfo` against the documented portable-preflight design.
+- Merge: deferred (open Bugbot Medium comment on latest HEAD declined-as-intentional; routing the design disagreement to a human rather than merging over it)
+---
+
+## 2026-06-21 03:30 CDT - US-354 (verified complete)
+- Re-entered the loop on branch `us-354-managed-file-plugin-surface` with PR #417 still open. Story verified complete on branch (no new code): all acceptance criteria already implemented and committed (plugin `managedFiles` owner-scoped accessor, `ManagedFileService` on `makeLandoRuntime`, `TestManagedFileStore` from `@lando/core/testing`, the `@lando/sdk/test` contract suite, the §13.1 row, and the spec/AGENTS notes). `passes: true` stands.
+- Verification: typecheck, lint passed; relevant test spot checks passed (`core/test/plugins/context.test.ts` + `core/test/managed-file/contract.test.ts` + `core/test/library/managed-file-runtime.test.ts` = 11 pass, `sdk/test/library/exports.test.ts` = 16 pass).
+---
