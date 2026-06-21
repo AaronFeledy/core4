@@ -288,6 +288,13 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Keep `NetworkTrust`/`fetchInitForNetwork` out of `@lando/sdk/test`: proxy/CA/`NO_PROXY` assertions belong in a core-only canary against `DownloaderLive + HttpClientBasicLive(injected fetchImpl)`, not in the cross-implementation public contract.
 ---
 
+## 2026-06-21 18:16 CDT - Babysit
+- PR: #422 https://github.com/AaronFeledy/core4/pull/422
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate flagged internal-only EventServiceLive wiring in recipes/tarball-source.ts; added sanctioned Guide-Coverage-Skip PR-body line and re-triggered CI via empty commit so workflow re-read the body)
+- Merge: merged (squash)
+---
+
 ## 2026-06-21 - US-289
 - Published the stable §16 App-handle contract surface. New type-only `@lando/sdk/app` subpath exports the opaque/branded `App` handle, the App-handle `AppSelector` union, `LandoRuntime` object-wrapper, `LandoRuntimeServices`, the per-method option/result/error contracts (start/stop/restart/rebuild/destroy/info/exec/tooling/logs + `AppConfigApi`/`AppEventsApi`), and `ScratchAcquireError`. New `AppResolveError` tagged error (single class, `reason` discriminator: ambiguous/mismatch/missing-root/unknown-id/not-found) in `@lando/sdk/errors`.
 - `@lando/core` default entry now exports `resolveApp(selector?)` and `openLandoRuntime(options)` plus the re-exported App-handle types, while staying OCLIF/TUI-free. `resolveApp` implements the full `id > landofile > root > cwd` precedence, multi-field/decoded-LandofileShape-requires-root validation, and tagged `AppResolveError` variants; it returns a branded `App` whose methods delegate to the existing command-operations bound to the captured runtime. `openLandoRuntime` acquires the runtime Layer in the caller's scope and returns `{ app, scratch, run }`.
