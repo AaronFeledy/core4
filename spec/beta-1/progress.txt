@@ -1613,3 +1613,10 @@
 - **Learnings for future iterations:**
   - When a PRD double-lists the same deliverable across a higher-priority story and the later story that actually *ships the enabling primitive*, the migration belongs to the owning story — do NOT build a provisional version of a *public-SDK* primitive (frozen schema/error/codegen lockstep) the way US-286 did for the core-private HttpClient tag. The provisional pattern only fits small core-private slices; a public ToolManifest/errors/codegen surface built early becomes throwaway and causes review thrash. Resolve the scope in the PRD and track the migration to its owning story instead.
 ---
+
+## 2026-06-21 16:22 - Babysit
+- PR: #421 https://github.com/AaronFeledy/core4/pull/421
+- CI outcome: pass
+- Review feedback: fixed (guide-drift skip line added; runtime-bundle URL/SHA override no longer sends stale pinned size; Downloader checksum failures remapped to ProviderBundleChecksumError with remediation)
+- Merge: merged (squash)
+---
