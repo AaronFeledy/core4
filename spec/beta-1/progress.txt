@@ -1510,3 +1510,9 @@
 - Re-entered the loop on branch `us-354-managed-file-plugin-surface` with PR #417 still open. Story verified complete on branch (no new code): all acceptance criteria already implemented and committed (plugin `managedFiles` owner-scoped accessor, `ManagedFileService` on `makeLandoRuntime`, `TestManagedFileStore` from `@lando/core/testing`, the `@lando/sdk/test` contract suite, the §13.1 row, and the spec/AGENTS notes). `passes: true` stands.
 - Verification: typecheck, lint passed; relevant test spot checks passed (`core/test/plugins/context.test.ts` + `core/test/managed-file/contract.test.ts` + `core/test/library/managed-file-runtime.test.ts` = 11 pass, `sdk/test/library/exports.test.ts` = 16 pass).
 ---
+
+## 2026-06-21 03:21 CDT - US-354 Review
+- Fixed the review-confirmed plugin ownership bypass: equivalent path spellings such as `./cfg.txt` now normalize before the owner preflight, so a plugin cannot combine a recovered marker with `onConflict:"overwrite"` to clobber another owner’s `cfg.txt`. Added regression coverage for the attempted overwrite and preserved the single-owner ledger/disk contents.
+- Review notes (deferred/rejected): owner/path disclosure in conflict remediation remains accepted as non-blocking for trusted in-process plugins; full service-side resolved-target owner enforcement is a broader hardening seam, while this story’s plugin boundary now blocks the confirmed bypass.
+- Verification: typecheck, lint, `check:managed-file-boundary`, and focused managed-file/plugin/runtime/SDK export spot checks passed; TypeScript LSP diagnostics unavailable in this environment.
+---

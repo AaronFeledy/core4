@@ -58,6 +58,33 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(store.ledger()[0]?.owner).toBe("plugin-a");
   });
 
+  test("a plugin cannot apply over another owner's path through an equivalent path spelling", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const b = makeLandoPluginContext({ id: "plugin-b", managedFileService: store.service });
+
+    await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
+
+    const result = await exit(
+      Effect.scoped(
+        b.managedFiles.apply([
+          {
+            ...pluginFile("b:cfg", "./cfg.txt"),
+            marker: "a:cfg",
+            onConflict: "overwrite",
+            content: { kind: "text", value: "plugin-b overwrite\n" },
+          },
+        ]),
+      ),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(store.ledger()).toHaveLength(1);
+    expect(store.ledger()[0]?.owner).toBe("plugin-a");
+    expect(store.read("cfg.txt")).toContain("managed\n");
+    expect(store.read("cfg.txt")).not.toContain("plugin-b overwrite");
+  });
+
   test("a plugin cannot remove, adopt, or release another plugin's file", async () => {
     const store = await run(makeTestManagedFileStore());
     const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });

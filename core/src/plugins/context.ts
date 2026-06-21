@@ -4,6 +4,8 @@
 // or adopt files owned by another plugin or by core. A future `stateStore`
 // accessor can be added here; ownership rules live in `makePluginManagedFiles`.
 
+import { posix as pathPosix } from "node:path";
+
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
 
@@ -51,6 +53,7 @@ export interface PluginManagedFiles {
 type PluginManagedFileOperation = "plan" | "apply" | "remove" | "adopt" | "release";
 
 const ownerOf = (value: { readonly owner?: unknown }): unknown => value.owner;
+const normalizeManagedPath = (path: PortablePath): string => pathPosix.normalize(path);
 
 /**
  * Build a `ManagedFileService` view that forces `owner: ownerId` on every write
@@ -103,7 +106,10 @@ export const makePluginManagedFiles = (
   ): Effect.Effect<void, ManagedFileError> =>
     service.status.pipe(
       Effect.flatMap((infos) => {
-        const foreign = infos.find((info) => paths.includes(info.path) && info.owner !== ownerId);
+        const normalizedPaths = new Set(paths.map(normalizeManagedPath));
+        const foreign = infos.find(
+          (info) => normalizedPaths.has(normalizeManagedPath(info.path)) && info.owner !== ownerId,
+        );
         return foreign === undefined
           ? Effect.void
           : Effect.fail(
