@@ -469,3 +469,12 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review feedback: fixed (guide-drift failures resolved by adding a contract-only Guide-Coverage-Skip reason and retriggering CI)
 - Merge: merged (squash)
 ---
+
+## 2026-06-22 16:19 CDT - US-345
+- Shipped raw `remotes:`/`sync:` Landofile acceptance for the RemoteSource/Dataset contract surface. `remotes.<name>` now decodes through the structural `RemoteConfig` shape (`source` plus source-specific config preserved for later validation), and `sync.<dataset>` decodes through the exported `DatasetBinding` shape (`service`/`path`). `LandofileService.discover` preserves both blocks raw and unresolved, matching the existing raw-`includes:` pattern and keeping its frozen error union unchanged.
+- Schema publication artifacts were regenerated so `LandofileShape` and embedded template-render context schemas expose the new top-level keys. The existing `remoteSources:`/`datasets:` plugin contribution surface from US-344 remains covered by the remote-sync schema/manifest tests.
+- Verification: typecheck, lint, focused Landofile/remote-sync/schema/backward-compat/schema-snapshot spot checks passed; public schema contracts passed; manual `app:config:lint --format=json` loaded a Landofile with `remotes:`/`sync:` and returned `valid: true`.
+- **Learnings for future iterations:**
+  - Keep `remotes:`/`sync:` on the raw Landofile decode/discover path only; do not resolve remotes, read credentials, infer dataset bindings, or widen `LandofileService.discover` errors until the 4.1 pull/push orchestration owns that work.
+  - A standalone exported schema value does not need to be added to the generated public schema registry unless the story explicitly requires a separate artifact; embedding it in `LandofileShape` is enough for the Landofile snapshot/docs contract and avoids unnecessary generated artifact churn.
+---

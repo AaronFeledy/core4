@@ -12176,6 +12176,24 @@
         "recipe": {
           "type": "string"
         },
+        "remotes": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "properties": {
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": ["source"],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
         "runtime": {
           "enum": [4],
           "type": "number"
@@ -12602,6 +12620,24 @@
               "type": "boolean"
             }
           },
+          "required": [],
+          "type": "object"
+        },
+        "sync": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
           "required": [],
           "type": "object"
         },
@@ -22714,6 +22750,24 @@
             "recipe": {
               "type": "string"
             },
+            "remotes": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["source"],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
             "runtime": {
               "enum": [4],
               "type": "number"
@@ -23140,6 +23194,24 @@
                   "type": "boolean"
                 }
               },
+              "required": [],
+              "type": "object"
+            },
+            "sync": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "properties": {},
               "required": [],
               "type": "object"
             },

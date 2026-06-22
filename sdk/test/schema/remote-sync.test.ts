@@ -5,6 +5,7 @@ import { LandoEvent } from "../../src/events/index.ts";
 import {
   DatasetApplyResult,
   DatasetArtifactFormat,
+  DatasetBinding,
   DatasetKind,
   PluginManifest,
   RemoteCapabilities,
@@ -30,6 +31,9 @@ describe("remote-sync SDK schemas", () => {
       source: "pantheon",
       site: "site-id",
     });
+    const binding = Schema.decodeUnknownSync(DatasetBinding)({ service: "db", path: "/app/files" });
+    expect(binding.service === "db").toBe(true);
+    expect(binding.path === "/app/files").toBe(true);
     expect(Schema.decodeUnknownSync(RemoteEnvironment)({ id: "dev", label: "Development" }).id).toBe("dev");
     expect(
       Schema.decodeUnknownSync(RemoteLocator)({
@@ -56,16 +60,16 @@ describe("remote-sync SDK schemas", () => {
         changed: true,
       }).direction,
     ).toBe("pull");
-    expect(
-      Schema.decodeUnknownSync(LandoEvent)({
-        _tag: "pre-pull",
-        eventName: "pre-pull",
-        remote: "pantheon",
-        env: "dev",
-        datasets: ["database"],
-        timestamp: "2026-06-14T00:00:00.000Z",
-      }).eventName,
-    ).toBe("pre-pull");
+    const prePullEvent = Schema.decodeUnknownSync(LandoEvent)({
+      _tag: "pre-pull",
+      eventName: "pre-pull",
+      remote: "pantheon",
+      env: "dev",
+      datasets: ["database"],
+      timestamp: "2026-06-14T00:00:00.000Z",
+    });
+    expect(prePullEvent._tag).toBe("pre-pull");
+    if (prePullEvent._tag === "pre-pull") expect(prePullEvent.eventName).toBe("pre-pull");
     expect(
       Schema.decodeUnknownSync(PluginManifest)({
         name: "@lando/remote-pantheon",
