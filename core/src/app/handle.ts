@@ -63,7 +63,8 @@ export const makeAppHandle = (
         ),
       ),
     config: {
-      lint: (options?: { readonly cwd?: string }) => ops.appConfigLint(options),
+      lint: (options?: { readonly cwd?: string }) =>
+        ops.appConfigLint({ ...options, cwd: options?.cwd ?? plan.root }),
     },
     events: {
       subscribe: (name?: string) =>

@@ -119,6 +119,28 @@ describe("resolveApp", () => {
     });
   });
 
+  test("config lint defaults to the resolved app root and honors explicit cwd", async () => {
+    await withTwoTempApps(async (left, right) => {
+      const result = await Effect.runPromise(
+        resolveApp({ root: right as never }).pipe(
+          Effect.flatMap((app) =>
+            Effect.all({
+              defaultLint: app.config.lint(),
+              explicitLint: app.config.lint({ cwd: left }),
+            }),
+          ),
+          Effect.scoped,
+          Effect.provide(appLayer),
+        ),
+      );
+
+      expect(result.defaultLint.app).toBe("other-app");
+      expect(result.defaultLint.file).toBe(join(right, ".lando.yml"));
+      expect(result.explicitLint.app).toBe("embedded-app");
+      expect(result.explicitLint.file).toBe(join(left, ".lando.yml"));
+    });
+  });
+
   test("a decoded Landofile selector without a root fails with AppResolveError(missing-root)", async () => {
     const exit = await Effect.runPromiseExit(
       resolveApp({ landofile: { name: "x" } } as never).pipe(Effect.scoped, Effect.provide(appLayer)),
