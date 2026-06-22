@@ -24,7 +24,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 
 import {
@@ -167,6 +167,7 @@ export const renderStartAppResult = (result: StartAppResult): string => {
  */
 export const startApp = (
   options: StartAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -174,9 +175,13 @@ export const startApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
     const provider = yield* registry.select(plan);
     const ref = appRef(plan);
 

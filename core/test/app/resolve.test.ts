@@ -3,12 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
+import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+
+const testProviderLayers = [
+  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+  Layer.succeed(RuntimeProviderRegistry, {
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+    select: () => Effect.succeed(TestRuntimeProvider),
+  }),
+];
 
 const landofileYaml = (name = "embedded-app"): string =>
   `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n`;
@@ -132,6 +141,24 @@ describe("resolveApp", () => {
     });
   });
 
+  test("handle methods stay bound to the captured root after the host cwd changes", async () => {
+    await withTwoTempApps(async (left, right) => {
+      const result = await Effect.runPromise(
+        resolveApp()
+          .pipe(
+            Effect.flatMap((app) =>
+              Effect.sync(() => process.chdir(right)).pipe(Effect.flatMap(() => app.info())),
+            ),
+            Effect.scoped,
+            Effect.provide(appLayer),
+          )
+          .pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
+      );
+
+      expect(result.app).toBe("embedded-app");
+    });
+  });
+
   test("a decoded Landofile selector resolves includes from its selected root", async () => {
     await withTempApp(async (dir) => {
       const service = ServiceName.make("web");
@@ -202,6 +229,71 @@ describe("resolveApp", () => {
 
         expect(handle.id).toStartWith("scratch-embedded-app-");
         expect(handle.app.kind).toBe("scratch");
+      });
+    });
+  });
+
+  test("runtime.app() with no selector resolves from the captured construction cwd", async () => {
+    await withTempUserCache(async () => {
+      await withTwoTempApps(async (left, right) => {
+        const id = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+              Effect.flatMap((runtime) =>
+                Effect.sync(() => process.chdir(right)).pipe(
+                  Effect.flatMap(() => runtime.app()),
+                  Effect.flatMap((app) => app.info()),
+                  Effect.map((info) => info.app),
+                ),
+              ),
+            ),
+          ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
+        );
+
+        expect(id).toBe("embedded-app");
+      });
+    });
+  });
+
+  test("a runtime constructed with scratch resolves app() to the acquired scratch app", async () => {
+    await withTempUserCache(async () => {
+      await withTempApp(async () => {
+        const id = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({
+              scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
+              plugins: { policy: "bundled-only", layers: testProviderLayers },
+            }).pipe(
+              Effect.flatMap((runtime) => runtime.app()),
+              Effect.map((app) => app.id),
+            ),
+          ),
+        );
+
+        expect(id).toStartWith("scratch-embedded-app-");
+      });
+    });
+  });
+
+  test("reusing one retained runtime shares bootstrap services across operations", async () => {
+    await withTempUserCache(async () => {
+      await withTempApp(async () => {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({ plugins: { policy: "bundled-only", layers: testProviderLayers } }).pipe(
+              Effect.flatMap((runtime) =>
+                Effect.gen(function* () {
+                  yield* runtime.run(CacheService.pipe(Effect.flatMap((cache) => cache.write("k", "v"))));
+                  return yield* runtime.run(
+                    CacheService.pipe(Effect.flatMap((cache) => cache.read("k", Schema.String))),
+                  );
+                }),
+              ),
+            ),
+          ),
+        );
+
+        expect(result).toBe("v");
       });
     });
   });

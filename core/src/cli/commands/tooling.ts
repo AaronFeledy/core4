@@ -17,7 +17,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import {
   type ProgressEmitter,
   publishTaskComplete,
@@ -384,11 +384,12 @@ const runBunShellScript = (
 
 export const runTooling = (
   options: RunToolingOptions,
+  target?: ResolvedAppTarget,
 ): Effect.Effect<RunToolingResult, RunToolingError, RunToolingServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
 
-    const landofile = yield* loadUserLandofile(landofileService);
+    const landofile = target?.landofile ?? (yield* loadUserLandofile(landofileService));
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
     const task = landofile.tooling?.[toolingLookupKey];
 

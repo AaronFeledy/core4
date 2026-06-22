@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +11,7 @@ import type { LandofileService } from "@lando/sdk/services";
 import {
   assertUserAppIdNotReserved,
   loadUserLandofile,
+  loadUserLandofileAt,
   loadUserLandofileFile,
 } from "../../src/cli/app-resolution.ts";
 
@@ -82,6 +83,50 @@ describe("loadUserLandofile includes", () => {
 
       expect(result).toEqual({ name: "custom", services: { web: { type: "node" } } });
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("loadUserLandofileAt root-aware seam", () => {
+  test("resolves at an explicit root and restores the host cwd", async () => {
+    const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-left-")));
+    const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-right-")));
+    const previous = process.cwd();
+    process.chdir(left);
+    try {
+      let observedCwd = "";
+      const service = {
+        discover: Effect.sync(() => {
+          observedCwd = process.cwd();
+          return landofile("at-root");
+        }),
+      } as Context.Tag.Service<typeof LandofileService>;
+
+      const result = await Effect.runPromise(loadUserLandofileAt(service, right));
+
+      expect(result.name).toBe("at-root");
+      expect(observedCwd).toBe(right);
+      expect(process.cwd()).toBe(left);
+    } finally {
+      process.chdir(previous);
+      await rm(left, { recursive: true, force: true });
+      await rm(right, { recursive: true, force: true });
+    }
+  });
+
+  test("does not change the host cwd when root already is the current directory", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-at-same-")));
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const service = fakeLandofileService(landofile("here"));
+      const result = await Effect.runPromise(loadUserLandofileAt(service, dir));
+
+      expect(result.name).toBe("here");
+      expect(process.cwd()).toBe(dir);
+    } finally {
+      process.chdir(previous);
       await rm(dir, { recursive: true, force: true });
     }
   });

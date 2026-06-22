@@ -16,6 +16,7 @@ import type {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
@@ -42,13 +43,17 @@ export const renderRebuildAppResult = (result: RebuildAppResult): string => {
 
 export const rebuildApp = (
   options: RebuildAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
-    yield* stopApp();
-    const start = yield* startApp({
-      reconcile: true,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
+    yield* stopApp({}, target);
+    const start = yield* startApp(
+      {
+        reconcile: true,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      target,
+    );
     return {
       app: start.app,
       servicesRebuilt: start.servicesStarted.map((service) => service.name),

@@ -8,15 +8,23 @@ import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
+  type ResolvedAppTarget,
   assertUserAppIdNotReserved,
-  loadUserLandofile,
+  loadUserLandofileAt,
   loadUserLandofileFile,
+  userAppRef,
+  withResolvedCwd,
 } from "../cli/app-resolution.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { makeAppHandle } from "./handle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry;
+
+interface ResolvedLandofilePlan {
+  readonly plan: AppPlan;
+  readonly landofile: LandofileShape;
+}
 
 const toAppResolveError = (cause: unknown): AppResolveError => {
   const tag = typeof cause === "object" && cause !== null ? (cause as { _tag?: string })._tag : undefined;
@@ -36,66 +44,48 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
   });
 };
 
-const withProcessCwd = <A, E>(
-  cwd: string,
-  use: Effect.Effect<A, E, ResolvePlanServices>,
-): Effect.Effect<A, E | AppResolveError, ResolvePlanServices> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new AppResolveError({
-          message: `Unable to enter the app directory at ${cwd}.`,
-          reason: "not-found",
-          detail: cwd,
-          cause,
-        }),
-    }),
-    () => use,
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
-const planFromDiscovery: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> = Effect.gen(
-  function* () {
-    const landofileService = yield* LandofileService;
+const planResolvedLandofile = (
+  landofile: LandofileShape,
+  root: string,
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
+  Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
-    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
-  },
-).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+    const plan = yield* withResolvedCwd(
+      root,
+      Effect.suspend(() => planner.plan(landofile, capabilities)),
+    );
+    return { plan, landofile };
+  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+
+const planAt = (
+  dir: string | undefined,
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
+  Effect.gen(function* () {
+    const root = dir ?? process.cwd();
+    const landofileService = yield* LandofileService;
+    const landofile = yield* loadUserLandofileAt(landofileService, root);
+    return yield* planResolvedLandofile(landofile, root);
+  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
 const planFromShape = (
   shape: LandofileShape,
   appRoot: string,
-): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
     const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot });
-    const capabilities = yield* registry.capabilities;
     yield* assertUserAppIdNotReserved(landofile);
-    return yield* planner.plan(landofile, capabilities);
+    return yield* planResolvedLandofile(landofile, appRoot);
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
 const planFromLandofileFile = (
   filePath: string,
-): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
     const landofile = yield* loadUserLandofileFile(filePath);
-    const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
+    return yield* planResolvedLandofile(landofile, dirname(filePath));
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
-
-const planAt = (dir: string | undefined): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
-  dir === undefined || dir === process.cwd() ? planFromDiscovery : withProcessCwd(dir, planFromDiscovery);
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -108,33 +98,41 @@ const sameResolvedApp = (left: AppPlan, right: AppPlan): boolean =>
   left.id === right.id && left.root === right.root;
 
 const validatePlanMatch = (
-  primary: AppPlan,
-  lower: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
+  primary: ResolvedLandofilePlan,
+  lower: Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices>,
   detail: string,
-): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   lower.pipe(
     Effect.flatMap((resolved) =>
-      sameResolvedApp(primary, resolved) ? Effect.succeed(primary) : Effect.fail(selectorMismatch(detail)),
+      sameResolvedApp(primary.plan, resolved.plan)
+        ? Effect.succeed(primary)
+        : Effect.fail(selectorMismatch(detail)),
     ),
   );
 
 const validateLowerSelectors = (
-  primary: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
-  checks: ReadonlyArray<readonly [Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>, string]>,
-): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+  primary: Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices>,
+  checks: ReadonlyArray<
+    readonly [Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices>, string]
+  >,
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   primary.pipe(
-    Effect.flatMap((plan) =>
+    Effect.flatMap((resolved) =>
       checks.reduce(
         (effect, [check, detail]) =>
-          effect.pipe(Effect.flatMap(() => validatePlanMatch(plan, check, detail))),
-        Effect.succeed(plan) as Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
+          effect.pipe(Effect.flatMap(() => validatePlanMatch(resolved, check, detail))),
+        Effect.succeed(resolved) as Effect.Effect<
+          ResolvedLandofilePlan,
+          AppResolveError,
+          ResolvePlanServices
+        >,
       ),
     ),
   );
 
 const resolvePlan = (
   selector: NormalizedAppSelector,
-): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> => {
+): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> => {
   switch (selector.kind) {
     case "cwd":
       return planAt(selector.cwd);
@@ -144,16 +142,13 @@ const resolvePlan = (
         selector.cwd === undefined ? [] : [[planAt(selector.cwd), "root+cwd"]],
       );
     case "landofile-path":
-      return validateLowerSelectors(
-        withProcessCwd(dirname(selector.path), planFromLandofileFile(selector.path)),
-        [
-          ...(selector.root === undefined ? [] : ([[planAt(selector.root), "landofile+root"]] as const)),
-          ...(selector.cwd === undefined ? [] : ([[planAt(selector.cwd), "landofile+cwd"]] as const)),
-        ],
-      );
+      return validateLowerSelectors(planFromLandofileFile(selector.path), [
+        ...(selector.root === undefined ? [] : ([[planAt(selector.root), "landofile+root"]] as const)),
+        ...(selector.cwd === undefined ? [] : ([[planAt(selector.cwd), "landofile+cwd"]] as const)),
+      ]);
     case "landofile-shape":
       return validateLowerSelectors(
-        withProcessCwd(selector.root, planFromShape(selector.shape, selector.root)),
+        planFromShape(selector.shape, selector.root),
         selector.cwd === undefined ? [] : [[planAt(selector.cwd), "landofile+cwd"]],
       );
     case "id":
@@ -171,12 +166,12 @@ const resolvePlan = (
               ? [[planAt(selector.cwd), "id+root+cwd"]]
               : [],
           ).pipe(
-            Effect.flatMap((plan) =>
-              plan.id === selector.id
-                ? Effect.succeed(plan)
+            Effect.flatMap((resolved) =>
+              resolved.plan.id === selector.id
+                ? Effect.succeed(resolved)
                 : Effect.fail(
                     new AppResolveError({
-                      message: `App id \`${selector.id}\` does not match the app \`${plan.id}\` at the selected root.`,
+                      message: `App id \`${selector.id}\` does not match the app \`${resolved.plan.id}\` at the selected root.`,
                       reason: "mismatch",
                       detail: "id+root",
                     }),
@@ -186,18 +181,36 @@ const resolvePlan = (
   }
 };
 
+const targetFromResolved = (resolved: ResolvedLandofilePlan): ResolvedAppTarget => ({
+  plan: resolved.plan,
+  landofile: resolved.landofile,
+  root: resolved.plan.root,
+  app: userAppRef(resolved.plan),
+});
+
+/**
+ * Builds the branded `App` handle for an already-resolved target, capturing the
+ * ambient runtime so handle methods need no further services.
+ */
+export const buildAppHandle = (target: ResolvedAppTarget): Effect.Effect<App, never, LandoRuntimeServices> =>
+  Effect.gen(function* () {
+    const runtime = yield* Effect.runtime<LandoRuntimeServices>();
+    const { appOperations } = yield* Effect.promise(() => import("./operations.ts"));
+    return makeAppHandle(target, runtime, appOperations);
+  });
+
 /**
  * Resolves an app from an optional `AppSelector` and returns a stable, branded
- * `App` handle bound to the current runtime. Selector precedence and validation
- * use selector precedence `id > landofile > root > cwd`.
+ * `App` handle bound to the current runtime. The resolved plan, root, and
+ * Landofile are captured once; handle methods reuse them instead of
+ * re-discovering from the host's working directory. Selector precedence is
+ * `id > landofile > root > cwd`.
  */
 export const resolveApp = (
   selector?: AppSelector,
 ): Effect.Effect<App, AppResolveError, LandoRuntimeServices> =>
   Effect.gen(function* () {
     const normalized = yield* normalizeAppSelector(selector);
-    const plan = yield* resolvePlan(normalized);
-    const runtime = yield* Effect.runtime<LandoRuntimeServices>();
-    const { appOperations } = yield* Effect.promise(() => import("./operations.ts"));
-    return makeAppHandle(plan, runtime, appOperations);
+    const resolved = yield* resolvePlan(normalized);
+    return yield* buildAppHandle(targetFromResolved(resolved));
   });

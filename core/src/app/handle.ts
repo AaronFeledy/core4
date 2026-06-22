@@ -13,14 +13,13 @@ import type {
   StopAppOptions,
   ToolingOptions,
 } from "@lando/sdk/app";
-import type { AppPlan, AppRef, ServiceName } from "@lando/sdk/schema";
+import type { ServiceName } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
 import { EventService } from "@lando/sdk/services";
 
+import type { ResolvedAppTarget } from "../cli/app-resolution.ts";
 import type { LogsAppLine } from "../cli/commands/logs.ts";
 import type { AppOperations } from "./operations.ts";
-
-const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 const toLogChunk = (line: LogsAppLine): LogChunk => ({
   service: line.service as ServiceName,
@@ -36,35 +35,35 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
  * binds the captured runtime so one-shot methods require no services.
  */
 export const makeAppHandle = (
-  plan: AppPlan,
+  target: ResolvedAppTarget,
   runtime: Runtime.Runtime<LandoRuntimeServices>,
   ops: AppOperations,
 ): App => {
-  const ref = appRef(plan);
+  const { plan, app: ref, root } = target;
   const handle = {
     id: plan.id,
     ref,
-    root: plan.root,
+    root,
     plan: Effect.succeed(plan),
-    start: (options?: StartAppOptions) => ops.startApp(options).pipe(Effect.provide(runtime)),
-    stop: (options?: StopAppOptions) => ops.stopApp(options).pipe(Effect.provide(runtime)),
-    restart: (options?: RestartAppOptions) => ops.restartApp(options).pipe(Effect.provide(runtime)),
-    rebuild: (options?: RebuildAppOptions) => ops.rebuildApp(options).pipe(Effect.provide(runtime)),
-    destroy: (options?: DestroyAppOptions) => ops.destroyApp(options).pipe(Effect.provide(runtime)),
-    info: (options?: InfoAppOptions) => ops.infoApp(options).pipe(Effect.provide(runtime)),
-    exec: (options: ExecAppOptions) => ops.execApp(options).pipe(Effect.provide(runtime)),
+    start: (options?: StartAppOptions) => ops.startApp(options, target).pipe(Effect.provide(runtime)),
+    stop: (options?: StopAppOptions) => ops.stopApp(options, target).pipe(Effect.provide(runtime)),
+    restart: (options?: RestartAppOptions) => ops.restartApp(options, target).pipe(Effect.provide(runtime)),
+    rebuild: (options?: RebuildAppOptions) => ops.rebuildApp(options, target).pipe(Effect.provide(runtime)),
+    destroy: (options?: DestroyAppOptions) => ops.destroyApp(options, target).pipe(Effect.provide(runtime)),
+    info: (options?: InfoAppOptions) => ops.infoApp(options, target).pipe(Effect.provide(runtime)),
+    exec: (options: ExecAppOptions) => ops.execApp(options, target).pipe(Effect.provide(runtime)),
     tooling: (id: string, options?: ToolingOptions) =>
-      ops.runTooling({ name: id, ...options }).pipe(Effect.provide(runtime)),
+      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(Effect.provide(runtime)),
     logs: (options?: LogsAppOptions) =>
       Stream.unwrap(
-        ops.logsApp(options).pipe(
+        ops.logsApp(options, target).pipe(
           Effect.map((result) => Stream.fromIterable(result.lines.map(toLogChunk))),
           Effect.provide(runtime),
         ),
       ),
     config: {
       lint: (options?: { readonly cwd?: string }) =>
-        ops.appConfigLint({ ...options, cwd: options?.cwd ?? plan.root }),
+        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }),
     },
     events: {
       subscribe: (name?: string) =>

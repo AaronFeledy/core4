@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Cause, type Context, Effect, Layer, Schema } from "effect";
+import { Cause, type Context, Effect, Layer, Schema, type Scope } from "effect";
 
 import {
   ScratchAppError,
@@ -961,3 +961,36 @@ export const ScratchAppServiceLive = Layer.effect(
     );
   }),
 );
+
+/**
+ * Acquires a scratch app and also returns its planned `AppPlan`. The plan is
+ * read from the scratch instance's own plan cache written during acquisition;
+ * the public {@link ScratchAppService.acquire} stays plan-free (returns only the
+ * handle). Core-private: keeps plan-cache coupling inside the scratch module.
+ */
+export const acquireScratchAppWithPlan = (
+  input: ScratchAcquireInput,
+): Effect.Effect<
+  { readonly handle: ScratchHandle; readonly plan: AppPlan },
+  ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError,
+  ScratchAppService | FileSystem | Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const service = yield* ScratchAppService;
+    const fileSystem = yield* FileSystem;
+    const handle = yield* service.acquire(input);
+    const scratchPaths = yield* service.paths(handle.id);
+    const content = yield* fileSystem
+      .readText(scratchPaths.planCache)
+      .pipe(
+        Effect.mapError((cause) =>
+          scratchAppError("acquire", `Unable to read the cached plan for scratch app ${handle.id}.`, cause),
+        ),
+      );
+    const plan = yield* Effect.try({
+      try: () => Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(content)),
+      catch: (cause) =>
+        scratchAppError("acquire", `Unable to decode the cached plan for scratch app ${handle.id}.`, cause),
+    });
+    return { handle, plan };
+  });

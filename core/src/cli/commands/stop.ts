@@ -15,7 +15,7 @@ import {
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
@@ -35,6 +35,7 @@ export const renderStopAppResult = (result: StopAppResult): string => {
 
 export const stopApp = (
   _options: StopAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -42,9 +43,13 @@ export const stopApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
     const provider = yield* registry.select(plan);
     const ref = appRef(plan);
 

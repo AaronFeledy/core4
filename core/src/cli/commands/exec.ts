@@ -11,7 +11,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
 
 export type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
@@ -67,6 +67,7 @@ const resolveService = (
 
 export const execApp = (
   options: ExecAppOptions,
+  appTarget?: ResolvedAppTarget,
 ): Effect.Effect<ExecAppResult, ExecAppError, ExecAppServices> =>
   Effect.gen(function* () {
     if (options.command.length === 0) {
@@ -81,9 +82,13 @@ export const execApp = (
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan =
+      appTarget?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
 
     // Resolve service before selecting provider so an invalid --service
     // returns ToolingExecError with the available list instead of a
