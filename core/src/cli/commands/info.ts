@@ -7,28 +7,14 @@
 import { Effect } from "effect";
 
 import type {
-  AppIdReservedError,
-  CapabilityError,
-  LandoCommandError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+  InfoAppError,
+  InfoAppOptions,
+  InfoAppResult,
+  InfoAppService,
+  InfoServiceStatus,
+} from "@lando/sdk/app";
 import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  LandofileService,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
 import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
@@ -40,47 +26,7 @@ import {
   worstSummaryTone,
 } from "../renderer/summary.ts";
 
-export interface InfoAppOptions {
-  readonly deep?: boolean;
-  readonly service?: string;
-  readonly path?: string;
-  readonly filters?: ReadonlyArray<string>;
-}
-
-type InfoServiceStatus = "unknown" | "stopped" | "starting" | "running" | "healthy" | "unhealthy" | "error";
-
-export interface InfoAppService {
-  readonly app: string;
-  readonly service: string;
-  readonly api: 4;
-  readonly type: string;
-  readonly provider: string;
-  readonly primary: boolean;
-  readonly status: InfoServiceStatus;
-  readonly endpoints: ReadonlyArray<string>;
-}
-
-export interface InfoAppResult {
-  readonly app: string;
-  readonly services: ReadonlyArray<InfoAppService>;
-}
-
-type InfoAppError =
-  | AppIdReservedError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NotImplementedError
-  | CapabilityError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+export type { InfoAppError, InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 
 type InfoAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
 

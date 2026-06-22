@@ -232,6 +232,7 @@
 
 ## Additive Alpha errors
 
+- `AppResolveError`
 - `ConfigTranslateError`
 - `DownloadChecksumError`
 - `DownloadFetchError`

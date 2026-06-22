@@ -8,26 +8,7 @@
  */
 import { DateTime, Effect, Scope } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  EventError,
-  FileSyncDriftError,
-  FileSyncStartError,
-  FileSyncStopError,
-  LandoCommandError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -39,7 +20,6 @@ import {
   type GlobalAppService,
   LandofileService,
   type PluginRegistry,
-  type ProviderError,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
@@ -57,41 +37,7 @@ import {
   publishTreeStart,
 } from "../progress.ts";
 
-export interface StartAppOptions {
-  readonly reconcile?: boolean;
-  readonly signal?: AbortSignal;
-}
-
-export interface StartAppResult {
-  readonly app: string;
-  readonly servicesStarted: ReadonlyArray<{
-    readonly name: string;
-    readonly state: string;
-    readonly endpoints: ReadonlyArray<string>;
-  }>;
-}
-
-type StartAppError =
-  | AppIdReservedError
-  | EventError
-  | FileSyncDriftError
-  | FileSyncStartError
-  | FileSyncStopError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NotImplementedError
-  | CapabilityError
-  | GlobalAutoStartError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 
 type StartAppServices =
   | AppPlanner

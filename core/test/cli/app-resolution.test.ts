@@ -8,7 +8,11 @@ import { type Context, Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
-import { assertUserAppIdNotReserved, loadUserLandofile } from "../../src/cli/app-resolution.ts";
+import {
+  assertUserAppIdNotReserved,
+  loadUserLandofile,
+  loadUserLandofileFile,
+} from "../../src/cli/app-resolution.ts";
 
 const landofile = (name?: string): LandofileShape =>
   (name === undefined ? {} : { name }) as unknown as LandofileShape;
@@ -63,6 +67,21 @@ describe("loadUserLandofile includes", () => {
       expect(result).toEqual({ name: "myapp", services: { web: { type: "node" } } });
     } finally {
       process.chdir(previous);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("loads includes from an explicit Landofile file path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-file-"));
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: discovered\n", "utf8");
+      await writeFile(join(dir, "custom.lando.yml"), "name: custom\nincludes:\n  - ./fragment.yml\n", "utf8");
+      await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
+
+      const result = await Effect.runPromise(loadUserLandofileFile(join(dir, "custom.lando.yml")));
+
+      expect(result).toEqual({ name: "custom", services: { web: { type: "node" } } });
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });

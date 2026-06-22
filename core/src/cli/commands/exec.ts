@@ -1,20 +1,6 @@
 import { Effect } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -22,62 +8,13 @@ import {
   type CommandSpec,
   type ExecTarget,
   LandofileService,
-  type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
 
-export interface ExecAppOptions {
-  /**
-   * Service to run the command in. When omitted (or empty string), the
-   * service marked `primary: true` in the planned `AppPlan` is used; if no
-   * primary service exists, the call fails with `ToolingExecError`.
-   */
-  readonly service?: string;
-  /**
-   * The argv to execute inside the service. Empty argv fails with
-   * `ToolingExecError`.
-   */
-  readonly command: ReadonlyArray<string>;
-  readonly user?: string;
-  readonly cwd?: string;
-  readonly env?: Readonly<Record<string, string>>;
-  /**
-   * Accepted for parity with `ssh` semantics. `RuntimeProvider.exec`
-   * does not allocate a TTY, so these are
-   * recorded but do not change exec behavior.
-   */
-  readonly interactive?: boolean;
-  readonly tty?: boolean;
-}
-
-export interface ExecAppResult {
-  readonly app: string;
-  readonly service: string;
-  readonly command: ReadonlyArray<string>;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-export type ExecAppError =
-  | AppIdReservedError
-  | CapabilityError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
-  | ToolingExecError;
+export type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 
 export type ExecAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
 

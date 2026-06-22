@@ -176,6 +176,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideFrontmatterValidationError).toBeDefined();
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
     expect(errors.AppIdReservedError).toBeDefined();
+    expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
@@ -281,6 +282,12 @@ describe("@lando/sdk package exports", () => {
     expect(landofile.emitLandofileYamlEither).toBeDefined();
     expect(landofile.parseLandofile).toBeDefined();
     expect(landofile.LandofileEmitError).toBeDefined();
+  });
+
+  test("app entry point resolves (type-only App handle contracts)", async () => {
+    const app = await import("@lando/sdk/app");
+
+    expect(app).toBeDefined();
   });
 
   test("test entry point exports provider contract helpers", async () => {

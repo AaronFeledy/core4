@@ -5,26 +5,7 @@
  */
 import { DateTime, Effect } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  EventError,
-  FileSyncDriftError,
-  FileSyncStartError,
-  FileSyncStopError,
-  LandoCommandError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
   PostAppStopEvent,
   PostServiceStopEvent,
@@ -32,46 +13,14 @@ import {
   PreServiceStopEvent,
 } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  EventService,
-  LandofileService,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
 
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 // biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
-export interface StopAppOptions {}
-
-export interface StopAppResult {
-  readonly app: string;
-  readonly servicesStopped: ReadonlyArray<string>;
-}
-
-type StopAppError =
-  | AppIdReservedError
-  | EventError
-  | FileSyncDriftError
-  | FileSyncStartError
-  | FileSyncStopError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NotImplementedError
-  | CapabilityError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+export type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 type StopAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
 

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Either, Exit, Schema } from "effect";
 
 import {
+  AppResolveError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
   GlobalAutoStartError,
@@ -412,5 +413,40 @@ describe("GlobalAutoStartError", () => {
     expect(error._tag).toBe("GlobalAutoStartError");
     expect(error.cause).toBe(cause);
     expect(error.remediation).toBeUndefined();
+  });
+});
+
+describe("AppResolveError", () => {
+  test("carries the spec-mandated payload fields", () => {
+    const fields = Object.keys(AppResolveError.fields);
+    expect(fields).toContain("message");
+    expect(fields).toContain("reason");
+  });
+
+  test("constructs each documented reason variant", () => {
+    for (const reason of ["ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"] as const) {
+      const error = new AppResolveError({ message: `selector ${reason}`, reason });
+      expect(error._tag).toBe("AppResolveError");
+      expect(error.reason).toBe(reason);
+    }
+  });
+
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
+    const error = new AppResolveError({
+      message: "decoded Landofile selector requires an explicit root",
+      reason: "missing-root",
+      detail: "landofile",
+    });
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("AppResolveError");
+        expect(failure.value.reason).toBe("missing-root");
+        expect(failure.value.detail).toBe("landofile");
+      }
+    }
   });
 });

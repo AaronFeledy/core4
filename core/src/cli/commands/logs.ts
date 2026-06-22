@@ -5,39 +5,14 @@
  */
 import { Effect, Stream } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  LandoCommandError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { LogsAppError, LogsAppOptions } from "@lando/sdk/app";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  LandofileService,
-  type LogChunk,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { AppPlanner, LandofileService, type LogChunk, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
 
-export interface LogsAppOptions {
-  readonly service?: string;
-  readonly follow?: boolean;
-  readonly tail?: number;
-}
+export type { LogsAppError, LogsAppOptions } from "@lando/sdk/app";
 
 export interface LogsAppLine {
   readonly service: string;
@@ -50,24 +25,6 @@ export interface LogsAppResult {
   readonly app: string;
   readonly lines: ReadonlyArray<LogsAppLine>;
 }
-
-type LogsAppError =
-  | AppIdReservedError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NotImplementedError
-  | CapabilityError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
-  | ToolingExecError;
 
 type LogsAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
 
