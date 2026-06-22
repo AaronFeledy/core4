@@ -1,5 +1,5 @@
 /** Effect service tags for the SDK. */
-import type { Context, Effect, Option, Queue, Schema, Scope, Stream } from "effect";
+import type { Context, Effect, Option, Queue, Redacted, Schema, Scope, Stream } from "effect";
 
 type _ServiceTagCompatContext = typeof Context.Tag;
 
@@ -18,6 +18,10 @@ import type {
   ManagedFileResult,
   PluginManifest,
   PortablePath,
+  PromptAnswer,
+  PromptBatchOptions,
+  PromptChoice,
+  PromptSpec,
   ProviderCapabilities,
   ProviderId,
   RecipeManifest,
@@ -76,6 +80,12 @@ import type { LandoEvent } from "./events.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
+import type {
+  ConfirmInteractionOptions,
+  InteractionError,
+  SecretInteractionOptions,
+  SelectInteractionOptions,
+} from "./interaction.ts";
 import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
 import type {
   CertificateAuthorityShape,
@@ -140,6 +150,7 @@ export * from "./events.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
+export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
 export * from "./planner.ts";
@@ -294,6 +305,34 @@ export declare class ManagedFileService extends Context.Tag("@lando/core/Managed
     readonly status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError>;
     readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
     readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
+  }
+>() {}
+
+export declare class InteractionService extends Context.Tag("@lando/core/InteractionService")<
+  InteractionService,
+  {
+    readonly prompt: (
+      spec: PromptSpec,
+      options?: PromptBatchOptions,
+    ) => Effect.Effect<PromptAnswer, InteractionError>;
+    readonly promptAll: (
+      specs: ReadonlyArray<PromptSpec>,
+      options?: PromptBatchOptions,
+    ) => Effect.Effect<Readonly<Record<string, PromptAnswer>>, InteractionError>;
+    readonly confirm: (
+      message: string,
+      options?: ConfirmInteractionOptions,
+    ) => Effect.Effect<boolean, InteractionError>;
+    readonly select: (
+      message: string,
+      choices: ReadonlyArray<PromptChoice>,
+      options?: SelectInteractionOptions,
+    ) => Effect.Effect<PromptAnswer, InteractionError>;
+    readonly secret: (
+      message: string,
+      options?: SecretInteractionOptions,
+    ) => Effect.Effect<Redacted.Redacted<string>, InteractionError>;
+    readonly isInteractive: Effect.Effect<boolean>;
   }
 >() {}
 

@@ -1,0 +1,102 @@
+{
+  "$defs": {
+    "DeprecationNotice": {
+      "additionalProperties": false,
+      "description": "A structured deprecation declaration attached to a public surface.",
+      "properties": {
+        "docsUrl": {
+          "format": "uri",
+          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "removeIn": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "note"
+      ],
+      "title": "Deprecation Notice",
+      "type": "object"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "interactive": {
+          "type": "boolean"
+        },
+        "promptTypes": {
+          "items": {
+            "enum": [
+              "text",
+              "select",
+              "multiselect",
+              "confirm",
+              "number",
+              "secret",
+              "path",
+              "editor"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "secretRedaction": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "interactive",
+        "promptTypes",
+        "secretRedaction"
+      ],
+      "type": "object"
+    },
+    "deprecated": {
+      "$ref": "#/$defs/DeprecationNotice"
+    },
+    "enabledByDefault": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "type": "object"
+}

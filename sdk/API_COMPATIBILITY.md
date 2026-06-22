@@ -224,6 +224,13 @@
 - `VolumeRestoreSpec`
 - `VolumeSnapshotRef`
 - `VolumeSnapshotSpec`
+- `ChoicesFrom`
+- `InteractionServiceContribution`
+- `PromptAnswer`
+- `PromptChoice`
+- `PromptSpec`
+- `PromptType`
+- `PromptValidate`
 
 ## Additive Beta service fields
 
@@ -250,6 +257,7 @@
 - `PluginManifest.deprecated`
 - `PluginManifest.requires`
 - `PluginContribution.downloaders` is a new additive optional field.
+- `PluginContribution.interactionServices` is a new additive optional field.
 
 ## Additive Alpha errors
 
@@ -287,6 +295,11 @@
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
 - `SecretNotFoundError`
+- `InteractionRequiredError`
+- `PromptValidationError`
+- `InteractionCancelledError`
+- `ChoicesUnavailableError`
+- `InteractionUnavailableError`
 
 ## Additive Alpha service tags
 
@@ -300,6 +313,7 @@
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`
+- `InteractionService`
 - `ManagedFileService`
 - `PluginSource`
 - `PluginTrustStore`

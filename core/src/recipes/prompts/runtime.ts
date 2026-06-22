@@ -176,6 +176,11 @@ const coerceAnswer = (prompt: RecipePrompt, raw: string, cwd: string): Promise<C
   switch (prompt.type) {
     case "text":
     case "secret":
+    // `editor` is part of the published prompt vocabulary but recipe manifests
+    // reject it before strict decode (scanPromptBeta), so this arm is currently
+    // unreachable for recipes; it keeps the switch exhaustive until US-295 adds
+    // real editor handling.
+    case "editor":
       return Promise.resolve(validateText(prompt, raw));
     case "number":
       return Promise.resolve(validateNumber(prompt, raw));

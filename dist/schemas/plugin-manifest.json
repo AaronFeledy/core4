@@ -243,6 +243,66 @@
           },
           "type": "array"
         },
+        "interactionServices": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "interactive": {
+                    "type": "boolean"
+                  },
+                  "promptTypes": {
+                    "items": {
+                      "enum": [
+                        "text",
+                        "select",
+                        "multiselect",
+                        "confirm",
+                        "number",
+                        "secret",
+                        "path",
+                        "editor"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "secretRedaction": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "interactive",
+                  "promptTypes",
+                  "secretRedaction"
+                ],
+                "type": "object"
+              },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "loggers": {
           "items": {
             "anyOf": [
