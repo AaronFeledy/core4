@@ -892,6 +892,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Binding.",
+    "docsPath": "docs/reference/schemas/dataset-binding.mdx",
+    "id": "DatasetBinding",
+    "jsonSchemaPath": "dist/schemas/dataset-binding.json",
+    "packageExport": "@lando/sdk/schema#DatasetBinding",
+    "title": "Dataset Binding"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Dataset Kind.",
     "docsPath": "docs/reference/schemas/dataset-kind.mdx",
     "id": "DatasetKind",

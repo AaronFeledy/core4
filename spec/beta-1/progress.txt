@@ -478,3 +478,8 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Keep `remotes:`/`sync:` on the raw Landofile decode/discover path only; do not resolve remotes, read credentials, infer dataset bindings, or widen `LandofileService.discover` errors until the 4.1 pull/push orchestration owns that work.
   - A standalone exported schema value does not need to be added to the generated public schema registry unless the story explicitly requires a separate artifact; embedding it in `LandofileShape` is enough for the Landofile snapshot/docs contract and avoids unnecessary generated artifact churn.
 ---
+
+## 2026-06-22 16:46 CDT - US-345 Review
+- Reviewed the raw `remotes:`/`sync:` Landofile implementation against PRD-17 and fixed the missing public JSON-schema registration/explicit export coverage for the new `DatasetBinding` contract shape.
+- Verification: typecheck, lint, SDK export/backward-compat/public-schema contract tests, remote-sync schema tests, Landofile schema tests, and LandofileService spot checks passed.
+---
