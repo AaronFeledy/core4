@@ -273,6 +273,166 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  for (const method of ["restart", "rebuild"] as const) {
+    test(`failed ${method} stop keeps the current managed scope`, async () => {
+      await withTempApp(async (dir) => {
+        const sessions = new Set<FileSyncSessionRef>();
+        let destroyCalls = 0;
+        let finalizerCalls = 0;
+        const provider: RuntimeProviderShape = {
+          ...TestRuntimeProvider,
+          destroy: () =>
+            Effect.gen(function* () {
+              destroyCalls += 1;
+              return yield* Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: TestRuntimeProvider.id,
+                  operation: "destroy",
+                  message: "stop failed",
+                }),
+              );
+            }),
+        };
+        const engine: FileSyncEngineShape = {
+          id: "test",
+          displayName: "Tracking File Sync",
+          capabilities: {
+            modes: ["two-way-safe"],
+            remoteAgentDeployment: "none",
+            exclusionPatterns: true,
+            conflictReporting: false,
+            progressReporting: false,
+          },
+          isAvailable: Effect.succeed(true),
+          setup: () => Effect.void,
+          createSession: (spec: FileSyncSessionSpec) =>
+            Effect.gen(function* () {
+              const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+              sessions.add(ref);
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  finalizerCalls += 1;
+                  sessions.delete(ref);
+                }),
+              );
+              return ref;
+            }),
+          pauseSession: () => Effect.void,
+          resumeSession: () => Effect.void,
+          terminateSession: (ref) =>
+            Effect.sync(() => {
+              sessions.delete(ref);
+            }),
+          listSessions: () => Effect.succeed([]),
+          streamEvents: () => Stream.empty,
+        };
+
+        const insideScope = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const app = yield* resolveApp();
+              yield* app.start();
+              const failed = yield* app[method]().pipe(Effect.either);
+              return {
+                destroyCalls,
+                failed: failed._tag,
+                finalizerCalls,
+                sessions: sessions.size,
+              };
+            }),
+          ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
+        );
+
+        expect(insideScope).toEqual({
+          destroyCalls: 1,
+          failed: "Left",
+          finalizerCalls: 0,
+          sessions: 1,
+        });
+        expect(finalizerCalls).toBe(1);
+        expect(sessions.size).toBe(0);
+      });
+    });
+  }
+
+  test("successful restart replaces the managed scope after stop succeeds", async () => {
+    await withTempApp(async (dir) => {
+      const sessions = new Set<FileSyncSessionRef>();
+      let createCalls = 0;
+      let destroyCalls = 0;
+      let finalizerCalls = 0;
+      const provider: RuntimeProviderShape = {
+        ...TestRuntimeProvider,
+        destroy: (selector, options) =>
+          Effect.sync(() => {
+            destroyCalls += 1;
+            return TestRuntimeProvider.destroy(selector, options);
+          }).pipe(Effect.flatten),
+      };
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          Effect.gen(function* () {
+            createCalls += 1;
+            const ref = FileSyncSessionRef.make(
+              `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
+            );
+            sessions.add(ref);
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                finalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: (ref) =>
+          Effect.sync(() => {
+            sessions.delete(ref);
+          }),
+        listSessions: () => Effect.succeed([]),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            yield* app.restart();
+            return {
+              createCalls,
+              destroyCalls,
+              finalizerCalls,
+              sessions: Array.from(sessions),
+            };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
+      );
+
+      expect(insideScope).toEqual({
+        createCalls: 2,
+        destroyCalls: 1,
+        finalizerCalls: 1,
+        sessions: ["embedded-app-web-app-mount-2"],
+      });
+      expect(finalizerCalls).toBe(2);
+      expect(sessions.size).toBe(0);
+    });
+  });
+
   test("concurrent start calls are serialized per handle", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine(8);

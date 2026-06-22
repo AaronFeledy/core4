@@ -82,33 +82,55 @@ export const makeAppHandle = (
     restart: (options?: RestartAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
+          yield* ops.stopApp({}, target).pipe(Effect.provide(runtime));
           yield* lifecycle.closeCurrent;
           const scope = yield* lifecycle.installFresh;
-          return yield* ops
-            .restartApp(options, target, {
-              scope,
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
+          const start = yield* ops
+            .startApp(
+              {
+                reconcile: options?.reconcile ?? false,
+                ...(options?.signal === undefined ? {} : { signal: options.signal }),
+              },
+              target,
+              {
+                scope,
+                onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+              },
+            )
             .pipe(
               Effect.provide(runtime),
               Effect.onError(() => lifecycle.discardIfCurrent(scope)),
             );
+          return { app: start.app, servicesStarted: start.servicesStarted };
         }),
       ),
     rebuild: (options?: RebuildAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
+          yield* ops.stopApp({}, target).pipe(Effect.provide(runtime));
           yield* lifecycle.closeCurrent;
           const scope = yield* lifecycle.installFresh;
-          return yield* ops
-            .rebuildApp(options, target, {
-              scope,
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
+          const start = yield* ops
+            .startApp(
+              {
+                reconcile: true,
+                ...(options?.signal === undefined ? {} : { signal: options.signal }),
+              },
+              target,
+              {
+                scope,
+                onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+              },
+            )
             .pipe(
               Effect.provide(runtime),
               Effect.onError(() => lifecycle.discardIfCurrent(scope)),
             );
+          return {
+            app: start.app,
+            servicesRebuilt: start.servicesStarted.map((service) => service.name),
+            servicesStarted: start.servicesStarted,
+          };
         }),
       ),
     destroy: (options?: DestroyAppOptions) =>
