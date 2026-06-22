@@ -52,7 +52,10 @@ export const makeAppHandle = (
         Effect.gen(function* () {
           const current = yield* lifecycle.current;
           if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
-            return yield* ops.startApp(options, target, { scope: current }).pipe(Effect.provide(runtime));
+            return yield* ops.startApp(options, target, { scope: current }).pipe(
+              Effect.provide(runtime),
+              Effect.onError(() => lifecycle.discardIfCurrent(current)),
+            );
           }
           yield* lifecycle.closeCurrent;
           if (options?.detached === true) {

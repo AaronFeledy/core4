@@ -347,6 +347,77 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  test("failed reused managed start clears the lifecycle ref before the next start", async () => {
+    await withTempApp(async (dir) => {
+      const sessions = new Set<FileSyncSessionRef>();
+      let createCalls = 0;
+      let finalizerCalls = 0;
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          Effect.gen(function* () {
+            createCalls += 1;
+            if (createCalls === 2) return yield* Effect.fail(new Error("sync failed"));
+            const ref = FileSyncSessionRef.make(
+              `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
+            );
+            sessions.add(ref);
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                finalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: (ref) =>
+          Effect.sync(() => {
+            sessions.delete(ref);
+          }),
+        listSessions: () => Effect.succeed([]),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            const failedReuse = yield* app.start().pipe(Effect.either);
+            yield* app.start();
+            return {
+              createCalls,
+              failedReuse: failedReuse._tag,
+              finalizerCalls,
+              sessions: sessions.size,
+            };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir))),
+      );
+
+      expect(insideScope).toEqual({
+        createCalls: 3,
+        failedReuse: "Left",
+        finalizerCalls: 1,
+        sessions: 1,
+      });
+      expect(finalizerCalls).toBe(2);
+      expect(sessions.size).toBe(0);
+    });
+  });
+
   test("runtime-scope close pauses a session resumed by managed start", async () => {
     await withTempApp(async (dir) => {
       const ref = FileSyncSessionRef.make("embedded-app-web-app-mount");
