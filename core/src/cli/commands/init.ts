@@ -1,5 +1,5 @@
 import { mkdir, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -261,7 +261,8 @@ const loadRegistryRecipe = async (options: InitAppOptions) => {
 };
 
 const composeAnswers = async (options: InitAppOptions): Promise<Record<string, string>> => {
-  const fileAnswers = options.answersFile === undefined ? {} : await readAnswersFile(options.answersFile);
+  const fileAnswers =
+    options.answersFile === undefined ? {} : await readAnswersFile(resolve(options.cwd, options.answersFile));
   const out: Record<string, string> = { ...fileAnswers, ...(options.answers ?? {}) };
   if (options.name !== undefined && options.name.trim() !== "") {
     out[APP_NAME_PROMPT] = options.name.trim();
