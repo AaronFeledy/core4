@@ -17,7 +17,7 @@ import type {
 } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../app-resolution.ts";
-import { startApp } from "./start.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
 export type { RebuildAppError, RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
@@ -44,6 +44,7 @@ export const renderRebuildAppResult = (result: RebuildAppResult): string => {
 export const rebuildApp = (
   options: RebuildAppOptions = {},
   target?: ResolvedAppTarget,
+  managed?: StartManagedScope,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
     yield* stopApp({}, target);
@@ -53,6 +54,7 @@ export const rebuildApp = (
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       target,
+      managed,
     );
     return {
       app: start.app,
