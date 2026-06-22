@@ -139,7 +139,7 @@ export const withResolvedCwd = <A, E, R>(
  * Root-aware variant of {@link loadUserLandofile}: resolves the Landofile,
  * includes, and reserved-id validation at an explicit `root` rather than the
  * host's current working directory. Reuses the injected `LandofileService` so
- * the canonical discovery + beta validation path is preserved.
+ * the same LandofileService discovery and validation path as cwd resolution.
  */
 export const loadUserLandofileAt = (
   landofileService: Context.Tag.Service<typeof LandofileService>,
