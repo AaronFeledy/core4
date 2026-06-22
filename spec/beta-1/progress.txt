@@ -1659,3 +1659,21 @@
 - Review notes (deferred/rejected): QA/security review-work lanes passed; goal/code/context lanes hung without deliverables and were replaced by focused parent review. Left the pre-existing lint warning in `core/src/cli/commands/stop.ts` alone because it predates this review and does not fail lint.
 - Verification: typecheck, lint passed; focused selector/resolve/import-boundary/SDK export/tagged-error tests passed; `git diff --check` passed. TypeScript LSP diagnostics could not run because the LSP server is not installed and was previously declined.
 ---
+
+## 2026-06-21 20:39 CDT - Push
+- PR: none — push skipped: uncommitted product changes on `us-289-app-handle-contracts` (`core/src/app/{resolve,runtime,selector}.ts`, `core/src/index.ts`, `sdk/src/app/index.ts`, `sdk/src/errors/app.ts`). US-289 `passes: true`; commit and re-run Push.
+---
+
+## [Sun Jun 21 2026] - Babysit
+- PR: none (branch us-289-app-handle-contracts not pushed; no remote branch, no PR)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR — push step did not create/refresh it)
+---
+
+## 2026-06-21 21:05 CDT - US-289 Build
+- Finished in-flight US-289 work: committed the pending comment-only cleanup that removed spec section references from the App handle contract files (`@lando/sdk/app`, `AppResolveError` docs, and the core `resolve`/`runtime`/`selector`/`index` doc comments), bringing them in line with the comment-content rule. No behavior or type changes — purely documentation. Push had stalled because these edits were uncommitted; committing unblocks the pipeline.
+- Verification: typecheck and lint passed (only the pre-existing `core/src/cli/commands/stop.ts` suppression warning remains, predating this work); focused spot checks green — `core/test/app/resolve.test.ts`, `core/test/app/selector.test.ts`, `core/test/library/import-boundary.test.ts`, `sdk/test/library/exports.test.ts`, `sdk/test/errors/tagged-errors.test.ts` (91 pass / 0 fail).
+- **Learnings for future iterations:**
+  - When a story's `feat:` commit lands but a later comment/doc cleanup pass leaves edits uncommitted, the Push step stalls on the dirty tree. Build's job on re-entry is to verify the diff is safe (here: zero non-comment code lines changed) and commit it, not to revert it — the cleanup belongs on the branch.
+---

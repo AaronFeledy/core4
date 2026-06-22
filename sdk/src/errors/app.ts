@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 /**
- * Resolution failure raised by the §16 App-handle resolver (`resolveApp` /
+ * Resolution failure raised by the App-handle resolver (`resolveApp` /
  * `runtime.app`). A single tagged error whose `reason` discriminates the
  * documented selector-validation outcomes:
  *

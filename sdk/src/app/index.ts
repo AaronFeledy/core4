@@ -1,6 +1,4 @@
-// `@lando/sdk/app` — the stable §16 App-handle contract surface.
-//
-// SPEC: §16.3 (Embedding and Library Use — the `App` handle primitive).
+// `@lando/sdk/app` — stable App-handle contract surface for embedding hosts.
 //
 // These are the canonical, semver-stable contracts an embedding host consumes
 // when it resolves an app once and drives lifecycle/introspection/tooling/
@@ -12,7 +10,7 @@
 //
 // Scope note: tunnel (`share*`) and remote-sync (`pull`/`push`/`remote`) methods
 // and their types are intentionally NOT part of this surface yet; they are added
-// non-breakingly by their owning stories. The brand is what makes that safe.
+// non-breakingly in later releases. The brand is what makes that safe.
 
 import type { Effect, Scope, Stream } from "effect";
 
@@ -74,11 +72,6 @@ import type {
 import type { LogChunk, ProviderError } from "../services/provider.ts";
 import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts";
 
-// ============================================================================
-// Runtime service union
-// SPEC: §16.2 / §3.4 — the full set of service tags an app-tier runtime provides.
-// ============================================================================
-
 /**
  * The union of every Effect service tag a fully-bootstrapped app-tier Lando
  * runtime provides. `LandoRuntime.run` excludes these from a host program's
@@ -106,11 +99,6 @@ export type LandoRuntimeServices =
   | EventService
   | ToolingEngine;
 
-// ============================================================================
-// App selector
-// SPEC: §16.3 — precedence `id > landofile > root > cwd`.
-// ============================================================================
-
 /**
  * Selects the app a handle resolves to. Precedence is `id > landofile > root >
  * cwd`. Passing more than one field is allowed only when the higher-precedence
@@ -128,11 +116,6 @@ export type AppSelector =
   | { readonly landofile: LandofileShape; readonly root: AbsolutePath; readonly cwd?: AbsolutePath }
   | { readonly root: AbsolutePath; readonly cwd?: AbsolutePath }
   | { readonly cwd: AbsolutePath };
-
-// ============================================================================
-// Per-method option / result / error contracts
-// SPEC: §16.3 — option objects in, typed Effect successes + tagged failures out.
-// ============================================================================
 
 export interface StartAppOptions {
   readonly reconcile?: boolean;
@@ -170,7 +153,7 @@ export type StartAppError =
   | ProviderError
   | ProviderUnavailableError;
 
-// biome-ignore lint/complexity/noBannedTypes: spec contract — start/stop share no extra stop-time options yet.
+// biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
 export type StopAppOptions = {};
 
 export interface StopAppResult {
@@ -396,7 +379,7 @@ export interface AppConfigLintOptions {
 
 /**
  * Configuration sub-API of an `App` handle. Canonical-schema lint today; config
- * read/write methods are added non-breakingly by their owning stories.
+ * read/write methods may be added non-breakingly in later releases.
  */
 export interface AppConfigApi {
   readonly lint: (options?: AppConfigLintOptions) => Effect.Effect<ConfigLintResult, LandofileNotFoundError>;
@@ -409,11 +392,6 @@ export interface AppConfigApi {
 export interface AppEventsApi {
   readonly subscribe: (name?: string) => Stream.Stream<LandoEvent, EventError, Scope.Scope>;
 }
-
-// ============================================================================
-// App handle
-// SPEC: §16.3 — opaque/branded; hosts consume, never structurally implement.
-// ============================================================================
 
 declare const AppBrand: unique symbol;
 
@@ -449,12 +427,6 @@ export interface App {
   readonly config: AppConfigApi;
   readonly events: AppEventsApi;
 }
-
-// ============================================================================
-// LandoRuntime object wrapper
-// SPEC: §16.3 — returned by `openLandoRuntime`; methods bound to one retained
-// runtime acquisition.
-// ============================================================================
 
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =

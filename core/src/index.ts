@@ -16,7 +16,7 @@
 export { makeLandoRuntime, type LandoRuntimeOptions } from "./runtime/layer.ts";
 export type { BootstrapLevel } from "./runtime/bootstrap.ts";
 
-// App handle convenience API (§16.3).
+// App handle convenience API for embedding hosts.
 export { resolveApp } from "./app/resolve.ts";
 export { openLandoRuntime } from "./app/runtime.ts";
 export { AppResolveError } from "@lando/sdk/errors";

@@ -25,7 +25,7 @@ export type NormalizedAppSelector =
 const present = (value: unknown): boolean => value !== undefined && value !== null;
 
 /**
- * Structural validation for `AppSelector` (spec §16.3, precedence
+ * Structural validation for `AppSelector` (precedence
  * `id > landofile > root > cwd`). Pure: it never touches the filesystem or the
  * app registry, so it is fully unit-testable. Cross-field validation that needs
  * resolution (e.g. an `id` matching the app at `root`) happens in `resolveApp`.

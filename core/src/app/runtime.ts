@@ -11,8 +11,8 @@ type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService>;
 
 /**
  * Acquires one Lando runtime in the caller's `Scope` and returns an object whose
- * `app`, `scratch`, and `run` methods are bound to that retained runtime (spec
- * §16.3). The runtime tears down when the caller's scope closes.
+ * `app`, `scratch`, and `run` methods are bound to that retained runtime.
+ * The runtime tears down when the caller's scope closes.
  */
 export const openLandoRuntime = (
   options: LandoRuntimeOptions,

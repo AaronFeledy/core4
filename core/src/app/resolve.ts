@@ -166,7 +166,7 @@ const resolvePlan = (
 /**
  * Resolves an app from an optional `AppSelector` and returns a stable, branded
  * `App` handle bound to the current runtime. Selector precedence and validation
- * follow spec §16.3 (`id > landofile > root > cwd`).
+ * use selector precedence `id > landofile > root > cwd`.
  */
 export const resolveApp = (
   selector?: AppSelector,
