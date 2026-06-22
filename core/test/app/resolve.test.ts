@@ -159,6 +159,22 @@ describe("resolveApp", () => {
     });
   });
 
+  test("a landofile path selector loads the explicit selected file", async () => {
+    await withTempApp(async (dir) => {
+      await Bun.write(join(dir, "custom.lando.yml"), landofileYaml("custom-app"));
+
+      const app = await Effect.runPromise(
+        resolveApp({ landofile: join(dir, "custom.lando.yml") as never }).pipe(
+          Effect.scoped,
+          Effect.provide(appLayer),
+        ),
+      );
+
+      expect(app.id).toBe("custom-app");
+      expect(app.root).toBe(dir);
+    });
+  });
+
   test("openLandoRuntime exposes a working scratch API", async () => {
     await withTempUserCache(async () => {
       await withTempApp(async () => {

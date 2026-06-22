@@ -7,7 +7,11 @@ import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { assertUserAppIdNotReserved, loadUserLandofile } from "../cli/app-resolution.ts";
+import {
+  assertUserAppIdNotReserved,
+  loadUserLandofile,
+  loadUserLandofileFile,
+} from "../cli/app-resolution.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { makeAppHandle } from "./handle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
@@ -79,6 +83,17 @@ const planFromShape = (
     return yield* planner.plan(landofile, capabilities);
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
+const planFromLandofileFile = (
+  filePath: string,
+): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+  Effect.gen(function* () {
+    const registry = yield* RuntimeProviderRegistry;
+    const planner = yield* AppPlanner;
+    const landofile = yield* loadUserLandofileFile(filePath);
+    const capabilities = yield* registry.capabilities;
+    return yield* planner.plan(landofile, capabilities);
+  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+
 const planAt = (dir: string | undefined): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
   dir === undefined || dir === process.cwd() ? planFromDiscovery : withProcessCwd(dir, planFromDiscovery);
 
@@ -129,10 +144,13 @@ const resolvePlan = (
         selector.cwd === undefined ? [] : [[planAt(selector.cwd), "root+cwd"]],
       );
     case "landofile-path":
-      return validateLowerSelectors(planAt(dirname(selector.path)), [
-        ...(selector.root === undefined ? [] : ([[planAt(selector.root), "landofile+root"]] as const)),
-        ...(selector.cwd === undefined ? [] : ([[planAt(selector.cwd), "landofile+cwd"]] as const)),
-      ]);
+      return validateLowerSelectors(
+        withProcessCwd(dirname(selector.path), planFromLandofileFile(selector.path)),
+        [
+          ...(selector.root === undefined ? [] : ([[planAt(selector.root), "landofile+root"]] as const)),
+          ...(selector.cwd === undefined ? [] : ([[planAt(selector.cwd), "landofile+cwd"]] as const)),
+        ],
+      );
     case "landofile-shape":
       return validateLowerSelectors(
         withProcessCwd(selector.root, planFromShape(selector.shape, selector.root)),
