@@ -586,6 +586,51 @@ describe("PluginRegistryLive", () => {
     expect(service).toMatchObject({ type: "node:lts" });
   });
 
+  test("normalizes accepted external interaction-service module paths from the package root", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "interaction-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "src"), { recursive: true });
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/interaction-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/interaction-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              interactionServices: [
+                {
+                  id: "fancy",
+                  module: "./src/interaction.mjs",
+                  capabilities: { interactive: true, promptTypes: ["text"], secretRedaction: true },
+                },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(packageRoot, "index.js"), "export {};\n");
+    await writeFile(join(packageRoot, "src", "interaction.mjs"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/interaction-plugin", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/interaction-plugin")),
+    );
+
+    expect(manifest.contributes?.interactionServices?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "interaction.mjs")).href,
+    );
+  });
+
   test("rejects external contribution modules outside the package root without blocking healthy plugins", async () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const brokenRoot = join(userPluginsRoot, "@example", "broken-module-plugin", "1.0.0");
@@ -627,6 +672,63 @@ describe("PluginRegistryLive", () => {
     );
 
     expect(manifests.find((manifest) => manifest.name === "@example/broken-module-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(warnings).toEqual([expect.stringContaining("PluginLoadError")]);
+    expect(warnings[0]).toContain("resolves outside the plugin package root");
+  });
+
+  test("rejects external interaction-service modules outside the package root", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "broken-interaction-plugin", "1.0.0");
+    const healthyRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await mkdir(brokenRoot, { recursive: true });
+    await writeFile(join(userPluginsRoot, "outside.ts"), "export {};\n");
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/broken-interaction-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/broken-interaction-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              interactionServices: [
+                {
+                  id: "escape",
+                  module: "../../../outside.ts",
+                  capabilities: { interactive: true, promptTypes: ["text"], secretRedaction: true },
+                },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/broken-interaction-plugin", version: "1.0.0", path: brokenRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(
+      manifests.find((manifest) => manifest.name === "@example/broken-interaction-plugin"),
+    ).toBeUndefined();
     expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
       version: "1.1.0",
       description: "healthy user source",

@@ -1,11 +1,14 @@
 import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
+import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.ts";
 
-// Recipe manifest schema with prompt and post-init action shapes.
-// Unsupported fields (the `editor` prompt type) are intentionally absent
-// from the schema and are rejected before strict decode so users see a
-// targeted remediation instead of a generic excess-property error.
+// Recipe manifest schema with prompt and post-init action shapes. Recipe
+// prompts reuse the generalized `PromptSpec` vocabulary (`sdk/src/schema/
+// prompt.ts`) plus the recipe-only `when:`/`deprecated:` fields. The `editor`
+// prompt type is part of the published vocabulary but is rejected before
+// strict decode in the recipe manifest service so recipe authors see a
+// targeted remediation instead of an unsupported-feature surprise.
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =
@@ -27,59 +30,32 @@ export const RecipeVersion = Schema.String.pipe(
 );
 export type RecipeVersion = typeof RecipeVersion.Type;
 
-/** Recipe-prompt type supported by this schema (`editor` is rejected before decode). */
-export const RecipePromptType = Schema.Literal(
-  "text",
-  "select",
-  "multiselect",
-  "confirm",
-  "number",
-  "secret",
-  "path",
-);
-export type RecipePromptType = typeof RecipePromptType.Type;
+/** Recipe-prompt type — the generalized {@link PromptType} vocabulary. */
+export const RecipePromptType = PromptType;
+export type RecipePromptType = PromptType;
 
-/** Dynamic-choices source — run a canonical Lando command and parse its stdout into choices. */
-export const RecipeChoicesFrom = Schema.Struct({
-  command: Schema.String,
-  args: Schema.optional(Schema.Array(Schema.String)),
-  parse: Schema.Literal("json", "lines"),
-});
-export type RecipeChoicesFrom = typeof RecipeChoicesFrom.Type;
+/** Dynamic-choices source — the generalized {@link ChoicesFrom}. */
+export const RecipeChoicesFrom = ChoicesFrom;
+export type RecipeChoicesFrom = ChoicesFrom;
 
-/** Recipe-prompt choice — bare value or labeled object. */
-export const RecipePromptChoice = Schema.Union(
-  Schema.String,
-  Schema.Number,
-  Schema.Boolean,
-  Schema.Struct({
-    value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
-    label: Schema.optional(Schema.String),
-    description: Schema.optional(Schema.String),
-  }),
-);
-export type RecipePromptChoice = typeof RecipePromptChoice.Type;
+/** Recipe-prompt choice — the generalized {@link PromptChoice}. */
+export const RecipePromptChoice = PromptChoice;
+export type RecipePromptChoice = PromptChoice;
 
-/** Recipe-prompt validation — per-type validator keys. */
-export const RecipePromptValidate = Schema.Struct({
-  pattern: Schema.optional(Schema.String),
-  message: Schema.optional(Schema.String),
-  min: Schema.optional(Schema.Number),
-  max: Schema.optional(Schema.Number),
-  exists: Schema.optional(Schema.Boolean),
-});
-export type RecipePromptValidate = typeof RecipePromptValidate.Type;
+/** Recipe-prompt validation — the generalized {@link PromptValidate}. */
+export const RecipePromptValidate = PromptValidate;
+export type RecipePromptValidate = PromptValidate;
 
-/** Recipe prompt. */
+/** Recipe prompt — {@link PromptSpec} fields plus the recipe-only `when:`/`deprecated:` keys. */
 export const RecipePrompt = Schema.Struct({
   name: Schema.String,
-  type: RecipePromptType,
+  type: PromptType,
   message: Schema.String,
   default: Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
   when: Schema.optional(Schema.String),
-  validate: Schema.optional(RecipePromptValidate),
-  choices: Schema.optional(Schema.Array(RecipePromptChoice)),
-  choicesFrom: Schema.optional(RecipeChoicesFrom),
+  validate: Schema.optional(PromptValidate),
+  choices: Schema.optional(Schema.Array(PromptChoice)),
+  choicesFrom: Schema.optional(ChoicesFrom),
   deprecated: Schema.optional(DeprecationNotice),
 });
 export type RecipePrompt = typeof RecipePrompt.Type;

@@ -77,6 +77,13 @@ describe("@lando/sdk package exports", () => {
     expect(schema.RecipeRegistryResolution).toBeDefined();
     expect(schema.RecipeRegistryResponse).toBeDefined();
     expect(schema.RecipeChoicesFrom).toBeDefined();
+    expect(schema.PromptType).toBeDefined();
+    expect(schema.PromptSpec).toBeDefined();
+    expect(schema.PromptChoice).toBeDefined();
+    expect(schema.PromptValidate).toBeDefined();
+    expect(schema.PromptAnswer).toBeDefined();
+    expect(schema.ChoicesFrom).toBeDefined();
+    expect(schema.InteractionServiceContribution).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
     expect(schema.assertPublicSchemaAnnotations).toBeDefined();
@@ -222,6 +229,11 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ScratchIsolationConflictError).toBeDefined();
     expect(errors.RecipeSourceError).toBeDefined();
     expect(errors.RecipeChoicesError).toBeDefined();
+    expect(errors.InteractionRequiredError).toBeDefined();
+    expect(errors.PromptValidationError).toBeDefined();
+    expect(errors.InteractionCancelledError).toBeDefined();
+    expect(errors.ChoicesUnavailableError).toBeDefined();
+    expect(errors.InteractionUnavailableError).toBeDefined();
     expect(errors.RecipeRunNotAllowedError).toBeDefined();
     expect(errors.RecipeFetchNotAllowedError).toBeDefined();
     expect(errors.SecretNotFoundError).toBeDefined();
@@ -271,6 +283,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.GlobalAppService).toBeDefined();
     expect(services.ScratchAppService).toBeDefined();
     expect(services.ManagedFileService).toBeDefined();
+    expect(services.InteractionService).toBeDefined();
     expect(services.DeprecationService).toBeDefined();
     expect(services.markDeprecated).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();

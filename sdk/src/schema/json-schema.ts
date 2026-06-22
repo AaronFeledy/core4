@@ -176,6 +176,7 @@ import {
   ContributionRef,
   EmbeddingPluginPolicy,
   GlobalServiceContribution,
+  InteractionServiceContribution,
   PluginContribution,
   PluginManifest,
   PluginSetupContribution,
@@ -194,6 +195,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { PromptSpec } from "./prompt.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -431,6 +433,8 @@ const rawPublicSchemaRegistry = {
   MessageWarnEvent,
   MessageErrorEvent,
   PaintBannerEvent,
+  PromptSpec,
+  InteractionServiceContribution,
 } as const;
 
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
@@ -622,6 +626,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   MessageWarnEvent: "Public Lando schema contract for Message Warn Event.",
   MessageErrorEvent: "Public Lando schema contract for Message Error Event.",
   PaintBannerEvent: "Public Lando schema contract for Paint Banner Event.",
+  PromptSpec: "Public Lando schema contract for Prompt Spec.",
+  InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
 
 const titleFromSchemaName = (schemaName: string): string =>
@@ -964,6 +970,12 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "InspectProps.file",
   "InspectProps.json",
   "InspectProps.output",
+  "InteractionServiceContribution.capabilities",
+  "InteractionServiceContribution.deprecated",
+  "InteractionServiceContribution.enabledByDefault",
+  "InteractionServiceContribution.id",
+  "InteractionServiceContribution.module",
+  "InteractionServiceContribution.summary",
   "LandoEvent._tag",
   "LandofileExpressionEvalError._tag",
   "LandofileExpressionEvalError.cause",
@@ -1072,6 +1084,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PluginContribution.downloaders",
   "PluginContribution.fileSyncEngines",
   "PluginContribution.globalServices",
+  "PluginContribution.interactionServices",
   "PluginContribution.loggers",
   "PluginContribution.providers",
   "PluginContribution.proxies",
@@ -1268,6 +1281,13 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PreStopEvent.app",
   "PreStopEvent.scope",
   "PreStopEvent.timestamp",
+  "PromptSpec.choices",
+  "PromptSpec.choicesFrom",
+  "PromptSpec.default",
+  "PromptSpec.message",
+  "PromptSpec.name",
+  "PromptSpec.type",
+  "PromptSpec.validate",
   "ProviderCapabilities.artifactBuild",
   "ProviderCapabilities.artifactExport",
   "ProviderCapabilities.artifactImport",

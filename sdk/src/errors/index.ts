@@ -9,6 +9,7 @@ export * from "./file-system.ts";
 export * from "./global.ts";
 export * from "./guide.ts";
 export * from "./healthcheck.ts";
+export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
 export * from "./plugin.ts";
