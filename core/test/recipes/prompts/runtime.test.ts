@@ -775,6 +775,31 @@ describe("collectPrompts — editor", () => {
     expect(io.stderr()).toContain("Invalid value: kebab-case only");
   });
 
+  test("interactive: retries with the default seed when blank edited content validates against the default", async () => {
+    const seeds: string[] = [];
+    const runner: EditorRunner = async ({ content }) => {
+      seeds.push(content);
+      return { kind: "edited", content: seeds.length === 1 ? "" : "good-value" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "slug",
+          type: "editor",
+          message: "Slug",
+          default: "Bad Value",
+          validate: { pattern: "^[a-z][a-z0-9-]*$", message: "kebab-case only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.slug).toBe("good-value");
+    expect(seeds).toEqual(["Bad Value", "Bad Value"]);
+    expect(io.stderr()).toContain("Invalid value: kebab-case only");
+  });
+
   test("interactive: skips external editor when stdin is not a TTY and reads a line instead", async () => {
     let editorInvoked = false;
     const runner: EditorRunner = async () => {

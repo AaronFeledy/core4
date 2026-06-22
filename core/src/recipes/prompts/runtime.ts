@@ -356,7 +356,7 @@ const runEditorPrompt = async (
         const coerced = await coerceAnswer(prompt, effective, cwd);
         if (coerced.ok) return coerced.value;
         io.writeError(`Invalid value: ${coerced.issue}. Please try again.\n`);
-        seed = result.content;
+        seed = effective;
         break;
       }
     }
