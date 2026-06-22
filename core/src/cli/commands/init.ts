@@ -1,5 +1,5 @@
 import { mkdir, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -45,6 +45,7 @@ import {
   publishTreeCompleteAsync,
   publishTreeStartAsync,
 } from "../progress.ts";
+import { readAnswersFile } from "../prompts/answer-flags.ts";
 import { resolveInteractivePromptDriver } from "../prompts/interactive-driver.ts";
 import { tryDriverConfirm } from "../prompts/interactive.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
@@ -121,6 +122,7 @@ export interface InitAppOptions {
   readonly registryClient?: RecipeRegistryClient;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
+  readonly answersFile?: string;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly io?: PromptIO;
@@ -258,8 +260,10 @@ const loadRegistryRecipe = async (options: InitAppOptions) => {
   return parseResolvedRecipe(resolved);
 };
 
-const composeAnswers = (options: InitAppOptions): Record<string, string> => {
-  const out: Record<string, string> = { ...(options.answers ?? {}) };
+const composeAnswers = async (options: InitAppOptions): Promise<Record<string, string>> => {
+  const fileAnswers =
+    options.answersFile === undefined ? {} : await readAnswersFile(resolve(options.cwd, options.answersFile));
+  const out: Record<string, string> = { ...fileAnswers, ...(options.answers ?? {}) };
   if (options.name !== undefined && options.name.trim() !== "") {
     out[APP_NAME_PROMPT] = options.name.trim();
   }
@@ -321,7 +325,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   const prompts = manifest.prompts ?? [];
 
-  const presetAnswers = composeAnswers(options);
+  const presetAnswers = await composeAnswers(options);
   const useDefaults = options.yes === true;
 
   const collected = await collectPrompts({

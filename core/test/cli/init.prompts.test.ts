@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -60,6 +60,30 @@ describe("lando init — answers and prompting", () => {
       expect(result.exitCode).toBe(0);
       expect(await Bun.file(join(dir, "via-answer", ".lando.yml")).exists()).toBe(true);
       expect(result.stdout).toContain("Created via-answer at");
+    });
+  });
+
+  test("--answers file supplies recipe answers below explicit --answer values", async () => {
+    await withTempCwd(async (dir) => {
+      const answersFile = join(dir, "answers.json");
+      await writeFile(answersFile, JSON.stringify({ name: "from-file", database: "mysql" }), "utf8");
+
+      const result = await runCli(
+        [
+          "init",
+          "--recipe=node-postgres",
+          "--no-interactive",
+          "--answers",
+          answersFile,
+          "--answer",
+          "name=explicit-app",
+        ],
+        dir,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(dir, "explicit-app", ".lando.yml")).exists()).toBe(true);
+      expect(result.stdout).toContain("Created explicit-app at");
     });
   });
 

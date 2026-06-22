@@ -25,13 +25,16 @@ describe("apps:scratch:start recipe flag mapping", () => {
         from: "lamp",
         answer: ["php=8.2", "name=ignored"],
         option: ["php=8.4"],
+        answers: "answers.json",
         yes: true,
+        interactive: true,
         "no-interactive": true,
       },
     });
     expect(options.from).toBe("lamp");
     expect(options.yes).toBe(true);
-    expect(options.nonInteractive).toBe(true);
+    expect(options.answersFile).toBe("answers.json");
+    expect(options.nonInteractive).toBe(false);
     // --option wins over --answer on a key collision (merge order: answers then options).
     expect(options.answers).toEqual({ php: "8.4", name: "ignored" });
   });
@@ -46,12 +49,16 @@ describe("apps:scratch:start recipe flag mapping", () => {
       "name=ignored",
       "--option",
       "php=8.4",
+      "--answers",
+      "answers.json",
       "--yes",
+      "--interactive",
       "--no-interactive",
     ]);
     expect(options.from).toBe("lamp");
     expect(options.yes).toBe(true);
-    expect(options.nonInteractive).toBe(true);
+    expect(options.answersFile).toBe("answers.json");
+    expect(options.nonInteractive).toBe(false);
     expect(options.answers).toEqual({ php: "8.4", name: "ignored" });
   });
 
