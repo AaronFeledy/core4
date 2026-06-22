@@ -510,7 +510,6 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Merge: merged (squash)
 ---
 
-<<<<<<< HEAD
 ## 2026-06-22 - US-295
 - Shipped the `editor` prompt type end-to-end. The schema enum already carried eight types (`text|select|multiselect|confirm|number|secret|path|editor`) from the earlier PromptSpec generalization, so the remaining divergence was the runtime + the recipe gate. Added `core/src/recipes/prompts/editor-command.ts` (an injectable `EditorRunner` + `createDefaultEditorRunner`) that resolves `$VISUAL`/`$EDITOR` argv-precisely, writes a temp-file buffer seeded with the prompt default, spawns the editor through an injectable spawner (inherited stdio), reads the edited buffer back, and reports `no-editor` when neither variable is set.
 - The prompt runtime (`collectPrompts`) now intercepts `editor` in the interactive path: it opens the editor, validates the edited buffer with the prompt's text rules (re-opening on validation failure), and falls back to a plain `text` line read when no editor is configured — with no hang. Non-interactive resolution and supplied `--answer` values keep pure text semantics (default or `RecipeMissingAnswerError`).
@@ -528,7 +527,7 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review notes (deferred/rejected): Context-mining flagged the PRD's literal `ProcessRunner` wording; rejected for this story because `collectPrompts` is still a plain-async runtime and follows the existing `choicesRunner` injectable Bun.spawn seam, with the InteractionService/ProcessRunner consolidation owned by the next prompt-migration story.
 - Verification: typecheck, lint passed; focused spot checks passed for `core/test/recipes/prompts/runtime.test.ts`, `core/test/recipes/manifest.test.ts`, and `core/test/recipes/ts-source.test.ts`; LSP diagnostics clean on changed source files.
 - **Learnings for future iterations:** For editor-style prompts, never treat a non-zero editor exit as edited content; fall back or fail before reading/accepting the buffer, and parse editor env vars as shell words so quoted paths and args survive argv-precise spawning.
-=======
+
 ## 2026-06-22 16:46 CDT - US-345 Review
 - Reviewed the raw `remotes:`/`sync:` Landofile implementation against PRD-17 and fixed the missing public JSON-schema registration/explicit export coverage for the new `DatasetBinding` contract shape.
 - Verification: typecheck, lint, SDK export/backward-compat/public-schema contract tests, remote-sync schema tests, Landofile schema tests, and LandofileService spot checks passed.
@@ -539,5 +538,4 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - CI outcome: pass
 - Review feedback: fixed (main conflict resolved, guide-drift failures resolved with a contract-only Guide-Coverage-Skip reason, and CI retriggered cleanly)
 - Merge: merged (squash)
->>>>>>> origin/main
 ---
