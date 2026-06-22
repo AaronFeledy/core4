@@ -456,3 +456,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:**
   - Remote-sync contribution modules follow the same package-root normalization rule as globalServices and interactionServices; test the external plugin registry path before adding a new manifest contribution surface.
 ---
+
+## 2026-06-22 14:54 CDT - US-344 Verify
+- Compiled the real binary and verified the contract-only SDK surface with a real import/decode driver plus adjacent SDK/schema/plugin-registry smoke checks; the US-344 surface behaved as published.
+- Blocker: compiled `lando setup` inside `lando4-dev` failed before provider setup because the provider-lando runtime-bundle manifest still points at the known placeholder/unavailable bundle, and no staged runtime archive exists to generate the documented local manifest override.
+- **Learnings for future iterations:** compiled setup verification needs a current-commit runtime archive staged for `scripts/build-runtime-bundle.ts --local` (or an equivalent verified manifest override) before the setup gate can pass.
+---
