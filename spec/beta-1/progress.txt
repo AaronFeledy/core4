@@ -462,3 +462,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Blocker: compiled `lando setup` inside `lando4-dev` failed before provider setup because the provider-lando runtime-bundle manifest still points at the known placeholder/unavailable bundle, and no staged runtime archive exists to generate the documented local manifest override.
 - **Learnings for future iterations:** compiled setup verification needs a current-commit runtime archive staged for `scripts/build-runtime-bundle.ts --local` (or an equivalent verified manifest override) before the setup gate can pass.
 ---
+
+## 2026-06-22 15:48 CDT - Babysit
+- PR: #432 https://github.com/AaronFeledy/core4/pull/432
+- CI outcome: pass
+- Review feedback: fixed (guide-drift failures resolved by adding a contract-only Guide-Coverage-Skip reason and retriggering CI)
+- Merge: merged (squash)
+---
