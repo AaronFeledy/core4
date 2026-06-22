@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app": "./src/app/index.ts",
     "./schema": "./src/schema/index.ts",
     "./docs/components": "./src/docs/components/index.ts",
     "./errors": "./src/errors/index.ts",

@@ -5,27 +5,7 @@
  */
 import { Effect } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  EventError,
-  FileSyncDriftError,
-  FileSyncStartError,
-  FileSyncStopError,
-  GlobalAutoStartError,
-  LandoCommandError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { RebuildAppError, RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 import type {
   AppPlanner,
   EventService,
@@ -33,44 +13,13 @@ import type {
   GlobalAppService,
   LandofileService,
   PluginRegistry,
-  ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { type StartAppResult, startApp } from "./start.ts";
+import { startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
-export interface RebuildAppOptions {
-  readonly signal?: AbortSignal;
-}
-
-export interface RebuildAppResult {
-  readonly app: string;
-  readonly servicesRebuilt: ReadonlyArray<string>;
-  readonly servicesStarted: StartAppResult["servicesStarted"];
-}
-
-type RebuildAppError =
-  | AppIdReservedError
-  | EventError
-  | FileSyncDriftError
-  | FileSyncStartError
-  | FileSyncStopError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NotImplementedError
-  | CapabilityError
-  | GlobalAutoStartError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+export type { RebuildAppError, RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 
 type RebuildAppServices =
   | AppPlanner
