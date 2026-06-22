@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
+import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -18,7 +19,13 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, FileSyncEngine, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanner,
+  FileSyncEngine,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 
@@ -150,17 +157,22 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
   return tracking;
 };
 
-const appLayer = (engine: FileSyncEngineShape, root: string, plan: AppPlan = planWithFileSync(root)) =>
+const appLayer = (
+  engine: FileSyncEngineShape,
+  root: string,
+  plan: AppPlan = planWithFileSync(root),
+  provider: RuntimeProviderShape = TestRuntimeProvider,
+) =>
   makeLandoRuntime({
     bootstrap: "app",
     plugins: {
       policy: "bundled-only",
       layers: [
-        Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+        Layer.succeed(RuntimeProvider, provider),
         Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
+          list: Effect.succeed([ProviderId.make(provider.id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
         }),
         Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
         Layer.succeed(FileSyncEngine, engine),
@@ -414,6 +426,107 @@ describe("App handle managed lifecycle scopes", () => {
         sessions: 1,
       });
       expect(finalizerCalls).toBe(2);
+      expect(sessions.size).toBe(0);
+    });
+  });
+
+  test("failed reused provider apply keeps the current managed scope", async () => {
+    await withTempApp(async (dir) => {
+      const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
+      let applyCalls = 0;
+      let createCalls = 0;
+      let finalizerCalls = 0;
+      const provider: RuntimeProviderShape = {
+        ...TestRuntimeProvider,
+        apply: () =>
+          Effect.gen(function* () {
+            applyCalls += 1;
+            if (applyCalls === 2) {
+              return yield* Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: TestRuntimeProvider.id,
+                  operation: "apply",
+                  message: "apply failed",
+                }),
+              );
+            }
+            return { changed: false };
+          }),
+      };
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          Effect.gen(function* () {
+            createCalls += 1;
+            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+            sessions.set(ref, {
+              ref,
+              app: spec.app,
+              service: spec.service,
+              mountKey: spec.mountKey,
+              status: "running",
+              lastUpdatedAt: fixedDateTime,
+            });
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                finalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: (ref) =>
+          Effect.sync(() => {
+            sessions.delete(ref);
+          }),
+        listSessions: ({ app, service, mountKey }) =>
+          Effect.succeed(
+            Array.from(sessions.values()).filter(
+              (session) =>
+                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+            ),
+          ),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            const failedReuse = yield* app.start().pipe(Effect.either);
+            yield* app.start();
+            return {
+              applyCalls,
+              createCalls,
+              failedReuse: failedReuse._tag,
+              finalizerCalls,
+              sessions: sessions.size,
+            };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir, planWithFileSync(dir), provider))),
+      );
+
+      expect(insideScope).toEqual({
+        applyCalls: 3,
+        createCalls: 1,
+        failedReuse: "Left",
+        finalizerCalls: 0,
+        sessions: 1,
+      });
+      expect(finalizerCalls).toBe(1);
       expect(sessions.size).toBe(0);
     });
   });
