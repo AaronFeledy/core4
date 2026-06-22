@@ -513,3 +513,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Reviewed the raw `remotes:`/`sync:` Landofile implementation against PRD-17 and fixed the missing public JSON-schema registration/explicit export coverage for the new `DatasetBinding` contract shape.
 - Verification: typecheck, lint, SDK export/backward-compat/public-schema contract tests, remote-sync schema tests, Landofile schema tests, and LandofileService spot checks passed.
 ---
+
+## 2026-06-22 17:50 CDT - Babysit
+- PR: #433 https://github.com/AaronFeledy/core4/pull/433
+- CI outcome: pass
+- Review feedback: fixed (main conflict resolved, guide-drift failures resolved with a contract-only Guide-Coverage-Skip reason, and CI retriggered cleanly)
+- Merge: merged (squash)
+---
