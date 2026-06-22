@@ -1,0 +1,21 @@
+---
+title: Data Endpoint
+description: Public Lando schema contract for Data Endpoint.
+---
+
+# Data Endpoint
+
+Public Lando schema contract for Data Endpoint.
+
+[JSON Schema artifact](../../../dist/schemas/data-endpoint.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `hostPath`, `hostArchive`, `stream`, `volume`, `servicePath`, `serviceCmd`, `artifact` | — | — |
+| `path` | No | `string` | a string | — | — | — | — |
+| `format` | No | `string` | — | — | `tar`, `tar.gz`, `tar.zst` | — | — |
+| `app` | No | `string` | a string | — | — | — | — |
+| `store` | No | `string` | a string | — | — | — | — |
+| `service` | No | `string` | a string | — | — | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `ref` | No | `string` | a string | — | — | — | — |

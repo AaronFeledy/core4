@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "createdAt": {
+      "$ref": "#/$defs/DateTimeUtc"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "format": {
+      "enum": [
+        "tar",
+        "tar.gz",
+        "tar.zst"
+      ],
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "native": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "id"
+      ],
+      "type": "object"
+    },
+    "sizeBytes": {
+      "type": "number"
+    },
+    "store": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "service",
+            "app",
+            "global"
+          ],
+          "type": "string"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "store"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "store",
+    "digest",
+    "sizeBytes",
+    "createdAt"
+  ],
+  "type": "object"
+}

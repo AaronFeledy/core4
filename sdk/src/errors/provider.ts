@@ -70,3 +70,21 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   providerId: Schema.String,
   remediation: Schema.optional(Schema.String),
 }) {}
+
+export class VolumeOperationError extends Schema.TaggedError<VolumeOperationError>()("VolumeOperationError", {
+  ...ProviderErrorBase,
+  store: Schema.optional(Schema.String),
+}) {}
+
+export class ServiceCopyError extends Schema.TaggedError<ServiceCopyError>()("ServiceCopyError", {
+  ...ProviderErrorBase,
+  service: Schema.optional(Schema.String),
+}) {}
+
+export class ArtifactTransferError extends Schema.TaggedError<ArtifactTransferError>()(
+  "ArtifactTransferError",
+  {
+    ...ProviderErrorBase,
+    artifactRef: Schema.optional(Schema.String),
+  },
+) {}

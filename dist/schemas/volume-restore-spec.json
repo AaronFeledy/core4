@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "overwrite": {
+      "type": "boolean"
+    },
+    "snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "id"
+      ],
+      "type": "object"
+    },
+    "target": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "service",
+            "app",
+            "global"
+          ],
+          "type": "string"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "store"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "snapshot",
+    "target"
+  ],
+  "type": "object"
+}

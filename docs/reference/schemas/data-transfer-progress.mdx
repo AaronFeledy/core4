@@ -1,0 +1,18 @@
+---
+title: Data Transfer Progress
+description: Public Lando schema contract for Data Transfer Progress.
+---
+
+# Data Transfer Progress
+
+Public Lando schema contract for Data Transfer Progress.
+
+[JSON Schema artifact](../../../dist/schemas/data-transfer-progress.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `phase` | Yes | `string` | — | — | `started`, `progress`, `completed` | — | — |
+| `transferredBytes` | Yes | `number` | a number | — | — | — | — |
+| `totalBytes` | No | `number` | — | — | — | — | — |
+| `digest` | No | `string` | — | — | — | — | — |
+| `message` | No | `string` | — | — | — | — | — |

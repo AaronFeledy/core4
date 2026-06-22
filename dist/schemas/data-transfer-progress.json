@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "phase": {
+      "enum": [
+        "started",
+        "progress",
+        "completed"
+      ],
+      "type": "string"
+    },
+    "totalBytes": {
+      "type": "number"
+    },
+    "transferredBytes": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "phase",
+    "transferredBytes"
+  ],
+  "type": "object"
+}
