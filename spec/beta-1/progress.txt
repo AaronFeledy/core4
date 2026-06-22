@@ -371,6 +371,25 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:** Any helper that reads through `process.cwd()` during root-bound resolution must hold the cwd semaphore even when the desired root currently equals `process.cwd()`; same-root fast paths outside the lock can race another fiber's temporary chdir restore.
 ---
 
+## 2026-06-22 06:52 CDT - US-335
+- Implemented the in-memory data plane on `TestRuntimeProvider`: mount-aware `run`/`runStream` now round-trip volume bytes through stdin/stdout, snapshots preserve and restore volume state, service copy stores real copied bytes, and artifact import/export round-trips stream payloads.
+- Published the reusable provider data-plane contract section from `@lando/sdk/test`, covering volume export/import, snapshot mutation/restore, service copy, artifact round-trip, capability honesty for native snapshot/copy declarations, and failure behavior for unsupported pairs and missing generic fallback.
+- Verification: typecheck and lint passed; provider-contract, SDK export, and core-testing runtime spot checks passed; manual SDK driver exercised the exported contract against `TestRuntimeProvider`.
+- **Learnings for future iterations:**
+  - The provider data-plane contract can stay provider-neutral by using fixed shell-style helper commands over `EphemeralRunSpec.mounts`/`stdinStream`; `TestRuntimeProvider` simulates those commands in memory while real providers can execute them with the same factory-only contract.
+
+## 2026-06-22 12:31 CDT - US-335 Review
+- Strengthened the shared provider data-plane contract after review: it now uses byte-exact non-text payloads, fails non-zero `runStream` exits, scopes provider resources internally, isolates volume stores per contract run, and documents the new `@lando/sdk/test` API in the compatibility ledger.
+- Review notes (deferred/rejected): black-box contract tests cannot prove whether a provider internally used a native implementation or an equivalent fallback when the public provider method returns correct bytes; DataMover-style endpoint-pair dispatch is owned by the later DataMover story, while this provider-only suite keeps the local unsupported-pair error assertion.
+- Verification: typecheck, lint, git diff --check, provider contract tests, SDK export tests, and SDK backward-compat spot checks passed.
+---
+
+## 2026-06-22 13:09 CDT - Babysit
+- PR: #430 https://github.com/AaronFeledy/core4/pull/430
+- CI outcome: deferred (static-checks-platform linux-x64 still pending after repeated polls; all other checks passed)
+- Review feedback: fixed (merge conflict resolved; Bugbot data-store collision and non-zero volume import findings fixed)
+- Merge: deferred (pending required linux-x64 check)
+---
 ## 2026-06-22 05:30 CDT - US-291
 - Gave `App` handles managed lifecycle scopes. `buildAppHandle` now captures the ambient scope, forks a per-handle `handleScope` under the retained runtime/resolution scope, and builds an `AppLifecycle` controller (mutex + a `Ref` holding one managed start scope). `app.start()`/`restart`/`rebuild` (non-detached) fork a fresh managed start scope from `handleScope`, run the op against it, and clean it up on failure/interrupt; `stop`/`destroy` run the op then close the managed scope via `Effect.ensuring`. All five lifecycle methods serialize through the mutex, and every scope/ref swap is `Effect.uninterruptible` so an interrupt cannot leak a forked scope or double-close one.
 - `StartAppOptions` gained an additive type-only `detached` field. `app.start({ detached: true })` clears any prior managed scope then starts with no managed scope, so it registers no handle-owned finalizer and the session survives runtime-scope close — matching CLI detached semantics. File-sync session teardown rides `FileSyncEngine.createSession`'s existing scope contract (the mutagen engine already registers a terminate finalizer); `startApp` gained an additive `managed?` 3rd param that swaps the per-session throwaway `Scope.make()` for the managed scope. CLI `lando start` passes no managed scope, so its behavior (and foreground Ctrl-C teardown) is byte-identical.

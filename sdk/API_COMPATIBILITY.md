@@ -353,6 +353,7 @@
 - `HostPlatformId`
 - `ManagedFileContractHarness`
 - `PluginContractInput`
+- `ProviderDataPlaneContractInput`
 - `ServiceContractExpectations`
 - `ServiceContractInput`
 - `ServiceContractMatrixCell`
@@ -372,6 +373,7 @@
 - `runFileSyncEngineContractMatrix`
 - `runManagedFileContract`
 - `runPluginContract`
+- `runProviderDataPlaneContract`
 - `runProviderContractMatrix`
 - `runServiceContract`
 - `runServiceContractMatrix`

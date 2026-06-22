@@ -15,6 +15,7 @@ import {
   TestRuntimeProvider,
   runProviderContract,
   runProviderContractMatrix,
+  runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 
 const TEST_APP_ID = AppId.make("myapp");
@@ -267,6 +268,179 @@ describe("RuntimeProvider contract", () => {
     } as typeof TestRuntimeProvider;
 
     await expect(Effect.runPromise(runProviderContract(provider))).resolves.toBeUndefined();
+  });
+
+  test("data-plane contract round-trips volume, service, and artifact bytes", async () => {
+    await expect(
+      Effect.runPromise(
+        runProviderDataPlaneContract({
+          providerName: "test",
+          factory: () => Effect.succeed(TestRuntimeProvider),
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("data-plane contract uses a unique data-store id for each run", async () => {
+    const stores = new Set<string>();
+    const provider = {
+      ...TestRuntimeProvider,
+      run: (spec: Parameters<typeof TestRuntimeProvider.run>[0]) => {
+        for (const mount of spec.mounts ?? []) {
+          if ("store" in mount) stores.add((mount as { readonly store: string }).store);
+        }
+        return TestRuntimeProvider.run(spec);
+      },
+      runStream: (spec: Parameters<typeof TestRuntimeProvider.runStream>[0]) => {
+        for (const mount of spec.mounts ?? []) {
+          if ("store" in mount) stores.add((mount as { readonly store: string }).store);
+        }
+        return TestRuntimeProvider.runStream(spec);
+      },
+    } as typeof TestRuntimeProvider;
+
+    await Effect.runPromise(
+      runProviderDataPlaneContract({
+        providerName: "unique-store-first",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+    await Effect.runPromise(
+      runProviderDataPlaneContract({
+        providerName: "unique-store-second",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect([...stores]).toEqual([
+      expect.stringMatching(/^contract-data-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+      expect.stringMatching(/^contract-data-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+    ]);
+  });
+
+  test("data-plane contract fails when service copy does not round-trip", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        serviceFileCopy: "native" as const,
+      },
+      copyFromService: () => Stream.make(new TextEncoder().encode("wrong")),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "broken-copy",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("copyToService/copyFromService round-trips bytes");
+  });
+
+  test("data-plane contract fails when native volume snapshots do not restore bytes", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        volumeSnapshot: "native" as const,
+      },
+      restoreVolume: () => Effect.void,
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "broken-native-volume",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("snapshot -> mutate -> restore restores volume bytes");
+  });
+
+  test("data-plane contract fails with CapabilityError when ephemeral mounts are missing", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        ephemeralMounts: false,
+      },
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "no-ephemeral-mounts",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe(
+      "data-plane contract without ephemeral mounts fails CapabilityError",
+    );
+  });
+
+  test("data-plane contract fails when volume import run exits non-zero", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "import failed" }),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "non-zero-run",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe(
+      "volume import via EphemeralRunSpec.stdinStream exits successfully",
+    );
+    expect(exit.cause.error.details).toEqual({ exitCode: 1 });
+  });
+
+  test("data-plane contract fails when runStream exits non-zero", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      runStream: () =>
+        Stream.make(
+          { kind: "stdout" as const, chunk: new Uint8Array([0, 1, 2, 3, 128, 255]) },
+          { exitCode: 1 },
+        ),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "non-zero-runstream",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("volume export via runStream succeeds");
   });
 });
 
