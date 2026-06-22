@@ -4,7 +4,7 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -878,11 +878,8 @@ const requireGenericVolumeFallback = (
         }),
       );
 
-let contractDataPlaneRunCount = 0;
-
 const nextContractRunId = (): string => {
-  contractDataPlaneRunCount += 1;
-  return `contract-data-${contractDataPlaneRunCount}`;
+  return `contract-data-${randomUUID()}`;
 };
 
 const dataStoreMount = (store: string): DataStoreMountPlan => ({

@@ -281,6 +281,39 @@ describe("RuntimeProvider contract", () => {
     ).resolves.toBeUndefined();
   });
 
+  test("data-plane contract uses a unique data-store id for each run", async () => {
+    const stores = new Set<string>();
+    const provider = {
+      ...TestRuntimeProvider,
+      run: (spec: Parameters<typeof TestRuntimeProvider.run>[0]) => {
+        for (const mount of spec.mounts ?? []) stores.add(mount.store);
+        return TestRuntimeProvider.run(spec);
+      },
+      runStream: (spec: Parameters<typeof TestRuntimeProvider.runStream>[0]) => {
+        for (const mount of spec.mounts ?? []) stores.add(mount.store);
+        return TestRuntimeProvider.runStream(spec);
+      },
+    } as typeof TestRuntimeProvider;
+
+    await Effect.runPromise(
+      runProviderDataPlaneContract({
+        providerName: "unique-store-first",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+    await Effect.runPromise(
+      runProviderDataPlaneContract({
+        providerName: "unique-store-second",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect([...stores]).toEqual([
+      expect.stringMatching(/^contract-data-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+      expect.stringMatching(/^contract-data-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+    ]);
+  });
+
   test("data-plane contract fails when service copy does not round-trip", async () => {
     const provider = {
       ...TestRuntimeProvider,
