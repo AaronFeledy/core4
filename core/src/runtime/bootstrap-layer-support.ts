@@ -1,5 +1,6 @@
 import { type Context, Effect, Schema, Stream } from "effect";
 
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import type { Renderer, RuntimeProvider, Telemetry } from "@lando/sdk/services";
 
@@ -51,6 +52,13 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   providerExtensions: [],
 });
 
+const unsupportedProviderOperation = (operation: string) =>
+  new ProviderUnavailableError({
+    providerId: "stub",
+    operation,
+    message: `runtime provider stub cannot ${operation}`,
+  });
+
 export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   id: "stub",
   displayName: "Stub Runtime Provider",
@@ -72,7 +80,7 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
   execStream: () => Stream.empty,
   run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
-  runStream: () => Stream.empty,
+  runStream: () => Stream.fail(unsupportedProviderOperation("runStream")),
   logs: () => Stream.empty,
   inspect: () => Effect.die("runtime provider stub cannot inspect services"),
   list: () => Effect.succeed([]),
@@ -81,8 +89,8 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   listVolumes: () => Effect.die("runtime provider stub cannot list volumes"),
   removeVolume: () => Effect.die("runtime provider stub cannot remove volumes"),
   copyToService: () => Effect.die("runtime provider stub cannot copy to services"),
-  copyFromService: () => Stream.empty,
-  exportArtifact: () => Stream.empty,
+  copyFromService: () => Stream.fail(unsupportedProviderOperation("copyFromService")),
+  exportArtifact: () => Stream.fail(unsupportedProviderOperation("exportArtifact")),
   importArtifact: () => Effect.die("runtime provider stub cannot import artifacts"),
 };
 
