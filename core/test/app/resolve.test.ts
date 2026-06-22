@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
-import { ProviderId, ServiceName } from "@lando/core/schema";
+import { type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
 import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
@@ -129,6 +129,33 @@ describe("resolveApp", () => {
 
       expect(result.app).toBe("embedded-app");
       expect(result.services.map((service) => service.service)).toContain(ServiceName.make("web"));
+    });
+  });
+
+  test("a decoded Landofile selector resolves includes from its selected root", async () => {
+    await withTempApp(async (dir) => {
+      const service = ServiceName.make("web");
+      await Bun.write(
+        join(dir, "fragment.yml"),
+        `services:\n  ${service}:\n    image: node:lts\n    primary: true\n`,
+      );
+      const landofile: LandofileShape = {
+        name: "embedded-app",
+        runtime: 4,
+        provider: ProviderId.make(TestRuntimeProvider.id),
+        includes: ["fragment.yml"],
+      };
+
+      const plan = await Effect.runPromise(
+        resolveApp({ landofile, root: dir as never }).pipe(
+          Effect.flatMap((app) => app.plan),
+          Effect.scoped,
+          Effect.provide(appLayer),
+        ),
+      );
+
+      expect(plan.id).toBe("embedded-app");
+      expect(plan.services[service]?.name).toBe(service);
     });
   });
 

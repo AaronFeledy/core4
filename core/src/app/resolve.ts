@@ -8,6 +8,7 @@ import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { assertUserAppIdNotReserved, loadUserLandofile } from "../cli/app-resolution.ts";
+import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { makeAppHandle } from "./handle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
@@ -65,13 +66,17 @@ const planFromDiscovery: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServ
   },
 ).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
-const planFromShape = (shape: LandofileShape): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+const planFromShape = (
+  shape: LandofileShape,
+  appRoot: string,
+): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
+    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot });
     const capabilities = yield* registry.capabilities;
-    yield* assertUserAppIdNotReserved(shape);
-    return yield* planner.plan(shape, capabilities);
+    yield* assertUserAppIdNotReserved(landofile);
+    return yield* planner.plan(landofile, capabilities);
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
 const planAt = (dir: string | undefined): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
@@ -130,7 +135,7 @@ const resolvePlan = (
       ]);
     case "landofile-shape":
       return validateLowerSelectors(
-        withProcessCwd(selector.root, planFromShape(selector.shape)),
+        withProcessCwd(selector.root, planFromShape(selector.shape, selector.root)),
         selector.cwd === undefined ? [] : [[planAt(selector.cwd), "landofile+cwd"]],
       );
     case "id":
