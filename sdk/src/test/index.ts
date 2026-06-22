@@ -229,6 +229,11 @@ const mapProviderFailure =
   (details: unknown): ContractFailure =>
     contractFailure(assertion, details);
 
+const mapProviderOrContractFailure =
+  (assertion: string) =>
+  (details: unknown): ContractFailure =>
+    details instanceof ContractFailure ? details : contractFailure(assertion, details);
+
 const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(value);
 
 const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
@@ -892,7 +897,7 @@ const writeMountedVolume = (
   provider: RuntimeProviderShape,
   store: string,
   payload: Uint8Array,
-): Effect.Effect<void, unknown, Scope.Scope> =>
+): Effect.Effect<void, unknown | ContractFailure, Scope.Scope> =>
   provider
     .run({
       image: "alpine:3.20",
@@ -901,7 +906,17 @@ const writeMountedVolume = (
       stdinStream: streamBytes(payload),
       remove: true,
     })
-    .pipe(Effect.asVoid);
+    .pipe(
+      Effect.flatMap((result) =>
+        requireContract(
+          result.exitCode === 0,
+          "volume import via EphemeralRunSpec.stdinStream exits successfully",
+          {
+            exitCode: result.exitCode,
+          },
+        ),
+      ),
+    );
 
 const readMountedVolume = (
   provider: RuntimeProviderShape,
@@ -997,7 +1012,9 @@ export const runProviderDataPlaneContract = (
       );
 
       yield* writeMountedVolume(provider, store, volumePayload).pipe(
-        Effect.mapError(mapProviderFailure("volume import via EphemeralRunSpec.stdinStream succeeds")),
+        Effect.mapError(
+          mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds"),
+        ),
       );
       const exportedVolume = yield* readMountedVolume(provider, store).pipe(
         Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
@@ -1012,7 +1029,9 @@ export const runProviderDataPlaneContract = (
         .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
         .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
       yield* writeMountedVolume(provider, store, mutatedPayload).pipe(
-        Effect.mapError(mapProviderFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds")),
+        Effect.mapError(
+          mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
+        ),
       );
       yield* provider
         .restoreVolume({

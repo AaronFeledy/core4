@@ -286,11 +286,15 @@ describe("RuntimeProvider contract", () => {
     const provider = {
       ...TestRuntimeProvider,
       run: (spec: Parameters<typeof TestRuntimeProvider.run>[0]) => {
-        for (const mount of spec.mounts ?? []) stores.add(mount.store);
+        for (const mount of spec.mounts ?? []) {
+          if ("store" in mount) stores.add((mount as { readonly store: string }).store);
+        }
         return TestRuntimeProvider.run(spec);
       },
       runStream: (spec: Parameters<typeof TestRuntimeProvider.runStream>[0]) => {
-        for (const mount of spec.mounts ?? []) stores.add(mount.store);
+        for (const mount of spec.mounts ?? []) {
+          if ("store" in mount) stores.add((mount as { readonly store: string }).store);
+        }
         return TestRuntimeProvider.runStream(spec);
       },
     } as typeof TestRuntimeProvider;
@@ -388,6 +392,30 @@ describe("RuntimeProvider contract", () => {
     expect(exit.cause.error.assertion).toBe(
       "data-plane contract without ephemeral mounts fails CapabilityError",
     );
+  });
+
+  test("data-plane contract fails when volume import run exits non-zero", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "import failed" }),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderDataPlaneContract({
+        providerName: "non-zero-run",
+        factory: () => Effect.succeed(provider),
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe(
+      "volume import via EphemeralRunSpec.stdinStream exits successfully",
+    );
+    expect(exit.cause.error.details).toEqual({ exitCode: 1 });
   });
 
   test("data-plane contract fails when runStream exits non-zero", async () => {
