@@ -19,6 +19,7 @@ import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { DownloaderLive } from "../../../downloader/service.ts";
 import { HttpClientBasicLive } from "../../../http-client/live.ts";
+import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
@@ -49,6 +50,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     PrivilegeServiceLive,
     SecretStoreLive,
     Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),
+    Layer.suspend(() => InteractionServiceLive),
     DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive))),
   );
 };

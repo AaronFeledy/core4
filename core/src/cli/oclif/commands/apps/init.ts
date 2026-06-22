@@ -9,10 +9,10 @@ import { Effect } from "effect";
 
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
-import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
+import { parseAnswerFlags } from "../../../prompts/answer-flags.ts";
 import {
   makeRendererServiceLiveForMode,
   resolveCliRendererMode,

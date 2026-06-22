@@ -17,7 +17,7 @@ import type {
 } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
-import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+import { mergeAnswerSources, parseAnswerFlags } from "../prompts/answer-flags.ts";
 import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary.ts";
 import {
   type SummaryDocument,
@@ -111,10 +111,9 @@ const stringArrayFlag = (flags: Record<string, unknown>, key: string): ReadonlyA
 
 export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOptions => {
   const flags = flagsFromInput(input);
-  const answers = parseAnswerFlags([
-    ...stringArrayFlag(flags, "answer"),
-    ...stringArrayFlag(flags, "option"),
-  ]);
+  const answers = parseAnswerFlags(
+    mergeAnswerSources(stringArrayFlag(flags, "answer"), stringArrayFlag(flags, "option")),
+  );
   const isolate = asIsolateMode(flags.isolate);
   const mountCwd = mountCwdFromValue(flags["mount-cwd"]);
   const signal = signalFromInput(input);

@@ -8,8 +8,30 @@
 
 import { ReadStream } from "node:tty";
 
+import { PromptCancelledError } from "./driver.ts";
+
 /** Captured write stream payload. Either a string or a raw byte buffer. */
 export type PromptIOWriteChunk = string;
+
+// Reject a pending read with PromptCancelledError when `signal` aborts, so the
+// caller's `finally` (raw-mode restore) runs; the underlying read is abandoned
+// (JS reads cannot be force-cancelled). The abort listener is always removed.
+const raceAbort = async <T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  if (signal === undefined) return promise;
+  if (signal.aborted) throw new PromptCancelledError("Prompt aborted.");
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => {
+      reject(new PromptCancelledError("Prompt aborted."));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
+  }
+};
 
 /** Reader options applied per `readLine` invocation. */
 export interface PromptReadOptions {
@@ -45,7 +67,7 @@ const createLineReader = (stream: NodeJS.ReadableStream) => {
   let done = false;
   let iterator: AsyncIterator<Buffer | string> | undefined;
 
-  const readLine = async (): Promise<string> => {
+  const readLine = async (signal?: AbortSignal): Promise<string> => {
     while (true) {
       const newlineIndex = buffer.indexOf("\n");
       if (newlineIndex !== -1) {
@@ -60,7 +82,7 @@ const createLineReader = (stream: NodeJS.ReadableStream) => {
         return tail;
       }
       iterator ??= stream[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
-      const { value, done: streamDone } = await iterator.next();
+      const { value, done: streamDone } = await raceAbort(iterator.next(), signal);
       if (streamDone) {
         done = true;
         continue;
@@ -76,6 +98,8 @@ interface StdioPromptIOOptions {
   readonly stdin?: NodeJS.ReadableStream;
   readonly stdout?: NodeJS.WritableStream;
   readonly stderr?: NodeJS.WritableStream;
+  /** Aborting this signal rejects an in-flight `readLine` with `PromptCancelledError`. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -87,24 +111,25 @@ export const createStdioPromptIO = (options: StdioPromptIOOptions = {}): PromptI
   const stdin = options.stdin ?? process.stdin;
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const signal = options.signal;
   const reader = createLineReader(stdin);
   const isTTY = stdin instanceof ReadStream && stdin.isTTY === true;
 
   const readLine = async (readOptions?: PromptReadOptions): Promise<string> => {
     const secret = readOptions?.secret === true;
     if (!secret) {
-      return reader.readLine();
+      return reader.readLine(signal);
     }
     if (isTTY && stdin instanceof ReadStream) {
       const wasRaw = stdin.isRaw;
       try {
         stdin.setRawMode(true);
-        return await readRawLineSilently(stdin);
+        return await readRawLineSilently(stdin, signal);
       } finally {
         stdin.setRawMode(wasRaw);
       }
     }
-    return reader.readLine();
+    return reader.readLine(signal);
   };
 
   return {
@@ -124,9 +149,12 @@ export const createStdioPromptIO = (options: StdioPromptIOOptions = {}): PromptI
  * back to the terminal. Returns the entered line on `\n` or `\r`.
  * Handles backspace (0x7f / 0x08) by trimming the buffer.
  */
-const readRawLineSilently = async (stdin: ReadStream): Promise<string> => {
+const readRawLineSilently = async (stdin: ReadStream, signal?: AbortSignal): Promise<string> => {
   let line = "";
-  for await (const chunk of stdin as AsyncIterable<Buffer>) {
+  const iterator = (stdin as AsyncIterable<Buffer>)[Symbol.asyncIterator]();
+  while (true) {
+    const { value: chunk, done } = await raceAbort(iterator.next(), signal);
+    if (done) return line;
     const text = chunk.toString("utf8");
     for (const ch of text) {
       const code = ch.charCodeAt(0);
@@ -138,14 +166,12 @@ const readRawLineSilently = async (stdin: ReadStream): Promise<string> => {
         continue;
       }
       if (code === 0x03) {
-        // Ctrl-C: abort the prompt by throwing a recognizable error
-        // up the stack. The caller maps this to a cancellation.
-        throw new Error("Prompt cancelled by user (Ctrl-C).");
+        // Ctrl-C: cancel the prompt; the caller maps this to InteractionCancelledError.
+        throw new PromptCancelledError("Prompt cancelled by user (Ctrl-C).");
       }
       line += ch;
     }
   }
-  return line;
 };
 
 /** A `PromptIO` implementation that pulls scripted answers from memory. */

@@ -21,7 +21,13 @@ interface CheckRendererBoundaryOptions {
 const repoRoot = resolve(import.meta.dirname, "..");
 
 const SCANNED_ROOTS = ["core/src", "plugins"] as const;
-const CARVE_OUTS = new Set(["core/bin/lando.ts", "core/src/cli/oclif/pre-renderer.ts"]);
+const CARVE_OUTS = new Set([
+  "core/bin/lando.ts",
+  "core/src/cli/oclif/pre-renderer.ts",
+  // §13.4: the Live-layer prompt IO owns the stdin reader and the no-renderer
+  // fallback writer; prompt output otherwise routes through Renderer.output.
+  "core/src/interaction/service.ts",
+]);
 
 const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   try {
