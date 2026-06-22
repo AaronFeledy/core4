@@ -12,6 +12,7 @@
  * fall back to a direct stdio write (via the reused `createStdioPromptIO`).
  */
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
 
@@ -266,12 +267,15 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       const rendererOption = yield* Effect.serviceOption(Renderer);
       const tty = isTtyStdin(stdin);
       const gate = resolveGate(options, tty);
+      const cwd = options?.cwd ?? process.cwd();
       const explicit = options?.answers ?? {};
+      const answersFilePath =
+        options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
       const fromFile =
-        options?.answersFile === undefined
+        answersFilePath === undefined
           ? {}
           : yield* Effect.tryPromise({
-              try: () => readAnswersFileJson(options.answersFile as string),
+              try: () => readAnswersFileJson(answersFilePath),
               catch: (cause) =>
                 new PromptValidationError({
                   message: `Could not load answers file: ${describeCause(cause)}`,
@@ -288,7 +292,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         answers,
         yes: gate.yes,
         nonInteractive: gate.nonInteractive,
-        cwd: options?.cwd ?? process.cwd(),
+        cwd,
         ...(deps.choicesRunner === undefined ? {} : { choicesRunner: deps.choicesRunner }),
         ...(driver === undefined ? {} : { interactiveDriver: driver }),
       };

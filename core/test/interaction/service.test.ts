@@ -142,6 +142,25 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     );
     expect(answers).toEqual({ app: "explicit-wins", region: "us" });
   });
+
+  test("relative answersFile resolves against the prompt batch cwd", async () => {
+    const { tmpdir } = await import("node:os");
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "lando-answers-cwd-"));
+    await writeFile(join(dir, "answers.json"), JSON.stringify({ app: "from-cwd" }), "utf8");
+    const service = makeInteractionService({ stdin: neverStdin() });
+
+    const answers = await runScoped(
+      service.promptAll([{ name: "app", type: "text", message: "App?" }], {
+        answersFile: "answers.json",
+        cwd: dir,
+        interactive: false,
+      }),
+    );
+
+    expect(answers).toEqual({ app: "from-cwd" });
+  });
 });
 
 describe("InteractionServiceLive — secret redaction", () => {
