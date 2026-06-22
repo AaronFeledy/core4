@@ -1,0 +1,22 @@
+---
+title: Post Push Event
+description: Public Lando schema contract for Post Push Event.
+---
+
+# Post Push Event
+
+Public Lando schema contract for Post Push Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-push-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-push` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-push` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `datasets` | Yes | `array` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

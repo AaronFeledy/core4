@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "archiveFormat": {
+      "enum": [
+        "tar",
+        "tar.gz",
+        "tar.zst"
+      ],
+      "type": "string"
+    },
+    "endpoint": {
+      "enum": [
+        "stream",
+        "hostArchive"
+      ],
+      "type": "string"
+    },
+    "mediaType": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "endpoint"
+  ],
+  "type": "object"
+}

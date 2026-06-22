@@ -209,6 +209,24 @@
 - `DataTransferProgress`
 - `DataTransferResult`
 - `DataTransferSpec`
+- `RemoteCapabilities`
+- `RemoteConfig`
+- `RemoteEnvironment`
+- `RemoteEnvId`
+- `RemoteLocator`
+- `RemoteFetchOptions`
+- `RemoteSendOptions`
+- `RemoteTestResult`
+- `RemoteSourceContribution`
+- `DatasetKind`
+- `DatasetContribution`
+- `DatasetCapabilities`
+- `DatasetArtifactFormat`
+- `DatasetContext`
+- `DatasetCaptureOptions`
+- `DatasetApplyOptions`
+- `DatasetApplyResult`
+- `SyncResult`
 - `LabelMap`
 - `PrunePolicy`
 - `ServiceCopyInSpec`
@@ -258,6 +276,8 @@
 - `PluginManifest.requires`
 - `PluginContribution.downloaders` is a new additive optional field.
 - `PluginContribution.interactionServices` is a new additive optional field.
+- `PluginContribution.remoteSources` is a new additive optional field.
+- `PluginContribution.datasets` is a new additive optional field.
 
 ## Additive Alpha errors
 
@@ -292,6 +312,18 @@
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
 - `ManagedFileError`
+- `RemoteError`
+- `RemoteUnreachableError`
+- `RemoteAuthError`
+- `RemoteEnvNotFoundError`
+- `RemoteDatasetUnsupportedError`
+- `RemoteProviderUnavailableError`
+- `RemoteProtectedEnvError`
+- `RemoteToolMissingError`
+- `DatasetError`
+- `DatasetCaptureError`
+- `DatasetApplyError`
+- `DatasetBindingError`
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
 - `SecretNotFoundError`
@@ -315,6 +347,8 @@
 - `HealthcheckRunner`
 - `InteractionService`
 - `ManagedFileService`
+- `RemoteSource`
+- `Dataset`
 - `PluginSource`
 - `PluginTrustStore`
 - `PrivilegeService`
@@ -353,6 +387,7 @@
 - `HostPlatformId`
 - `ManagedFileContractHarness`
 - `PluginContractInput`
+- `ProviderDataPlaneContractInput`
 - `ServiceContractExpectations`
 - `ServiceContractInput`
 - `ServiceContractMatrixCell`
@@ -372,6 +407,7 @@
 - `runFileSyncEngineContractMatrix`
 - `runManagedFileContract`
 - `runPluginContract`
+- `runProviderDataPlaneContract`
 - `runProviderContractMatrix`
 - `runServiceContract`
 - `runServiceContractMatrix`

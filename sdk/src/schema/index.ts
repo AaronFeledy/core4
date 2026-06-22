@@ -33,6 +33,7 @@ export * from "./plugin-trust.ts";
 export * from "./primitives.ts";
 export * from "./prompt.ts";
 export * from "./recipe.ts";
+export * from "./remote-sync.ts";
 export * from "./service-info.ts";
 export * from "./template.ts";
 export * from "./update-manifest.ts";

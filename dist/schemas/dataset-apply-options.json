@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "expectedDigest": {
+      "type": "string"
+    },
+    "force": {
+      "type": "boolean"
+    },
+    "snapshot": {
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

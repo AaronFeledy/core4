@@ -1,0 +1,21 @@
+---
+title: Sync Result
+description: Public Lando schema contract for Sync Result.
+---
+
+# Sync Result
+
+Public Lando schema contract for Sync Result.
+
+[JSON Schema artifact](../../../dist/schemas/sync-result.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `direction` | Yes | `string` | — | — | `pull`, `push` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `datasets` | Yes | `array` | — | — | — | — | — |
+| `changed` | Yes | `boolean` | a boolean | — | — | — | — |
+| `artifacts` | No | `array` | — | — | — | — | — |
+| `snapshots` | No | `array` | — | — | — | — | — |
+| `summary` | No | `string` | — | — | — | — | — |

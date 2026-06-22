@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "post-dataset-send"
+      ],
+      "type": "string"
+    },
+    "dataset": {
+      "enum": [
+        "database",
+        "files",
+        "config",
+        "blob"
+      ],
+      "type": "string"
+    },
+    "durationMs": {
+      "type": "number"
+    },
+    "env": {
+      "type": "string"
+    },
+    "eventName": {
+      "enum": [
+        "post-dataset-send"
+      ],
+      "type": "string"
+    },
+    "failureDetail": {
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "success",
+        "failure"
+      ],
+      "type": "string"
+    },
+    "remote": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "remote",
+    "env",
+    "dataset",
+    "timestamp",
+    "outcome"
+  ],
+  "type": "object"
+}

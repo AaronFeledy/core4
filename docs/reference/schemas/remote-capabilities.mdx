@@ -1,0 +1,19 @@
+---
+title: Remote Capabilities
+description: Public Lando schema contract for Remote Capabilities.
+---
+
+# Remote Capabilities
+
+Public Lando schema contract for Remote Capabilities.
+
+[JSON Schema artifact](../../../dist/schemas/remote-capabilities.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `environments` | Yes | `boolean` | a boolean | — | — | — | — |
+| `push` | Yes | `boolean` | a boolean | — | — | — | — |
+| `datasets` | Yes | `array` | — | — | — | — | — |
+| `tool` | No | `string` | — | — | — | — | — |
+| `auth` | No | `string` | — | — | `none`, `token`, `oauth`, `basic`, `ssh`, `custom` | — | — |
+| `protectedByDefault` | No | `array` | — | — | — | — | — |

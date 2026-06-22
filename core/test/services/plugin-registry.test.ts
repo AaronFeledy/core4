@@ -631,6 +631,60 @@ describe("PluginRegistryLive", () => {
     );
   });
 
+  test("normalizes accepted external remote-sync contribution module paths from the package root", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "remote-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "src"), { recursive: true });
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/remote-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/remote-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              remoteSources: [
+                {
+                  id: "pantheon",
+                  module: "./src/remote.mjs",
+                  capabilities: {
+                    environments: true,
+                    push: true,
+                    datasets: ["database"],
+                  },
+                },
+              ],
+              datasets: [{ id: "database", module: "./src/dataset.mjs", kind: "database" }],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(packageRoot, "index.js"), "export {};\n");
+    await writeFile(join(packageRoot, "src", "remote.mjs"), "export {};\n");
+    await writeFile(join(packageRoot, "src", "dataset.mjs"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/remote-plugin", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/remote-plugin")),
+    );
+
+    expect(manifest.contributes?.remoteSources?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "remote.mjs")).href,
+    );
+    expect(manifest.contributes?.datasets?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "dataset.mjs")).href,
+    );
+  });
+
   test("rejects external contribution modules outside the package root without blocking healthy plugins", async () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const brokenRoot = join(userPluginsRoot, "@example", "broken-module-plugin", "1.0.0");

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "dataset": {
+      "enum": [
+        "database",
+        "files",
+        "config",
+        "blob"
+      ],
+      "type": "string"
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "env": {
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "remote": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "remote",
+    "env",
+    "dataset"
+  ],
+  "type": "object"
+}

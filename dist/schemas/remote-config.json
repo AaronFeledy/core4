@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {
+    "$id": "/schemas/unknown",
+    "title": "unknown"
+  },
+  "properties": {
+    "source": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "source"
+  ],
+  "type": "object"
+}

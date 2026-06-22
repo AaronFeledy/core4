@@ -1,0 +1,22 @@
+---
+title: Post Dataset Fetch Event
+description: Public Lando schema contract for Post Dataset Fetch Event.
+---
+
+# Post Dataset Fetch Event
+
+Public Lando schema contract for Post Dataset Fetch Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-dataset-fetch-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-dataset-fetch` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-dataset-fetch` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `dataset` | Yes | `string` | — | — | `database`, `files`, `config`, `blob` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "hostPath"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "hostArchive"
+                ],
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "tar",
+                  "tar.gz",
+                  "tar.zst"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "path",
+              "format"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "stream"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "volume"
+                ],
+                "type": "string"
+              },
+              "app": {
+                "type": "string"
+              },
+              "store": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "app",
+              "store"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "servicePath"
+                ],
+                "type": "string"
+              },
+              "app": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "app",
+              "service",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "serviceCmd"
+                ],
+                "type": "string"
+              },
+              "app": {
+                "type": "string"
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "app",
+              "service",
+              "command"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "_tag": {
+                "enum": [
+                  "artifact"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "_tag",
+              "ref"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "datasets": {
+      "items": {
+        "enum": [
+          "database",
+          "files",
+          "config",
+          "blob"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "direction": {
+      "enum": [
+        "pull",
+        "push"
+      ],
+      "type": "string"
+    },
+    "env": {
+      "type": "string"
+    },
+    "remote": {
+      "type": "string"
+    },
+    "snapshots": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "store": {
+            "additionalProperties": false,
+            "properties": {
+              "app": {
+                "type": "string"
+              },
+              "scope": {
+                "enum": [
+                  "service",
+                  "app",
+                  "global"
+                ],
+                "type": "string"
+              },
+              "store": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app",
+              "store"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "store"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "direction",
+    "remote",
+    "env",
+    "datasets",
+    "changed"
+  ],
+  "type": "object"
+}
