@@ -12,7 +12,6 @@
  * fall back to a direct stdio write (via the reused `createStdioPromptIO`).
  */
 import { readFile } from "node:fs/promises";
-import { ReadStream } from "node:tty";
 
 import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
 
@@ -78,7 +77,7 @@ export interface InteractionServiceDeps {
 }
 
 const isTtyStdin = (stdin: NodeJS.ReadableStream): boolean =>
-  stdin instanceof ReadStream && stdin.isTTY === true;
+  (stdin as Partial<Pick<RawCapableTty, "isTTY">>).isTTY === true;
 
 interface RawCapableTty {
   readonly isTTY?: boolean;
@@ -91,9 +90,13 @@ const asRawTty = (stdin: NodeJS.ReadableStream): RawCapableTty | undefined => {
   return typeof candidate.setRawMode === "function" ? (stdin as unknown as RawCapableTty) : undefined;
 };
 
-const restoreTty = (stdin: NodeJS.ReadableStream): void => {
+const readRawMode = (stdin: NodeJS.ReadableStream): boolean | undefined => asRawTty(stdin)?.isRaw;
+
+const restoreTty = (stdin: NodeJS.ReadableStream, rawModeBefore: boolean | undefined): void => {
   const tty = asRawTty(stdin);
-  if (tty !== undefined && tty.isTTY === true && tty.isRaw === true) tty.setRawMode(false);
+  if (tty !== undefined && tty.isTTY === true && rawModeBefore !== undefined && tty.isRaw !== rawModeBefore) {
+    tty.setRawMode(rawModeBefore);
+  }
 };
 
 const isCancellation = (cause: unknown): boolean =>
@@ -216,6 +219,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     Effect.uninterruptibleMask((restore) =>
       restore(
         Effect.async<EnginePromptAnswers, InteractionError>((resume, signal) => {
+          const rawModeBefore = readRawMode(stdin);
           const io = buildIo(rendererOption, signal);
           let settled = false;
           collectPrompts({ ...collect, io }).then(
@@ -229,7 +233,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
             },
           );
           return Effect.sync(() => {
-            if (!settled) restoreTty(stdin);
+            if (!settled) restoreTty(stdin, rawModeBefore);
           });
         }),
       ).pipe(

@@ -1,11 +1,7 @@
 import { Effect } from "effect";
 
-import { ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import type {
-  ScratchAppError,
-  ScratchAppNotFoundError,
-  ScratchIsolationConflictError,
-} from "@lando/sdk/errors";
+import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
+import type { ScratchAppNotFoundError, ScratchIsolationConflictError } from "@lando/sdk/errors";
 import type { IsolateMode } from "@lando/sdk/schema";
 import type {
   ScratchGcOptions,
@@ -17,7 +13,7 @@ import type {
 } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
-import { mergeAnswerSources, parseAnswerFlags } from "../prompts/answer-flags.ts";
+import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags.ts";
 import { type RenderContext, emitOptionalStdout, isDecoratedContext } from "../renderer-boundary.ts";
 import {
   type SummaryDocument,
@@ -32,6 +28,7 @@ export interface ScratchStartOptions {
   readonly detach?: boolean;
   readonly name?: string;
   readonly answers?: Record<string, string>;
+  readonly answersFile?: string;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly isolate?: IsolateMode;
@@ -123,8 +120,12 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     detach: flags.detach === true,
     ...(typeof flags.name === "string" ? { name: flags.name } : {}),
     answers,
+    ...(typeof flags.answers === "string" ? { answersFile: flags.answers } : {}),
     yes: flags.yes === true,
-    nonInteractive: flags["no-interactive"] === true || flags["non-interactive"] === true,
+    nonInteractive:
+      flags.interactive === true
+        ? false
+        : flags["no-interactive"] === true || flags["non-interactive"] === true,
     ...(isolate === undefined ? {} : { isolate }),
     ...(mountCwd === undefined ? {} : { mountCwd }),
     ...(flags["share-global-storage"] === true ? { shareGlobalStorage: true } : {}),
@@ -178,10 +179,24 @@ export const scratchStart = (
     }
 
     const service = yield* ScratchAppService;
+    const fileAnswers =
+      options.answersFile === undefined
+        ? {}
+        : yield* Effect.tryPromise({
+            try: () => readAnswersFile(options.answersFile as string),
+            catch: (cause) =>
+              new ScratchAppError({
+                message: "Could not read scratch answers file.",
+                operation: "acquire",
+                cause,
+                remediation: "Pass a readable JSON object of string answers via --answers <file>.",
+              }),
+          });
+    const answers = { ...fileAnswers, ...(options.answers ?? {}) };
     const acquireBase = {
       source: hasFork ? ({ kind: "fork" } as const) : ({ kind: "recipe", ref: from ?? "" } as const),
       ...(options.name === undefined ? {} : { name: options.name }),
-      ...(options.answers === undefined ? {} : { answers: options.answers }),
+      ...(Object.keys(answers).length === 0 ? {} : { answers }),
       ...(options.yes === undefined ? {} : { yes: options.yes }),
       ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
       ...(options.isolate === undefined ? {} : { isolate: options.isolate }),

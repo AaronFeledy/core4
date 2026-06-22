@@ -32,9 +32,14 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       description: "Alias for --answer in key=value form (repeatable).",
       multiple: true,
     }),
+    answers: Flags.string({ description: "Path to a JSON answers file." }),
     yes: Flags.boolean({
       char: "y",
       description: "Accept every recipe prompt's default without asking.",
+      default: false,
+    }),
+    interactive: Flags.boolean({
+      description: "Force interactive prompting even when stdin is not detected as a TTY.",
       default: false,
     }),
     "no-interactive": Flags.boolean({

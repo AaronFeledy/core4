@@ -115,6 +115,14 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     expect(failureTag(exit)).toBe("InteractionRequiredError");
   });
 
+  test("isInteractive uses structural TTY detection for injected streams", async () => {
+    const fakeTty = new Readable({ read() {} });
+    Object.assign(fakeTty, { isTTY: true });
+    const service = makeInteractionService({ stdin: fakeTty });
+
+    await expect(Effect.runPromise(service.isInteractive)).resolves.toBe(true);
+  });
+
   test("answersFile is merged below explicit answers", async () => {
     const { tmpdir } = await import("node:os");
     const { mkdtemp, writeFile } = await import("node:fs/promises");
@@ -233,7 +241,7 @@ describe("InteractionServiceLive — interruption", () => {
     expect(failureTag(exit)).toBe("InteractionCancelledError");
   });
 
-  test("interruption restores TTY raw-mode state before propagating", async () => {
+  test("interruption restores the prior TTY raw-mode state before propagating", async () => {
     const rawModeCalls: boolean[] = [];
     const fakeTty = new Readable({
       read() {
@@ -261,6 +269,7 @@ describe("InteractionServiceLive — interruption", () => {
       }),
     );
     expect(failureTag(exit)).toBe("InteractionCancelledError");
-    expect(rawModeCalls).toContain(false);
+    expect(rawModeCalls).not.toContain(false);
+    expect((fakeTty as unknown as { isRaw: boolean }).isRaw).toBe(true);
   });
 });

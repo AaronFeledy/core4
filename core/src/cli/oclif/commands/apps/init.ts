@@ -12,7 +12,7 @@ import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
-import { parseAnswerFlags } from "../../../prompts/answer-flags.ts";
+import { mergeAnswerSources, parseAnswerFlags } from "../../../prompts/answer-flags.ts";
 import {
   makeRendererServiceLiveForMode,
   resolveCliRendererMode,
@@ -34,6 +34,9 @@ export interface InitFlags {
   readonly path?: string;
   readonly checksum?: string;
   readonly answer?: ReadonlyArray<string>;
+  readonly option?: ReadonlyArray<string>;
+  readonly answers?: string;
+  readonly interactive?: boolean;
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
 }
@@ -43,7 +46,7 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
     typeof input === "object" && input !== null
       ? ((input as { readonly flags?: Partial<InitFlags> }).flags ?? {})
       : {};
-  const answers = parseAnswerFlags(flags.answer ?? []);
+  const answers = parseAnswerFlags(mergeAnswerSources(flags.answer, flags.option));
   const sourceOptions = parseInitSourceFlags({
     source: flags.source,
     url: flags.url,
@@ -56,8 +59,9 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
     cwd: process.cwd(),
     full: flags.full === true,
     answers,
+    ...(flags.answers === undefined ? {} : { answersFile: flags.answers }),
     yes: flags.yes === true,
-    nonInteractive: flags["no-interactive"] === true,
+    nonInteractive: flags.interactive === true ? false : flags["no-interactive"] === true,
     ...sourceOptions,
     ...(flags.name === undefined ? {} : { name: flags.name }),
     ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
@@ -109,6 +113,11 @@ export default class InitCommand extends LandoCommandBase {
     option: Flags.string({
       description: "Recipe option in key=value form (repeatable).",
       multiple: true,
+    }),
+    answers: Flags.string({ description: "Path to a JSON answers file." }),
+    interactive: Flags.boolean({
+      description: "Force interactive prompting even when stdin is not detected as a TTY.",
+      default: false,
     }),
   };
   static override landoSpec: LandoCommandSpec = initSpec;
