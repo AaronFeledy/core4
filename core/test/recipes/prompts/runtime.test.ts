@@ -839,6 +839,26 @@ describe("collectPrompts — editor", () => {
     expect(io.stderr()).toContain('Editor command failed for prompt "notes": editor exited with code 1');
   });
 
+  test("interactive: falls back to text line read when the edited buffer cannot be read", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-editor-read-fail-test-"));
+    const script = join(dir, "remove-buffer.sh");
+    await writeFile(script, 'rm "$1"\n', "utf8");
+    try {
+      const io = createBufferedPromptIO({ inputs: ["typed after read failure"], isTTY: true });
+      const answers = await collectPrompts({
+        prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+        io,
+        editorRunner: createDefaultEditorRunner({ env: { ...process.env, VISUAL: `sh ${script}` } }),
+      });
+      expect(answers.notes).toBe("typed after read failure");
+      expect(io.stderr()).toContain(
+        'Editor command failed for prompt "notes": editor output could not be read',
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("non-interactive: resolves the recipe default with text semantics", async () => {
     const answers = await collectPrompts({
       prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],

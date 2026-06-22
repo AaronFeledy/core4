@@ -173,7 +173,12 @@ export const createDefaultEditorRunner = (options: DefaultEditorRunnerOptions = 
           exitCode: result.exitCode,
         };
       }
-      const edited = await readFile(file, "utf8");
+      let edited: string;
+      try {
+        edited = await readFile(file, "utf8");
+      } catch (cause) {
+        return { kind: "failed", reason: `editor output could not be read: ${describeCause(cause)}` };
+      }
       return { kind: "edited", content: edited };
     } finally {
       await rm(dir, { recursive: true, force: true });
