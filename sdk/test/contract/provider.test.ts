@@ -15,6 +15,7 @@ import {
   TestRuntimeProvider,
   runProviderContract,
   runProviderContractMatrix,
+  runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 
 const TEST_APP_ID = AppId.make("myapp");
@@ -267,6 +268,102 @@ describe("RuntimeProvider contract", () => {
     } as typeof TestRuntimeProvider;
 
     await expect(Effect.runPromise(runProviderContract(provider))).resolves.toBeUndefined();
+  });
+
+  test("data-plane contract round-trips volume, service, and artifact bytes", async () => {
+    await expect(
+      Effect.runPromise(
+        Effect.scoped(
+          runProviderDataPlaneContract({
+            providerName: "test",
+            factory: () => Effect.succeed(TestRuntimeProvider),
+          }),
+        ),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  test("data-plane contract fails when service copy does not round-trip", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        serviceFileCopy: "native" as const,
+      },
+      copyFromService: () => Stream.make(new TextEncoder().encode("wrong")),
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        runProviderDataPlaneContract({
+          providerName: "broken-copy",
+          factory: () => Effect.succeed(provider),
+        }),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("copyToService/copyFromService round-trips bytes");
+  });
+
+  test("data-plane contract fails when native volume snapshots do not restore bytes", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        volumeSnapshot: "native" as const,
+      },
+      restoreVolume: () => Effect.void,
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        runProviderDataPlaneContract({
+          providerName: "broken-native-volume",
+          factory: () => Effect.succeed(provider),
+        }),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("snapshot -> mutate -> restore restores volume bytes");
+  });
+
+  test("data-plane contract fails with CapabilityError for missing generic fallback", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        volumeSnapshot: "copy" as const,
+        ephemeralMounts: false,
+      },
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        runProviderDataPlaneContract({
+          providerName: "no-fallback",
+          factory: () => Effect.succeed(provider),
+        }),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe(
+      "generic volume fallback without ephemeral mounts fails CapabilityError",
+    );
   });
 });
 

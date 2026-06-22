@@ -366,3 +366,11 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Verification: typecheck and lint passed; focused app-handle/app-resolution/packed-export spot checks passed (`core/test/app/resolve.test.ts`, `core/test/cli/app-resolution.test.ts`, `core/test/library/app-handle-export.test.ts`).
 - **Learnings for future iterations:** Any helper that reads through `process.cwd()` during root-bound resolution must hold the cwd semaphore even when the desired root currently equals `process.cwd()`; same-root fast paths outside the lock can race another fiber's temporary chdir restore.
 ---
+
+## 2026-06-22 06:52 CDT - US-335
+- Implemented the in-memory data plane on `TestRuntimeProvider`: mount-aware `run`/`runStream` now round-trip volume bytes through stdin/stdout, snapshots preserve and restore volume state, service copy stores real copied bytes, and artifact import/export round-trips stream payloads.
+- Published the reusable provider data-plane contract section from `@lando/sdk/test`, covering volume export/import, snapshot mutation/restore, service copy, artifact round-trip, capability honesty for native snapshot/copy declarations, and failure behavior for unsupported pairs and missing generic fallback.
+- Verification: typecheck and lint passed; provider-contract, SDK export, and core-testing runtime spot checks passed; manual SDK driver exercised the exported contract against `TestRuntimeProvider`.
+- **Learnings for future iterations:**
+  - The provider data-plane contract can stay provider-neutral by using fixed shell-style helper commands over `EphemeralRunSpec.mounts`/`stdinStream`; `TestRuntimeProvider` simulates those commands in memory while real providers can execute them with the same factory-only contract.
+---
