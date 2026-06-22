@@ -347,7 +347,7 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
-  test("failed reused managed start clears the lifecycle ref before the next start", async () => {
+  test("failed reused file-sync start clears the lifecycle ref before the next start", async () => {
     await withTempApp(async (dir) => {
       const sessions = new Set<FileSyncSessionRef>();
       let createCalls = 0;

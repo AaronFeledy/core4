@@ -52,20 +52,27 @@ export const makeAppHandle = (
         Effect.gen(function* () {
           const current = yield* lifecycle.current;
           if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
-            return yield* ops.startApp(options, target, { scope: current }).pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discardIfCurrent(current)),
-            );
+            return yield* ops
+              .startApp(options, target, {
+                scope: current,
+                onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
+              })
+              .pipe(Effect.provide(runtime));
           }
           yield* lifecycle.closeCurrent;
           if (options?.detached === true) {
             return yield* ops.startApp(options, target).pipe(Effect.provide(runtime));
           }
           const scope = yield* lifecycle.installFresh;
-          return yield* ops.startApp(options, target, { scope }).pipe(
-            Effect.provide(runtime),
-            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
-          );
+          return yield* ops
+            .startApp(options, target, {
+              scope,
+              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+            })
+            .pipe(
+              Effect.provide(runtime),
+              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+            );
         }),
       ),
     stop: (options?: StopAppOptions) =>
@@ -77,10 +84,15 @@ export const makeAppHandle = (
         Effect.gen(function* () {
           yield* lifecycle.closeCurrent;
           const scope = yield* lifecycle.installFresh;
-          return yield* ops.restartApp(options, target, { scope }).pipe(
-            Effect.provide(runtime),
-            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
-          );
+          return yield* ops
+            .restartApp(options, target, {
+              scope,
+              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+            })
+            .pipe(
+              Effect.provide(runtime),
+              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+            );
         }),
       ),
     rebuild: (options?: RebuildAppOptions) =>
@@ -88,10 +100,15 @@ export const makeAppHandle = (
         Effect.gen(function* () {
           yield* lifecycle.closeCurrent;
           const scope = yield* lifecycle.installFresh;
-          return yield* ops.rebuildApp(options, target, { scope }).pipe(
-            Effect.provide(runtime),
-            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
-          );
+          return yield* ops
+            .rebuildApp(options, target, {
+              scope,
+              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+            })
+            .pipe(
+              Effect.provide(runtime),
+              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+            );
         }),
       ),
     destroy: (options?: DestroyAppOptions) =>

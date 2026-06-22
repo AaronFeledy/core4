@@ -47,6 +47,7 @@ export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/
  */
 export interface StartManagedScope {
   readonly scope: Scope.CloseableScope;
+  readonly onScopeClosedByStartApp?: Effect.Effect<void>;
 }
 
 type StartAppServices =
@@ -154,7 +155,9 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?:
                 ),
               ),
             )
-          : Scope.close(managed.scope, Exit.void)
+          : Scope.close(managed.scope, Exit.void).pipe(
+              Effect.zipRight(managed.onScopeClosedByStartApp ?? Effect.void),
+            )
         ).pipe(Effect.flatMap(() => Effect.fail(error))),
       ),
     );
