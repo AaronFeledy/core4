@@ -24,7 +24,8 @@ export interface EditorRunInput {
 
 export type EditorRunResult =
   | { readonly kind: "edited"; readonly content: string }
-  | { readonly kind: "no-editor" };
+  | { readonly kind: "no-editor" }
+  | { readonly kind: "failed"; readonly reason: string; readonly exitCode?: number };
 
 /** Open a buffer in the configured editor and return the edited content. */
 export type EditorRunner = (input: EditorRunInput) => Promise<EditorRunResult>;
@@ -60,20 +61,79 @@ export const defaultEditorSpawner: EditorSpawner = {
 
 /**
  * Resolve the editor command argv-precisely from `$VISUAL` then
- * `$EDITOR`. The variable may carry arguments (e.g. `code --wait`), so
- * it is split on whitespace into a command and trailing argv. Returns
- * `undefined` when neither variable is set to a non-empty value.
+ * `$EDITOR`. The variable may carry arguments (e.g. `code --wait`) and
+ * shell-style quotes around command paths/args. Returns `undefined`
+ * when neither variable is set to a non-empty value, or when the
+ * configured command is not parseable.
  */
 export const resolveEditorCommand = (
   env: Readonly<Record<string, string | undefined>>,
 ): { readonly cmd: string; readonly args: ReadonlyArray<string> } | undefined => {
   const raw = (env.VISUAL ?? "").trim() === "" ? (env.EDITOR ?? "").trim() : (env.VISUAL ?? "").trim();
   if (raw === "") return undefined;
-  const parts = raw.split(/\s+/).filter((part) => part !== "");
+  const parts = parseShellWords(raw);
+  if (parts === undefined) return undefined;
   const [cmd, ...args] = parts;
   if (cmd === undefined) return undefined;
   return { cmd, args };
 };
+
+const parseShellWords = (raw: string): ReadonlyArray<string> | undefined => {
+  const words: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+  let hasToken = false;
+
+  for (const char of raw) {
+    if (escaped) {
+      current += char;
+      hasToken = true;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      hasToken = true;
+      continue;
+    }
+
+    if (quote !== undefined) {
+      if (char === quote) {
+        quote = undefined;
+      } else {
+        current += char;
+        hasToken = true;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      hasToken = true;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (hasToken) {
+        words.push(current);
+        current = "";
+        hasToken = false;
+      }
+      continue;
+    }
+
+    current += char;
+    hasToken = true;
+  }
+
+  if (escaped || quote !== undefined) return undefined;
+  if (hasToken) words.push(current);
+  return words;
+};
+
+const describeCause = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 const sanitizeName = (name: string): string => name.replace(/[^a-zA-Z0-9._-]/g, "_") || "prompt";
 
@@ -100,7 +160,19 @@ export const createDefaultEditorRunner = (options: DefaultEditorRunnerOptions = 
     const file = join(dir, `${sanitizeName(name)}.txt`);
     await writeFile(file, content, "utf8");
     try {
-      await spawner.spawn({ cmd: editor.cmd, args: [...editor.args, file], cwd });
+      let result: Awaited<ReturnType<EditorSpawner["spawn"]>>;
+      try {
+        result = await spawner.spawn({ cmd: editor.cmd, args: [...editor.args, file], cwd });
+      } catch (cause) {
+        return { kind: "failed", reason: `editor failed to run: ${describeCause(cause)}` };
+      }
+      if (result.exitCode !== 0) {
+        return {
+          kind: "failed",
+          reason: `editor exited with code ${String(result.exitCode)}`,
+          exitCode: result.exitCode,
+        };
+      }
       const edited = await readFile(file, "utf8");
       return { kind: "edited", content: edited };
     } finally {

@@ -5,10 +5,7 @@ import { ChoicesFrom, PromptChoice, PromptType, PromptValidate } from "./prompt.
 
 // Recipe manifest schema with prompt and post-init action shapes. Recipe
 // prompts reuse the generalized `PromptSpec` vocabulary (`sdk/src/schema/
-// prompt.ts`) plus the recipe-only `when:`/`deprecated:` fields. The `editor`
-// prompt type is part of the published vocabulary but is rejected before
-// strict decode in the recipe manifest service so recipe authors see a
-// targeted remediation instead of an unsupported-feature surprise.
+// prompt.ts`) plus the recipe-only `when:`/`deprecated:` fields.
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =

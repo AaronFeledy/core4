@@ -338,11 +338,22 @@ const runEditorPrompt = async (
   let seed = def.hasDefault ? def.raw : "";
   while (true) {
     const result = await editorRunner({ name: prompt.name, content: seed, cwd });
-    if (result.kind === "no-editor") return undefined;
-    const coerced = await coerceAnswer(prompt, result.content, cwd);
-    if (coerced.ok) return coerced.value;
-    io.writeError(`Invalid value: ${coerced.issue}. Please try again.\n`);
-    seed = result.content;
+    switch (result.kind) {
+      case "no-editor":
+        return undefined;
+      case "failed":
+        io.writeError(
+          `Editor command failed for prompt "${prompt.name}": ${result.reason}. Falling back to text input.\n`,
+        );
+        return undefined;
+      case "edited": {
+        const coerced = await coerceAnswer(prompt, result.content, cwd);
+        if (coerced.ok) return coerced.value;
+        io.writeError(`Invalid value: ${coerced.issue}. Please try again.\n`);
+        seed = result.content;
+        break;
+      }
+    }
   }
 };
 

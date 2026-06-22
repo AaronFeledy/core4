@@ -512,3 +512,11 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - `collectPrompts` is plain-async with no Effect context, so child-process seams follow the `choicesRunner` precedent: an injectable runner with a `Bun.spawn`-based default + a `spawner` seam for unit tests. The editor runner uses inherited stdio (so a real editor drives the TTY) rather than the piped `ProcessRunner` service, which would break interactive editors.
   - When a prompt type needs an interactive launch beyond a line read, intercept it at the top of `runInteractivePrompt` and return `undefined` to signal "fall through to text semantics" — keeps the no-editor/non-interactive fallback in one place.
 ---
+
+## 2026-06-22 17:05 CDT - US-295 Review
+- Fixed confirmed editor prompt review blockers: failed editor launches/non-zero exits no longer accept stale temp-buffer content, and `$VISUAL`/`$EDITOR` parsing now preserves quoted command paths and quoted arguments before appending the temp-file buffer.
+- Fixed stale schema-comment drift that still described recipe `editor` prompts as rejected even though the runtime and manifest now accept them.
+- Review notes (deferred/rejected): Context-mining flagged the PRD's literal `ProcessRunner` wording; rejected for this story because `collectPrompts` is still a plain-async runtime and follows the existing `choicesRunner` injectable Bun.spawn seam, with the InteractionService/ProcessRunner consolidation owned by the next prompt-migration story.
+- Verification: typecheck, lint passed; focused spot checks passed for `core/test/recipes/prompts/runtime.test.ts`, `core/test/recipes/manifest.test.ts`, and `core/test/recipes/ts-source.test.ts`; LSP diagnostics clean on changed source files.
+- **Learnings for future iterations:** For editor-style prompts, never treat a non-zero editor exit as edited content; fall back or fail before reading/accepting the buffer, and parse editor env vars as shell words so quoted paths and args survive argv-precise spawning.
+---

@@ -757,6 +757,19 @@ describe("collectPrompts — editor", () => {
     expect(answers.notes).toBe("typed inline");
   });
 
+  test("interactive: falls back to text line read when the editor exits non-zero", async () => {
+    const io = createBufferedPromptIO({ inputs: ["typed after failure"], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "stale seed" })],
+      io,
+      editorRunner: createDefaultEditorRunner({
+        env: { VISUAL: "false" },
+      }),
+    });
+    expect(answers.notes).toBe("typed after failure");
+    expect(io.stderr()).toContain('Editor command failed for prompt "notes": editor exited with code 1');
+  });
+
   test("non-interactive: resolves the recipe default with text semantics", async () => {
     const answers = await collectPrompts({
       prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],
@@ -791,6 +804,15 @@ describe("resolveEditorCommand", () => {
     expect(resolveEditorCommand({ VISUAL: "code --wait", EDITOR: "vi" })).toEqual({
       cmd: "code",
       args: ["--wait"],
+    });
+  });
+
+  test("preserves quoted command paths and arguments", () => {
+    expect(
+      resolveEditorCommand({ VISUAL: '"/opt/Visual Studio Code/bin/code" --wait -c "set ft=yaml"' }),
+    ).toEqual({
+      cmd: "/opt/Visual Studio Code/bin/code",
+      args: ["--wait", "-c", "set ft=yaml"],
     });
   });
 
