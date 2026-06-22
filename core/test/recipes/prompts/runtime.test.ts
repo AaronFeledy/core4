@@ -747,6 +747,22 @@ describe("collectPrompts — editor", () => {
     expect(io.stderr()).toContain("Invalid value: kebab-case only");
   });
 
+  test("interactive: skips external editor when stdin is not a TTY and reads a line instead", async () => {
+    let editorInvoked = false;
+    const runner: EditorRunner = async () => {
+      editorInvoked = true;
+      return { kind: "edited", content: "from editor" };
+    };
+    const io = createBufferedPromptIO({ inputs: ["typed non-tty"], isTTY: false });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("typed non-tty");
+    expect(editorInvoked).toBe(false);
+  });
+
   test("interactive: falls back to text line read when no editor is configured (no hang)", async () => {
     const io = createBufferedPromptIO({ inputs: ["typed inline"], isTTY: true });
     const answers = await collectPrompts({

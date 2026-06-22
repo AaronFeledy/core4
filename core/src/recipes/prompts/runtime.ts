@@ -364,7 +364,7 @@ const runInteractivePrompt = async (
   driver?: PromptDriver,
   editorRunner?: EditorRunner,
 ): Promise<PromptAnswer> => {
-  if (prompt.type === "editor" && editorRunner !== undefined) {
+  if (prompt.type === "editor" && editorRunner !== undefined && io.isTTY) {
     const edited = await runEditorPrompt(prompt, io, cwd, editorRunner);
     if (edited !== undefined) return edited;
   }
