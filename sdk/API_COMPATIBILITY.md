@@ -252,6 +252,7 @@
 
 ## Additive Alpha errors
 
+- `AppResolveError`
 - `ConfigTranslateError`
 - `ArchiveFormatError`
 - `ArtifactTransferError`

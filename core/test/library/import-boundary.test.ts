@@ -434,6 +434,9 @@ describe("@lando/core default-entry symbol resolution", () => {
     // Known value exports per core/src/index.ts (factory + re-exported service tags).
     const requiredSymbols = [
       "makeLandoRuntime",
+      "resolveApp",
+      "openLandoRuntime",
+      "AppResolveError",
       "AppPlanner",
       "CacheService",
       "CommandRegistry",

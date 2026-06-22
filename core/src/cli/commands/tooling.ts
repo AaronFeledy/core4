@@ -1,28 +1,8 @@
 import { Effect } from "effect";
 
-import type {
-  AppIdReservedError,
-  CapabilityError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  ShellExecError,
-  ShellScriptOutsideRootError,
-} from "@lando/sdk/errors";
-import {
-  type BunShellScriptEmptyError,
-  type BunShellScriptFrontMatterError,
-  NotImplementedError,
-  ToolingCompileError,
-  ToolingExecError,
-} from "@lando/sdk/errors";
+import type { ToolingError, ToolingResult } from "@lando/sdk/app";
+import type { ShellExecError, ShellScriptOutsideRootError } from "@lando/sdk/errors";
+import { NotImplementedError, ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
 import {
@@ -32,7 +12,6 @@ import {
   EventService,
   LandofileService,
   PluginRegistry,
-  type ProviderError,
   RuntimeProviderRegistry,
   ToolingEngine,
   type ToolingInvocation,
@@ -76,36 +55,10 @@ export interface RunToolingOptions {
   readonly renderProgress?: boolean;
 }
 
-export interface RunToolingResult {
-  readonly tool: string;
-  readonly service: string;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly rendered?: boolean;
-}
+export type RunToolingResult = ToolingResult;
+export type { ToolingResult };
 
-type RunToolingError =
-  | AppIdReservedError
-  | BunShellScriptEmptyError
-  | BunShellScriptFrontMatterError
-  | CapabilityError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
-  | ShellExecError
-  | ShellScriptOutsideRootError
-  | ToolingCompileError
-  | ToolingExecError;
+type RunToolingError = ToolingError;
 
 type RunToolingServices =
   | AppPlanner

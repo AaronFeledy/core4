@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+
 import { type Context, Effect } from "effect";
 
 import {
@@ -15,7 +17,7 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
-import { findDiscoveredLandofilePath } from "../landofile/service.ts";
+import { findDiscoveredLandofilePath, loadLandofileFile } from "../landofile/service.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -60,6 +62,16 @@ export const loadUserLandofile = (
                 cause,
               }),
       }).pipe(Effect.flatMap(({ appRoot }) => resolveLandofileIncludes({ landofile, appRoot })));
+    }),
+    Effect.tap(assertUserAppIdNotReserved),
+  );
+
+export const loadUserLandofileFile = (filePath: string): Effect.Effect<LandofileShape, UserLandofileError> =>
+  loadLandofileFile(filePath).pipe(
+    Effect.flatMap((landofile) => {
+      if (landofile.includes === undefined || landofile.includes.length === 0)
+        return Effect.succeed(landofile);
+      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath) });
     }),
     Effect.tap(assertUserAppIdNotReserved),
   );
