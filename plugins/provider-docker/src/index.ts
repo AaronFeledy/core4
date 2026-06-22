@@ -1312,7 +1312,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
         restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-        listVolumes: () => Effect.succeed([]),
+        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
         removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
         copyToService: () => Effect.fail(makeUnavailable("copyToService")),
         copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
