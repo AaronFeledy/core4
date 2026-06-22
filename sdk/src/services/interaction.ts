@@ -74,7 +74,7 @@ export interface InteractionServiceShape {
  * The single prompting chokepoint. Resolves the published {@link PromptSpec}
  * vocabulary with consistent answer-source precedence, interactivity
  * detection, and secret masking. Available at bootstrap level `minimal`,
- * host/test-overridable, and a §4.3 plugin contribution surface.
+ * host/test-overridable, and a plugin manifest contribution surface.
  */
 export class InteractionService extends Context.Tag("@lando/core/InteractionService")<
   InteractionService,
