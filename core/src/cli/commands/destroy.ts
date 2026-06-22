@@ -51,7 +51,7 @@ export const destroyApp = (
         return yield* planner.plan(landofile, capabilities);
       }));
     const provider = yield* registry.select(plan);
-    const ref = appRef(plan);
+    const ref = target?.app ?? appRef(plan);
     const volumes = options.volumes ?? false;
 
     yield* events.publish(

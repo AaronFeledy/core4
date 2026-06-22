@@ -50,7 +50,7 @@ export const stopApp = (
         return yield* planner.plan(landofile, capabilities);
       }));
     const provider = yield* registry.select(plan);
-    const ref = appRef(plan);
+    const ref = target?.app ?? appRef(plan);
 
     yield* events.publish(
       PreAppStopEvent.make({
