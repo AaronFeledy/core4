@@ -123,15 +123,17 @@ export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  root === process.cwd()
-    ? use
-    : cwdResolutionLock.withPermits(1)(
-        Effect.acquireUseRelease(
-          enterDir(root),
-          () => use,
-          (original) => Effect.sync(() => process.chdir(original)),
-        ),
-      );
+  cwdResolutionLock.withPermits(1)(
+    Effect.suspend(() =>
+      root === process.cwd()
+        ? use
+        : Effect.acquireUseRelease(
+            enterDir(root),
+            () => use,
+            (original) => Effect.sync(() => process.chdir(original)),
+          ),
+    ),
+  );
 
 /**
  * Root-aware variant of {@link loadUserLandofile}: resolves the Landofile,

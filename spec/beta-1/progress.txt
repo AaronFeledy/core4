@@ -350,3 +350,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - The captured-plan approach (thread `target.plan` into ops) is the honest way to satisfy "captures plan identity once; later calls do not re-discover from the host cwd" — far better than wrapping whole handle methods in `process.chdir`, which would mutate global cwd during long-running `exec`/`logs`/`tooling` streams in a retained runtime.
   - A packed-install test of the DEFAULT `@lando/core` entry must symlink the extracted `package/node_modules` to the repo `node_modules` (the default entry statically loads bundled plugins like `@lando/file-sync-mutagen`); the lighter `@lando/core/testing` packed test only needed `effect`/`fast-check`/`pure-rand`.
 ---
+
+## 2026-06-22 01:49 CDT - US-290 Review
+- Fixed confirmed review blockers in the root-bound App handle path: same-root cwd-sensitive resolution is now serialized under the shared cwd lock, selector-less `resolveApp()` now honors the retained runtime layer cwd, and `app.tooling()` uses a supplied `ResolvedAppTarget`'s captured plan/root instead of re-discovering or re-planning from ambient cwd.
+- Review notes (deferred/rejected): security review found no high/critical issue; broad casts around `openLandoRuntime` context wiring remain accepted as a non-blocking typing limitation of the retained runtime composition seam.
+- Verification: typecheck and lint passed; focused app-handle/app-resolution/packed-export spot checks passed (`core/test/app/resolve.test.ts`, `core/test/cli/app-resolution.test.ts`, `core/test/library/app-handle-export.test.ts`).
+- **Learnings for future iterations:** Any helper that reads through `process.cwd()` during root-bound resolution must hold the cwd semaphore even when the desired root currently equals `process.cwd()`; same-root fast paths outside the lock can race another fiber's temporary chdir restore.
+---

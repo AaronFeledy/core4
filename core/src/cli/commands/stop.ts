@@ -19,7 +19,6 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts"
 
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
-// biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
 export type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 type StopAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;

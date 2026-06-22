@@ -16,10 +16,11 @@ import {
   withResolvedCwd,
 } from "../cli/app-resolution.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
+import { RuntimeCwd } from "../runtime/cwd.ts";
 import { makeAppHandle } from "./handle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
-type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry;
+type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd;
 
 interface ResolvedLandofilePlan {
   readonly plan: AppPlan;
@@ -63,7 +64,8 @@ const planAt = (
   dir: string | undefined,
 ): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
-    const root = dir ?? process.cwd();
+    const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
+    const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
     const landofileService = yield* LandofileService;
     const landofile = yield* loadUserLandofileAt(landofileService, root);
     return yield* planResolvedLandofile(landofile, root);
@@ -208,7 +210,7 @@ export const buildAppHandle = (target: ResolvedAppTarget): Effect.Effect<App, ne
  */
 export const resolveApp = (
   selector?: AppSelector,
-): Effect.Effect<App, AppResolveError, LandoRuntimeServices> =>
+): Effect.Effect<App, AppResolveError, LandoRuntimeServices | RuntimeCwd> =>
   Effect.gen(function* () {
     const normalized = yield* normalizeAppSelector(selector);
     const resolved = yield* resolvePlan(normalized);

@@ -12,13 +12,14 @@ import type { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../cli/app-resolution.ts";
+import type { RuntimeCwd } from "../runtime/cwd.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer.ts";
 import { ScratchRegistryLive } from "../scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
 import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "../scratch-app/service.ts";
 import { buildAppHandle, resolveApp } from "./resolve.ts";
 
-type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService>;
+type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService | RuntimeCwd>;
 
 /**
  * Options for {@link openLandoRuntime}. Extends the runtime layer options with

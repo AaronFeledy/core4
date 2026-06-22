@@ -19,23 +19,16 @@ const testProviderLayers = [
   }),
 ];
 
-const landofileYaml = (name = "embedded-app"): string =>
-  `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n`;
+const landofileYaml = (name = "embedded-app", tooling = false): string =>
+  `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n${
+    tooling ? "tooling:\n  build:\n    service: web\n    cmd: make build\n" : ""
+  }`;
 
-const appLayer = makeLandoRuntime({
-  bootstrap: "app",
-  plugins: {
-    policy: "bundled-only",
-    layers: [
-      Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
-    ],
-  },
-});
+const appLayer = () =>
+  makeLandoRuntime({
+    bootstrap: "app",
+    plugins: { policy: "bundled-only", layers: testProviderLayers },
+  });
 
 const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-resolve-app-")));
@@ -88,7 +81,7 @@ describe("resolveApp", () => {
             app.plan.pipe(Effect.map((plan) => ({ id: app.id, ref: app.ref, root: app.root, plan }))),
           ),
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -118,7 +111,7 @@ describe("resolveApp", () => {
             eventsSubscribe: typeof app.events.subscribe,
           })),
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -132,7 +125,7 @@ describe("resolveApp", () => {
         resolveApp().pipe(
           Effect.flatMap((app) => app.info()),
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -150,7 +143,7 @@ describe("resolveApp", () => {
               Effect.sync(() => process.chdir(right)).pipe(Effect.flatMap(() => app.info())),
             ),
             Effect.scoped,
-            Effect.provide(appLayer),
+            Effect.provide(appLayer()),
           )
           .pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
       );
@@ -177,7 +170,7 @@ describe("resolveApp", () => {
         resolveApp({ landofile, root: dir as never }).pipe(
           Effect.flatMap((app) => app.plan),
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -193,7 +186,7 @@ describe("resolveApp", () => {
       const app = await Effect.runPromise(
         resolveApp({ landofile: join(dir, "custom.lando.yml") as never }).pipe(
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -255,6 +248,27 @@ describe("resolveApp", () => {
     });
   });
 
+  test("resolveApp() with no selector resolves from the runtime layer cwd", async () => {
+    await withTwoTempApps(async (left, right) => {
+      const layer = makeLandoRuntime({
+        bootstrap: "app",
+        cwd: left,
+        plugins: { policy: "bundled-only", layers: testProviderLayers },
+      });
+      const id = await Effect.runPromise(
+        Effect.sync(() => process.chdir(right)).pipe(
+          Effect.zipRight(resolveApp()),
+          Effect.flatMap((app) => app.info()),
+          Effect.map((info) => info.app),
+          Effect.scoped,
+          Effect.provide(layer),
+        ),
+      );
+
+      expect(id).toBe("embedded-app");
+    });
+  });
+
   test("a runtime constructed with scratch resolves app() to the acquired scratch app", async () => {
     await withTempUserCache(async () => {
       await withTempApp(async () => {
@@ -272,6 +286,45 @@ describe("resolveApp", () => {
 
         expect(id).toStartWith("scratch-embedded-app-");
       });
+    });
+  });
+
+  test("scratch default app tooling uses the captured target after host cwd changes", async () => {
+    await withTempUserCache(async () => {
+      const left = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-tooling-left-")));
+      const right = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-tooling-right-")));
+      const original = process.cwd();
+      await Bun.write(join(left, ".lando.yml"), landofileYaml("embedded-app", true));
+      await Bun.write(join(right, ".lando.yml"), landofileYaml("other-app"));
+      process.chdir(left);
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({
+              scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
+              plugins: { policy: "bundled-only", layers: testProviderLayers },
+            }).pipe(
+              Effect.flatMap((runtime) =>
+                runtime
+                  .app()
+                  .pipe(
+                    Effect.flatMap((app) =>
+                      Effect.sync(() => process.chdir(right)).pipe(Effect.zipRight(app.tooling("build"))),
+                    ),
+                  ),
+              ),
+            ),
+          ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
+        );
+
+        expect(result.tool).toBe("build");
+        expect(result.service).toBe("web");
+        expect(result.exitCode).toBe(0);
+      } finally {
+        process.chdir(original);
+        await rm(left, { recursive: true, force: true });
+        await rm(right, { recursive: true, force: true });
+      }
     });
   });
 
@@ -309,7 +362,7 @@ describe("resolveApp", () => {
             }),
           ),
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -322,7 +375,7 @@ describe("resolveApp", () => {
 
   test("a decoded Landofile selector without a root fails with AppResolveError(missing-root)", async () => {
     const exit = await Effect.runPromiseExit(
-      resolveApp({ landofile: { name: "x" } } as never).pipe(Effect.scoped, Effect.provide(appLayer)),
+      resolveApp({ landofile: { name: "x" } } as never).pipe(Effect.scoped, Effect.provide(appLayer())),
     );
     expect(exit._tag).toBe("Failure");
   });
@@ -332,7 +385,7 @@ describe("resolveApp", () => {
       const exit = await Effect.runPromiseExit(
         resolveApp({ landofile: { name: "global" }, root: dir as never } as never).pipe(
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -343,7 +396,7 @@ describe("resolveApp", () => {
   test("an id selector validates a compatible cwd selector", async () => {
     await withTempApp(async (dir) => {
       const app = await Effect.runPromise(
-        resolveApp({ id: "embedded-app", cwd: dir as never }).pipe(Effect.scoped, Effect.provide(appLayer)),
+        resolveApp({ id: "embedded-app", cwd: dir as never }).pipe(Effect.scoped, Effect.provide(appLayer())),
       );
 
       expect(app.id).toBe("embedded-app");
@@ -356,7 +409,7 @@ describe("resolveApp", () => {
       const exit = await Effect.runPromiseExit(
         resolveApp({ id: "embedded-app", root: left as never, cwd: right as never }).pipe(
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -369,7 +422,7 @@ describe("resolveApp", () => {
       const exit = await Effect.runPromiseExit(
         resolveApp({ root: left as never, cwd: right as never }).pipe(
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 
@@ -382,7 +435,7 @@ describe("resolveApp", () => {
       const exit = await Effect.runPromiseExit(
         resolveApp({ landofile: join(left, ".lando.yml") as never, root: right as never }).pipe(
           Effect.scoped,
-          Effect.provide(appLayer),
+          Effect.provide(appLayer()),
         ),
       );
 

@@ -17,7 +17,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import {
   type ProgressEmitter,
   publishTaskComplete,
@@ -389,12 +389,16 @@ export const runTooling = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
 
-    const landofile = target?.landofile ?? (yield* loadUserLandofile(landofileService));
+    const landofile =
+      target?.landofile ??
+      (target === undefined
+        ? yield* loadUserLandofile(landofileService)
+        : yield* loadUserLandofileAt(landofileService, target.root));
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
     const task = landofile.tooling?.[toolingLookupKey];
 
     if (task === undefined) {
-      const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+      const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
       if (appRoot !== undefined) {
         const scripts = yield* discoverBunShellScripts({ appRoot });
         const script = findBunShellScriptForName(scripts, options.name);
@@ -436,15 +440,17 @@ export const runTooling = (
       );
     }
 
-    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
     const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
     const providerId = yield* resolveToolingProviderId(landofile);
-    const plan = yield* resolveToolingPlan({
-      landofile,
-      appRoot,
-      providerId,
-      cacheRoot,
-    });
+    const plan =
+      target?.plan ??
+      (yield* resolveToolingPlan({
+        landofile,
+        appRoot,
+        providerId,
+        cacheRoot,
+      }));
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
     const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
