@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
 import {
-  NotImplementedError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
@@ -194,25 +193,26 @@ describe("resolveRecipeRef — programmatic recipe.ts", () => {
     });
   });
 
-  test("recipe.ts is held to the same Beta-rejection pipeline as recipe.yml (deferred editor prompt)", async () => {
+  test("recipe.ts shares the recipe.yml decode pipeline and accepts the `editor` prompt type", async () => {
     await withTempCwd(async (dir) => {
-      const recipeDir = join(dir, "beta-prompt");
+      const recipeDir = join(dir, "editor-prompt");
       await Bun.write(
         join(recipeDir, "recipe.ts"),
         [
           "export default {",
-          '  id: "beta-prompt",',
+          '  id: "editor-prompt",',
           '  title: "prompt",',
-          '  description: "Uses a deferred prompt type.",',
+          '  description: "Uses the editor prompt type.",',
           '  version: "0.0.1",',
           '  prompts: [{ name: "notes", type: "editor", message: "Edit notes" }],',
           "};",
           "",
         ].join("\n"),
       );
-      const exit = await runResolve("./beta-prompt", dir);
-      const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(NotImplementedError);
+      const exit = await runResolve("./editor-prompt", dir);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      expect(exit.value.manifest?.prompts?.[0]?.type).toBe("editor");
     });
   });
 

@@ -9,9 +9,12 @@ import { RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sd
 import { RecipePrompt } from "@lando/sdk/schema";
 
 import {
+  type EditorRunner,
   collectPrompts,
   createBufferedPromptIO,
+  createDefaultEditorRunner,
   parseAnswerFlags,
+  resolveEditorCommand,
 } from "../../../src/recipes/prompts/index.ts";
 
 const prompt = (input: unknown): typeof RecipePrompt.Type => Schema.decodeUnknownSync(RecipePrompt)(input);
@@ -675,5 +678,128 @@ describe("collectPrompts — non-interactive default-less prompts fail fast", ()
       nonInteractive: true,
     });
     expect(answers.ssl).toBe(false);
+  });
+});
+
+describe("collectPrompts — editor", () => {
+  test("interactive: opens a scripted $VISUAL editor and captures the multi-line buffer", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-editor-test-"));
+    const script = join(dir, "fake-editor.sh");
+    await writeFile(script, 'printf "First line\\nSecond line\\nThird line\\n" > "$1"\n', "utf8");
+    try {
+      const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+      const answers = await collectPrompts({
+        prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+        io,
+        editorRunner: createDefaultEditorRunner({ env: { ...process.env, VISUAL: `sh ${script}` } }),
+      });
+      expect(answers.notes).toBe("First line\nSecond line\nThird line\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("interactive: seeds the buffer with the recipe default and applies validate rules", async () => {
+    const seeds: string[] = [];
+    const runner: EditorRunner = async ({ content }) => {
+      seeds.push(content);
+      return { kind: "edited", content: "release/v4.0.0" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "branch",
+          type: "editor",
+          message: "Branch",
+          default: "main",
+          validate: { pattern: "^[a-z0-9./-]+$", message: "lowercase only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.branch).toBe("release/v4.0.0");
+    expect(seeds).toEqual(["main"]);
+  });
+
+  test("interactive: re-opens the editor on validation failure until the buffer is valid", async () => {
+    let call = 0;
+    const runner: EditorRunner = async () => {
+      call += 1;
+      return { kind: "edited", content: call === 1 ? "Bad Value" : "good-value" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "slug",
+          type: "editor",
+          message: "Slug",
+          validate: { pattern: "^[a-z][a-z0-9-]*$", message: "kebab-case only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.slug).toBe("good-value");
+    expect(call).toBe(2);
+    expect(io.stderr()).toContain("Invalid value: kebab-case only");
+  });
+
+  test("interactive: falls back to text line read when no editor is configured (no hang)", async () => {
+    const io = createBufferedPromptIO({ inputs: ["typed inline"], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: createDefaultEditorRunner({ env: { VISUAL: "", EDITOR: "" } }),
+    });
+    expect(answers.notes).toBe("typed inline");
+  });
+
+  test("non-interactive: resolves the recipe default with text semantics", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],
+      nonInteractive: true,
+    });
+    expect(answers.notes).toBe("seeded");
+  });
+
+  test("non-interactive: missing required editor answer raises RecipeMissingAnswerError", async () => {
+    const promise = collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "notes",
+    });
+  });
+
+  test("supplied --answer for an editor prompt is validated as text", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      answers: { notes: "supplied multi\nline" },
+      nonInteractive: true,
+    });
+    expect(answers.notes).toBe("supplied multi\nline");
+  });
+});
+
+describe("resolveEditorCommand", () => {
+  test("prefers $VISUAL over $EDITOR and splits argv", () => {
+    expect(resolveEditorCommand({ VISUAL: "code --wait", EDITOR: "vi" })).toEqual({
+      cmd: "code",
+      args: ["--wait"],
+    });
+  });
+
+  test("falls back to $EDITOR when $VISUAL is empty/whitespace", () => {
+    expect(resolveEditorCommand({ VISUAL: "  ", EDITOR: "nano" })).toEqual({ cmd: "nano", args: [] });
+  });
+
+  test("returns undefined when neither is configured", () => {
+    expect(resolveEditorCommand({})).toBeUndefined();
+    expect(resolveEditorCommand({ VISUAL: "", EDITOR: "" })).toBeUndefined();
   });
 });

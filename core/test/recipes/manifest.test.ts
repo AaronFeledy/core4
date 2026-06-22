@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import {
-  NotImplementedError,
-  RecipeManifestParseError,
-  RecipeManifestValidationError,
-} from "@lando/sdk/errors";
+import { RecipeManifestParseError, RecipeManifestValidationError } from "@lando/sdk/errors";
 
 import {
   nodePostgresRecipeSource,
@@ -270,18 +266,16 @@ description: Trigger one surface per case.
 version: 0.0.1
 `;
 
-  test("prompt type `editor` is rejected with remediation", async () => {
+  test("prompt type `editor` is accepted (no longer Beta-deferred)", async () => {
     const yaml = `${baseHeader}prompts:
   - name: notes
     type: editor
     message: Notes?
 `;
-    const exit = await runParse("test://beta-editor", yaml);
-    const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.message).toContain("editor");
-    }
+    const exit = await runParse("test://editor-accept", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.prompts?.[0]?.type).toBe("editor");
   });
 
   test("prompt `choicesFrom:` is accepted (no static choices required)", async () => {
@@ -349,18 +343,22 @@ version: 0.0.1
     }
   });
 
-  test("prompt type `editor` is still rejected with remediation", async () => {
+  test("prompt type `editor` with a default and validate decodes successfully", async () => {
     const yaml = `${baseHeader}prompts:
   - name: notes
     type: editor
     message: Edit notes
+    default: seed line
+    validate:
+      pattern: ".+"
+      message: notes are required
 `;
-    const exit = await runParse("test://beta-prompt-editor", yaml);
-    const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.message).toContain("editor");
-    }
+    const exit = await runParse("test://editor-default-accept", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const prompt = exit.value.prompts?.[0];
+    expect(prompt?.type).toBe("editor");
+    expect(prompt?.validate?.message).toBe("notes are required");
   });
 });
 
