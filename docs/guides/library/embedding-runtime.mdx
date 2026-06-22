@@ -80,13 +80,13 @@ await Effect.runPromise(
 );
 ```
 
-For command-shaped dispatch, the lower-level Effect operations behind every built-in
-command remain available from `@lando/core/cli` and `@lando/core/cli/operations`
-(for example `startApp`, `infoApp`, and `stopApp`). These are building blocks for
-hosts that want command parity without OCLIF — they return typed results rather than
-rendered text — but they are not the preferred app lifecycle API. Prefer the `App`
-handle for lifecycle work and reach for the raw operations only when you need
-command-level dispatch.
+For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
+entry point, while the lower-level Effect operations behind built-in commands remain
+available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
+`stopApp`). These are building blocks for hosts that want command parity without
+OCLIF — they return typed results rather than rendered text — but they are not the
+preferred app lifecycle API. Prefer the `App` handle for lifecycle work and reach
+for the raw operations only when you need command-level dispatch.
 
 <Guide>
   <Scenario id="app-lifecycle">

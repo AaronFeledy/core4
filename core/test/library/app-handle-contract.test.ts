@@ -12,12 +12,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
-import { ProviderId } from "@lando/core/schema";
-import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  FileSyncSessionRef,
+  type FileSyncSessionSpec,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/core/schema";
+import { AppPlanner, FileSyncEngine, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import type { FileSyncEngineShape } from "@lando/sdk/services";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -32,6 +43,91 @@ const testProviderLayers = [
 // so `app.start()` performs no global-service auto-start and no file-sync work.
 const landofileYaml = (name = "embedded-app"): string =>
   `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  cache:\n    type: redis\n    primary: true\n`;
+
+const metadata = {
+  resolvedAt: DateTime.unsafeMake("2026-06-22T00:00:00Z"),
+  source: "app-handle-contract.test",
+  runtime: 4 as const,
+};
+
+const cacheService: ServicePlan = {
+  name: ServiceName.make("cache"),
+  type: "redis",
+  provider: ProviderId.make(TestRuntimeProvider.id),
+  primary: true,
+  artifact: { kind: "ref", ref: "redis:latest" },
+  command: [],
+  environment: {},
+  mounts: [],
+  storage: [],
+  endpoints: [{ port: 6379, protocol: "tcp", name: "redis" }],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+};
+
+const planWithFileSync = (root: string): AppPlan => ({
+  id: AppId.make("embedded-app"),
+  name: "embedded-app",
+  slug: "embedded-app",
+  root: AbsolutePath.make(root),
+  provider: ProviderId.make(TestRuntimeProvider.id),
+  services: { [cacheService.name]: cacheService },
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [
+    {
+      engineId: "test",
+      session: {
+        app: { kind: "user", id: AppId.make("embedded-app"), root: AbsolutePath.make(root) },
+        service: ServiceName.make("cache"),
+        mountKey: "app-mount",
+        source: AbsolutePath.make(root),
+        target: { _tag: "volume", name: "embedded-app-cache-app-mount", path: PortablePath.make("/app") },
+        mode: "two-way-safe",
+        excludes: [],
+      },
+    },
+  ],
+  metadata,
+  extensions: {},
+});
+
+const makeTrackingFileSyncEngine = (): {
+  readonly engine: FileSyncEngineShape;
+  readonly sessions: Map<string, FileSyncSessionSpec>;
+} => {
+  const sessions = new Map<string, FileSyncSessionSpec>();
+  const engine: FileSyncEngineShape = {
+    id: "test",
+    displayName: "Tracking File Sync",
+    capabilities: {
+      modes: ["two-way-safe"],
+      remoteAgentDeployment: "none",
+      exclusionPatterns: true,
+      conflictReporting: false,
+      progressReporting: false,
+    },
+    isAvailable: Effect.succeed(true),
+    setup: () => Effect.void,
+    createSession: (spec: FileSyncSessionSpec) =>
+      Effect.gen(function* () {
+        const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+        sessions.set(ref, spec);
+        yield* Effect.addFinalizer(() => Effect.sync(() => sessions.delete(ref)));
+        return ref;
+      }),
+    pauseSession: () => Effect.void,
+    resumeSession: () => Effect.void,
+    terminateSession: (ref) => Effect.sync(() => sessions.delete(ref)),
+    listSessions: () => Effect.succeed([]),
+    streamEvents: () => Stream.empty,
+  };
+  return { engine, sessions };
+};
 
 const appLayer = () =>
   makeLandoRuntime({ bootstrap: "app", plugins: { policy: "bundled-only", layers: testProviderLayers } });
@@ -182,35 +278,30 @@ describe("@lando/core App-handle library contract", () => {
     });
   });
 
-  test("runtime resources finalize when the construction scope closes", async () => {
-    class FinalizerProbe extends Context.Tag("lando/test/RuntimeFinalizerProbe")<
-      FinalizerProbe,
-      Readonly<Record<string, never>>
-    >() {}
-
-    const probe = { closed: false };
-    const finalizerLayer = Layer.scoped(
-      FinalizerProbe,
-      Effect.acquireRelease(Effect.succeed({} as Readonly<Record<string, never>>), () =>
-        Effect.sync(() => {
-          probe.closed = true;
-        }),
-      ),
-    );
-
-    await withTempApp(async () => {
-      await Effect.runPromise(
+  test("runtime-scope close tears down App-handle start resources", async () => {
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingFileSyncEngine();
+      const activeSessions = await Effect.runPromise(
         Effect.scoped(
           openLandoRuntime({
-            plugins: { policy: "bundled-only", layers: [...testProviderLayers, finalizerLayer] },
+            plugins: {
+              policy: "bundled-only",
+              layers: [
+                ...testProviderLayers,
+                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                Layer.succeed(FileSyncEngine, tracking.engine),
+              ],
+            },
           }).pipe(
             Effect.flatMap((runtime) => runtime.app()),
-            Effect.flatMap((app) => app.info()),
+            Effect.flatMap((app) => app.start()),
+            Effect.map(() => tracking.sessions.size),
           ),
         ),
       );
 
-      expect(probe.closed).toBe(true);
+      expect(activeSessions).toBe(1);
+      expect(tracking.sessions.size).toBe(0);
     });
   });
 });

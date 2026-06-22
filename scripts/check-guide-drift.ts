@@ -136,27 +136,41 @@ export const checkGuideDriftOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideDriftOptions = {},
 ): Promise<DriftResult> => {
-  const defaultSpecDir = "prd/alpha-3";
-  const internalSpecDir = [["s", "pec"].join(""), "alpha-3"].join("/");
-  const specDir =
-    options.specDir ?? (existsSync(resolve(root, defaultSpecDir)) ? defaultSpecDir : internalSpecDir);
+  const defaultSpecDirs = ["prd/alpha-3", [["s", "pec"].join(""), "alpha-3"].join("/")];
+  const defaultSpecFiles = ["spec/beta-1/prd-beta-1-11-library-and-acceptance.md"];
+  const specDirs =
+    options.specDir !== undefined
+      ? [options.specDir]
+      : uniqueInOrder(defaultSpecDirs).filter((specDir) => existsSync(resolve(root, specDir)));
+  const specFiles =
+    options.specDir !== undefined
+      ? []
+      : uniqueInOrder(defaultSpecFiles).filter((specFile) => existsSync(resolve(root, specFile)));
 
   const declarations: Array<GuideDriftDeclaration> = [];
-  let specEntries: ReadonlyArray<string> = [];
-  try {
-    specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
-  } catch {
-    specEntries = [];
-  }
-  for (const name of specEntries) {
-    const content = await Bun.file(resolve(root, specDir, name)).text();
+  const pushDeclaration = async (source: string, absolutePath: string): Promise<void> => {
+    const content = await Bun.file(absolutePath).text();
     const surfacePaths = parseGuideCoverageSurfacePaths(content);
-    if (surfacePaths.length === 0) continue;
+    if (surfacePaths.length === 0) return;
     declarations.push({
-      source: `${specDir}/${name}`,
+      source,
       surfacePaths,
       guidePaths: parseGuideCoveragePaths(content),
     });
+  };
+  for (const specDir of specDirs) {
+    let specEntries: ReadonlyArray<string> = [];
+    try {
+      specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
+    } catch {
+      specEntries = [];
+    }
+    for (const name of specEntries) {
+      await pushDeclaration(`${specDir}/${name}`, resolve(root, specDir, name));
+    }
+  }
+  for (const specFile of specFiles) {
+    await pushDeclaration(specFile, resolve(root, specFile));
   }
 
   return checkGuideDrift({
