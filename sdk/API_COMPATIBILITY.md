@@ -10,6 +10,7 @@
 - `FileFormat` (and therefore `ManagedFile.format`) accepts `"javascript"` and `"typescript"` in addition to the prior members; both encode/decode verbatim like `text` and carry a `//` ownership marker so scaffolded code files stay valid. Widening the literal is additive — prior values still decode.
 - `ProviderCapabilities` adds the data-plane capability fields `volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, and `ephemeralMounts`; `EphemeralRunSpec` adds mount/stdin/stdout/env/remove options; `RuntimeProviderShape` adds `runStream` plus the eight data-plane methods. These are additive provider-contract extensions for the §10.11 data plane.
 - `@lando/sdk/renderer` is a type/contract-only subpath (like `@lando/sdk/expressions`). It exports the terminal-renderer contracts `RendererIO`, `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, `RendererContribution`, and `RendererContributionFactory` so the bundled `@lando/renderer-lando` plugin can assemble the default `lando` renderer without importing core internals. It exports no runtime values and so does not appear in the `Object.keys()` runtime export checks; the visual implementation (task-tree painter, keybindings, formatters) stays in core and is injected through `RendererRuntimePrimitives`.
+- `LandofileShape` accepts raw `remotes:` and `sync:` maps for the RemoteSource/Dataset contract freeze. `remotes.<name>` uses the published `RemoteConfig` structural shape and source-specific validation remains deferred to the selected source; `sync.<dataset>` uses `DatasetBinding` (`service`, `path`) and inference logic remains deferred to the 4.1 pull/push orchestration.
 
 ## Additive Alpha schema exports
 
@@ -211,6 +212,7 @@
 - `DataTransferSpec`
 - `RemoteCapabilities`
 - `RemoteConfig`
+- `DatasetBinding`
 - `RemoteEnvironment`
 - `RemoteEnvId`
 - `RemoteLocator`

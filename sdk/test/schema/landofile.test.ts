@@ -5,9 +5,11 @@ import { Either, ParseResult, Schema } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
+  DatasetBinding,
   GlobalConfig,
   LandofileShape,
   ProviderId,
+  RemoteConfig,
   ServiceConfig,
   ServiceName,
   ToolingTaskShape,
@@ -43,9 +45,11 @@ describe("LandofileShape — schema gate", () => {
       "include",
       "includes",
       "networks",
+      "remotes",
       "secrets",
       "services",
       "sshAgent",
+      "sync",
       "tooling",
       "version",
       "volumes",
@@ -121,6 +125,69 @@ describe("LandofileShape — schema gate", () => {
     if (Either.isLeft(result)) {
       const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
       expect(issues.some((row) => row.path.join(".") === "sshAgent.sidecar")).toBe(true);
+    }
+  });
+
+  test("strict decoding accepts raw remotes and dataset sync bindings", () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(
+      {
+        name: "myapp",
+        remotes: {
+          pantheon: {
+            source: "pantheon",
+            site: "site-id",
+            token: "secret:pantheon-token",
+          },
+        },
+        sync: {
+          database: { service: "db" },
+          files: { service: "appserver", path: "/app/web/sites/default/files" },
+        },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(decoded.remotes?.pantheon).toEqual({
+      source: "pantheon",
+      site: "site-id",
+      token: "secret:pantheon-token",
+    });
+    expect(decoded.sync?.database?.service === "db").toBe(true);
+    expect(decoded.sync?.files?.service === "appserver").toBe(true);
+    expect(decoded.sync?.files?.path === "/app/web/sites/default/files").toBe(true);
+    expect(Schema.decodeUnknownSync(RemoteConfig)(decoded.remotes?.pantheon).source).toBe("pantheon");
+    expect(Schema.decodeUnknownSync(DatasetBinding)(decoded.sync?.database).service === "db").toBe(true);
+  });
+
+  test("strict decoding rejects malformed remote entries", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      {
+        name: "myapp",
+        remotes: { pantheon: { site: "missing-source" } },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((row) => row.path.join(".") === "remotes.pantheon.source")).toBe(true);
+    }
+  });
+
+  test("strict decoding rejects malformed dataset binding entries", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      {
+        name: "myapp",
+        sync: { database: { service: 123 } },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((row) => row.path.join(".") === "sync.database.service")).toBe(true);
     }
   });
 });

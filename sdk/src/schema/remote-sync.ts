@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { AppPlan } from "./app-plan.ts";
 import { DataEndpoint, SnapshotHandle, VolumeRef } from "./data-transfer.ts";
-import { AppId, ServiceName } from "./primitives.ts";
+import { AppId, PortablePath, ServiceName } from "./primitives.ts";
 
 export const RemoteEnvId = Schema.String;
 export type RemoteEnvId = typeof RemoteEnvId.Type;
@@ -26,6 +26,12 @@ export const RemoteConfig = Schema.asSchema(
   }).pipe(Schema.extend(Schema.Record({ key: Schema.String, value: Schema.Unknown }))),
 );
 export type RemoteConfig = typeof RemoteConfig.Type;
+
+export const DatasetBinding = Schema.Struct({
+  service: Schema.optional(ServiceName),
+  path: Schema.optional(PortablePath),
+});
+export type DatasetBinding = typeof DatasetBinding.Type;
 
 export const RemoteEnvironment = Schema.Struct({
   id: RemoteEnvId,

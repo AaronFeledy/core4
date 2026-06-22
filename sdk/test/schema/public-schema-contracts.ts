@@ -117,6 +117,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RemoteFetchOptions: "sdk/test/schema/remote-sync.test.ts",
   RemoteSendOptions: "sdk/test/schema/remote-sync.test.ts",
   RemoteTestResult: "sdk/test/schema/remote-sync.test.ts",
+  DatasetBinding: "sdk/test/schema/remote-sync.test.ts",
   DatasetKind: "sdk/test/schema/remote-sync.test.ts",
   DatasetCapabilities: "sdk/test/schema/remote-sync.test.ts",
   DatasetArtifactFormat: "sdk/test/schema/remote-sync.test.ts",

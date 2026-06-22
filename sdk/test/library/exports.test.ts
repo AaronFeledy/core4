@@ -68,6 +68,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.RemoteFetchOptions).toBeDefined();
     expect(schema.RemoteSendOptions).toBeDefined();
     expect(schema.RemoteTestResult).toBeDefined();
+    expect(schema.DatasetBinding).toBeDefined();
     expect(schema.RemoteSourceContribution).toBeDefined();
     expect(schema.DatasetKind).toBeDefined();
     expect(schema.DatasetContribution).toBeDefined();
@@ -161,6 +162,7 @@ describe("@lando/sdk package exports", () => {
       "RemoteFetchOptions",
       "RemoteSendOptions",
       "RemoteTestResult",
+      "DatasetBinding",
       "DatasetKind",
       "DatasetCapabilities",
       "DatasetArtifactFormat",

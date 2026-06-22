@@ -85,6 +85,47 @@ describe("LandofileServiceLive", () => {
     });
   });
 
+  test("accepts remotes and sync as raw unresolved Landofile blocks", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "runtime: 4",
+          "services:",
+          "  appserver:",
+          "    image: node:lts",
+          "  db:",
+          "    image: postgres:16",
+          "remotes:",
+          "  pantheon:",
+          "    source: pantheon",
+          "    site: site-id",
+          "    token: secret:pantheon-token",
+          "sync:",
+          "  database:",
+          "    service: db",
+          "  files:",
+          "    service: appserver",
+          "    path: /app/web/sites/default/files",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+
+      expect(landofile.remotes?.pantheon).toEqual({
+        source: "pantheon",
+        site: "site-id",
+        token: "secret:pantheon-token",
+      });
+      expect(landofile.sync?.database?.service === "db").toBe(true);
+      expect(landofile.sync?.files?.service === "appserver").toBe(true);
+      expect(landofile.sync?.files?.path === "/app/web/sites/default/files").toBe(true);
+    });
+  });
+
   test("fails missing .lando.yml with searched paths in the message", async () => {
     await withTempCwd(async (dir) => {
       await mkdir(join(dir, "nested"), { recursive: true });
@@ -362,8 +403,11 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
 
       const landofile = await discover();
       const web = landofile.services?.[ServiceName.make("web")];
-      expect(web?.appMount?.target).toBe("/app");
-      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
+      expect(web?.appMount).not.toBe(false);
+      if (web?.appMount !== false) {
+        expect(web?.appMount?.target).toBe("/app");
+        expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
+      }
       expect(web?.mounts?.[0]).toBe("./config:/etc/app:ro");
       const volumeMount = web?.mounts?.[1];
       expect(typeof volumeMount).not.toBe("string");

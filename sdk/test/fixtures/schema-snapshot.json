@@ -1132,6 +1132,15 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Binding.",
+      "docsPath": "docs/reference/schemas/dataset-binding.mdx",
+      "id": "DatasetBinding",
+      "jsonSchemaPath": "dist/schemas/dataset-binding.json",
+      "packageExport": "@lando/sdk/schema#DatasetBinding",
+      "title": "Dataset Binding"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Dataset Kind.",
       "docsPath": "docs/reference/schemas/dataset-kind.mdx",
       "id": "DatasetKind",
@@ -2316,6 +2325,7 @@
       "RemoteFetchOptions",
       "RemoteSendOptions",
       "RemoteTestResult",
+      "DatasetBinding",
       "DatasetKind",
       "DatasetCapabilities",
       "DatasetArtifactFormat",
@@ -3997,6 +4007,20 @@
         }
       },
       "required": ["endpoint"],
+      "type": "object"
+    },
+    "DatasetBinding": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [],
       "type": "object"
     },
     "DatasetCapabilities": {
@@ -12176,6 +12200,24 @@
         "recipe": {
           "type": "string"
         },
+        "remotes": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "properties": {
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": ["source"],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
         "runtime": {
           "enum": [4],
           "type": "number"
@@ -12602,6 +12644,24 @@
               "type": "boolean"
             }
           },
+          "required": [],
+          "type": "object"
+        },
+        "sync": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
           "required": [],
           "type": "object"
         },
@@ -22714,6 +22774,24 @@
             "recipe": {
               "type": "string"
             },
+            "remotes": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["source"],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
             "runtime": {
               "enum": [4],
               "type": "number"
@@ -23140,6 +23218,24 @@
                   "type": "boolean"
                 }
               },
+              "required": [],
+              "type": "object"
+            },
+            "sync": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "properties": {},
               "required": [],
               "type": "object"
             },

@@ -2625,8 +2625,8 @@
         "Lint passes."
       ],
       "priority": 146,
-      "passes": false,
-      "notes": "Landofile remotes:/sync: keys + \u00a74.2/\u00a79.5 surfaces (spec \u00a77.4, \u00a74.2, \u00a79.5, \u00a710.12). Mirrors the raw-includes acceptance pattern so discover's frozen error union does not widen. Depends on US-344, PRD-04 (Landofile serializer)."
+      "passes": true,
+      "notes": "LandofileShape now accepts raw remotes:/sync: blocks: remotes.<name> uses RemoteConfig ({source, ...sourceConfig}) and sync.<dataset> uses the frozen DatasetBinding shape (service/path). LandofileService.discover preserves both blocks raw/unresolved like includes, without widening its error union; source-specific validation, binding inference, and pull/push resolution remain 4.1. The §4.2/§9.5 RemoteSource/Dataset surfaces were already present from US-344 and are covered by schema/manifest tests."
     },
     {
       "id": "US-346",
