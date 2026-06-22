@@ -17,6 +17,9 @@ const BOOLEAN_FIELDS = [
   "bindMounts",
   "copyMounts",
   "copyOnWriteAppRoot",
+  "artifactExport",
+  "artifactImport",
+  "ephemeralMounts",
   "routeProvider",
   "rootless",
   "privilegedServices",
@@ -29,6 +32,8 @@ const LITERAL_FIELDS = {
   hostPortPublish: ["native", "proxy", "manual", "none"],
   tlsCertificates: ["native", "lando", "none"],
   composeSpec: ["none", "portable", "native"],
+  volumeSnapshot: ["native", "copy", "none"],
+  serviceFileCopy: ["native", "exec", "none"],
 } as const;
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
@@ -51,6 +56,11 @@ const providerLandoFixture: typeof ProviderCapabilities.Encoded = {
   bindMountPerformance: "native",
   copyMounts: true,
   copyOnWriteAppRoot: false,
+  volumeSnapshot: "none",
+  serviceFileCopy: "exec",
+  artifactExport: false,
+  artifactImport: false,
+  ephemeralMounts: false,
   hostPortPublish: "native",
   routeProvider: true,
   tlsCertificates: "lando",
@@ -76,6 +86,11 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   bindMountPerformance: "slow",
   copyMounts: true,
   copyOnWriteAppRoot: false,
+  volumeSnapshot: "none",
+  serviceFileCopy: "exec",
+  artifactExport: false,
+  artifactImport: false,
+  ephemeralMounts: false,
   hostPortPublish: "native",
   routeProvider: false,
   tlsCertificates: "none",
@@ -103,7 +118,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(22);
+    expect(actual).toHaveLength(27);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -176,6 +191,11 @@ describe("ProviderCapabilities — provider-lando fixture (bindMountPerformance:
     expect(decoded.tlsCertificates).toBe("lando");
     expect(decoded.composeSpec).toBe("native");
     expect(decoded.bindMounts).toBe(true);
+    expect(decoded.volumeSnapshot).toBe("none");
+    expect(decoded.serviceFileCopy).toBe("exec");
+    expect(decoded.artifactExport).toBe(false);
+    expect(decoded.artifactImport).toBe(false);
+    expect(decoded.ephemeralMounts).toBe(false);
     expect(decoded.rootless).toBe(true);
     expect(decoded.privilegedServices).toBe(false);
     expect(decoded.providerExtensions).toEqual(["compose", "labels", "registryCredentials"]);
@@ -189,6 +209,11 @@ describe("ProviderCapabilities — provider-docker fixture (bindMountPerformance
     expect(decoded.serviceHealth).toBe("native");
     expect(decoded.hostReachability).toBe("native");
     expect(decoded.tlsCertificates).toBe("none");
+    expect(decoded.volumeSnapshot).toBe("none");
+    expect(decoded.serviceFileCopy).toBe("exec");
+    expect(decoded.artifactExport).toBe(false);
+    expect(decoded.artifactImport).toBe(false);
+    expect(decoded.ephemeralMounts).toBe(false);
     expect(decoded.routeProvider).toBe(false);
     expect(decoded.rootless).toBe(false);
     expect(decoded.privilegedServices).toBe(true);
