@@ -347,7 +347,13 @@ const runEditorPrompt = async (
         );
         return undefined;
       case "edited": {
-        const coerced = await coerceAnswer(prompt, result.content, cwd);
+        const effective = result.content === "" && def.hasDefault ? def.raw : result.content;
+        if (effective === "") {
+          io.writeError("Value is required. Please try again.\n");
+          seed = result.content;
+          break;
+        }
+        const coerced = await coerceAnswer(prompt, effective, cwd);
         if (coerced.ok) return coerced.value;
         io.writeError(`Invalid value: ${coerced.issue}. Please try again.\n`);
         seed = result.content;

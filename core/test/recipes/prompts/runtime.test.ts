@@ -723,6 +723,34 @@ describe("collectPrompts — editor", () => {
     expect(seeds).toEqual(["main"]);
   });
 
+  test("interactive: blank edited buffer substitutes the recipe default", async () => {
+    const runner: EditorRunner = async () => ({ kind: "edited", content: "" });
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("seeded");
+  });
+
+  test("interactive: blank edited buffer without default re-opens the editor", async () => {
+    let call = 0;
+    const runner: EditorRunner = async () => {
+      call += 1;
+      return { kind: "edited", content: call === 1 ? "" : "filled" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("filled");
+    expect(call).toBe(2);
+    expect(io.stderr()).toContain("Value is required");
+  });
+
   test("interactive: re-opens the editor on validation failure until the buffer is valid", async () => {
     let call = 0;
     const runner: EditorRunner = async () => {
