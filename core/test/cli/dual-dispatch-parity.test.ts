@@ -34,8 +34,13 @@ describe("dual-dispatch argv parser parity", () => {
       "--recipe=node-postgres",
       "--answer",
       "database=main",
+      "--option",
+      "database=option-wins",
+      "--answers",
+      "answers.json",
       "--full",
       "--yes",
+      "--interactive",
       "--no-interactive",
     ]);
 
@@ -44,9 +49,10 @@ describe("dual-dispatch argv parser parity", () => {
       full: true,
       name: "demo",
       recipe: "node-postgres",
-      answers: { database: "main" },
+      answers: { database: "option-wins" },
+      answersFile: "answers.json",
       yes: true,
-      nonInteractive: true,
+      nonInteractive: false,
     });
   });
 
@@ -81,9 +87,12 @@ describe("dual-dispatch argv parser parity", () => {
       "php=8.2",
       "--option",
       "php=8.4",
+      "--answers",
+      "answers.json",
       "--detach",
       "--name",
       "try-lamp",
+      "--interactive",
       "--mount-cwd",
       "--share-global-storage",
     ]);
@@ -94,6 +103,7 @@ describe("dual-dispatch argv parser parity", () => {
       detach: true,
       name: "try-lamp",
       answers: { php: "8.4" },
+      answersFile: "answers.json",
       yes: false,
       nonInteractive: false,
       mountCwd: {},

@@ -118,6 +118,23 @@ describe("lando init --full", () => {
     });
   });
 
+  test("resolves a relative answers file against InitAppOptions.cwd", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, "answers.json"), JSON.stringify({ name: "from-file" }), "utf8");
+      const { initApp } = await import("../../src/cli/commands/init.ts");
+
+      const result = await initApp({
+        cwd: dir,
+        full: true,
+        answersFile: "answers.json",
+        nonInteractive: true,
+      });
+
+      expect(result.appName).toBe("from-file");
+      expect(await Bun.file(join(dir, "from-file", ".lando.yml")).exists()).toBe(true);
+    });
+  });
+
   test("refuses an existing non-empty directory with remediation", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, "existing"), "placeholder");

@@ -28,6 +28,7 @@ import type {
   EventService,
   FileSystem,
   GlobalAppService,
+  InteractionService,
   LandofileService,
   Logger,
   ManagedFileService,
@@ -126,6 +127,7 @@ type MinimalRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | InteractionService
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
