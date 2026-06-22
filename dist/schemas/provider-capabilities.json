@@ -5,6 +5,12 @@
     "artifactBuild": {
       "type": "boolean"
     },
+    "artifactExport": {
+      "type": "boolean"
+    },
+    "artifactImport": {
+      "type": "boolean"
+    },
     "artifactPull": {
       "type": "boolean"
     },
@@ -37,6 +43,9 @@
       "type": "boolean"
     },
     "copyOnWriteAppRoot": {
+      "type": "boolean"
+    },
+    "ephemeralMounts": {
       "type": "boolean"
     },
     "hostPortPublish": {
@@ -80,6 +89,14 @@
     "serviceExec": {
       "type": "boolean"
     },
+    "serviceFileCopy": {
+      "enum": [
+        "native",
+        "exec",
+        "none"
+      ],
+      "type": "string"
+    },
     "serviceHealth": {
       "enum": [
         "native",
@@ -101,6 +118,14 @@
         "none"
       ],
       "type": "string"
+    },
+    "volumeSnapshot": {
+      "enum": [
+        "native",
+        "copy",
+        "none"
+      ],
+      "type": "string"
     }
   },
   "required": [
@@ -119,6 +144,11 @@
     "bindMountPerformance",
     "copyMounts",
     "copyOnWriteAppRoot",
+    "volumeSnapshot",
+    "serviceFileCopy",
+    "artifactExport",
+    "artifactImport",
+    "ephemeralMounts",
     "hostPortPublish",
     "routeProvider",
     "tlsCertificates",

@@ -6,6 +6,7 @@ import { DateTime, Effect, Exit, Stream } from "effect";
 
 import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -285,6 +286,23 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(runProviderContract(provider));
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
+  });
+
+  test("fails closed for unsupported volume listing", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: makeFakeApi().api, platform: "linux", env: {} })),
+      ),
+    );
+
+    const exit = await Effect.runPromiseExit(provider.listVolumes({ app: appId }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(exit.cause.toString()).toContain("ProviderUnavailableError");
+    expect(exit.cause.toString()).toContain("listVolumes");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
+    }
   });
 
   test("persists applied plans for follow-up CLI invocations", async () => {

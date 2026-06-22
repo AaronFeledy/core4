@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ServiceStartError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
 import {
@@ -390,6 +390,23 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
+  });
+
+  test("fails closed for unsupported volume listing", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: makeFakeApi().api })),
+      ),
+    );
+
+    const exit = await Effect.runPromiseExit(provider.listVolumes({ app: appId }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(exit.cause.toString()).toContain("ProviderUnavailableError");
+    expect(exit.cause.toString()).toContain("listVolumes");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
+    }
   });
 
   test("covers apply, inspect, exec, logs, and destroy with a fake client", async () => {

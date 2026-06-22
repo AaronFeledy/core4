@@ -1284,6 +1284,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             : execStream(plan, target, command, dockerApi);
         },
         run: () => Effect.fail(makeUnavailable("run")),
+        runStream: () => Stream.fail(makeUnavailable("runStream")),
         logs: (target, logOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined
@@ -1309,6 +1310,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 : snapshots.filter((snapshot) => snapshot.app === filter.app),
             ),
           ),
+        snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
+        restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
+        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
+        removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
+        copyToService: () => Effect.fail(makeUnavailable("copyToService")),
+        copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
+        exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
+        importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
       }),
     ),
   );

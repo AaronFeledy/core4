@@ -16,12 +16,22 @@ import type {
 import type {
   AppId,
   AppPlan,
+  DataStoreMountPlan,
   EndpointPlan,
   HostPlatform,
+  MountPlan,
   NetworkConfig,
   ProviderCapabilities,
   ProviderId,
+  ServiceCopyInSpec,
+  ServiceCopyOutSpec,
   ServiceName,
+  VolumeFilter,
+  VolumeInfo,
+  VolumeRef,
+  VolumeRestoreSpec,
+  VolumeSnapshotRef,
+  VolumeSnapshotSpec,
 } from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
 
@@ -119,6 +129,12 @@ export type ExecChunk =
 export interface EphemeralRunSpec {
   readonly image: string;
   readonly command: ReadonlyArray<string>;
+  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
+  readonly stdin?: "inherit" | "ignore";
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
+  readonly captureStdout?: boolean;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly remove?: boolean;
 }
 
 export interface LogTarget extends ServiceSelector {}
@@ -198,9 +214,29 @@ export interface RuntimeProviderShape {
     command: CommandSpec,
   ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
   readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+  readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
   readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
   readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+
+  readonly snapshotVolume: (
+    spec: VolumeSnapshotSpec,
+  ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+  readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+  readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
+  readonly copyToService: (
+    target: ExecTarget,
+    spec: ServiceCopyInSpec,
+  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly copyFromService: (
+    target: ExecTarget,
+    spec: ServiceCopyOutSpec,
+  ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly importArtifact: (
+    data: Stream.Stream<Uint8Array, ProviderError>,
+  ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
 }
 
 export interface DestroyOptions {

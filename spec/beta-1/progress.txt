@@ -340,6 +340,15 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Merge: merged (squash)
 ---
 
+## 2026-06-22 00:41 CDT - US-334
+- Extended the RuntimeProvider contract with the §10.11 data-plane surface: five truthful ProviderCapabilities fields, mount/stream-aware EphemeralRunSpec options, runStream, and the eight provider data-plane methods. The SDK test provider and contract suite now pin those methods, while current bundled providers expose fail-closed stubs and declare no native volume/artifact/helper-run data plane until the later implementation stories.
+- Regenerated the ProviderCapabilities schema artifacts and updated the SDK compatibility notes plus frozen service-surface fixture so public schema/service gates track the widened contract.
+- Verification: RED provider capability/provider contract tests failed on the missing fields/methods; GREEN focused spots passed (380 tests across SDK schema/contract/export/compat, provider capability, schema-snapshot, and service-contract surfaces); typecheck and lint passed; runtime smoke decoded the new capabilities and exercised runStream/data-plane callability.
+- **Learnings for future iterations:**
+  - Until US-339 implements native provider data planes, keep bundled provider data capabilities truthful: `volumeSnapshot: "none"`, `artifactExport/import: false`, `ephemeralMounts: false`; service file copy can advertise `"exec"` because existing service exec is the generic basis.
+  - The RuntimeProvider contract runner should guard new method callability before invoking it, or malformed-provider tests die instead of returning tagged `ContractFailure`.
+---
+
 ## 2026-06-22 02:30 CDT - US-290
 - Made App handles root-bound and retained-runtime-aware. `resolveApp` now captures a `ResolvedAppTarget` (`{plan, landofile?, root, app}`) once and `makeAppHandle` threads it into every plan-deriving command op (`startApp(options, target?)`, … with `restart`/`rebuild` passing it through `stop`/`start`, and `runTooling` reading `target.landofile`); when a target is present an op uses `target.plan` and skips discovery/planning, so a host `process.chdir` after resolution never changes which app the handle controls. The optional 2nd param is non-breaking for the OCLIF/`run.ts` one-arg callers.
 - Added the root-aware `loadUserLandofileAt(landofileService, root)` seam plus a shared `withResolvedCwd` helper (process-wide `cwdResolutionLock` semaphore, no-op when root===cwd) in `core/src/cli/app-resolution.ts`; `resolveApp` resolves the Landofile + includes + reserved-id at the selected root through it and plans under the same lock.

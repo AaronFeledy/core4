@@ -7,10 +7,11 @@ import {
   ProviderCapabilityError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
 import {
   ContractFailure,
+  type ContractMatrixCell,
   TestRuntimeProvider,
   runProviderContract,
   runProviderContractMatrix,
@@ -18,6 +19,9 @@ import {
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
+const TEST_COPY_SOURCE = Schema.decodeUnknownSync(AbsolutePath)("/tmp/in.tar");
+const TEST_SERVICE_PATH = Schema.decodeUnknownSync(PortablePath)("/app");
+const TEST_PROVIDER_ID = Schema.decodeUnknownSync(ProviderId)("test");
 
 const expectContractFailure = async (
   provider: typeof TestRuntimeProvider,
@@ -60,8 +64,49 @@ describe("RuntimeProvider contract", () => {
         Object(TestRuntimeProvider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })),
     ).toBe(true);
     expect(
+      Stream.StreamTypeId in
+        Object(TestRuntimeProvider.runStream({ image: "alpine", command: ["tar", "c"] })),
+    ).toBe(true);
+    expect(
       Effect.isEffect(TestRuntimeProvider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
     ).toBe(true);
+    expect(
+      Effect.isEffect(TestRuntimeProvider.snapshotVolume({ volume: { app: TEST_APP_ID, store: "data" } })),
+    ).toBe(true);
+    expect(
+      Effect.isEffect(
+        TestRuntimeProvider.restoreVolume({
+          snapshot: { provider: "test", id: "snap-1" },
+          target: { app: TEST_APP_ID, store: "data" },
+        }),
+      ),
+    ).toBe(true);
+    expect(Effect.isEffect(TestRuntimeProvider.listVolumes({ app: TEST_APP_ID }))).toBe(true);
+    expect(Effect.isEffect(TestRuntimeProvider.removeVolume({ app: TEST_APP_ID, store: "data" }))).toBe(true);
+    expect(
+      Effect.isEffect(
+        TestRuntimeProvider.copyToService(
+          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+          { sourcePath: TEST_COPY_SOURCE, targetPath: TEST_SERVICE_PATH },
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      Stream.StreamTypeId in
+        Object(
+          TestRuntimeProvider.copyFromService(
+            { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+            { sourcePath: TEST_SERVICE_PATH },
+          ),
+        ),
+    ).toBe(true);
+    expect(
+      Stream.StreamTypeId in
+        Object(TestRuntimeProvider.exportArtifact({ providerId: TEST_PROVIDER_ID, ref: "web:test" })),
+    ).toBe(true);
+    expect(Effect.isEffect(TestRuntimeProvider.importArtifact(Stream.make(new Uint8Array([1, 2, 3]))))).toBe(
+      true,
+    );
 
     const snapshot = await Effect.runPromise(
       TestRuntimeProvider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }),
@@ -82,7 +127,7 @@ describe("RuntimeProvider contract", () => {
         ...TestRuntimeProvider.capabilities,
         serviceExec: undefined,
       },
-    } as typeof TestRuntimeProvider;
+    } as unknown as typeof TestRuntimeProvider;
 
     await expectContractFailure(malformedProvider, "capability matrix decodes");
   });
@@ -133,6 +178,21 @@ describe("RuntimeProvider contract", () => {
     } as unknown as typeof TestRuntimeProvider;
 
     await expectContractFailure(provider, "list returns an array of service runtime snapshots");
+  });
+
+  test("fails with ContractFailure when runStream is missing", async () => {
+    const { runStream: _omitted, ...provider } = TestRuntimeProvider;
+
+    await expectContractFailure(provider as unknown as typeof TestRuntimeProvider, "runStream is callable");
+  });
+
+  test("fails with ContractFailure when a data-plane method is missing", async () => {
+    const { snapshotVolume: _omitted, ...provider } = TestRuntimeProvider;
+
+    await expectContractFailure(
+      provider as unknown as typeof TestRuntimeProvider,
+      "snapshotVolume is callable",
+    );
   });
 
   test("fails with ContractFailure when provider identity is empty", async () => {
@@ -289,7 +349,7 @@ describe("runProviderContractMatrix", () => {
   });
 
   test("runs supported cells and reports skipped cells with reason", async () => {
-    const cells = [
+    const cells: ReadonlyArray<ContractMatrixCell> = [
       {
         platform: "linux" as const,
         supported: true,
