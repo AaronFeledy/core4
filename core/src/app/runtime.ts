@@ -5,6 +5,9 @@ import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer.ts";
+import { ScratchRegistryLive } from "../scratch-app/registry.ts";
+import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
+import { ScratchAppServiceLive } from "../scratch-app/service.ts";
 import { resolveApp } from "./resolve.ts";
 
 type RuntimeContext = Context.Context<LandoRuntimeServices | ScratchAppService>;
@@ -18,9 +21,16 @@ export const openLandoRuntime = (
   options: LandoRuntimeOptions,
 ): Effect.Effect<LandoRuntime, LandoRuntimeBootstrapError, Scope.Scope> =>
   Effect.gen(function* () {
-    const layer = makeLandoRuntime({ bootstrap: "app", ...options } as LandoRuntimeOptions & {
+    const appLayer = makeLandoRuntime({ bootstrap: "app", ...options } as LandoRuntimeOptions & {
       readonly bootstrap: "app";
     });
+    const scratchDeps = Layer.mergeAll(appLayer, ScratchRegistryLive, ScratchResourceScannerLive);
+    const layer = Layer.mergeAll(
+      appLayer,
+      ScratchRegistryLive,
+      ScratchResourceScannerLive,
+      ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+    );
     const context = (yield* Layer.build(layer)) as unknown as RuntimeContext;
 
     const run = ((program: Effect.Effect<unknown, unknown, unknown>) =>

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { makeLandoRuntime, resolveApp } from "@lando/core";
+import { makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { ProviderId, ServiceName } from "@lando/core/schema";
 import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -37,6 +37,19 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
     return await run(dir);
   } finally {
     process.chdir(original);
+    await rm(dir, { recursive: true, force: true });
+  }
+};
+
+const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
+  const original = process.env.LANDO_USER_CACHE_ROOT;
+  process.env.LANDO_USER_CACHE_ROOT = dir;
+  try {
+    return await run(dir);
+  } finally {
+    if (original === undefined) process.env.LANDO_USER_CACHE_ROOT = undefined;
+    else process.env.LANDO_USER_CACHE_ROOT = original;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -116,6 +129,37 @@ describe("resolveApp", () => {
 
       expect(result.app).toBe("embedded-app");
       expect(result.services.map((service) => service.service)).toContain(ServiceName.make("web"));
+    });
+  });
+
+  test("openLandoRuntime exposes a working scratch API", async () => {
+    await withTempUserCache(async () => {
+      await withTempApp(async () => {
+        const handle = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({
+              plugins: {
+                policy: "bundled-only",
+                layers: [
+                  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+                  Layer.succeed(RuntimeProviderRegistry, {
+                    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    select: () => Effect.succeed(TestRuntimeProvider),
+                  }),
+                ],
+              },
+            }).pipe(
+              Effect.flatMap((runtime) =>
+                runtime.scratch({ source: { kind: "fork" }, detached: true, isolate: "none" }),
+              ),
+            ),
+          ),
+        );
+
+        expect(handle.id).toStartWith("scratch-embedded-app-");
+        expect(handle.app.kind).toBe("scratch");
+      });
     });
   });
 
