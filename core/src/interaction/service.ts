@@ -5,8 +5,8 @@
  * published `InteractionService` Effect interface. `PromptIO` is an internal
  * Live-layer detail here, not the public prompting surface.
  *
- * §13.4 renderer-boundary: this module is the declared carve-out for the
- * Live-layer stdin reader and the no-renderer fallback writer. Prompt output
+ * Renderer-boundary carve-out: this module owns the Live-layer stdin reader
+ * and the no-renderer fallback writer. Prompt output
  * routes through `Renderer.output.stdout`/`stderr` whenever a `Renderer` is
  * resolvable via `Effect.serviceOption`; only with no renderer active does it
  * fall back to a direct stdio write (via the reused `createStdioPromptIO`).
