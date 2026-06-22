@@ -16,8 +16,7 @@
         "endpoint": {
           "enum": [
             "stream",
-            "hostArchive",
-            "artifact"
+            "hostArchive"
           ],
           "type": "string"
         },

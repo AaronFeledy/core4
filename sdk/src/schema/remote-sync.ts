@@ -75,7 +75,7 @@ export const DatasetCapabilities = Schema.Struct({
 export type DatasetCapabilities = typeof DatasetCapabilities.Type;
 
 export const DatasetArtifactFormat = Schema.Struct({
-  endpoint: Schema.Literal("stream", "hostArchive", "artifact"),
+  endpoint: Schema.Literal("stream", "hostArchive"),
   mediaType: Schema.optional(Schema.String),
   archiveFormat: Schema.optional(Schema.Literal("tar", "tar.gz", "tar.zst")),
 });

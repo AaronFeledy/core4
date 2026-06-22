@@ -3989,7 +3989,7 @@
           "type": "string"
         },
         "endpoint": {
-          "enum": ["stream", "hostArchive", "artifact"],
+          "enum": ["stream", "hostArchive"],
           "type": "string"
         },
         "mediaType": {
@@ -4031,7 +4031,7 @@
               "type": "string"
             },
             "endpoint": {
-              "enum": ["stream", "hostArchive", "artifact"],
+              "enum": ["stream", "hostArchive"],
               "type": "string"
             },
             "mediaType": {
