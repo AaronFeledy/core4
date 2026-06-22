@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Stream } from "effect";
+import { Effect, Exit, Stream } from "effect";
 
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
@@ -121,6 +122,21 @@ describe("provider-lando RuntimeProvider contract", () => {
     await Effect.runPromise(runProviderContract(provider));
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
+  });
+
+  test("fails closed for unsupported volume listing", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: makeFakeApi().api }))),
+    );
+
+    const exit = await Effect.runPromiseExit(provider.listVolumes({ app: "myapp" as never }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(exit.cause.toString()).toContain("ProviderUnavailableError");
+    expect(exit.cause.toString()).toContain("listVolumes");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
+    }
   });
 
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(

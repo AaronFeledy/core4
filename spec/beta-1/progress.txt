@@ -325,3 +325,12 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review feedback: fixed (merged origin/main to resolve the progress-log conflict; reran the transient schema-snapshot install failure, which passed on retry)
 - Merge: merged (squash)
 ---
+
+## 2026-06-22 00:41 CDT - US-334
+- Extended the RuntimeProvider contract with the §10.11 data-plane surface: five truthful ProviderCapabilities fields, mount/stream-aware EphemeralRunSpec options, runStream, and the eight provider data-plane methods. The SDK test provider and contract suite now pin those methods, while current bundled providers expose fail-closed stubs and declare no native volume/artifact/helper-run data plane until the later implementation stories.
+- Regenerated the ProviderCapabilities schema artifacts and updated the SDK compatibility notes plus frozen service-surface fixture so public schema/service gates track the widened contract.
+- Verification: RED provider capability/provider contract tests failed on the missing fields/methods; GREEN focused spots passed (380 tests across SDK schema/contract/export/compat, provider capability, schema-snapshot, and service-contract surfaces); typecheck and lint passed; runtime smoke decoded the new capabilities and exercised runStream/data-plane callability.
+- **Learnings for future iterations:**
+  - Until US-339 implements native provider data planes, keep bundled provider data capabilities truthful: `volumeSnapshot: "none"`, `artifactExport/import: false`, `ephemeralMounts: false`; service file copy can advertise `"exec"` because existing service exec is the generic basis.
+  - The RuntimeProvider contract runner should guard new method callability before invoking it, or malformed-provider tests die instead of returning tagged `ContractFailure`.
+---

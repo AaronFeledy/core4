@@ -22,6 +22,14 @@ import type {
   ProviderId,
   RecipeManifest,
   ServiceConfig,
+  ServiceCopyInSpec,
+  ServiceCopyOutSpec,
+  VolumeFilter,
+  VolumeInfo,
+  VolumeRef,
+  VolumeRestoreSpec,
+  VolumeSnapshotRef,
+  VolumeSnapshotSpec,
 } from "../schema/index.ts";
 
 import type {
@@ -175,9 +183,29 @@ export interface RuntimeProviderShape {
     command: CommandSpec,
   ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
   readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+  readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
   readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
   readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+
+  readonly snapshotVolume: (
+    spec: VolumeSnapshotSpec,
+  ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+  readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+  readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
+  readonly copyToService: (
+    target: ExecTarget,
+    spec: ServiceCopyInSpec,
+  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly copyFromService: (
+    target: ExecTarget,
+    spec: ServiceCopyOutSpec,
+  ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+  readonly importArtifact: (
+    data: Stream.Stream<Uint8Array, ProviderError>,
+  ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
 }
 
 export declare class ConfigService extends Context.Tag("@lando/core/ConfigService")<

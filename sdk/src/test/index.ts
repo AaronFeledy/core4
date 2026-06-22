@@ -25,7 +25,7 @@ import {
   type ManagedFileResult,
   type PlanMetadata,
   PluginManifest,
-  type PortablePath,
+  PortablePath,
   ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -49,7 +49,9 @@ export class ContractFailure extends Schema.TaggedError<ContractFailure>()("Cont
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
-const TEST_PROVIDER_ID = ProviderId.make("test");
+const TEST_PROVIDER_ID = Schema.decodeUnknownSync(ProviderId)("test");
+const TEST_COPY_SOURCE = Schema.decodeUnknownSync(AbsolutePath)("/tmp/lando-copy-in.tar");
+const TEST_SERVICE_PATH = Schema.decodeUnknownSync(PortablePath)("/app");
 
 const testCapabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -67,6 +69,11 @@ const testCapabilities: ProviderCapabilities = {
   bindMountPerformance: "native",
   copyMounts: true,
   copyOnWriteAppRoot: false,
+  volumeSnapshot: "copy",
+  serviceFileCopy: "exec",
+  artifactExport: true,
+  artifactImport: true,
+  ephemeralMounts: true,
   hostPortPublish: "proxy",
   routeProvider: false,
   tlsCertificates: "lando",
@@ -427,6 +434,15 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       "run is Effect-typed",
     );
     yield* requireContract(
+      typeof provider.runStream === "function",
+      "runStream is callable",
+      provider.runStream,
+    );
+    yield* requireContract(
+      isStream(provider.runStream({ image: "node:22-alpine", command: ["tar", "c"] })),
+      "runStream is Stream-typed",
+    );
+    yield* requireContract(
       Effect.isEffect(provider.destroy({ app: TEST_APP_ID }, { volumes: true })),
       "destroy is Effect-typed",
     );
@@ -445,6 +461,93 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       "inspect is Effect-typed",
     );
     yield* requireContract(Effect.isEffect(provider.list({ app: TEST_APP_ID })), "list is Effect-typed");
+    yield* requireContract(
+      typeof provider.snapshotVolume === "function",
+      "snapshotVolume is callable",
+      provider.snapshotVolume,
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.snapshotVolume({ volume: { app: TEST_APP_ID, store: "data" } })),
+      "snapshotVolume is Effect-typed",
+    );
+    yield* requireContract(
+      typeof provider.restoreVolume === "function",
+      "restoreVolume is callable",
+      provider.restoreVolume,
+    );
+    yield* requireContract(
+      Effect.isEffect(
+        provider.restoreVolume({
+          snapshot: { provider: provider.id, id: "snapshot-1" },
+          target: { app: TEST_APP_ID, store: "data" },
+        }),
+      ),
+      "restoreVolume is Effect-typed",
+    );
+    yield* requireContract(
+      typeof provider.listVolumes === "function",
+      "listVolumes is callable",
+      provider.listVolumes,
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.listVolumes({ app: TEST_APP_ID })),
+      "listVolumes is Effect-typed",
+    );
+    yield* requireContract(
+      typeof provider.removeVolume === "function",
+      "removeVolume is callable",
+      provider.removeVolume,
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.removeVolume({ app: TEST_APP_ID, store: "data" })),
+      "removeVolume is Effect-typed",
+    );
+    yield* requireContract(
+      typeof provider.copyToService === "function",
+      "copyToService is callable",
+      provider.copyToService,
+    );
+    yield* requireContract(
+      Effect.isEffect(
+        provider.copyToService(
+          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+          { sourcePath: TEST_COPY_SOURCE, targetPath: TEST_SERVICE_PATH },
+        ),
+      ),
+      "copyToService is Effect-typed",
+    );
+    yield* requireContract(
+      typeof provider.copyFromService === "function",
+      "copyFromService is callable",
+      provider.copyFromService,
+    );
+    yield* requireContract(
+      isStream(
+        provider.copyFromService(
+          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+          { sourcePath: TEST_SERVICE_PATH },
+        ),
+      ),
+      "copyFromService is Stream-typed",
+    );
+    yield* requireContract(
+      typeof provider.exportArtifact === "function",
+      "exportArtifact is callable",
+      provider.exportArtifact,
+    );
+    yield* requireContract(
+      isStream(provider.exportArtifact({ providerId, ref: "web:test" })),
+      "exportArtifact is Stream-typed",
+    );
+    yield* requireContract(
+      typeof provider.importArtifact === "function",
+      "importArtifact is callable",
+      provider.importArtifact,
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.importArtifact(Stream.make(new Uint8Array([1, 2, 3])))),
+      "importArtifact is Effect-typed",
+    );
 
     const available = yield* provider.isAvailable.pipe(
       Effect.mapError(mapProviderFailure("isAvailable resolves")),
@@ -702,6 +805,15 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       stdout: spec.command.join(" "),
       stderr: "",
     }),
+  runStream: (spec) => {
+    const stdoutChunk: ExecChunk = {
+      kind: "stdout",
+      chunk: new TextEncoder().encode(spec.command.join(" ")),
+    };
+    const exitChunk: ExecChunk = { exitCode: 0 };
+
+    return Stream.make(stdoutChunk, exitChunk);
+  },
   logs: (target, _options) => {
     const chunk: LogChunk = {
       service: target.service,
@@ -727,6 +839,21 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
         status: "running",
       },
     ]),
+  snapshotVolume: (spec) =>
+    Effect.succeed({ provider: TEST_PROVIDER_ID, id: spec.snapshotId ?? `${spec.volume.store}-snapshot` }),
+  restoreVolume: (_spec) => Effect.void,
+  listVolumes: (filter) =>
+    Effect.succeed([
+      {
+        ref: { app: filter.app ?? TEST_APP_ID, store: filter.store ?? "data", scope: filter.scope },
+        labels: filter.labels,
+      },
+    ]),
+  removeVolume: (_ref) => Effect.void,
+  copyToService: (_target, _spec) => Effect.void,
+  copyFromService: (_target, spec) => Stream.make(new TextEncoder().encode(spec.sourcePath)),
+  exportArtifact: (ref) => Stream.make(new TextEncoder().encode(ref.ref)),
+  importArtifact: (_data) => Effect.succeed({ providerId: TEST_PROVIDER_ID, ref: "imported:test" }),
 };
 
 const serviceContractFailure = (assertion: string, details?: unknown): ContractFailure =>

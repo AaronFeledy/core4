@@ -1,5 +1,6 @@
 import { type Context, Effect, Schema, Stream } from "effect";
 
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import type { Renderer, RuntimeProvider, Telemetry } from "@lando/sdk/services";
 
@@ -37,6 +38,11 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   bindMountPerformance: "none",
   copyMounts: false,
   copyOnWriteAppRoot: false,
+  volumeSnapshot: "none",
+  serviceFileCopy: "none",
+  artifactExport: false,
+  artifactImport: false,
+  ephemeralMounts: false,
   hostPortPublish: "none",
   routeProvider: false,
   tlsCertificates: "none",
@@ -45,6 +51,13 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   composeSpec: "none",
   providerExtensions: [],
 });
+
+const unsupportedProviderOperation = (operation: string) =>
+  new ProviderUnavailableError({
+    providerId: "stub",
+    operation,
+    message: `runtime provider stub cannot ${operation}`,
+  });
 
 export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   id: "stub",
@@ -67,9 +80,18 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
   execStream: () => Stream.empty,
   run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
+  runStream: () => Stream.fail(unsupportedProviderOperation("runStream")),
   logs: () => Stream.empty,
   inspect: () => Effect.die("runtime provider stub cannot inspect services"),
   list: () => Effect.succeed([]),
+  snapshotVolume: () => Effect.die("runtime provider stub cannot snapshot volumes"),
+  restoreVolume: () => Effect.die("runtime provider stub cannot restore volumes"),
+  listVolumes: () => Effect.die("runtime provider stub cannot list volumes"),
+  removeVolume: () => Effect.die("runtime provider stub cannot remove volumes"),
+  copyToService: () => Effect.die("runtime provider stub cannot copy to services"),
+  copyFromService: () => Stream.fail(unsupportedProviderOperation("copyFromService")),
+  exportArtifact: () => Stream.fail(unsupportedProviderOperation("exportArtifact")),
+  importArtifact: () => Effect.die("runtime provider stub cannot import artifacts"),
 };
 
 export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Service<typeof Renderer> => ({
