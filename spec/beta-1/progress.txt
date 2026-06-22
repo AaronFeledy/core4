@@ -314,6 +314,13 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Verification: typecheck, lint passed; focused selector/resolve/import-boundary/SDK export/tagged-error tests passed; `git diff --check` passed. TypeScript LSP diagnostics could not run because the LSP server is not installed and was previously declined.
 ---
 
+## 2026-06-21 22:14 CDT - Babysit
+- PR: #423 https://github.com/AaronFeledy/core4/pull/423
+- CI outcome: pass
+- Review feedback: fixed (Bugbot "Landofile path selector ignored" — string `landofile` selector now loads the explicit file via a new `loadLandofileFile`/`loadUserLandofileFile` seam instead of dirname-only discovery; other three Bugbot findings were already resolved by earlier branch commits; guide-drift gate flagged the internal-only landofile/service.ts seam export and was cleared with a sanctioned Guide-Coverage-Skip PR-body line plus an empty commit so CI re-read the body)
+- Merge: merged (squash)
+---
+
 ## 2026-06-21 21:21 CDT - US-333
 - Published the SDK data-transfer contract surface. New `sdk/src/schema/data-transfer.ts` exports the seven-member `DataEndpoint` tagged union, `ArchiveFormat`, the volume/snapshot/service-copy/transfer schemas (`VolumeRef`/`VolumeInfo`/`VolumeFilter`/`VolumeSnapshotSpec`/`VolumeSnapshotRef`/`VolumeRestoreSpec`/`ServiceCopyInSpec`/`ServiceCopyOutSpec`/`DataTransferSpec`/`DataTransferResult`/`DataTransferProgress`/`SnapshotHandle`/`SnapshotInfo`/`SnapshotFilter`/`PrunePolicy`), and the `SnapshotId`/`SnapshotOptions`/`LabelMap` helpers.
 - Added the `DataMover` Context.Tag (`@lando/core/DataMover`, transfer/transferStream/snapshot/restore/listSnapshots/removeSnapshot/pruneSnapshots) as a real tag in `sdk/src/services/data-transfer.ts` plus the `declare class` mirror in `services/index.ts` (Downloader pattern). New `DataMover`-side tagged errors live in `sdk/src/errors/data-transfer.ts`; the three provider-side data-plane errors (`VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError`) were added to `errors/provider.ts` and folded into the `ProviderError` union.
