@@ -60,6 +60,24 @@ describe("@lando/sdk package exports", () => {
     expect(schema.SnapshotId).toBeDefined();
     expect(schema.SnapshotOptions).toBeDefined();
     expect(schema.LabelMap).toBeDefined();
+    expect(schema.RemoteCapabilities).toBeDefined();
+    expect(schema.RemoteConfig).toBeDefined();
+    expect(schema.RemoteEnvironment).toBeDefined();
+    expect(schema.RemoteEnvId).toBeDefined();
+    expect(schema.RemoteLocator).toBeDefined();
+    expect(schema.RemoteFetchOptions).toBeDefined();
+    expect(schema.RemoteSendOptions).toBeDefined();
+    expect(schema.RemoteTestResult).toBeDefined();
+    expect(schema.RemoteSourceContribution).toBeDefined();
+    expect(schema.DatasetKind).toBeDefined();
+    expect(schema.DatasetContribution).toBeDefined();
+    expect(schema.DatasetCapabilities).toBeDefined();
+    expect(schema.DatasetArtifactFormat).toBeDefined();
+    expect(schema.DatasetContext).toBeDefined();
+    expect(schema.DatasetCaptureOptions).toBeDefined();
+    expect(schema.DatasetApplyOptions).toBeDefined();
+    expect(schema.DatasetApplyResult).toBeDefined();
+    expect(schema.SyncResult).toBeDefined();
     expect(schema.FileFormat).toBeDefined();
     expect(schema.ContentSource).toBeDefined();
     expect(schema.ManagedFile).toBeDefined();
@@ -135,8 +153,24 @@ describe("@lando/sdk package exports", () => {
       "PreBootstrapEvent",
       "DeprecationUsedEvent",
       "TaskDetailEvent",
+      "RemoteCapabilities",
+      "RemoteConfig",
+      "RemoteEnvironment",
+      "RemoteEnvId",
+      "RemoteLocator",
+      "RemoteFetchOptions",
+      "RemoteSendOptions",
+      "RemoteTestResult",
+      "DatasetKind",
+      "DatasetCapabilities",
+      "DatasetArtifactFormat",
+      "DatasetContext",
+      "DatasetCaptureOptions",
+      "DatasetApplyOptions",
+      "DatasetApplyResult",
+      "SyncResult",
     ] as const) {
-      const jsonSchema = schema.getJsonSchema(schemaName);
+      const jsonSchema = schema.getJsonSchema(schemaName) as { readonly $schema?: unknown };
 
       expect(jsonSchema).toBeDefined();
       expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
@@ -160,11 +194,9 @@ describe("@lando/sdk package exports", () => {
     expect(coreSchema.getJsonSchema("DeprecationNotice")).toEqual(
       sdkSchema.getJsonSchema("DeprecationNotice"),
     );
-    expect(coreSchema.publicSchemaRegistry.DeprecationNotice.description).toBe(
-      sdkSchema.publicSchemaRegistry.DeprecationNotice.description,
-    );
-    expect(coreSchema.publicSchemaMetadataIndex.DeprecationNotice).toEqual(
-      sdkSchema.publicSchemaMetadataIndex.DeprecationNotice,
+    expect(coreSchema.publicSchemaRegistry).toHaveProperty("DeprecationNotice");
+    expect(coreSchema.publicSchemaMetadataIndex.find((entry) => entry.id === "DeprecationNotice")).toEqual(
+      sdkSchema.publicSchemaMetadataIndex.find((entry) => entry.id === "DeprecationNotice"),
     );
     expect(coreSchema.renderPublicSchemaReferencePages()).toEqual(
       sdkSchema.renderPublicSchemaReferencePages(),
@@ -198,6 +230,18 @@ describe("@lando/sdk package exports", () => {
     expect(errors.SnapshotNotFoundError).toBeDefined();
     expect(errors.VolumeNotFoundError).toBeDefined();
     expect(errors.ArchiveFormatError).toBeDefined();
+    expect(errors.RemoteError).toBeDefined();
+    expect(errors.RemoteUnreachableError).toBeDefined();
+    expect(errors.RemoteAuthError).toBeDefined();
+    expect(errors.RemoteEnvNotFoundError).toBeDefined();
+    expect(errors.RemoteDatasetUnsupportedError).toBeDefined();
+    expect(errors.RemoteProviderUnavailableError).toBeDefined();
+    expect(errors.RemoteProtectedEnvError).toBeDefined();
+    expect(errors.RemoteToolMissingError).toBeDefined();
+    expect(errors.DatasetError).toBeDefined();
+    expect(errors.DatasetCaptureError).toBeDefined();
+    expect(errors.DatasetApplyError).toBeDefined();
+    expect(errors.DatasetBindingError).toBeDefined();
     expect(errors.VolumeOperationError).toBeDefined();
     expect(errors.ServiceCopyError).toBeDefined();
     expect(errors.ArtifactTransferError).toBeDefined();
@@ -268,6 +312,18 @@ describe("@lando/sdk package exports", () => {
     expect(events.PreDownloadEvent).toBeDefined();
     expect(events.DownloadProgressEvent).toBeDefined();
     expect(events.PostDownloadEvent).toBeDefined();
+    expect(events.PrePullEvent).toBeDefined();
+    expect(events.PostPullEvent).toBeDefined();
+    expect(events.PrePushEvent).toBeDefined();
+    expect(events.PostPushEvent).toBeDefined();
+    expect(events.PreDatasetFetchEvent).toBeDefined();
+    expect(events.PostDatasetFetchEvent).toBeDefined();
+    expect(events.PreDatasetApplyEvent).toBeDefined();
+    expect(events.PostDatasetApplyEvent).toBeDefined();
+    expect(events.PreDatasetCaptureEvent).toBeDefined();
+    expect(events.PostDatasetCaptureEvent).toBeDefined();
+    expect(events.PreDatasetSendEvent).toBeDefined();
+    expect(events.PostDatasetSendEvent).toBeDefined();
     expect(events.DeprecationUsedEvent).toBeDefined();
     expect(events.LandoEvent).toBeDefined();
   });
@@ -296,6 +352,8 @@ describe("@lando/sdk package exports", () => {
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.Downloader).toBeDefined();
     expect(services.DataMover).toBeDefined();
+    expect(services.RemoteSource).toBeDefined();
+    expect(services.Dataset).toBeDefined();
   });
 
   test("secrets entry point exports the single value redactor", async () => {

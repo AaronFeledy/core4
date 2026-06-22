@@ -1,0 +1,22 @@
+---
+title: Post Pull Event
+description: Public Lando schema contract for Post Pull Event.
+---
+
+# Post Pull Event
+
+Public Lando schema contract for Post Pull Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-pull-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-pull` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-pull` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `datasets` | Yes | `array` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

@@ -1060,6 +1060,150 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Remote Capabilities.",
+      "docsPath": "docs/reference/schemas/remote-capabilities.mdx",
+      "id": "RemoteCapabilities",
+      "jsonSchemaPath": "dist/schemas/remote-capabilities.json",
+      "packageExport": "@lando/sdk/schema#RemoteCapabilities",
+      "title": "Remote Capabilities"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Config.",
+      "docsPath": "docs/reference/schemas/remote-config.mdx",
+      "id": "RemoteConfig",
+      "jsonSchemaPath": "dist/schemas/remote-config.json",
+      "packageExport": "@lando/sdk/schema#RemoteConfig",
+      "title": "Remote Config"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Environment.",
+      "docsPath": "docs/reference/schemas/remote-environment.mdx",
+      "id": "RemoteEnvironment",
+      "jsonSchemaPath": "dist/schemas/remote-environment.json",
+      "packageExport": "@lando/sdk/schema#RemoteEnvironment",
+      "title": "Remote Environment"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Env Id.",
+      "docsPath": "docs/reference/schemas/remote-env-id.mdx",
+      "id": "RemoteEnvId",
+      "jsonSchemaPath": "dist/schemas/remote-env-id.json",
+      "packageExport": "@lando/sdk/schema#RemoteEnvId",
+      "title": "Remote Env Id"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Locator.",
+      "docsPath": "docs/reference/schemas/remote-locator.mdx",
+      "id": "RemoteLocator",
+      "jsonSchemaPath": "dist/schemas/remote-locator.json",
+      "packageExport": "@lando/sdk/schema#RemoteLocator",
+      "title": "Remote Locator"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Fetch Options.",
+      "docsPath": "docs/reference/schemas/remote-fetch-options.mdx",
+      "id": "RemoteFetchOptions",
+      "jsonSchemaPath": "dist/schemas/remote-fetch-options.json",
+      "packageExport": "@lando/sdk/schema#RemoteFetchOptions",
+      "title": "Remote Fetch Options"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Send Options.",
+      "docsPath": "docs/reference/schemas/remote-send-options.mdx",
+      "id": "RemoteSendOptions",
+      "jsonSchemaPath": "dist/schemas/remote-send-options.json",
+      "packageExport": "@lando/sdk/schema#RemoteSendOptions",
+      "title": "Remote Send Options"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Remote Test Result.",
+      "docsPath": "docs/reference/schemas/remote-test-result.mdx",
+      "id": "RemoteTestResult",
+      "jsonSchemaPath": "dist/schemas/remote-test-result.json",
+      "packageExport": "@lando/sdk/schema#RemoteTestResult",
+      "title": "Remote Test Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Kind.",
+      "docsPath": "docs/reference/schemas/dataset-kind.mdx",
+      "id": "DatasetKind",
+      "jsonSchemaPath": "dist/schemas/dataset-kind.json",
+      "packageExport": "@lando/sdk/schema#DatasetKind",
+      "title": "Dataset Kind"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Capabilities.",
+      "docsPath": "docs/reference/schemas/dataset-capabilities.mdx",
+      "id": "DatasetCapabilities",
+      "jsonSchemaPath": "dist/schemas/dataset-capabilities.json",
+      "packageExport": "@lando/sdk/schema#DatasetCapabilities",
+      "title": "Dataset Capabilities"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Artifact Format.",
+      "docsPath": "docs/reference/schemas/dataset-artifact-format.mdx",
+      "id": "DatasetArtifactFormat",
+      "jsonSchemaPath": "dist/schemas/dataset-artifact-format.json",
+      "packageExport": "@lando/sdk/schema#DatasetArtifactFormat",
+      "title": "Dataset Artifact Format"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Context.",
+      "docsPath": "docs/reference/schemas/dataset-context.mdx",
+      "id": "DatasetContext",
+      "jsonSchemaPath": "dist/schemas/dataset-context.json",
+      "packageExport": "@lando/sdk/schema#DatasetContext",
+      "title": "Dataset Context"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Capture Options.",
+      "docsPath": "docs/reference/schemas/dataset-capture-options.mdx",
+      "id": "DatasetCaptureOptions",
+      "jsonSchemaPath": "dist/schemas/dataset-capture-options.json",
+      "packageExport": "@lando/sdk/schema#DatasetCaptureOptions",
+      "title": "Dataset Capture Options"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Apply Options.",
+      "docsPath": "docs/reference/schemas/dataset-apply-options.mdx",
+      "id": "DatasetApplyOptions",
+      "jsonSchemaPath": "dist/schemas/dataset-apply-options.json",
+      "packageExport": "@lando/sdk/schema#DatasetApplyOptions",
+      "title": "Dataset Apply Options"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Dataset Apply Result.",
+      "docsPath": "docs/reference/schemas/dataset-apply-result.mdx",
+      "id": "DatasetApplyResult",
+      "jsonSchemaPath": "dist/schemas/dataset-apply-result.json",
+      "packageExport": "@lando/sdk/schema#DatasetApplyResult",
+      "title": "Dataset Apply Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Sync Result.",
+      "docsPath": "docs/reference/schemas/sync-result.mdx",
+      "id": "SyncResult",
+      "jsonSchemaPath": "dist/schemas/sync-result.json",
+      "packageExport": "@lando/sdk/schema#SyncResult",
+      "title": "Sync Result"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Managed File.",
       "docsPath": "docs/reference/schemas/managed-file.mdx",
       "id": "ManagedFile",
@@ -1753,6 +1897,114 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Pre Pull Event.",
+      "docsPath": "docs/reference/schemas/pre-pull-event.mdx",
+      "id": "PrePullEvent",
+      "jsonSchemaPath": "dist/schemas/pre-pull-event.json",
+      "packageExport": "@lando/sdk/schema#PrePullEvent",
+      "title": "Pre Pull Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Pull Event.",
+      "docsPath": "docs/reference/schemas/post-pull-event.mdx",
+      "id": "PostPullEvent",
+      "jsonSchemaPath": "dist/schemas/post-pull-event.json",
+      "packageExport": "@lando/sdk/schema#PostPullEvent",
+      "title": "Post Pull Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Push Event.",
+      "docsPath": "docs/reference/schemas/pre-push-event.mdx",
+      "id": "PrePushEvent",
+      "jsonSchemaPath": "dist/schemas/pre-push-event.json",
+      "packageExport": "@lando/sdk/schema#PrePushEvent",
+      "title": "Pre Push Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Push Event.",
+      "docsPath": "docs/reference/schemas/post-push-event.mdx",
+      "id": "PostPushEvent",
+      "jsonSchemaPath": "dist/schemas/post-push-event.json",
+      "packageExport": "@lando/sdk/schema#PostPushEvent",
+      "title": "Post Push Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Dataset Fetch Event.",
+      "docsPath": "docs/reference/schemas/pre-dataset-fetch-event.mdx",
+      "id": "PreDatasetFetchEvent",
+      "jsonSchemaPath": "dist/schemas/pre-dataset-fetch-event.json",
+      "packageExport": "@lando/sdk/schema#PreDatasetFetchEvent",
+      "title": "Pre Dataset Fetch Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Dataset Fetch Event.",
+      "docsPath": "docs/reference/schemas/post-dataset-fetch-event.mdx",
+      "id": "PostDatasetFetchEvent",
+      "jsonSchemaPath": "dist/schemas/post-dataset-fetch-event.json",
+      "packageExport": "@lando/sdk/schema#PostDatasetFetchEvent",
+      "title": "Post Dataset Fetch Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Dataset Apply Event.",
+      "docsPath": "docs/reference/schemas/pre-dataset-apply-event.mdx",
+      "id": "PreDatasetApplyEvent",
+      "jsonSchemaPath": "dist/schemas/pre-dataset-apply-event.json",
+      "packageExport": "@lando/sdk/schema#PreDatasetApplyEvent",
+      "title": "Pre Dataset Apply Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Dataset Apply Event.",
+      "docsPath": "docs/reference/schemas/post-dataset-apply-event.mdx",
+      "id": "PostDatasetApplyEvent",
+      "jsonSchemaPath": "dist/schemas/post-dataset-apply-event.json",
+      "packageExport": "@lando/sdk/schema#PostDatasetApplyEvent",
+      "title": "Post Dataset Apply Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Dataset Capture Event.",
+      "docsPath": "docs/reference/schemas/pre-dataset-capture-event.mdx",
+      "id": "PreDatasetCaptureEvent",
+      "jsonSchemaPath": "dist/schemas/pre-dataset-capture-event.json",
+      "packageExport": "@lando/sdk/schema#PreDatasetCaptureEvent",
+      "title": "Pre Dataset Capture Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Dataset Capture Event.",
+      "docsPath": "docs/reference/schemas/post-dataset-capture-event.mdx",
+      "id": "PostDatasetCaptureEvent",
+      "jsonSchemaPath": "dist/schemas/post-dataset-capture-event.json",
+      "packageExport": "@lando/sdk/schema#PostDatasetCaptureEvent",
+      "title": "Post Dataset Capture Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Dataset Send Event.",
+      "docsPath": "docs/reference/schemas/pre-dataset-send-event.mdx",
+      "id": "PreDatasetSendEvent",
+      "jsonSchemaPath": "dist/schemas/pre-dataset-send-event.json",
+      "packageExport": "@lando/sdk/schema#PreDatasetSendEvent",
+      "title": "Pre Dataset Send Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Dataset Send Event.",
+      "docsPath": "docs/reference/schemas/post-dataset-send-event.mdx",
+      "id": "PostDatasetSendEvent",
+      "jsonSchemaPath": "dist/schemas/post-dataset-send-event.json",
+      "packageExport": "@lando/sdk/schema#PostDatasetSendEvent",
+      "title": "Post Dataset Send Event"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Pre Provider Apply Event.",
       "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
       "id": "PreProviderApplyEvent",
@@ -2056,6 +2308,22 @@
       "SnapshotInfo",
       "SnapshotFilter",
       "PrunePolicy",
+      "RemoteCapabilities",
+      "RemoteConfig",
+      "RemoteEnvironment",
+      "RemoteEnvId",
+      "RemoteLocator",
+      "RemoteFetchOptions",
+      "RemoteSendOptions",
+      "RemoteTestResult",
+      "DatasetKind",
+      "DatasetCapabilities",
+      "DatasetArtifactFormat",
+      "DatasetContext",
+      "DatasetCaptureOptions",
+      "DatasetApplyOptions",
+      "DatasetApplyResult",
+      "SyncResult",
       "ManagedFile",
       "ManagedFileInfo",
       "ManagedFilePlan",
@@ -2133,6 +2401,18 @@
       "PreDownloadEvent",
       "DownloadProgressEvent",
       "PostDownloadEvent",
+      "PrePullEvent",
+      "PostPullEvent",
+      "PrePushEvent",
+      "PostPushEvent",
+      "PreDatasetFetchEvent",
+      "PostDatasetFetchEvent",
+      "PreDatasetApplyEvent",
+      "PostDatasetApplyEvent",
+      "PreDatasetCaptureEvent",
+      "PostDatasetCaptureEvent",
+      "PreDatasetSendEvent",
+      "PostDatasetSendEvent",
       "PreProviderApplyEvent",
       "PostProviderApplyEvent",
       "PreProviderExecEvent",
@@ -3617,6 +3897,867 @@
           "type": "object"
         }
       ]
+    },
+    "DatasetApplyOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "expectedDigest": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "DatasetApplyResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "type": "boolean"
+        },
+        "localStore": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "type": "string"
+                },
+                "scope": {
+                  "enum": ["service", "app", "global"],
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["app", "store"],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "store": {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "type": "string"
+                },
+                "scope": {
+                  "enum": ["service", "app", "global"],
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["app", "store"],
+              "type": "object"
+            }
+          },
+          "required": ["id", "store"],
+          "type": "object"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": ["changed"],
+      "type": "object"
+    },
+    "DatasetArtifactFormat": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "archiveFormat": {
+          "enum": ["tar", "tar.gz", "tar.zst"],
+          "type": "string"
+        },
+        "endpoint": {
+          "enum": ["stream", "hostArchive", "artifact"],
+          "type": "string"
+        },
+        "mediaType": {
+          "type": "string"
+        }
+      },
+      "required": ["endpoint"],
+      "type": "object"
+    },
+    "DatasetCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "apply": {
+          "type": "boolean"
+        },
+        "capture": {
+          "type": "boolean"
+        },
+        "destructiveApply": {
+          "type": "boolean"
+        },
+        "localStore": {
+          "type": "boolean"
+        }
+      },
+      "required": ["capture", "apply"],
+      "type": "object"
+    },
+    "DatasetCaptureOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveFormat": {
+              "enum": ["tar", "tar.gz", "tar.zst"],
+              "type": "string"
+            },
+            "endpoint": {
+              "enum": ["stream", "hostArchive", "artifact"],
+              "type": "string"
+            },
+            "mediaType": {
+              "type": "string"
+            }
+          },
+          "required": ["endpoint"],
+          "type": "object"
+        },
+        "includeMetadata": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "DatasetContext": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        },
+        "FileSyncSessionSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "excludes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
+              "type": "string"
+            },
+            "mountKey": {
+              "type": "string"
+            },
+            "permissions": {
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "service": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["volume"],
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "name", "path"],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["service"],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "service", "path"],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "binding": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "creds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": ["engineId", "session"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [4],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": ["resolvedAt", "source", "runtime"],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name"],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name", "aliases"],
+                  "type": "object"
+                }
+              },
+              "required": ["perAppBridge"],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["name", "shared"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": ["globalServices"],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": ["http", "https", "both"],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": ["hostname", "scheme", "service"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": ["passthrough", "accelerated"],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["source", "target", "readOnly", "excludes", "includes", "realization"],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["ref"],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "ref"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "context"],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": ["cn", "sans", "caId"],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": ["started", "healthy"],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["service", "condition"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": ["http", "https", "tcp", "udp", "unix"],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["protocol"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": ["command", "http", "tcp", "none"],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "intervalSeconds", "timeoutSeconds", "retries"],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["hostname", "ip"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [4],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["resolvedAt", "source", "runtime"],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": ["passthrough", "accelerated"],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": ["bind", "tmpfs", "volume"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "target", "readOnly", "realization"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["index"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["store", "target", "readOnly"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": ["service", "app", "global"],
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "scope"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": ["app", "plan"],
+      "type": "object"
+    },
+    "DatasetKind": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["database", "files", "config", "blob"],
+      "type": "string"
     },
     "DataStoreMountPlan": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -9884,6 +11025,414 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-pull"],
+              "type": "string"
+            },
+            "datasets": {
+              "items": {
+                "enum": ["database", "files", "config", "blob"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-pull"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-pull"],
+              "type": "string"
+            },
+            "datasets": {
+              "items": {
+                "enum": ["database", "files", "config", "blob"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-pull"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-push"],
+              "type": "string"
+            },
+            "datasets": {
+              "items": {
+                "enum": ["database", "files", "config", "blob"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-push"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-push"],
+              "type": "string"
+            },
+            "datasets": {
+              "items": {
+                "enum": ["database", "files", "config", "blob"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-push"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-dataset-fetch"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-dataset-fetch"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-dataset-fetch"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-dataset-fetch"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-dataset-apply"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-dataset-apply"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-dataset-apply"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-dataset-apply"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-dataset-capture"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-dataset-capture"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-dataset-capture"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-dataset-capture"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-dataset-send"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-dataset-send"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-dataset-send"],
+              "type": "string"
+            },
+            "dataset": {
+              "enum": ["database", "files", "config", "blob"],
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "env": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-dataset-send"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "remote": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-provider-apply"],
               "type": "string"
             },
@@ -12058,6 +13607,51 @@
           },
           "type": "array"
         },
+        "datasets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "apply": {
+                    "type": "boolean"
+                  },
+                  "capture": {
+                    "type": "boolean"
+                  },
+                  "destructiveApply": {
+                    "type": "boolean"
+                  },
+                  "localStore": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["capture", "apply"],
+                "type": "object"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": ["database", "files", "config", "blob"],
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "module", "kind"],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "downloaders": {
           "items": {
             "additionalProperties": false,
@@ -12304,6 +13898,61 @@
           },
           "type": "array"
         },
+        "remoteSources": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "enum": ["none", "token", "oauth", "basic", "ssh", "custom"],
+                    "type": "string"
+                  },
+                  "datasets": {
+                    "items": {
+                      "enum": ["database", "files", "config", "blob"],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "environments": {
+                    "type": "boolean"
+                  },
+                  "protectedByDefault": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "push": {
+                    "type": "boolean"
+                  },
+                  "tool": {
+                    "type": "string"
+                  }
+                },
+                "required": ["environments", "push", "datasets"],
+                "type": "object"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "module", "capabilities"],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "renderers": {
           "items": {
             "anyOf": [
@@ -12530,6 +14179,51 @@
                     "type": "object"
                   }
                 ]
+              },
+              "type": "array"
+            },
+            "datasets": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "apply": {
+                        "type": "boolean"
+                      },
+                      "capture": {
+                        "type": "boolean"
+                      },
+                      "destructiveApply": {
+                        "type": "boolean"
+                      },
+                      "localStore": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["capture", "apply"],
+                    "type": "object"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["database", "files", "config", "blob"],
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "module", "kind"],
+                "type": "object"
               },
               "type": "array"
             },
@@ -12776,6 +14470,61 @@
                     "type": "object"
                   }
                 ]
+              },
+              "type": "array"
+            },
+            "remoteSources": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "auth": {
+                        "enum": ["none", "token", "oauth", "basic", "ssh", "custom"],
+                        "type": "string"
+                      },
+                      "datasets": {
+                        "items": {
+                          "enum": ["database", "files", "config", "blob"],
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "environments": {
+                        "type": "boolean"
+                      },
+                      "protectedByDefault": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "push": {
+                        "type": "boolean"
+                      },
+                      "tool": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["environments", "push", "datasets"],
+                    "type": "object"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "module", "capabilities"],
+                "type": "object"
               },
               "type": "array"
             },
@@ -13273,6 +15022,186 @@
         }
       },
       "required": ["_tag", "eventName", "appRef", "providerId", "timestamp"],
+      "type": "object"
+    },
+    "PostDatasetApplyEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-dataset-apply"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-dataset-apply"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+      "type": "object"
+    },
+    "PostDatasetCaptureEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-dataset-capture"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-dataset-capture"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+      "type": "object"
+    },
+    "PostDatasetFetchEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-dataset-fetch"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-dataset-fetch"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
+      "type": "object"
+    },
+    "PostDatasetSendEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-dataset-send"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-dataset-send"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp", "outcome"],
       "type": "object"
     },
     "PostDestroyEvent": {
@@ -14278,6 +16207,102 @@
         }
       },
       "required": ["_tag", "app", "service", "exitCode", "timestamp"],
+      "type": "object"
+    },
+    "PostPullEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-pull"],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-pull"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp", "outcome"],
+      "type": "object"
+    },
+    "PostPushEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-push"],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["post-push"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp", "outcome"],
       "type": "object"
     },
     "PostRebuildEvent": {
@@ -15330,6 +17355,146 @@
       "required": ["_tag", "eventName", "appRef", "providerId", "timestamp"],
       "type": "object"
     },
+    "PreDatasetApplyEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-dataset-apply"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-dataset-apply"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+      "type": "object"
+    },
+    "PreDatasetCaptureEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-dataset-capture"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-dataset-capture"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+      "type": "object"
+    },
+    "PreDatasetFetchEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-dataset-fetch"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-dataset-fetch"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+      "type": "object"
+    },
+    "PreDatasetSendEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-dataset-send"],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-dataset-send"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "dataset", "timestamp"],
+      "type": "object"
+    },
     "PreDestroyEvent": {
       "$defs": {
         "DateTimeUtc": {
@@ -16328,6 +18493,82 @@
         }
       },
       "required": ["_tag", "app", "service", "timestamp"],
+      "type": "object"
+    },
+    "PrePullEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-pull"],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-pull"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp"],
+      "type": "object"
+    },
+    "PrePushEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-push"],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-push"],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "remote", "env", "datasets", "timestamp"],
       "type": "object"
     },
     "PreRebuildEvent": {
@@ -18244,6 +20485,166 @@
       "required": ["resolution"],
       "type": "object"
     },
+    "RemoteCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "enum": ["none", "token", "oauth", "basic", "ssh", "custom"],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "environments": {
+          "type": "boolean"
+        },
+        "protectedByDefault": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "push": {
+          "type": "boolean"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": ["environments", "push", "datasets"],
+      "type": "object"
+    },
+    "RemoteConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "properties": {
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": ["source"],
+      "type": "object"
+    },
+    "RemoteEnvId": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "string"
+    },
+    "RemoteEnvironment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "protected": {
+          "type": "boolean"
+        }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
+    "RemoteFetchOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "expectedDigest": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "RemoteLocator": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "enum": ["database", "files", "config", "blob"],
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "remote": {
+          "type": "string"
+        }
+      },
+      "required": ["remote", "env", "dataset"],
+      "type": "object"
+    },
+    "RemoteSendOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "expectedDigest": {
+          "type": "string"
+        },
+        "force": {
+          "type": "boolean"
+        },
+        "protectedEnvConfirmed": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "RemoteTestResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "env": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": ["ok"],
+      "type": "object"
+    },
     "RouteInput": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -19521,6 +21922,198 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["service", "app", "global"],
       "type": "string"
+    },
+    "SyncResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["hostPath"],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "path"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["hostArchive"],
+                    "type": "string"
+                  },
+                  "format": {
+                    "enum": ["tar", "tar.gz", "tar.zst"],
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "path", "format"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["stream"],
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["volume"],
+                    "type": "string"
+                  },
+                  "app": {
+                    "type": "string"
+                  },
+                  "store": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "app", "store"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["servicePath"],
+                    "type": "string"
+                  },
+                  "app": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "app", "service", "path"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["serviceCmd"],
+                    "type": "string"
+                  },
+                  "app": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "app", "service", "command"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "enum": ["artifact"],
+                    "type": "string"
+                  },
+                  "ref": {
+                    "type": "string"
+                  }
+                },
+                "required": ["_tag", "ref"],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "datasets": {
+          "items": {
+            "enum": ["database", "files", "config", "blob"],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "direction": {
+          "enum": ["pull", "push"],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "snapshots": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "store": {
+                "additionalProperties": false,
+                "properties": {
+                  "app": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": ["service", "app", "global"],
+                    "type": "string"
+                  },
+                  "store": {
+                    "type": "string"
+                  }
+                },
+                "required": ["app", "store"],
+                "type": "object"
+              }
+            },
+            "required": ["id", "store"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": ["direction", "remote", "env", "datasets", "changed"],
+      "type": "object"
     },
     "TabProps": {
       "$defs": {

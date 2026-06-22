@@ -449,3 +449,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review feedback: fixed (no guide warranted for US-293's frozen type-only SDK surface; added Guide-Coverage-Skip line to PR body and re-triggered CI via push since rerun replays the stale body)
 - Merge: merged (squash)
 ---
+
+## 2026-06-22 14:24 CDT - US-344
+- Published the contract-only RemoteSource/Dataset SDK surface: service tags and mirrors, remote-sync schemas, tagged remote/dataset errors, Sync lifecycle event schemas, PluginManifest `remoteSources:`/`datasets:` contribution decoding, external contribution module normalization, public JSON-schema artifacts, and additive SDK compatibility/export coverage.
+- Verification: typecheck, lint, SDK build, schema codegen idempotence, focused SDK/schema/plugin-registry spot checks, and real import/decode driver passed.
+- **Learnings for future iterations:**
+  - Remote-sync contribution modules follow the same package-root normalization rule as globalServices and interactionServices; test the external plugin registry path before adding a new manifest contribution surface.
+---

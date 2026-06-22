@@ -108,6 +108,63 @@
           },
           "type": "array"
         },
+        "datasets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "apply": {
+                    "type": "boolean"
+                  },
+                  "capture": {
+                    "type": "boolean"
+                  },
+                  "destructiveApply": {
+                    "type": "boolean"
+                  },
+                  "localStore": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "capture",
+                  "apply"
+                ],
+                "type": "object"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "database",
+                  "files",
+                  "config",
+                  "blob"
+                ],
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "module",
+              "kind"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "downloaders": {
           "items": {
             "additionalProperties": false,
@@ -377,6 +434,81 @@
                 "type": "object"
               }
             ]
+          },
+          "type": "array"
+        },
+        "remoteSources": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {
+                    "enum": [
+                      "none",
+                      "token",
+                      "oauth",
+                      "basic",
+                      "ssh",
+                      "custom"
+                    ],
+                    "type": "string"
+                  },
+                  "datasets": {
+                    "items": {
+                      "enum": [
+                        "database",
+                        "files",
+                        "config",
+                        "blob"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "environments": {
+                    "type": "boolean"
+                  },
+                  "protectedByDefault": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "push": {
+                    "type": "boolean"
+                  },
+                  "tool": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "environments",
+                  "push",
+                  "datasets"
+                ],
+                "type": "object"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "module",
+              "capabilities"
+            ],
+            "type": "object"
           },
           "type": "array"
         },

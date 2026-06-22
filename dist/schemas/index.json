@@ -820,6 +820,150 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Remote Capabilities.",
+    "docsPath": "docs/reference/schemas/remote-capabilities.mdx",
+    "id": "RemoteCapabilities",
+    "jsonSchemaPath": "dist/schemas/remote-capabilities.json",
+    "packageExport": "@lando/sdk/schema#RemoteCapabilities",
+    "title": "Remote Capabilities"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Config.",
+    "docsPath": "docs/reference/schemas/remote-config.mdx",
+    "id": "RemoteConfig",
+    "jsonSchemaPath": "dist/schemas/remote-config.json",
+    "packageExport": "@lando/sdk/schema#RemoteConfig",
+    "title": "Remote Config"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Environment.",
+    "docsPath": "docs/reference/schemas/remote-environment.mdx",
+    "id": "RemoteEnvironment",
+    "jsonSchemaPath": "dist/schemas/remote-environment.json",
+    "packageExport": "@lando/sdk/schema#RemoteEnvironment",
+    "title": "Remote Environment"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Env Id.",
+    "docsPath": "docs/reference/schemas/remote-env-id.mdx",
+    "id": "RemoteEnvId",
+    "jsonSchemaPath": "dist/schemas/remote-env-id.json",
+    "packageExport": "@lando/sdk/schema#RemoteEnvId",
+    "title": "Remote Env Id"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Locator.",
+    "docsPath": "docs/reference/schemas/remote-locator.mdx",
+    "id": "RemoteLocator",
+    "jsonSchemaPath": "dist/schemas/remote-locator.json",
+    "packageExport": "@lando/sdk/schema#RemoteLocator",
+    "title": "Remote Locator"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Fetch Options.",
+    "docsPath": "docs/reference/schemas/remote-fetch-options.mdx",
+    "id": "RemoteFetchOptions",
+    "jsonSchemaPath": "dist/schemas/remote-fetch-options.json",
+    "packageExport": "@lando/sdk/schema#RemoteFetchOptions",
+    "title": "Remote Fetch Options"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Send Options.",
+    "docsPath": "docs/reference/schemas/remote-send-options.mdx",
+    "id": "RemoteSendOptions",
+    "jsonSchemaPath": "dist/schemas/remote-send-options.json",
+    "packageExport": "@lando/sdk/schema#RemoteSendOptions",
+    "title": "Remote Send Options"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Remote Test Result.",
+    "docsPath": "docs/reference/schemas/remote-test-result.mdx",
+    "id": "RemoteTestResult",
+    "jsonSchemaPath": "dist/schemas/remote-test-result.json",
+    "packageExport": "@lando/sdk/schema#RemoteTestResult",
+    "title": "Remote Test Result"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Kind.",
+    "docsPath": "docs/reference/schemas/dataset-kind.mdx",
+    "id": "DatasetKind",
+    "jsonSchemaPath": "dist/schemas/dataset-kind.json",
+    "packageExport": "@lando/sdk/schema#DatasetKind",
+    "title": "Dataset Kind"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Capabilities.",
+    "docsPath": "docs/reference/schemas/dataset-capabilities.mdx",
+    "id": "DatasetCapabilities",
+    "jsonSchemaPath": "dist/schemas/dataset-capabilities.json",
+    "packageExport": "@lando/sdk/schema#DatasetCapabilities",
+    "title": "Dataset Capabilities"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Artifact Format.",
+    "docsPath": "docs/reference/schemas/dataset-artifact-format.mdx",
+    "id": "DatasetArtifactFormat",
+    "jsonSchemaPath": "dist/schemas/dataset-artifact-format.json",
+    "packageExport": "@lando/sdk/schema#DatasetArtifactFormat",
+    "title": "Dataset Artifact Format"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Context.",
+    "docsPath": "docs/reference/schemas/dataset-context.mdx",
+    "id": "DatasetContext",
+    "jsonSchemaPath": "dist/schemas/dataset-context.json",
+    "packageExport": "@lando/sdk/schema#DatasetContext",
+    "title": "Dataset Context"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Capture Options.",
+    "docsPath": "docs/reference/schemas/dataset-capture-options.mdx",
+    "id": "DatasetCaptureOptions",
+    "jsonSchemaPath": "dist/schemas/dataset-capture-options.json",
+    "packageExport": "@lando/sdk/schema#DatasetCaptureOptions",
+    "title": "Dataset Capture Options"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Apply Options.",
+    "docsPath": "docs/reference/schemas/dataset-apply-options.mdx",
+    "id": "DatasetApplyOptions",
+    "jsonSchemaPath": "dist/schemas/dataset-apply-options.json",
+    "packageExport": "@lando/sdk/schema#DatasetApplyOptions",
+    "title": "Dataset Apply Options"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Dataset Apply Result.",
+    "docsPath": "docs/reference/schemas/dataset-apply-result.mdx",
+    "id": "DatasetApplyResult",
+    "jsonSchemaPath": "dist/schemas/dataset-apply-result.json",
+    "packageExport": "@lando/sdk/schema#DatasetApplyResult",
+    "title": "Dataset Apply Result"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Sync Result.",
+    "docsPath": "docs/reference/schemas/sync-result.mdx",
+    "id": "SyncResult",
+    "jsonSchemaPath": "dist/schemas/sync-result.json",
+    "packageExport": "@lando/sdk/schema#SyncResult",
+    "title": "Sync Result"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Managed File.",
     "docsPath": "docs/reference/schemas/managed-file.mdx",
     "id": "ManagedFile",
@@ -1510,6 +1654,114 @@
     "jsonSchemaPath": "dist/schemas/post-download-event.json",
     "packageExport": "@lando/sdk/schema#PostDownloadEvent",
     "title": "Post Download Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Pull Event.",
+    "docsPath": "docs/reference/schemas/pre-pull-event.mdx",
+    "id": "PrePullEvent",
+    "jsonSchemaPath": "dist/schemas/pre-pull-event.json",
+    "packageExport": "@lando/sdk/schema#PrePullEvent",
+    "title": "Pre Pull Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Pull Event.",
+    "docsPath": "docs/reference/schemas/post-pull-event.mdx",
+    "id": "PostPullEvent",
+    "jsonSchemaPath": "dist/schemas/post-pull-event.json",
+    "packageExport": "@lando/sdk/schema#PostPullEvent",
+    "title": "Post Pull Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Push Event.",
+    "docsPath": "docs/reference/schemas/pre-push-event.mdx",
+    "id": "PrePushEvent",
+    "jsonSchemaPath": "dist/schemas/pre-push-event.json",
+    "packageExport": "@lando/sdk/schema#PrePushEvent",
+    "title": "Pre Push Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Push Event.",
+    "docsPath": "docs/reference/schemas/post-push-event.mdx",
+    "id": "PostPushEvent",
+    "jsonSchemaPath": "dist/schemas/post-push-event.json",
+    "packageExport": "@lando/sdk/schema#PostPushEvent",
+    "title": "Post Push Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Dataset Fetch Event.",
+    "docsPath": "docs/reference/schemas/pre-dataset-fetch-event.mdx",
+    "id": "PreDatasetFetchEvent",
+    "jsonSchemaPath": "dist/schemas/pre-dataset-fetch-event.json",
+    "packageExport": "@lando/sdk/schema#PreDatasetFetchEvent",
+    "title": "Pre Dataset Fetch Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Dataset Fetch Event.",
+    "docsPath": "docs/reference/schemas/post-dataset-fetch-event.mdx",
+    "id": "PostDatasetFetchEvent",
+    "jsonSchemaPath": "dist/schemas/post-dataset-fetch-event.json",
+    "packageExport": "@lando/sdk/schema#PostDatasetFetchEvent",
+    "title": "Post Dataset Fetch Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Dataset Apply Event.",
+    "docsPath": "docs/reference/schemas/pre-dataset-apply-event.mdx",
+    "id": "PreDatasetApplyEvent",
+    "jsonSchemaPath": "dist/schemas/pre-dataset-apply-event.json",
+    "packageExport": "@lando/sdk/schema#PreDatasetApplyEvent",
+    "title": "Pre Dataset Apply Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Dataset Apply Event.",
+    "docsPath": "docs/reference/schemas/post-dataset-apply-event.mdx",
+    "id": "PostDatasetApplyEvent",
+    "jsonSchemaPath": "dist/schemas/post-dataset-apply-event.json",
+    "packageExport": "@lando/sdk/schema#PostDatasetApplyEvent",
+    "title": "Post Dataset Apply Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Dataset Capture Event.",
+    "docsPath": "docs/reference/schemas/pre-dataset-capture-event.mdx",
+    "id": "PreDatasetCaptureEvent",
+    "jsonSchemaPath": "dist/schemas/pre-dataset-capture-event.json",
+    "packageExport": "@lando/sdk/schema#PreDatasetCaptureEvent",
+    "title": "Pre Dataset Capture Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Dataset Capture Event.",
+    "docsPath": "docs/reference/schemas/post-dataset-capture-event.mdx",
+    "id": "PostDatasetCaptureEvent",
+    "jsonSchemaPath": "dist/schemas/post-dataset-capture-event.json",
+    "packageExport": "@lando/sdk/schema#PostDatasetCaptureEvent",
+    "title": "Post Dataset Capture Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Dataset Send Event.",
+    "docsPath": "docs/reference/schemas/pre-dataset-send-event.mdx",
+    "id": "PreDatasetSendEvent",
+    "jsonSchemaPath": "dist/schemas/pre-dataset-send-event.json",
+    "packageExport": "@lando/sdk/schema#PreDatasetSendEvent",
+    "title": "Pre Dataset Send Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Dataset Send Event.",
+    "docsPath": "docs/reference/schemas/post-dataset-send-event.mdx",
+    "id": "PostDatasetSendEvent",
+    "jsonSchemaPath": "dist/schemas/post-dataset-send-event.json",
+    "packageExport": "@lando/sdk/schema#PostDatasetSendEvent",
+    "title": "Post Dataset Send Event"
   },
   {
     "deprecated": false,

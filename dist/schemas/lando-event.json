@@ -4750,6 +4750,630 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-pull"
+          ],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": [
+              "database",
+              "files",
+              "config",
+              "blob"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-pull"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "datasets",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-pull"
+          ],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": [
+              "database",
+              "files",
+              "config",
+              "blob"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-pull"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "datasets",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-push"
+          ],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": [
+              "database",
+              "files",
+              "config",
+              "blob"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-push"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "datasets",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-push"
+          ],
+          "type": "string"
+        },
+        "datasets": {
+          "items": {
+            "enum": [
+              "database",
+              "files",
+              "config",
+              "blob"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-push"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "datasets",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-dataset-fetch"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-dataset-fetch"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-dataset-fetch"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-dataset-fetch"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-dataset-apply"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-dataset-apply"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-dataset-apply"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-dataset-apply"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-dataset-capture"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-dataset-capture"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-dataset-capture"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-dataset-capture"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "pre-dataset-send"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-dataset-send"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-dataset-send"
+          ],
+          "type": "string"
+        },
+        "dataset": {
+          "enum": [
+            "database",
+            "files",
+            "config",
+            "blob"
+          ],
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "env": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "post-dataset-send"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "remote",
+        "env",
+        "dataset",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-provider-apply"
           ],
           "type": "string"
