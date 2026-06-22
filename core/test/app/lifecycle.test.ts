@@ -232,6 +232,89 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  test("managed start adopts a detached running file-sync session", async () => {
+    await withTempApp(async (dir) => {
+      const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
+      let createCalls = 0;
+      let createFinalizerCalls = 0;
+      let terminateCalls = 0;
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          Effect.gen(function* () {
+            createCalls += 1;
+            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+            sessions.set(ref, {
+              ref,
+              app: spec.app,
+              service: spec.service,
+              mountKey: spec.mountKey,
+              status: "running",
+              lastUpdatedAt: fixedDateTime,
+            });
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                createFinalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: (ref) =>
+          Effect.sync(() => {
+            terminateCalls += 1;
+            sessions.delete(ref);
+          }),
+        listSessions: ({ app, service, mountKey }) =>
+          Effect.succeed(
+            Array.from(sessions.values()).filter(
+              (session) =>
+                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+            ),
+          ),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start({ detached: true });
+            yield* app.start();
+            return {
+              createCalls,
+              createFinalizerCalls,
+              sessions: sessions.size,
+              terminateCalls,
+            };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir))),
+      );
+
+      expect(insideScope).toEqual({
+        createCalls: 1,
+        createFinalizerCalls: 0,
+        sessions: 1,
+        terminateCalls: 0,
+      });
+      expect(createFinalizerCalls).toBe(0);
+      expect(terminateCalls).toBe(1);
+      expect(sessions.size).toBe(0);
+    });
+  });
+
   test("stop tears down the managed start scope so file-sync finalizers run", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
@@ -454,6 +537,7 @@ describe("App handle managed lifecycle scopes", () => {
       const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
       let createCalls = 0;
       let finalizerCalls = 0;
+      let terminateCalls = 0;
       const engine: FileSyncEngineShape = {
         id: "test",
         displayName: "Tracking File Sync",
@@ -490,6 +574,7 @@ describe("App handle managed lifecycle scopes", () => {
         resumeSession: () => Effect.void,
         terminateSession: (ref) =>
           Effect.sync(() => {
+            terminateCalls += 1;
             sessions.delete(ref);
           }),
         listSessions: ({ app, service, mountKey }) =>
@@ -508,13 +593,14 @@ describe("App handle managed lifecycle scopes", () => {
             const app = yield* resolveApp();
             yield* app.start();
             yield* app.start();
-            return { createCalls, finalizerCalls, sessions: sessions.size };
+            return { createCalls, finalizerCalls, sessions: sessions.size, terminateCalls };
           }),
         ).pipe(Effect.provide(appLayer(engine, dir))),
       );
 
-      expect(insideScope).toEqual({ createCalls: 1, finalizerCalls: 0, sessions: 1 });
+      expect(insideScope).toEqual({ createCalls: 1, finalizerCalls: 0, sessions: 1, terminateCalls: 0 });
       expect(finalizerCalls).toBe(1);
+      expect(terminateCalls).toBe(0);
       expect(sessions.size).toBe(0);
     });
   });

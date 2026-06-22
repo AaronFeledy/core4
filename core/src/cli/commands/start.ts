@@ -75,6 +75,23 @@ const endpointText = (endpoint: {
 
 const READY_STATES = new Set(["running", "ready"]);
 
+const managedFileSyncRefs = new WeakMap<Scope.CloseableScope, Set<FileSyncSessionRef>>();
+
+const managedRefsFor = (scope: Scope.CloseableScope): Set<FileSyncSessionRef> => {
+  const refs = managedFileSyncRefs.get(scope);
+  if (refs !== undefined) return refs;
+  const fresh = new Set<FileSyncSessionRef>();
+  managedFileSyncRefs.set(scope, fresh);
+  return fresh;
+};
+
+const hasManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionRef): boolean =>
+  managedRefsFor(managed.scope).has(ref);
+
+const markManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionRef): void => {
+  managedRefsFor(managed.scope).add(ref);
+};
+
 const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
@@ -127,7 +144,18 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?:
                 yield* Effect.addFinalizer(() =>
                   engine.pauseSession(existingSession.ref).pipe(Effect.catchAll(() => Effect.void)),
                 ).pipe(Effect.provideService(Scope.Scope, managed.scope));
+                markManagedFileSyncRef(managed, existingSession.ref);
               }
+            }
+            if (
+              existingSession.status === "running" &&
+              managed !== undefined &&
+              !hasManagedFileSyncRef(managed, existingSession.ref)
+            ) {
+              yield* Effect.addFinalizer(() =>
+                engine.terminateSession(existingSession.ref).pipe(Effect.catchAll(() => Effect.void)),
+              ).pipe(Effect.provideService(Scope.Scope, managed.scope));
+              markManagedFileSyncRef(managed, existingSession.ref);
             }
             if (existingSession.status === "running" || existingSession.status === "paused") return;
           }
@@ -136,6 +164,7 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?:
           const ref = yield* engine
             .createSession(entry.session)
             .pipe(Effect.provideService(Scope.Scope, sessionScope));
+          if (managed !== undefined) markManagedFileSyncRef(managed, ref);
           createdRefs.push(ref);
         }),
       { discard: true },
