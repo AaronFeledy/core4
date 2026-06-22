@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "apply": {
+      "type": "boolean"
+    },
+    "capture": {
+      "type": "boolean"
+    },
+    "destructiveApply": {
+      "type": "boolean"
+    },
+    "localStore": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "capture",
+    "apply"
+  ],
+  "type": "object"
+}

@@ -16,6 +16,7 @@ export * from "./plugin.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";
+export * from "./remote-sync.ts";
 export * from "./runtime.ts";
 export * from "./scanner.ts";
 export * from "./scratch.ts";

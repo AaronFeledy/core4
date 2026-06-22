@@ -6,6 +6,14 @@ type _ServiceTagCompatContext = typeof Context.Tag;
 import type {
   AbsolutePath,
   AppPlan,
+  DataEndpoint,
+  DatasetApplyOptions,
+  DatasetApplyResult,
+  DatasetArtifactFormat,
+  DatasetCapabilities,
+  DatasetCaptureOptions,
+  DatasetContext,
+  DatasetKind,
   DeprecationNotice,
   DeprecationSurfaceKind,
   DeprecationUse,
@@ -24,6 +32,14 @@ import type {
   ProviderCapabilities,
   ProviderId,
   RecipeManifest,
+  RemoteCapabilities,
+  RemoteConfig,
+  RemoteEnvId,
+  RemoteEnvironment,
+  RemoteFetchOptions,
+  RemoteLocator,
+  RemoteSendOptions,
+  RemoteTestResult,
   ServiceConfig,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
@@ -121,6 +137,7 @@ import type {
   ServiceRuntimeInfo,
   ServiceSelector,
 } from "./provider.ts";
+import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
   ScratchAppPaths,
@@ -154,6 +171,7 @@ export * from "./plugin-trust.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";
+export * from "./remote-sync.ts";
 export * from "./scratch.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 
@@ -664,6 +682,56 @@ export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
 >() {}
 
 export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+
+export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<
+  RemoteSource,
+  {
+    readonly id: string;
+    readonly capabilities: RemoteCapabilities;
+    readonly configSchema: Schema.Schema<unknown>;
+    readonly listEnvironments: (
+      cfg: RemoteConfig,
+    ) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteSourceError>;
+    readonly resolve: (
+      cfg: RemoteConfig,
+      env: RemoteEnvId,
+      datasetId: string,
+    ) => Effect.Effect<RemoteLocator, RemoteSourceError>;
+    readonly fetch: (
+      locator: RemoteLocator,
+      opts?: RemoteFetchOptions,
+    ) => Effect.Effect<DataEndpoint, RemoteSourceError, Scope.Scope>;
+    readonly send: (
+      locator: RemoteLocator,
+      artifact: DataEndpoint,
+      opts?: RemoteSendOptions,
+    ) => Effect.Effect<void, RemoteSourceError, Scope.Scope>;
+    readonly test?: (
+      cfg: RemoteConfig,
+      env?: RemoteEnvId,
+    ) => Effect.Effect<RemoteTestResult, RemoteSourceError>;
+  }
+>() {}
+
+export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
+  Dataset,
+  {
+    readonly id: string;
+    readonly kind: DatasetKind;
+    readonly capabilities: DatasetCapabilities;
+    readonly artifactFormat: DatasetArtifactFormat;
+    readonly capture: (
+      ctx: DatasetContext,
+      opts?: DatasetCaptureOptions,
+    ) => Effect.Effect<DataEndpoint, DatasetServiceError, Scope.Scope>;
+    readonly apply: (
+      ctx: DatasetContext,
+      artifact: DataEndpoint,
+      opts?: DatasetApplyOptions,
+    ) => Effect.Effect<DatasetApplyResult, DatasetServiceError, Scope.Scope>;
+    readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
+  }
+>() {}
 
 export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
   ConfigTranslator,

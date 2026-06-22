@@ -1,0 +1,22 @@
+---
+title: Post Dataset Capture Event
+description: Public Lando schema contract for Post Dataset Capture Event.
+---
+
+# Post Dataset Capture Event
+
+Public Lando schema contract for Post Dataset Capture Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-dataset-capture-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-dataset-capture` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-dataset-capture` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `dataset` | Yes | `string` | — | — | `database`, `files`, `config`, `blob` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

@@ -1,0 +1,54 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "pre-pull"
+      ],
+      "type": "string"
+    },
+    "datasets": {
+      "items": {
+        "enum": [
+          "database",
+          "files",
+          "config",
+          "blob"
+        ],
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "env": {
+      "type": "string"
+    },
+    "eventName": {
+      "enum": [
+        "pre-pull"
+      ],
+      "type": "string"
+    },
+    "remote": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "remote",
+    "env",
+    "datasets",
+    "timestamp"
+  ],
+  "type": "object"
+}

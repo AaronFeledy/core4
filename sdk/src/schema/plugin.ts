@@ -4,6 +4,7 @@ import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
+import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts";
 
 export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
 export type EmbeddingPluginPolicyMode = typeof EmbeddingPluginPolicyMode.Type;
@@ -168,6 +169,8 @@ export const PluginContribution = Schema.Struct({
   downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
   /** Interaction (prompting) service implementations registered. */
   interactionServices: Schema.optional(Schema.Array(InteractionServiceContribution)),
+  remoteSources: Schema.optional(Schema.Array(RemoteSourceContribution)),
+  datasets: Schema.optional(Schema.Array(DatasetContribution)),
   setup: Schema.optional(PluginSetupContribution),
 });
 export type PluginContribution = typeof PluginContribution.Type;

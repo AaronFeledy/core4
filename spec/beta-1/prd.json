@@ -2607,7 +2607,7 @@
         "Lint passes."
       ],
       "priority": 145,
-      "passes": false,
+      "passes": true,
       "notes": "RemoteSource/Dataset contract freeze (spec \u00a710.12, \u00a73.5, \u00a74.2, \u00a79.5). Contract-only; the `lando pull`/`push` feature + bundled remotes + hoster plugins + database/files Dataset impls are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore/Paths), PRD-14 (probe/events/contract-kit), PRD-16 (DataMover)."
     },
     {

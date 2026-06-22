@@ -1,0 +1,22 @@
+---
+title: Post Dataset Apply Event
+description: Public Lando schema contract for Post Dataset Apply Event.
+---
+
+# Post Dataset Apply Event
+
+Public Lando schema contract for Post Dataset Apply Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-dataset-apply-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-dataset-apply` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-dataset-apply` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `dataset` | Yes | `string` | — | — | `database`, `files`, `config`, `blob` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

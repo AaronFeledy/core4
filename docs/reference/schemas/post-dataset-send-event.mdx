@@ -1,0 +1,22 @@
+---
+title: Post Dataset Send Event
+description: Public Lando schema contract for Post Dataset Send Event.
+---
+
+# Post Dataset Send Event
+
+Public Lando schema contract for Post Dataset Send Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-dataset-send-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-dataset-send` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-dataset-send` | — | — |
+| `remote` | Yes | `string` | a string | — | — | — | — |
+| `env` | Yes | `string` | a string | — | — | — | — |
+| `dataset` | Yes | `string` | — | — | `database`, `files`, `config`, `blob` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |

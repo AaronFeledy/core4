@@ -90,7 +90,15 @@ const normalizeExternalContributionModules = async (
   const globalServices = manifest.contributes?.globalServices;
   const downloaders = manifest.contributes?.downloaders;
   const interactionServices = manifest.contributes?.interactionServices;
-  if (globalServices === undefined && downloaders === undefined && interactionServices === undefined) {
+  const remoteSources = manifest.contributes?.remoteSources;
+  const datasets = manifest.contributes?.datasets;
+  if (
+    globalServices === undefined &&
+    downloaders === undefined &&
+    interactionServices === undefined &&
+    remoteSources === undefined &&
+    datasets === undefined
+  ) {
     return manifest;
   }
 
@@ -126,6 +134,24 @@ const normalizeExternalContributionModules = async (
             module: await normalizeContributionModulePath(contribution.module),
           })),
         );
+  const normalizedRemoteSources =
+    remoteSources === undefined
+      ? undefined
+      : await Promise.all(
+          remoteSources.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeContributionModulePath(contribution.module),
+          })),
+        );
+  const normalizedDatasets =
+    datasets === undefined
+      ? undefined
+      : await Promise.all(
+          datasets.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeContributionModulePath(contribution.module),
+          })),
+        );
 
   return {
     ...manifest,
@@ -136,6 +162,8 @@ const normalizeExternalContributionModules = async (
       ...(normalizedInteractionServices === undefined
         ? {}
         : { interactionServices: normalizedInteractionServices }),
+      ...(normalizedRemoteSources === undefined ? {} : { remoteSources: normalizedRemoteSources }),
+      ...(normalizedDatasets === undefined ? {} : { datasets: normalizedDatasets }),
     },
   };
 };
