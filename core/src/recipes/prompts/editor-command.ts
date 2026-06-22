@@ -157,9 +157,13 @@ export const createDefaultEditorRunner = (options: DefaultEditorRunnerOptions = 
     const editor = resolveEditorCommand(env);
     if (editor === undefined) return { kind: "no-editor" };
     const dir = await mkdtemp(join(options.tmpRoot ?? tmpdir(), "lando-editor-"));
-    const file = join(dir, `${sanitizeName(name)}.txt`);
-    await writeFile(file, content, "utf8");
     try {
+      const file = join(dir, `${sanitizeName(name)}.txt`);
+      try {
+        await writeFile(file, content, "utf8");
+      } catch (cause) {
+        return { kind: "failed", reason: `editor buffer could not be written: ${describeCause(cause)}` };
+      }
       let result: Awaited<ReturnType<EditorSpawner["spawn"]>>;
       try {
         result = await spawner.spawn({ cmd: editor.cmd, args: [...editor.args, file], cwd });

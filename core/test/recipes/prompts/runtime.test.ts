@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -856,6 +856,25 @@ describe("collectPrompts — editor", () => {
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("default editor runner removes the temp dir when the seed buffer cannot be written", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-editor-write-fail-test-"));
+    try {
+      const runner = createDefaultEditorRunner({
+        env: { VISUAL: "true" },
+        tmpRoot: root,
+      });
+      const result = await runner({ name: "x".repeat(10_000), content: "seed", cwd: root });
+
+      expect(result).toMatchObject({ kind: "failed" });
+      if (result.kind === "failed") {
+        expect(result.reason).toContain("editor buffer could not be written");
+      }
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
