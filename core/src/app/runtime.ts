@@ -7,11 +7,16 @@ import type {
   LandoRuntimeServices,
   ScratchAcquireError,
 } from "@lando/sdk/app";
-import type { AppResolveError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import {
+  type AppResolveError,
+  type LandoRuntimeBootstrapError,
+  LandofileParseError,
+  ScratchAppError,
+} from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 
-import type { ResolvedAppTarget } from "../cli/app-resolution.ts";
+import { type ResolvedAppTarget, withResolvedCwd } from "../cli/app-resolution.ts";
 import type { RuntimeCwd } from "../runtime/cwd.ts";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer.ts";
 import { ScratchRegistryLive } from "../scratch-app/registry.ts";
@@ -58,8 +63,20 @@ export const openLandoRuntime = (
     const defaultTarget: ResolvedAppTarget | undefined =
       scratchInput === undefined
         ? undefined
-        : yield* acquireScratchAppWithPlan(scratchInput).pipe(
+        : yield* withResolvedCwd(
+            capturedCwd,
+            Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
+          ).pipe(
             Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
+            Effect.mapError((cause) =>
+              cause instanceof LandofileParseError
+                ? new ScratchAppError({
+                    message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,
+                    operation: "acquire",
+                    cause,
+                  })
+                : cause,
+            ),
             Effect.provide(context),
           );
 

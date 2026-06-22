@@ -289,6 +289,27 @@ describe("resolveApp", () => {
     });
   });
 
+  test("a runtime constructed with cwd and scratch acquires the scratch app from the captured cwd", async () => {
+    await withTempUserCache(async () => {
+      await withTwoTempApps(async (left, right) => {
+        const id = await Effect.runPromise(
+          Effect.scoped(
+            openLandoRuntime({
+              cwd: right,
+              scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
+              plugins: { policy: "bundled-only", layers: testProviderLayers },
+            }).pipe(
+              Effect.flatMap((runtime) => runtime.app()),
+              Effect.map((app) => app.id),
+            ),
+          ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
+        );
+
+        expect(id).toStartWith("scratch-other-app-");
+      });
+    });
+  });
+
   test("scratch default app tooling uses the captured target after host cwd changes", async () => {
     await withTempUserCache(async () => {
       const left = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-tooling-left-")));
