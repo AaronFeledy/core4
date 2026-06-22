@@ -6176,7 +6176,7 @@
           "type": "string"
         }
       },
-      "required": ["id"],
+      "required": ["id", "module", "capabilities"],
       "type": "object"
     },
     "IsolateMode": {
@@ -12230,7 +12230,7 @@
                 "type": "string"
               }
             },
-            "required": ["id"],
+            "required": ["id", "module", "capabilities"],
             "type": "object"
           },
           "type": "array"
@@ -12705,7 +12705,7 @@
                     "type": "string"
                   }
                 },
-                "required": ["id"],
+                "required": ["id", "module", "capabilities"],
                 "type": "object"
               },
               "type": "array"

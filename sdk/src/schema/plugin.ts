@@ -102,20 +102,22 @@ export type DownloaderContribution = typeof DownloaderContribution.Type;
  */
 export const InteractionServiceContribution = Schema.Struct({
   /** Interaction service id. MUST be unique across plugins; `stdio` is reserved. */
-  id: Schema.String,
-  /** Path to the module that produces the interaction service implementation. */
-  module: Schema.optional(Schema.String),
-  /** Static capabilities advertised by this interaction service implementation. */
-  capabilities: Schema.optional(
-    Schema.Struct({
-      /** Whether the service can drive an interactive terminal prompt. */
-      interactive: Schema.Boolean,
-      /** Prompt types the service can render (the published PromptType vocabulary). */
-      promptTypes: Schema.Array(PromptType),
-      /** Whether the service masks/redacts `secret` answers. */
-      secretRedaction: Schema.Boolean,
+  id: Schema.String.pipe(
+    Schema.filter((id) => id !== "stdio", {
+      message: () => "Interaction service id `stdio` is reserved by core.",
     }),
   ),
+  /** Path to the module that produces the interaction service implementation. */
+  module: Schema.String,
+  /** Static capabilities advertised by this interaction service implementation. */
+  capabilities: Schema.Struct({
+    /** Whether the service can drive an interactive terminal prompt. */
+    interactive: Schema.Boolean,
+    /** Prompt types the service can render (the published PromptType vocabulary). */
+    promptTypes: Schema.Array(PromptType),
+    /** Whether the service masks/redacts `secret` answers. */
+    secretRedaction: Schema.Boolean,
+  }),
   /** Initial enabled state when the plugin is first installed. */
   enabledByDefault: Schema.optional(Schema.Boolean),
   /** One-line description surfaced in interaction-service listings / diagnostics. */

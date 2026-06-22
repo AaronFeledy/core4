@@ -156,17 +156,37 @@ describe("generalized interaction errors", () => {
 describe("InteractionService manifest surface", () => {
   test("InteractionServiceContribution decodes capabilities", () => {
     const decoded = Schema.decodeUnknownSync(InteractionServiceContribution)({
-      id: "stdio",
+      id: "fancy",
+      module: "./interaction.ts",
       capabilities: { interactive: true, promptTypes: ["text", "secret"], secretRedaction: true },
     });
-    expect(decoded.id).toBe("stdio");
-    expect(decoded.capabilities?.secretRedaction).toBe(true);
+    expect(decoded.id).toBe("fancy");
+    expect(decoded.capabilities.secretRedaction).toBe(true);
+  });
+
+  test("InteractionServiceContribution requires module and capabilities", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(InteractionServiceContribution)({
+        id: "fancy",
+      }),
+    ).toThrow();
+  });
+
+  test("InteractionServiceContribution rejects the core-reserved stdio id", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(InteractionServiceContribution)({
+        id: "stdio",
+        module: "./interaction.ts",
+        capabilities: { interactive: true, promptTypes: ["text"], secretRedaction: true },
+      }),
+    ).toThrow();
   });
 
   test("InteractionServiceContribution rejects an unknown prompt type", () => {
     expect(() =>
       Schema.decodeUnknownSync(InteractionServiceContribution)({
-        id: "stdio",
+        id: "fancy",
+        module: "./interaction.ts",
         capabilities: { interactive: true, promptTypes: ["bogus"], secretRedaction: true },
       }),
     ).toThrow();

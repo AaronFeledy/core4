@@ -417,3 +417,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - "Preserved as aliases" for errors with legacy `_tag` dependents means shared field constants + retained tags, NOT a value alias — the actual runtime re-pointing is the later migration story (US-296). Confirm with the higher-rigor consultant before changing observable error tags in a publication-only story.
   - A contribution-schema capability array must reference the published enum (`Schema.Array(PromptType)`); shipping it as `Schema.Array(Schema.String)` accepts invalid manifests and makes later narrowing a breaking change.
 ---
+
+## 2026-06-22 09:22 CDT - US-293 Review
+- Fixed confirmed InteractionService publication blockers from review-work: plugin `interactionServices[].module` paths now use the same external-plugin containment/normalization path as other module-backed contributions, the published contribution schema now requires `module` and `capabilities` and rejects the core-reserved `stdio` id, and the SDK service tag shape now matches the canonical spec with `id`, scoped prompt effects, and object-shaped helper specs.
+- Review notes (deferred/rejected): `provides:` wording in the PRD/spec remains treated as naming drift because the repo's active plugin manifest surface is `contributes:`; legacy recipe prompt errors remain shared-field-schema compatibility aliases rather than value aliases so their frozen `_tag`s stay unchanged.
+- Verification: typecheck, lint, `git diff --check`, schema snapshot codegen, focused SDK/schema/plugin-registry review-fix tests, SDK backward-compatibility, and adjacent recipe/scratch/bug-report spot checks passed. LSP diagnostics remain unavailable because the TypeScript LSP is not installed and was previously declined.
+---

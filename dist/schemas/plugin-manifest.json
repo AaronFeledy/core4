@@ -297,7 +297,9 @@
               }
             },
             "required": [
-              "id"
+              "id",
+              "module",
+              "capabilities"
             ],
             "type": "object"
           },

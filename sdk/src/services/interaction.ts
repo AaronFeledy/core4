@@ -1,4 +1,4 @@
-import { Context, type Effect, type Redacted } from "effect";
+import { Context, type Effect, type Redacted, type Scope } from "effect";
 
 import type {
   ChoicesUnavailableError,
@@ -7,7 +7,7 @@ import type {
   InteractionUnavailableError,
   PromptValidationError,
 } from "../errors/index.ts";
-import type { PromptAnswer, PromptBatchOptions, PromptChoice, PromptSpec } from "../schema/index.ts";
+import type { PromptAnswer, PromptBatchOptions, PromptSpec } from "../schema/index.ts";
 
 /** Errors any interaction method may raise. */
 export type InteractionError =
@@ -17,21 +17,57 @@ export type InteractionError =
   | ChoicesUnavailableError
   | InteractionUnavailableError;
 
-/** Options for an ad-hoc `confirm` prompt. */
-export interface ConfirmInteractionOptions extends PromptBatchOptions {
+type PromptScalar = string | number | boolean;
+
+export type PromptAnswers = Readonly<Record<string, PromptAnswer>>;
+
+export interface ConfirmSpec extends PromptBatchOptions {
   readonly name?: string;
+  readonly message: string;
   readonly default?: boolean;
 }
 
-/** Options for an ad-hoc `select` prompt. */
-export interface SelectInteractionOptions extends PromptBatchOptions {
+export interface SelectSpec<A extends PromptScalar = PromptScalar> extends PromptBatchOptions {
   readonly name?: string;
-  readonly default?: string | number | boolean;
+  readonly message: string;
+  readonly choices: ReadonlyArray<
+    | A
+    | {
+        readonly value: A;
+        readonly label?: string;
+        readonly description?: string;
+      }
+  >;
+  readonly default?: A;
 }
 
-/** Options for an ad-hoc `secret` prompt. */
-export interface SecretInteractionOptions extends PromptBatchOptions {
+export interface SecretSpec extends PromptBatchOptions {
   readonly name?: string;
+  readonly message: string;
+}
+
+export type ConfirmInteractionOptions = Omit<ConfirmSpec, "message">;
+export type SelectInteractionOptions<A extends PromptScalar = PromptScalar> = Omit<
+  SelectSpec<A>,
+  "message" | "choices"
+>;
+export type SecretInteractionOptions = Omit<SecretSpec, "message">;
+
+export interface InteractionServiceShape {
+  readonly id: string;
+  readonly isInteractive: Effect.Effect<boolean>;
+  readonly prompt: (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
+  readonly promptAll: (
+    specs: ReadonlyArray<PromptSpec>,
+    options?: PromptBatchOptions,
+  ) => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
+  readonly confirm: (spec: ConfirmSpec) => Effect.Effect<boolean, InteractionError, Scope.Scope>;
+  readonly select: <A extends PromptScalar>(
+    spec: SelectSpec<A>,
+  ) => Effect.Effect<A, InteractionError, Scope.Scope>;
+  readonly secret: (
+    spec: SecretSpec,
+  ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
 }
 
 /**
@@ -42,28 +78,5 @@ export interface SecretInteractionOptions extends PromptBatchOptions {
  */
 export class InteractionService extends Context.Tag("@lando/core/InteractionService")<
   InteractionService,
-  {
-    readonly prompt: (
-      spec: PromptSpec,
-      options?: PromptBatchOptions,
-    ) => Effect.Effect<PromptAnswer, InteractionError>;
-    readonly promptAll: (
-      specs: ReadonlyArray<PromptSpec>,
-      options?: PromptBatchOptions,
-    ) => Effect.Effect<Readonly<Record<string, PromptAnswer>>, InteractionError>;
-    readonly confirm: (
-      message: string,
-      options?: ConfirmInteractionOptions,
-    ) => Effect.Effect<boolean, InteractionError>;
-    readonly select: (
-      message: string,
-      choices: ReadonlyArray<PromptChoice>,
-      options?: SelectInteractionOptions,
-    ) => Effect.Effect<PromptAnswer, InteractionError>;
-    readonly secret: (
-      message: string,
-      options?: SecretInteractionOptions,
-    ) => Effect.Effect<Redacted.Redacted<string>, InteractionError>;
-    readonly isInteractive: Effect.Effect<boolean>;
-  }
+  InteractionServiceShape
 >() {}

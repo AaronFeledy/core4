@@ -20,7 +20,6 @@ import type {
   PortablePath,
   PromptAnswer,
   PromptBatchOptions,
-  PromptChoice,
   PromptSpec,
   ProviderCapabilities,
   ProviderId,
@@ -80,12 +79,7 @@ import type { LandoEvent } from "./events.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
-import type {
-  ConfirmInteractionOptions,
-  InteractionError,
-  SecretInteractionOptions,
-  SelectInteractionOptions,
-} from "./interaction.ts";
+import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
 import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
 import type {
   CertificateAuthorityShape,
@@ -311,28 +305,20 @@ export declare class ManagedFileService extends Context.Tag("@lando/core/Managed
 export declare class InteractionService extends Context.Tag("@lando/core/InteractionService")<
   InteractionService,
   {
-    readonly prompt: (
-      spec: PromptSpec,
-      options?: PromptBatchOptions,
-    ) => Effect.Effect<PromptAnswer, InteractionError>;
+    readonly id: string;
+    readonly isInteractive: Effect.Effect<boolean>;
+    readonly prompt: (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
     readonly promptAll: (
       specs: ReadonlyArray<PromptSpec>,
       options?: PromptBatchOptions,
-    ) => Effect.Effect<Readonly<Record<string, PromptAnswer>>, InteractionError>;
-    readonly confirm: (
-      message: string,
-      options?: ConfirmInteractionOptions,
-    ) => Effect.Effect<boolean, InteractionError>;
-    readonly select: (
-      message: string,
-      choices: ReadonlyArray<PromptChoice>,
-      options?: SelectInteractionOptions,
-    ) => Effect.Effect<PromptAnswer, InteractionError>;
+    ) => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
+    readonly confirm: (spec: ConfirmSpec) => Effect.Effect<boolean, InteractionError, Scope.Scope>;
+    readonly select: <A extends string | number | boolean>(
+      spec: SelectSpec<A>,
+    ) => Effect.Effect<A, InteractionError, Scope.Scope>;
     readonly secret: (
-      message: string,
-      options?: SecretInteractionOptions,
-    ) => Effect.Effect<Redacted.Redacted<string>, InteractionError>;
-    readonly isInteractive: Effect.Effect<boolean>;
+      spec: SecretSpec,
+    ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
   }
 >() {}
 
