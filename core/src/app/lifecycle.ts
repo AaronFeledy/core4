@@ -9,6 +9,7 @@ import { Effect, ExecutionStrategy, Exit, Ref, Scope } from "effect";
  */
 export interface AppLifecycle {
   readonly serialize: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+  readonly current: Effect.Effect<Scope.CloseableScope | undefined>;
   readonly closeCurrent: Effect.Effect<void>;
   readonly installFresh: Effect.Effect<Scope.CloseableScope>;
   readonly discardIfCurrent: (scope: Scope.CloseableScope) => Effect.Effect<void>;
@@ -44,6 +45,7 @@ export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLif
 
     return {
       serialize: (effect) => mutex.withPermits(1)(effect),
+      current: Ref.get(current),
       closeCurrent,
       installFresh,
       discardIfCurrent,

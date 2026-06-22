@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type FileSyncSessionInfo,
   FileSyncSessionRef,
   type FileSyncSessionSpec,
   PortablePath,
@@ -75,6 +76,26 @@ const planWithFileSync = (root: string): AppPlan => ({
   extensions: {},
 });
 
+const planWithTwoFileSyncEntries = (root: string): AppPlan => {
+  const plan = planWithFileSync(root);
+  const first = plan.fileSync[0];
+  if (first === undefined) return plan;
+  return {
+    ...plan,
+    fileSync: [
+      first,
+      {
+        ...first,
+        session: {
+          ...first.session,
+          mountKey: "second-mount",
+          target: { _tag: "volume", name: "embedded-app-web-second-mount", path: PortablePath.make("/app2") },
+        },
+      },
+    ],
+  };
+};
+
 interface TrackingEngine {
   readonly engine: FileSyncEngineShape;
   readonly sessions: Map<string, FileSyncSessionSpec>;
@@ -129,7 +150,7 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
   return tracking;
 };
 
-const appLayer = (engine: FileSyncEngineShape, root: string) =>
+const appLayer = (engine: FileSyncEngineShape, root: string, plan: AppPlan = planWithFileSync(root)) =>
   makeLandoRuntime({
     bootstrap: "app",
     plugins: {
@@ -141,7 +162,7 @@ const appLayer = (engine: FileSyncEngineShape, root: string) =>
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
         }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(root)) }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
         Layer.succeed(FileSyncEngine, engine),
       ],
     },
@@ -253,6 +274,194 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(tracking.maxConcurrentCreates).toBe(1);
+    });
+  });
+
+  test("repeated non-reconcile start reuses the current managed scope", async () => {
+    await withTempApp(async (dir) => {
+      const sessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
+      let createCalls = 0;
+      let finalizerCalls = 0;
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          Effect.gen(function* () {
+            createCalls += 1;
+            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+            sessions.set(ref, {
+              ref,
+              app: spec.app,
+              service: spec.service,
+              mountKey: spec.mountKey,
+              status: "running",
+              lastUpdatedAt: fixedDateTime,
+            });
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                finalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: (ref) =>
+          Effect.sync(() => {
+            sessions.delete(ref);
+          }),
+        listSessions: ({ app, service, mountKey }) =>
+          Effect.succeed(
+            Array.from(sessions.values()).filter(
+              (session) =>
+                session.app.id === app.id && session.service === service && session.mountKey === mountKey,
+            ),
+          ),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            yield* app.start();
+            return { createCalls, finalizerCalls, sessions: sessions.size };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir))),
+      );
+
+      expect(insideScope).toEqual({ createCalls: 1, finalizerCalls: 0, sessions: 1 });
+      expect(finalizerCalls).toBe(1);
+      expect(sessions.size).toBe(0);
+    });
+  });
+
+  test("runtime-scope close pauses a session resumed by managed start", async () => {
+    await withTempApp(async (dir) => {
+      const ref = FileSyncSessionRef.make("embedded-app-web-app-mount");
+      let status: FileSyncSessionInfo["status"] = "paused";
+      let resumeCalls = 0;
+      let pauseCalls = 0;
+      let createCalls = 0;
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: () =>
+          Effect.sync(() => {
+            createCalls += 1;
+            return ref;
+          }),
+        pauseSession: () =>
+          Effect.sync(() => {
+            pauseCalls += 1;
+            status = "paused";
+          }),
+        resumeSession: () =>
+          Effect.sync(() => {
+            resumeCalls += 1;
+            status = "running";
+          }),
+        terminateSession: () => Effect.void,
+        listSessions: ({ app, service, mountKey }) =>
+          Effect.succeed([
+            {
+              ref,
+              app,
+              service,
+              mountKey,
+              status,
+              lastUpdatedAt: fixedDateTime,
+            },
+          ]),
+        streamEvents: () => Stream.empty,
+      };
+
+      const insideScope = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            return { createCalls, pauseCalls, resumeCalls, status };
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir))),
+      );
+
+      expect(insideScope).toEqual({ createCalls: 0, pauseCalls: 0, resumeCalls: 1, status: "running" });
+      expect(pauseCalls).toBe(1);
+      expect(status).toBe("paused");
+    });
+  });
+
+  test("failed managed start closes created sessions through the managed scope without double terminate", async () => {
+    await withTempApp(async (dir) => {
+      let finalizerCalls = 0;
+      let terminateCalls = 0;
+      const engine: FileSyncEngineShape = {
+        id: "test",
+        displayName: "Tracking File Sync",
+        capabilities: {
+          modes: ["two-way-safe"],
+          remoteAgentDeployment: "none",
+          exclusionPatterns: true,
+          conflictReporting: false,
+          progressReporting: false,
+        },
+        isAvailable: Effect.succeed(true),
+        setup: () => Effect.void,
+        createSession: (spec: FileSyncSessionSpec) =>
+          spec.mountKey === "second-mount"
+            ? Effect.fail(new Error("sync failed"))
+            : Effect.gen(function* () {
+                const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+                yield* Effect.addFinalizer(() =>
+                  Effect.sync(() => {
+                    finalizerCalls += 1;
+                  }),
+                );
+                return ref;
+              }),
+        pauseSession: () => Effect.void,
+        resumeSession: () => Effect.void,
+        terminateSession: () =>
+          Effect.sync(() => {
+            terminateCalls += 1;
+          }),
+        listSessions: () => Effect.succeed([]),
+        streamEvents: () => Stream.empty,
+      };
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+          }),
+        ).pipe(Effect.provide(appLayer(engine, dir, planWithTwoFileSyncEntries(dir)))),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(finalizerCalls).toBe(1);
+      expect(terminateCalls).toBe(0);
     });
   });
 

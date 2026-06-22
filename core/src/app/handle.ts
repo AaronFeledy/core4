@@ -50,6 +50,10 @@ export const makeAppHandle = (
     start: (options?: StartAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
+          const current = yield* lifecycle.current;
+          if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
+            return yield* ops.startApp(options, target, { scope: current }).pipe(Effect.provide(runtime));
+          }
           yield* lifecycle.closeCurrent;
           if (options?.detached === true) {
             return yield* ops.startApp(options, target).pipe(Effect.provide(runtime));

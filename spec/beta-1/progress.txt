@@ -377,3 +377,11 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - `mutex.withPermits(1)` serializes handle methods but does NOT make the body atomic; wrap the scope/ref mutation and the failure cleanup in `Effect.uninterruptible` (and `Effect.onError(discardIfCurrent)`), or an interrupt between fork and `Ref.set` leaks a scope.
   - Don't add an explicit terminate finalizer in `startApp` to observe managed teardown — that double-terminates against the real engine. Instead provide the managed scope to `createSession` (whose scope contract owns termination) and, in tests, use a FileSyncEngine fake that registers its own `Effect.addFinalizer` in `createSession`; the shared `core/src/testing/test-runtime.ts` fake does not, so a dedicated fake is needed to assert teardown.
 ---
+
+## 2026-06-22 05:02 CDT - US-291 Review
+- Fixed confirmed managed-lifecycle blockers from review-work: managed rollback now closes the managed scope instead of explicitly terminating created sessions, resumed paused file-sync sessions register a managed pause finalizer so runtime-scope close restores them, and repeated non-reconcile `app.start()` reuses the current managed scope instead of tearing down/recreating start-state resources.
+- Fixed the internal managed-scope type to `Scope.CloseableScope`, which restored the US-291 typecheck acceptance gate.
+- Review notes (deferred/rejected): host-proxy retargeting is not actionable in current code because there is no host-proxy start-session/finalizer seam to retarget; LSP diagnostics remain unavailable because the TypeScript LSP is not installed and was previously declined; no container/provider/e2e checks were run on the host per loop safety rules.
+- Verification: typecheck, lint, git diff --check passed; focused app lifecycle spot check passed (9 tests, 19 assertions), and CLI start/restart/rebuild spot checks passed (24 tests, 80 assertions, 1 skip).
+- **Learnings for future iterations:** Managed App-handle rollback must not mix explicit session cleanup with scope-owned `createSession` finalizers; close the managed scope and let the engine finalizer own created-session teardown exactly once. If `start()` resumes an existing paused session, register a managed finalizer to pause it again on runtime-scope close.
+---

@@ -6,7 +6,7 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect, Scope } from "effect";
+import { DateTime, Effect, Exit, Scope } from "effect";
 
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
@@ -46,7 +46,7 @@ export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/
  * resources alive until an explicit stop.
  */
 export interface StartManagedScope {
-  readonly scope: Scope.Scope;
+  readonly scope: Scope.CloseableScope;
 }
 
 type StartAppServices =
@@ -122,6 +122,11 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?:
             if (existingSession.status === "paused") {
               yield* engine.resumeSession(existingSession.ref);
               resumedPausedRefs.push(existingSession.ref);
+              if (managed !== undefined) {
+                yield* Effect.addFinalizer(() =>
+                  engine.pauseSession(existingSession.ref).pipe(Effect.catchAll(() => Effect.void)),
+                ).pipe(Effect.provideService(Scope.Scope, managed.scope));
+              }
             }
             if (existingSession.status === "running" || existingSession.status === "paused") return;
           }
@@ -135,20 +140,22 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?:
       { discard: true },
     ).pipe(
       Effect.catchAll((error) =>
-        Effect.forEach(
-          [...createdRefs].reverse(),
-          (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
-          { discard: true },
-        ).pipe(
-          Effect.zipRight(
-            Effect.forEach(
-              [...resumedPausedRefs].reverse(),
-              (ref) => engine.pauseSession(ref).pipe(Effect.catchAll(() => Effect.void)),
+        (managed === undefined
+          ? Effect.forEach(
+              [...createdRefs].reverse(),
+              (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
               { discard: true },
-            ),
-          ),
-          Effect.flatMap(() => Effect.fail(error)),
-        ),
+            ).pipe(
+              Effect.zipRight(
+                Effect.forEach(
+                  [...resumedPausedRefs].reverse(),
+                  (ref) => engine.pauseSession(ref).pipe(Effect.catchAll(() => Effect.void)),
+                  { discard: true },
+                ),
+              ),
+            )
+          : Scope.close(managed.scope, Exit.void)
+        ).pipe(Effect.flatMap(() => Effect.fail(error))),
       ),
     );
   });
