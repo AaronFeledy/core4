@@ -46,6 +46,7 @@ import type {
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
+import { RuntimeCwd } from "./cwd.ts";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
 import { installSignalHandlers } from "./interrupt.ts";
 
@@ -145,7 +146,8 @@ export type AppRuntimeServices =
   | CommandRegistry
   | AppPlanner
   | EventService
-  | ToolingEngine;
+  | ToolingEngine
+  | RuntimeCwd;
 type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
@@ -277,6 +279,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   }
 
   const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
+  const capturedCwd = decoded.right.cwd ?? process.cwd();
   const baseLayer = runtimeLayerFor(
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
@@ -292,8 +295,15 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
 
   const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
     decoded.right.installSignalHandlers === true
-      ? [...hostLayersResult.right, signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>]
-      : hostLayersResult.right;
+      ? [
+          Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
+          ...hostLayersResult.right,
+          signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
+        ]
+      : [
+          Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
+          ...hostLayersResult.right,
+        ];
   return mergeRuntimeWithHostLayers(
     baseLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
     hostLayers,

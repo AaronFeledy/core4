@@ -152,6 +152,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const makeStopLayer = (plannedApp: AppPlan = plan) => {
   const events: string[] = [];
+  const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const stopped = new Set<ServiceName>();
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
@@ -216,14 +217,18 @@ const makeStopLayer = (plannedApp: AppPlan = plan) => {
       select: () => Effect.succeed(provider),
     }),
     Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => events.push(event._tag)),
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+          publishedEvents.push(event);
+        }),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
   );
 
-  return { layer, events, destroyCalls, volumes };
+  return { layer, events, publishedEvents, destroyCalls, volumes };
 };
 
 describe("lando stop", () => {
@@ -245,6 +250,22 @@ describe("lando stop", () => {
     expect(harness.volumes.has("test_stop_database_data")).toBe(true);
     expect(result.servicesStopped).toEqual(["database", "web"]);
     expect(renderStopAppResult(result)).toBe("stopped: test-stop - database, web");
+  });
+
+  test("uses the captured scratch AppRef when stopping a resolved scratch target", async () => {
+    const harness = makeStopLayer();
+    const scratchRef = { kind: "scratch" as const, id: plan.id, root: plan.root };
+
+    await Effect.runPromise(
+      stopApp({}, { plan, root: plan.root, app: scratchRef }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.publishedEvents.find((event) => event._tag === "pre-app-stop")).toMatchObject({
+      appRef: scratchRef,
+    });
+    expect(harness.publishedEvents.find((event) => event._tag === "post-app-stop")).toMatchObject({
+      appRef: scratchRef,
+    });
   });
 
   test("succeeds when the app is already stopped", async () => {

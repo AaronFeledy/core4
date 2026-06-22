@@ -16,6 +16,7 @@ import type {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
@@ -42,11 +43,15 @@ export const renderRestartAppResult = (result: RestartAppResult): string => {
 
 export const restartApp = (
   options: RestartAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
-    yield* stopApp();
-    return yield* startApp({
-      reconcile: options.reconcile ?? false,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
+    yield* stopApp({}, target);
+    return yield* startApp(
+      {
+        reconcile: options.reconcile ?? false,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      target,
+    );
   });

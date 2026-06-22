@@ -153,6 +153,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const makeDestroyLayer = () => {
   const events: string[] = [];
+  const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const volumes = new Set(plan.stores.map((store) => store.name));
   const provider: RuntimeProviderShape = {
@@ -220,14 +221,18 @@ const makeDestroyLayer = () => {
       select: () => Effect.succeed(provider),
     }),
     Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => events.push(event._tag)),
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+          publishedEvents.push(event);
+        }),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
   );
 
-  return { layer, events, destroyCalls, volumes };
+  return { layer, events, publishedEvents, destroyCalls, volumes };
 };
 
 describe("lando destroy", () => {
@@ -243,6 +248,22 @@ describe("lando destroy", () => {
     expect(result.servicesDestroyed).toEqual(["database", "web"]);
     expect(renderDestroyAppResult(result)).toContain("destroyed: test-destroy");
     expect(renderDestroyAppResult(result)).toContain("volumes preserved");
+  });
+
+  test("uses the captured scratch AppRef when destroying a resolved scratch target", async () => {
+    const harness = makeDestroyLayer();
+    const scratchRef = { kind: "scratch" as const, id: plan.id, root: plan.root };
+
+    await Effect.runPromise(
+      destroyApp({}, { plan, root: plan.root, app: scratchRef }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.publishedEvents.find((event) => event._tag === "pre-destroy")).toMatchObject({
+      app: scratchRef,
+    });
+    expect(harness.publishedEvents.find((event) => event._tag === "post-destroy")).toMatchObject({
+      app: scratchRef,
+    });
   });
 
   test("removes app-scoped volumes when volumes: true is requested", async () => {

@@ -14,7 +14,7 @@ import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
@@ -35,6 +35,7 @@ export const renderDestroyAppResult = (result: DestroyAppResult): string => {
 
 export const destroyApp = (
   options: DestroyAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -42,11 +43,15 @@ export const destroyApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
     const provider = yield* registry.select(plan);
-    const ref = appRef(plan);
+    const ref = target?.app ?? appRef(plan);
     const volumes = options.volumes ?? false;
 
     yield* events.publish(

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +11,7 @@ import type { LandofileService } from "@lando/sdk/services";
 import {
   assertUserAppIdNotReserved,
   loadUserLandofile,
+  loadUserLandofileAt,
   loadUserLandofileFile,
 } from "../../src/cli/app-resolution.ts";
 
@@ -83,6 +84,108 @@ describe("loadUserLandofile includes", () => {
       expect(result).toEqual({ name: "custom", services: { web: { type: "node" } } });
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("loadUserLandofileAt root-aware seam", () => {
+  test("resolves at an explicit root and restores the host cwd", async () => {
+    const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-left-")));
+    const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-right-")));
+    const previous = process.cwd();
+    process.chdir(left);
+    try {
+      let observedCwd = "";
+      const service = {
+        discover: Effect.sync(() => {
+          observedCwd = process.cwd();
+          return landofile("at-root");
+        }),
+      } as Context.Tag.Service<typeof LandofileService>;
+
+      const result = await Effect.runPromise(loadUserLandofileAt(service, right));
+
+      expect(result.name).toBe("at-root");
+      expect(observedCwd).toBe(right);
+      expect(process.cwd()).toBe(left);
+    } finally {
+      process.chdir(previous);
+      await rm(left, { recursive: true, force: true });
+      await rm(right, { recursive: true, force: true });
+    }
+  });
+
+  test("does not change the host cwd when root already is the current directory", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-at-same-")));
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const service = fakeLandofileService(landofile("here"));
+      const result = await Effect.runPromise(loadUserLandofileAt(service, dir));
+
+      expect(result.name).toBe("here");
+      expect(process.cwd()).toBe(dir);
+    } finally {
+      process.chdir(previous);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("serializes same-root resolution while another chdir region is active", async () => {
+    const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-left-")));
+    const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-right-")));
+    const previous = process.cwd();
+    let releaseFirst: (() => void) | undefined;
+    let allowSecondObserve: (() => void) | undefined;
+    process.chdir(left);
+    try {
+      const firstCanRestore = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      let firstEntered!: () => void;
+      const firstInDiscover = new Promise<void>((resolve) => {
+        firstEntered = resolve;
+      });
+      const secondMayObserve = new Promise<void>((resolve) => {
+        allowSecondObserve = resolve;
+      });
+      let secondObserved = "";
+
+      const firstService = {
+        discover: Effect.promise(async () => {
+          firstEntered();
+          await firstCanRestore;
+          return landofile("first");
+        }),
+      } as Context.Tag.Service<typeof LandofileService>;
+      const secondService = {
+        discover: Effect.promise(async () => {
+          await secondMayObserve;
+          secondObserved = process.cwd();
+          return landofile("second");
+        }),
+      } as Context.Tag.Service<typeof LandofileService>;
+
+      const first = Effect.runPromise(loadUserLandofileAt(firstService, right));
+      await firstInDiscover;
+      const second = Effect.runPromise(
+        loadUserLandofileAt(secondService, right).pipe(Effect.timeout("1 second")),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      releaseFirst?.();
+      await first;
+      allowSecondObserve?.();
+      const secondResult = await second;
+
+      expect(secondResult.name).toBe("second");
+      expect(secondObserved).toBe(right);
+      expect(process.cwd()).toBe(left);
+    } finally {
+      releaseFirst?.();
+      allowSecondObserve?.();
+      process.chdir(previous);
+      await rm(left, { recursive: true, force: true });
+      await rm(right, { recursive: true, force: true });
     }
   });
 });

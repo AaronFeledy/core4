@@ -288,6 +288,13 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Keep `NetworkTrust`/`fetchInitForNetwork` out of `@lando/sdk/test`: proxy/CA/`NO_PROXY` assertions belong in a core-only canary against `DownloaderLive + HttpClientBasicLive(injected fetchImpl)`, not in the cross-implementation public contract.
 ---
 
+## 2026-06-21 18:16 CDT - Babysit
+- PR: #422 https://github.com/AaronFeledy/core4/pull/422
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate flagged internal-only EventServiceLive wiring in recipes/tarball-source.ts; added sanctioned Guide-Coverage-Skip PR-body line and re-triggered CI via empty commit so workflow re-read the body)
+- Merge: merged (squash)
+---
+
 ## 2026-06-21 - US-289
 - Published the stable §16 App-handle contract surface. New type-only `@lando/sdk/app` subpath exports the opaque/branded `App` handle, the App-handle `AppSelector` union, `LandoRuntime` object-wrapper, `LandoRuntimeServices`, the per-method option/result/error contracts (start/stop/restart/rebuild/destroy/info/exec/tooling/logs + `AppConfigApi`/`AppEventsApi`), and `ScratchAcquireError`. New `AppResolveError` tagged error (single class, `reason` discriminator: ambiguous/mismatch/missing-root/unknown-id/not-found) in `@lando/sdk/errors`.
 - `@lando/core` default entry now exports `resolveApp(selector?)` and `openLandoRuntime(options)` plus the re-exported App-handle types, while staying OCLIF/TUI-free. `resolveApp` implements the full `id > landofile > root > cwd` precedence, multi-field/decoded-LandofileShape-requires-root validation, and tagged `AppResolveError` variants; it returns a branded `App` whose methods delegate to the existing command-operations bound to the captured runtime. `openLandoRuntime` acquires the runtime Layer in the caller's scope and returns `{ app, scratch, run }`.
@@ -305,6 +312,13 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Fixed selector validation gaps in the App-handle resolver: lower-precedence `cwd`/`root` fields are now validated against higher-precedence `id`, `landofile`, and `root` selectors instead of being ignored or treated as unresolvable, and decoded Landofile selectors now share the reserved `global` app-id guard used by discovery.
 - Review notes (deferred/rejected): QA/security review-work lanes passed; goal/code/context lanes hung without deliverables and were replaced by focused parent review. Left the pre-existing lint warning in `core/src/cli/commands/stop.ts` alone because it predates this review and does not fail lint.
 - Verification: typecheck, lint passed; focused selector/resolve/import-boundary/SDK export/tagged-error tests passed; `git diff --check` passed. TypeScript LSP diagnostics could not run because the LSP server is not installed and was previously declined.
+---
+
+## 2026-06-21 22:14 CDT - Babysit
+- PR: #423 https://github.com/AaronFeledy/core4/pull/423
+- CI outcome: pass
+- Review feedback: fixed (Bugbot "Landofile path selector ignored" — string `landofile` selector now loads the explicit file via a new `loadLandofileFile`/`loadUserLandofileFile` seam instead of dirname-only discovery; other three Bugbot findings were already resolved by earlier branch commits; guide-drift gate flagged the internal-only landofile/service.ts seam export and was cleared with a sanctioned Guide-Coverage-Skip PR-body line plus an empty commit so CI re-read the body)
+- Merge: merged (squash)
 ---
 
 ## 2026-06-21 21:21 CDT - US-333
@@ -333,4 +347,22 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:**
   - Until US-339 implements native provider data planes, keep bundled provider data capabilities truthful: `volumeSnapshot: "none"`, `artifactExport/import: false`, `ephemeralMounts: false`; service file copy can advertise `"exec"` because existing service exec is the generic basis.
   - The RuntimeProvider contract runner should guard new method callability before invoking it, or malformed-provider tests die instead of returning tagged `ContractFailure`.
+---
+
+## 2026-06-22 02:30 CDT - US-290
+- Made App handles root-bound and retained-runtime-aware. `resolveApp` now captures a `ResolvedAppTarget` (`{plan, landofile?, root, app}`) once and `makeAppHandle` threads it into every plan-deriving command op (`startApp(options, target?)`, … with `restart`/`rebuild` passing it through `stop`/`start`, and `runTooling` reading `target.landofile`); when a target is present an op uses `target.plan` and skips discovery/planning, so a host `process.chdir` after resolution never changes which app the handle controls. The optional 2nd param is non-breaking for the OCLIF/`run.ts` one-arg callers.
+- Added the root-aware `loadUserLandofileAt(landofileService, root)` seam plus a shared `withResolvedCwd` helper (process-wide `cwdResolutionLock` semaphore, no-op when root===cwd) in `core/src/cli/app-resolution.ts`; `resolveApp` resolves the Landofile + includes + reserved-id at the selected root through it and plans under the same lock.
+- `openLandoRuntime` now takes `OpenLandoRuntimeOptions = LandoRuntimeOptions & { scratch? }`: it captures the construction-time cwd so a no-selector `runtime.app()` resolves from the retained cwd (not the host's later cwd), and a runtime constructed with `scratch` acquires the scratch app once in the runtime scope (via the new core-private `acquireScratchAppWithPlan` seam that reads the scratch instance's own `plan.bin`) and defaults `app()` to it. The layer is still built once, so operations 2..N reuse the same bootstrap services.
+- Verification: typecheck, lint passed; resolve + app-resolution + app-handle-export (packed install) + import-boundary tests green (59), command-op scenarios green (83, no regression), scratch + make-runtime-app + core-testing-export green. Manual QA: a real `@lando/core` driver confirmed root-binding survives `process.chdir` for both standalone `resolveApp` and retained `runtime.app()`, and the CLI still boots and registers all commands.
+- **Learnings for future iterations:**
+  - `AppPlannerLive.plan` (`planApp`, `core/src/services/planner.ts`) reads `process.cwd()` SYNCHRONOUSLY at Effect construction, not lazily at run. To plan at a non-cwd root you MUST construct `planner.plan(...)` inside the chdir region — `Effect.suspend(() => planner.plan(...))` wrapped in `withResolvedCwd(root, …)`. Passing a bare `planner.plan(...)` as an argument to a chdir wrapper captures the pre-chdir cwd and silently stamps the wrong `plan.root`.
+  - The captured-plan approach (thread `target.plan` into ops) is the honest way to satisfy "captures plan identity once; later calls do not re-discover from the host cwd" — far better than wrapping whole handle methods in `process.chdir`, which would mutate global cwd during long-running `exec`/`logs`/`tooling` streams in a retained runtime.
+  - A packed-install test of the DEFAULT `@lando/core` entry must symlink the extracted `package/node_modules` to the repo `node_modules` (the default entry statically loads bundled plugins like `@lando/file-sync-mutagen`); the lighter `@lando/core/testing` packed test only needed `effect`/`fast-check`/`pure-rand`.
+---
+
+## 2026-06-22 01:49 CDT - US-290 Review
+- Fixed confirmed review blockers in the root-bound App handle path: same-root cwd-sensitive resolution is now serialized under the shared cwd lock, selector-less `resolveApp()` now honors the retained runtime layer cwd, and `app.tooling()` uses a supplied `ResolvedAppTarget`'s captured plan/root instead of re-discovering or re-planning from ambient cwd.
+- Review notes (deferred/rejected): security review found no high/critical issue; broad casts around `openLandoRuntime` context wiring remain accepted as a non-blocking typing limitation of the retained runtime composition seam.
+- Verification: typecheck and lint passed; focused app-handle/app-resolution/packed-export spot checks passed (`core/test/app/resolve.test.ts`, `core/test/cli/app-resolution.test.ts`, `core/test/library/app-handle-export.test.ts`).
+- **Learnings for future iterations:** Any helper that reads through `process.cwd()` during root-bound resolution must hold the cwd semaphore even when the desired root currently equals `process.cwd()`; same-root fast paths outside the lock can race another fiber's temporary chdir restore.
 ---

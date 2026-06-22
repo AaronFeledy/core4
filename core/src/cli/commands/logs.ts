@@ -10,7 +10,7 @@ import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, type LogChunk, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
 export type { LogsAppError, LogsAppOptions } from "@lando/sdk/app";
 
@@ -59,15 +59,20 @@ const selectServices = (
 
 export const logsApp = (
   options: LogsAppOptions = {},
+  target?: ResolvedAppTarget,
 ): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
     const services = yield* selectServices(plan, options.service);
     const provider = yield* registry.select(plan);
 

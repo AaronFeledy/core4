@@ -484,6 +484,22 @@ describe("lando start", () => {
     expect(renderStartAppResult(result)).toContain("database (running) tcp://localhost:5432");
   });
 
+  test("uses the captured scratch AppRef when starting a resolved scratch target", async () => {
+    const harness = makeStartLayer();
+    const scratchRef = { kind: "scratch" as const, id: plan.id, root: plan.root };
+
+    await Effect.runPromise(
+      startApp({}, { plan, root: plan.root, app: scratchRef }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.taskEvents.find((event) => event._tag === "pre-app-start")).toMatchObject({
+      appRef: scratchRef,
+    });
+    expect(harness.taskEvents.find((event) => event._tag === "post-app-start")).toMatchObject({
+      appRef: scratchRef,
+    });
+  });
+
   test("publishes a task tree around provider.apply with one task per planned service", async () => {
     const harness = makeStartLayer();
     await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
