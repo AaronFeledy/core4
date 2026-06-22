@@ -17,7 +17,7 @@ import type {
 } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../app-resolution.ts";
-import { startApp } from "./start.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
 export type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
@@ -44,6 +44,7 @@ export const renderRestartAppResult = (result: RestartAppResult): string => {
 export const restartApp = (
   options: RestartAppOptions = {},
   target?: ResolvedAppTarget,
+  managed?: StartManagedScope,
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
     yield* stopApp({}, target);
@@ -53,5 +54,6 @@ export const restartApp = (
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       target,
+      managed,
     );
   });

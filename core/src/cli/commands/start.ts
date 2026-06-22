@@ -39,6 +39,16 @@ import {
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 
+/**
+ * Optional managed scope an App handle injects so start-state resources
+ * (file-sync sessions) are bound to the handle's lifecycle scope rather than a
+ * transient throwaway scope. Absent for CLI callers, which keep start-state
+ * resources alive until an explicit stop.
+ */
+export interface StartManagedScope {
+  readonly scope: Scope.Scope;
+}
+
 type StartAppServices =
   | AppPlanner
   | EventService
@@ -68,7 +78,7 @@ const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
-const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
+const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?: StartManagedScope) =>
   Effect.gen(function* () {
     if (plan.fileSync.length === 0) return;
     const engineOption = yield* Effect.serviceOption(FileSyncEngine);
@@ -116,7 +126,7 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
             if (existingSession.status === "running" || existingSession.status === "paused") return;
           }
 
-          const sessionScope = yield* Scope.make();
+          const sessionScope = managed?.scope ?? (yield* Scope.make());
           const ref = yield* engine
             .createSession(entry.session)
             .pipe(Effect.provideService(Scope.Scope, sessionScope));
@@ -168,6 +178,7 @@ export const renderStartAppResult = (result: StartAppResult): string => {
 export const startApp = (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,
+  managed?: StartManagedScope,
 ): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -288,7 +299,7 @@ export const startApp = (
       durationMs: Math.round(performance.now() - applyStart),
     });
 
-    yield* startFileSyncSessions(plan, events).pipe(
+    yield* startFileSyncSessions(plan, events, managed).pipe(
       Effect.tapError(() => rollbackAppliedApp(provider, plan)),
     );
 

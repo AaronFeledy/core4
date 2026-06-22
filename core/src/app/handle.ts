@@ -19,6 +19,7 @@ import { EventService } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../cli/app-resolution.ts";
 import type { LogsAppLine } from "../cli/commands/logs.ts";
+import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
 
 const toLogChunk = (line: LogsAppLine): LogChunk => ({
@@ -38,6 +39,7 @@ export const makeAppHandle = (
   target: ResolvedAppTarget,
   runtime: Runtime.Runtime<LandoRuntimeServices>,
   ops: AppOperations,
+  lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
   const handle = {
@@ -45,11 +47,52 @@ export const makeAppHandle = (
     ref,
     root,
     plan: Effect.succeed(plan),
-    start: (options?: StartAppOptions) => ops.startApp(options, target).pipe(Effect.provide(runtime)),
-    stop: (options?: StopAppOptions) => ops.stopApp(options, target).pipe(Effect.provide(runtime)),
-    restart: (options?: RestartAppOptions) => ops.restartApp(options, target).pipe(Effect.provide(runtime)),
-    rebuild: (options?: RebuildAppOptions) => ops.rebuildApp(options, target).pipe(Effect.provide(runtime)),
-    destroy: (options?: DestroyAppOptions) => ops.destroyApp(options, target).pipe(Effect.provide(runtime)),
+    start: (options?: StartAppOptions) =>
+      lifecycle.serialize(
+        Effect.gen(function* () {
+          yield* lifecycle.closeCurrent;
+          if (options?.detached === true) {
+            return yield* ops.startApp(options, target).pipe(Effect.provide(runtime));
+          }
+          const scope = yield* lifecycle.installFresh;
+          return yield* ops.startApp(options, target, { scope }).pipe(
+            Effect.provide(runtime),
+            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+          );
+        }),
+      ),
+    stop: (options?: StopAppOptions) =>
+      lifecycle.serialize(
+        ops.stopApp(options, target).pipe(Effect.provide(runtime), Effect.ensuring(lifecycle.closeCurrent)),
+      ),
+    restart: (options?: RestartAppOptions) =>
+      lifecycle.serialize(
+        Effect.gen(function* () {
+          yield* lifecycle.closeCurrent;
+          const scope = yield* lifecycle.installFresh;
+          return yield* ops.restartApp(options, target, { scope }).pipe(
+            Effect.provide(runtime),
+            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+          );
+        }),
+      ),
+    rebuild: (options?: RebuildAppOptions) =>
+      lifecycle.serialize(
+        Effect.gen(function* () {
+          yield* lifecycle.closeCurrent;
+          const scope = yield* lifecycle.installFresh;
+          return yield* ops.rebuildApp(options, target, { scope }).pipe(
+            Effect.provide(runtime),
+            Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+          );
+        }),
+      ),
+    destroy: (options?: DestroyAppOptions) =>
+      lifecycle.serialize(
+        ops
+          .destroyApp(options, target)
+          .pipe(Effect.provide(runtime), Effect.ensuring(lifecycle.closeCurrent)),
+      ),
     info: (options?: InfoAppOptions) => ops.infoApp(options, target).pipe(Effect.provide(runtime)),
     exec: (options: ExecAppOptions) => ops.execApp(options, target).pipe(Effect.provide(runtime)),
     tooling: (id: string, options?: ToolingOptions) =>
