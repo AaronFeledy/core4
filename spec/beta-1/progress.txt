@@ -423,3 +423,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review notes (deferred/rejected): `provides:` wording in the PRD/spec remains treated as naming drift because the repo's active plugin manifest surface is `contributes:`; legacy recipe prompt errors remain shared-field-schema compatibility aliases rather than value aliases so their frozen `_tag`s stay unchanged.
 - Verification: typecheck, lint, `git diff --check`, schema snapshot codegen, focused SDK/schema/plugin-registry review-fix tests, SDK backward-compatibility, and adjacent recipe/scratch/bug-report spot checks passed. LSP diagnostics remain unavailable because the TypeScript LSP is not installed and was previously declined.
 ---
+
+## 2026-06-22 10:50 CDT - Babysit
+- PR: #429 https://github.com/AaronFeledy/core4/pull/429
+- CI outcome: pass (initial guide-scenarios failure at check:guide-drift)
+- Review feedback: fixed (no guide warranted for US-293's frozen type-only SDK surface; added Guide-Coverage-Skip line to PR body and re-triggered CI via push since rerun replays the stale body)
+- Merge: merged (squash)
+---
