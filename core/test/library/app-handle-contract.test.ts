@@ -1,7 +1,6 @@
 /**
- * Library contract coverage for the `App` handle surface that the embedding
- * runtime guide documents as the preferred app lifecycle path. Everything here
- * is exercised through the public `@lando/core` entry points (`openLandoRuntime`,
+ * Library contract coverage for the public `App` handle surface on `@lando/core`.
+ * Everything here is exercised through the public entry points (`openLandoRuntime`,
  * `runtime.app()`, `resolveApp`) using the in-memory `TestRuntimeProvider`, so the
  * checks stay host-safe: the sample app declares a single `redis` service (a
  * `tcp` endpoint, never an `http` route) so `app.start()` never auto-starts the
