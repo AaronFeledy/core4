@@ -2403,7 +2403,7 @@
         "Lint passes."
       ],
       "priority": 134,
-      "passes": false,
+      "passes": true,
       "notes": "Data-movement primitive (spec \u00a710.11, \u00a75.7, \u00a73.4). Depends on PRD-04 (SDK/schema publication discipline)."
     },
     {

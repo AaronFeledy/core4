@@ -1,14 +1,17 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
+  ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
   ProviderUnavailableError,
+  ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
+  VolumeOperationError,
 } from "../errors/index.ts";
 import type {
   AppId,
@@ -29,7 +32,10 @@ export type ProviderError =
   | ProviderUnavailableError
   | ServiceExecError
   | ServiceNotFoundError
-  | ServiceStartError;
+  | ServiceStartError
+  | VolumeOperationError
+  | ServiceCopyError
+  | ArtifactTransferError;
 
 export interface ProviderSetupOptions {
   readonly force: boolean;

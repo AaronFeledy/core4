@@ -907,6 +907,159 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Archive Format.",
+      "docsPath": "docs/reference/schemas/archive-format.mdx",
+      "id": "ArchiveFormat",
+      "jsonSchemaPath": "dist/schemas/archive-format.json",
+      "packageExport": "@lando/sdk/schema#ArchiveFormat",
+      "title": "Archive Format"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Data Endpoint.",
+      "docsPath": "docs/reference/schemas/data-endpoint.mdx",
+      "id": "DataEndpoint",
+      "jsonSchemaPath": "dist/schemas/data-endpoint.json",
+      "packageExport": "@lando/sdk/schema#DataEndpoint",
+      "title": "Data Endpoint"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Ref.",
+      "docsPath": "docs/reference/schemas/volume-ref.mdx",
+      "id": "VolumeRef",
+      "jsonSchemaPath": "dist/schemas/volume-ref.json",
+      "packageExport": "@lando/sdk/schema#VolumeRef",
+      "title": "Volume Ref"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Info.",
+      "docsPath": "docs/reference/schemas/volume-info.mdx",
+      "id": "VolumeInfo",
+      "jsonSchemaPath": "dist/schemas/volume-info.json",
+      "packageExport": "@lando/sdk/schema#VolumeInfo",
+      "title": "Volume Info"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Filter.",
+      "docsPath": "docs/reference/schemas/volume-filter.mdx",
+      "id": "VolumeFilter",
+      "jsonSchemaPath": "dist/schemas/volume-filter.json",
+      "packageExport": "@lando/sdk/schema#VolumeFilter",
+      "title": "Volume Filter"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Snapshot Spec.",
+      "docsPath": "docs/reference/schemas/volume-snapshot-spec.mdx",
+      "id": "VolumeSnapshotSpec",
+      "jsonSchemaPath": "dist/schemas/volume-snapshot-spec.json",
+      "packageExport": "@lando/sdk/schema#VolumeSnapshotSpec",
+      "title": "Volume Snapshot Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Snapshot Ref.",
+      "docsPath": "docs/reference/schemas/volume-snapshot-ref.mdx",
+      "id": "VolumeSnapshotRef",
+      "jsonSchemaPath": "dist/schemas/volume-snapshot-ref.json",
+      "packageExport": "@lando/sdk/schema#VolumeSnapshotRef",
+      "title": "Volume Snapshot Ref"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Volume Restore Spec.",
+      "docsPath": "docs/reference/schemas/volume-restore-spec.mdx",
+      "id": "VolumeRestoreSpec",
+      "jsonSchemaPath": "dist/schemas/volume-restore-spec.json",
+      "packageExport": "@lando/sdk/schema#VolumeRestoreSpec",
+      "title": "Volume Restore Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Service Copy In Spec.",
+      "docsPath": "docs/reference/schemas/service-copy-in-spec.mdx",
+      "id": "ServiceCopyInSpec",
+      "jsonSchemaPath": "dist/schemas/service-copy-in-spec.json",
+      "packageExport": "@lando/sdk/schema#ServiceCopyInSpec",
+      "title": "Service Copy In Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Service Copy Out Spec.",
+      "docsPath": "docs/reference/schemas/service-copy-out-spec.mdx",
+      "id": "ServiceCopyOutSpec",
+      "jsonSchemaPath": "dist/schemas/service-copy-out-spec.json",
+      "packageExport": "@lando/sdk/schema#ServiceCopyOutSpec",
+      "title": "Service Copy Out Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Data Transfer Spec.",
+      "docsPath": "docs/reference/schemas/data-transfer-spec.mdx",
+      "id": "DataTransferSpec",
+      "jsonSchemaPath": "dist/schemas/data-transfer-spec.json",
+      "packageExport": "@lando/sdk/schema#DataTransferSpec",
+      "title": "Data Transfer Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Data Transfer Result.",
+      "docsPath": "docs/reference/schemas/data-transfer-result.mdx",
+      "id": "DataTransferResult",
+      "jsonSchemaPath": "dist/schemas/data-transfer-result.json",
+      "packageExport": "@lando/sdk/schema#DataTransferResult",
+      "title": "Data Transfer Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Data Transfer Progress.",
+      "docsPath": "docs/reference/schemas/data-transfer-progress.mdx",
+      "id": "DataTransferProgress",
+      "jsonSchemaPath": "dist/schemas/data-transfer-progress.json",
+      "packageExport": "@lando/sdk/schema#DataTransferProgress",
+      "title": "Data Transfer Progress"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Snapshot Handle.",
+      "docsPath": "docs/reference/schemas/snapshot-handle.mdx",
+      "id": "SnapshotHandle",
+      "jsonSchemaPath": "dist/schemas/snapshot-handle.json",
+      "packageExport": "@lando/sdk/schema#SnapshotHandle",
+      "title": "Snapshot Handle"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Snapshot Info.",
+      "docsPath": "docs/reference/schemas/snapshot-info.mdx",
+      "id": "SnapshotInfo",
+      "jsonSchemaPath": "dist/schemas/snapshot-info.json",
+      "packageExport": "@lando/sdk/schema#SnapshotInfo",
+      "title": "Snapshot Info"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Snapshot Filter.",
+      "docsPath": "docs/reference/schemas/snapshot-filter.mdx",
+      "id": "SnapshotFilter",
+      "jsonSchemaPath": "dist/schemas/snapshot-filter.json",
+      "packageExport": "@lando/sdk/schema#SnapshotFilter",
+      "title": "Snapshot Filter"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Prune Policy.",
+      "docsPath": "docs/reference/schemas/prune-policy.mdx",
+      "id": "PrunePolicy",
+      "jsonSchemaPath": "dist/schemas/prune-policy.json",
+      "packageExport": "@lando/sdk/schema#PrunePolicy",
+      "title": "Prune Policy"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Managed File.",
       "docsPath": "docs/reference/schemas/managed-file.mdx",
       "id": "ManagedFile",
@@ -1868,6 +2021,23 @@
       "DownloadRequest",
       "DownloadResult",
       "DownloaderCapabilities",
+      "ArchiveFormat",
+      "DataEndpoint",
+      "VolumeRef",
+      "VolumeInfo",
+      "VolumeFilter",
+      "VolumeSnapshotSpec",
+      "VolumeSnapshotRef",
+      "VolumeRestoreSpec",
+      "ServiceCopyInSpec",
+      "ServiceCopyOutSpec",
+      "DataTransferSpec",
+      "DataTransferResult",
+      "DataTransferProgress",
+      "SnapshotHandle",
+      "SnapshotInfo",
+      "SnapshotFilter",
+      "PrunePolicy",
       "ManagedFile",
       "ManagedFileInfo",
       "ManagedFilePlan",
@@ -2699,6 +2869,11 @@
       "required": ["kind", "id", "root"],
       "type": "object"
     },
+    "ArchiveFormat": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["tar", "tar.gz", "tar.zst"],
+      "type": "string"
+    },
     "ArtifactBuildSpec": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -3294,6 +3469,135 @@
         }
       ]
     },
+    "DataEndpoint": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["hostPath"],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "path"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["hostArchive"],
+              "type": "string"
+            },
+            "format": {
+              "enum": ["tar", "tar.gz", "tar.zst"],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "path", "format"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["stream"],
+              "type": "string"
+            }
+          },
+          "required": ["_tag"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["volume"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "app", "store"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["servicePath"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "app", "service", "path"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["serviceCmd"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "app", "service", "command"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["artifact"],
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "ref"],
+          "type": "object"
+        }
+      ]
+    },
     "DataStoreMountPlan": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -3335,6 +3639,317 @@
         }
       },
       "required": ["name", "scope"],
+      "type": "object"
+    },
+    "DataTransferProgress": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "phase": {
+          "enum": ["started", "progress", "completed"],
+          "type": "string"
+        },
+        "totalBytes": {
+          "type": "number"
+        },
+        "transferredBytes": {
+          "type": "number"
+        }
+      },
+      "required": ["phase", "transferredBytes"],
+      "type": "object"
+    },
+    "DataTransferResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "accelerated": {
+          "type": "boolean"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "number"
+        }
+      },
+      "required": ["accelerated"],
+      "type": "object"
+    },
+    "DataTransferSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "expectedDigest": {
+          "type": "string"
+        },
+        "from": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["hostPath"],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "path"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["hostArchive"],
+                  "type": "string"
+                },
+                "format": {
+                  "enum": ["tar", "tar.gz", "tar.zst"],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "path", "format"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["stream"],
+                  "type": "string"
+                }
+              },
+              "required": ["_tag"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["volume"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "store"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["servicePath"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "service", "path"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["serviceCmd"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "command": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "service": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "service", "command"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["artifact"],
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "ref"],
+              "type": "object"
+            }
+          ]
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["hostPath"],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "path"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["hostArchive"],
+                  "type": "string"
+                },
+                "format": {
+                  "enum": ["tar", "tar.gz", "tar.zst"],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "path", "format"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["stream"],
+                  "type": "string"
+                }
+              },
+              "required": ["_tag"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["volume"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "store"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["servicePath"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "service": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "service", "path"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["serviceCmd"],
+                  "type": "string"
+                },
+                "app": {
+                  "type": "string"
+                },
+                "command": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "service": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "app", "service", "command"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["artifact"],
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "ref"],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": ["from", "to"],
       "type": "object"
     },
     "DependencyPlan": {
@@ -16517,6 +17132,60 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "string"
     },
+    "PrunePolicy": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "createdAfter": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "createdBefore": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "keepLatest": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "PublicTranscript": {
       "$defs": {
         "GuideId": {
@@ -17798,6 +18467,42 @@
       "required": [],
       "type": "object"
     },
+    "ServiceCopyInSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": ["tar", "tar.gz", "tar.zst"],
+          "type": "string"
+        },
+        "overwrite": {
+          "type": "boolean"
+        },
+        "sourcePath": {
+          "type": "string"
+        },
+        "targetPath": {
+          "type": "string"
+        }
+      },
+      "required": ["sourcePath", "targetPath"],
+      "type": "object"
+    },
+    "ServiceCopyOutSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": ["tar", "tar.gz", "tar.zst"],
+          "type": "string"
+        },
+        "sourcePath": {
+          "type": "string"
+        }
+      },
+      "required": ["sourcePath"],
+      "type": "object"
+    },
     "ServiceInfo": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -18300,6 +19005,149 @@
       },
       "$ref": "#/$defs/SkipProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "SnapshotFilter": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "createdAfter": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "createdBefore": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "scope": {
+          "enum": ["service", "app", "global"],
+          "type": "string"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "SnapshotHandle": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "store": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["app", "store"],
+          "type": "object"
+        }
+      },
+      "required": ["id", "store"],
+      "type": "object"
+    },
+    "SnapshotInfo": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "format": {
+          "enum": ["tar", "tar.gz", "tar.zst"],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "native": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": ["provider", "id"],
+          "type": "object"
+        },
+        "sizeBytes": {
+          "type": "number"
+        },
+        "store": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["app", "store"],
+          "type": "object"
+        }
+      },
+      "required": ["id", "store", "digest", "sizeBytes", "createdAt"],
+      "type": "object"
     },
     "StepProps": {
       "$defs": {
@@ -20752,6 +21600,189 @@
       },
       "$ref": "#/$defs/VerifyProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "VolumeFilter": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "scope": {
+          "enum": ["service", "app", "global"],
+          "type": "string"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "VolumeInfo": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "ref": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["app", "store"],
+          "type": "object"
+        },
+        "sizeBytes": {
+          "type": "number"
+        }
+      },
+      "required": ["ref"],
+      "type": "object"
+    },
+    "VolumeRef": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": ["service", "app", "global"],
+          "type": "string"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": ["app", "store"],
+      "type": "object"
+    },
+    "VolumeRestoreSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "overwrite": {
+          "type": "boolean"
+        },
+        "snapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": ["provider", "id"],
+          "type": "object"
+        },
+        "target": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["app", "store"],
+          "type": "object"
+        }
+      },
+      "required": ["snapshot", "target"],
+      "type": "object"
+    },
+    "VolumeSnapshotRef": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": ["provider", "id"],
+      "type": "object"
+    },
+    "VolumeSnapshotSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "volume": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "scope": {
+              "enum": ["service", "app", "global"],
+              "type": "string"
+            },
+            "store": {
+              "type": "string"
+            }
+          },
+          "required": ["app", "store"],
+          "type": "object"
+        }
+      },
+      "required": ["volume"],
+      "type": "object"
     }
   }
 }

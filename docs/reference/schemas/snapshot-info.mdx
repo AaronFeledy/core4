@@ -1,0 +1,22 @@
+---
+title: Snapshot Info
+description: Public Lando schema contract for Snapshot Info.
+---
+
+# Snapshot Info
+
+Public Lando schema contract for Snapshot Info.
+
+[JSON Schema artifact](../../../dist/schemas/snapshot-info.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | a string | — | — | — | — |
+| `store` | Yes | `object` | — | — | — | — | — |
+| `digest` | Yes | `string` | a string | — | — | — | — |
+| `sizeBytes` | Yes | `number` | a number | — | — | — | — |
+| `createdAt` | Yes | `string` | — | — | — | — | — |
+| `format` | No | `string` | — | — | `tar`, `tar.gz`, `tar.zst` | — | — |
+| `label` | No | `string` | — | — | — | — | — |
+| `labels` | No | `object` | — | — | — | — | — |
+| `native` | No | `object` | — | — | — | — | — |

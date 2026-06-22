@@ -92,6 +92,23 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   DownloadRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DownloadResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DownloaderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ArchiveFormat: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  DataEndpoint: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeFilter: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeSnapshotSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeSnapshotRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeRestoreSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ServiceCopyInSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ServiceCopyOutSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  DataTransferSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  DataTransferResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  DataTransferProgress: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  SnapshotHandle: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  SnapshotInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  SnapshotFilter: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PrunePolicy: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ManagedFile: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ManagedFileInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ManagedFilePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -236,7 +253,7 @@ const resolveRef = (root: JsonSchemaNode, node: JsonSchemaNode): JsonSchemaNode 
 const nonEmptyStringForKey = (key: string, node: JsonSchemaNode): string => {
   if (
     node.format === "date-time" ||
-    /^(timestamp|resolvedAt|startedAt|finishedAt|lastUpdatedAt)$/i.test(key)
+    /^(timestamp|resolvedAt|startedAt|finishedAt|lastUpdatedAt|createdAt)$/i.test(key)
   ) {
     return ISO_TIMESTAMP;
   }

@@ -40,6 +40,26 @@ describe("@lando/sdk package exports", () => {
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
     expect(schema.DownloaderCapabilities).toBeDefined();
+    expect(schema.ArchiveFormat).toBeDefined();
+    expect(schema.DataEndpoint).toBeDefined();
+    expect(schema.VolumeRef).toBeDefined();
+    expect(schema.VolumeInfo).toBeDefined();
+    expect(schema.VolumeFilter).toBeDefined();
+    expect(schema.VolumeSnapshotSpec).toBeDefined();
+    expect(schema.VolumeSnapshotRef).toBeDefined();
+    expect(schema.VolumeRestoreSpec).toBeDefined();
+    expect(schema.ServiceCopyInSpec).toBeDefined();
+    expect(schema.ServiceCopyOutSpec).toBeDefined();
+    expect(schema.DataTransferSpec).toBeDefined();
+    expect(schema.DataTransferResult).toBeDefined();
+    expect(schema.DataTransferProgress).toBeDefined();
+    expect(schema.SnapshotHandle).toBeDefined();
+    expect(schema.SnapshotInfo).toBeDefined();
+    expect(schema.SnapshotFilter).toBeDefined();
+    expect(schema.PrunePolicy).toBeDefined();
+    expect(schema.SnapshotId).toBeDefined();
+    expect(schema.SnapshotOptions).toBeDefined();
+    expect(schema.LabelMap).toBeDefined();
     expect(schema.FileFormat).toBeDefined();
     expect(schema.ContentSource).toBeDefined();
     expect(schema.ManagedFile).toBeDefined();
@@ -163,6 +183,17 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DownloadOfflineError).toBeDefined();
     expect(errors.DownloadSourceForbiddenError).toBeDefined();
     expect(errors.DownloaderUnavailableError).toBeDefined();
+    expect(errors.DataTransferError).toBeDefined();
+    expect(errors.DataEndpointUnsupportedError).toBeDefined();
+    expect(errors.DataChecksumMismatchError).toBeDefined();
+    expect(errors.DataSourceOutsideRootError).toBeDefined();
+    expect(errors.DataTargetExistsError).toBeDefined();
+    expect(errors.SnapshotNotFoundError).toBeDefined();
+    expect(errors.VolumeNotFoundError).toBeDefined();
+    expect(errors.ArchiveFormatError).toBeDefined();
+    expect(errors.VolumeOperationError).toBeDefined();
+    expect(errors.ServiceCopyError).toBeDefined();
+    expect(errors.ArtifactTransferError).toBeDefined();
     expect(errors.PluginLoadError).toBeDefined();
     expect(errors.NoProviderInstalledError).toBeDefined();
     expect(errors.ConfigError).toBeDefined();
@@ -250,6 +281,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.Downloader).toBeDefined();
+    expect(services.DataMover).toBeDefined();
   });
 
   test("secrets entry point exports the single value redactor", async () => {

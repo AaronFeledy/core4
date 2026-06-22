@@ -3,6 +3,7 @@ export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
+export * from "./data-transfer.ts";
 export * from "./downloader.ts";
 export {
   DeprecationNotice,

@@ -203,6 +203,26 @@
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 - `isSortedUniquePluginTrustList`
+- `ArchiveFormat`
+- `DataEndpoint`
+- `DataTransferProgress`
+- `DataTransferResult`
+- `DataTransferSpec`
+- `LabelMap`
+- `PrunePolicy`
+- `ServiceCopyInSpec`
+- `ServiceCopyOutSpec`
+- `SnapshotFilter`
+- `SnapshotHandle`
+- `SnapshotId`
+- `SnapshotInfo`
+- `SnapshotOptions`
+- `VolumeFilter`
+- `VolumeInfo`
+- `VolumeRef`
+- `VolumeRestoreSpec`
+- `VolumeSnapshotRef`
+- `VolumeSnapshotSpec`
 
 ## Additive Beta service fields
 
@@ -233,6 +253,17 @@
 ## Additive Alpha errors
 
 - `ConfigTranslateError`
+- `ArchiveFormatError`
+- `ArtifactTransferError`
+- `DataChecksumMismatchError`
+- `DataEndpointUnsupportedError`
+- `DataSourceOutsideRootError`
+- `DataTargetExistsError`
+- `DataTransferError`
+- `ServiceCopyError`
+- `SnapshotNotFoundError`
+- `VolumeNotFoundError`
+- `VolumeOperationError`
 - `DownloadChecksumError`
 - `DownloadFetchError`
 - `DownloadOfflineError`
@@ -261,6 +292,7 @@
 - `CommandFramework`
 - `CommandRegistry`
 - `ConfigTranslator`
+- `DataMover`
 - `DeprecationService`
 - `Downloader`
 - `FileSyncEngine`
