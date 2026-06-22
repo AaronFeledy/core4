@@ -318,3 +318,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - A `Schema.Union` of `TaggedStruct`s exposes its common `_tag` property to the json-schema annotation gate, so a registered union needs a `<Schema>._tag` entry in `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` (only the shared field, not per-member fields).
   - The public-schema contract fixture auto-materializer (`sdk/test/schema/public-schema-contracts.ts`) only treats specific key names as timestamps; `createdAt` had to be added to its regex so a required `DateTimeUtc` field materializes a decodable value.
 ---
+
+## 2026-06-22 00:05 CDT - Babysit
+- PR: #424 https://github.com/AaronFeledy/core4/pull/424
+- CI outcome: pass
+- Review feedback: fixed (merged origin/main to resolve the progress-log conflict; reran the transient schema-snapshot install failure, which passed on retry)
+- Merge: merged (squash)
+---
