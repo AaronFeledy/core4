@@ -1930,6 +1930,24 @@
       "jsonSchemaPath": "dist/schemas/paint-banner-event.json",
       "packageExport": "@lando/sdk/schema#PaintBannerEvent",
       "title": "Paint Banner Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Prompt Spec.",
+      "docsPath": "docs/reference/schemas/prompt-spec.mdx",
+      "id": "PromptSpec",
+      "jsonSchemaPath": "dist/schemas/prompt-spec.json",
+      "packageExport": "@lando/sdk/schema#PromptSpec",
+      "title": "Prompt Spec"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Interaction Service Contribution.",
+      "docsPath": "docs/reference/schemas/interaction-service-contribution.mdx",
+      "id": "InteractionServiceContribution",
+      "jsonSchemaPath": "dist/schemas/interaction-service-contribution.json",
+      "packageExport": "@lando/sdk/schema#InteractionServiceContribution",
+      "title": "Interaction Service Contribution"
     }
   ],
   "scope": {
@@ -2134,7 +2152,9 @@
       "MessageInfoEvent",
       "MessageWarnEvent",
       "MessageErrorEvent",
-      "PaintBannerEvent"
+      "PaintBannerEvent",
+      "PromptSpec",
+      "InteractionServiceContribution"
     ]
   },
   "sdkSchemas": {
@@ -6078,6 +6098,86 @@
       },
       "$ref": "#/$defs/InspectProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "InteractionServiceContribution": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "additionalProperties": false,
+          "properties": {
+            "interactive": {
+              "type": "boolean"
+            },
+            "promptTypes": {
+              "items": {
+                "enum": ["text", "select", "multiselect", "confirm", "number", "secret", "path", "editor"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "secretRedaction": {
+              "type": "boolean"
+            }
+          },
+          "required": ["interactive", "promptTypes", "secretRedaction"],
+          "type": "object"
+        },
+        "deprecated": {
+          "$ref": "#/$defs/DeprecationNotice"
+        },
+        "enabledByDefault": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "module", "capabilities"],
+      "type": "object"
     },
     "IsolateMode": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -12081,6 +12181,60 @@
           },
           "type": "array"
         },
+        "interactionServices": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "interactive": {
+                    "type": "boolean"
+                  },
+                  "promptTypes": {
+                    "items": {
+                      "enum": [
+                        "text",
+                        "select",
+                        "multiselect",
+                        "confirm",
+                        "number",
+                        "secret",
+                        "path",
+                        "editor"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "secretRedaction": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["interactive", "promptTypes", "secretRedaction"],
+                "type": "object"
+              },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "module", "capabilities"],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "loggers": {
           "items": {
             "anyOf": [
@@ -12498,6 +12652,60 @@
                   }
                 },
                 "required": ["id"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "interactionServices": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "interactive": {
+                        "type": "boolean"
+                      },
+                      "promptTypes": {
+                        "items": {
+                          "enum": [
+                            "text",
+                            "select",
+                            "multiselect",
+                            "confirm",
+                            "number",
+                            "secret",
+                            "path",
+                            "editor"
+                          ],
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "secretRedaction": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["interactive", "promptTypes", "secretRedaction"],
+                    "type": "object"
+                  },
+                  "deprecated": {
+                    "$ref": "#/$defs/DeprecationNotice"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "module", "capabilities"],
                 "type": "object"
               },
               "type": "array"
@@ -17012,6 +17220,121 @@
       "required": ["_tag", "scope", "app", "timestamp"],
       "type": "object"
     },
+    "PromptSpec": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "choices": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                },
+                "required": ["value"],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "choicesFrom": {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "command": {
+              "type": "string"
+            },
+            "parse": {
+              "enum": ["json", "lines"],
+              "type": "string"
+            }
+          },
+          "required": ["command", "parse"],
+          "type": "object"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": ["text", "select", "multiselect", "confirm", "number", "secret", "path", "editor"],
+          "type": "string"
+        },
+        "validate": {
+          "additionalProperties": false,
+          "properties": {
+            "exists": {
+              "type": "boolean"
+            },
+            "max": {
+              "type": "number"
+            },
+            "message": {
+              "type": "string"
+            },
+            "min": {
+              "type": "number"
+            },
+            "pattern": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      "required": ["name", "type", "message"],
+      "type": "object"
+    },
     "ProviderCapabilities": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -17751,7 +18074,7 @@
                 "type": "string"
               },
               "type": {
-                "enum": ["text", "select", "multiselect", "confirm", "number", "secret", "path"],
+                "enum": ["text", "select", "multiselect", "confirm", "number", "secret", "path", "editor"],
                 "type": "string"
               },
               "validate": {

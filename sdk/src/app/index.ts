@@ -120,6 +120,15 @@ export type AppSelector =
 export interface StartAppOptions {
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
+  /**
+   * App-handle start mode. Defaults to `false`. When omitted or `false`, the
+   * handle keeps the started resources alive in a managed scope and tears them
+   * down on `stop`/`restart`/`destroy` or runtime-scope close. When `true`, the
+   * handle starts provider resources without registering a handle-owned stop
+   * finalizer (matching CLI detached-start semantics). Ignored by the
+   * `@lando/core/cli` `startApp` operation, which never manages a scope.
+   */
+  readonly detached?: boolean;
 }
 
 export interface StartAppResult {

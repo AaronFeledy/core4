@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, ExecutionStrategy, Scope } from "effect";
 
 import type { App, AppSelector, LandoRuntimeServices } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
@@ -18,6 +18,7 @@ import {
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import { makeAppHandle } from "./handle.ts";
+import { makeAppLifecycle } from "./lifecycle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd;
@@ -194,11 +195,16 @@ const targetFromResolved = (resolved: ResolvedLandofilePlan): ResolvedAppTarget 
  * Builds the branded `App` handle for an already-resolved target, capturing the
  * ambient runtime so handle methods need no further services.
  */
-export const buildAppHandle = (target: ResolvedAppTarget): Effect.Effect<App, never, LandoRuntimeServices> =>
+export const buildAppHandle = (
+  target: ResolvedAppTarget,
+): Effect.Effect<App, never, LandoRuntimeServices | Scope.Scope> =>
   Effect.gen(function* () {
     const runtime = yield* Effect.runtime<LandoRuntimeServices>();
+    const runtimeScope = yield* Effect.scope;
+    const handleScope = yield* Scope.fork(runtimeScope, ExecutionStrategy.sequential);
+    const lifecycle = yield* makeAppLifecycle(handleScope);
     const { appOperations } = yield* Effect.promise(() => import("./operations.ts"));
-    return makeAppHandle(target, runtime, appOperations);
+    return makeAppHandle(target, runtime, appOperations, lifecycle);
   });
 
 /**
@@ -210,7 +216,7 @@ export const buildAppHandle = (target: ResolvedAppTarget): Effect.Effect<App, ne
  */
 export const resolveApp = (
   selector?: AppSelector,
-): Effect.Effect<App, AppResolveError, LandoRuntimeServices | RuntimeCwd> =>
+): Effect.Effect<App, AppResolveError, LandoRuntimeServices | RuntimeCwd | Scope.Scope> =>
   Effect.gen(function* () {
     const normalized = yield* normalizeAppSelector(selector);
     const resolved = yield* resolvePlan(normalized);

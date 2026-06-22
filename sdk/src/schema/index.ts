@@ -31,6 +31,7 @@ export * from "./networking.ts";
 export * from "./plugin.ts";
 export * from "./plugin-trust.ts";
 export * from "./primitives.ts";
+export * from "./prompt.ts";
 export * from "./recipe.ts";
 export * from "./service-info.ts";
 export * from "./template.ts";

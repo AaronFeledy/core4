@@ -1,0 +1,20 @@
+---
+title: Prompt Spec
+description: Public Lando schema contract for Prompt Spec.
+---
+
+# Prompt Spec
+
+Public Lando schema contract for Prompt Spec.
+
+[JSON Schema artifact](../../../dist/schemas/prompt-spec.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `name` | Yes | `string` | a string | — | — | — | — |
+| `type` | Yes | `string` | — | — | `text`, `select`, `multiselect`, `confirm`, `number`, `secret`, `path`, `editor` | — | — |
+| `message` | Yes | `string` | a string | — | — | — | — |
+| `default` | No | `string`, `number`, `boolean` | — | — | — | — | — |
+| `validate` | No | `object` | — | — | — | — | — |
+| `choices` | No | `array` | — | — | — | — | — |
+| `choicesFrom` | No | `object` | — | — | — | — | — |

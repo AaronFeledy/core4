@@ -89,7 +89,15 @@ const normalizeExternalContributionModules = async (
 ): Promise<PluginManifest> => {
   const globalServices = manifest.contributes?.globalServices;
   const downloaders = manifest.contributes?.downloaders;
-  if (globalServices === undefined && downloaders === undefined) return manifest;
+  const interactionServices = manifest.contributes?.interactionServices;
+  if (globalServices === undefined && downloaders === undefined && interactionServices === undefined) {
+    return manifest;
+  }
+
+  const normalizeContributionModulePath = async (modulePath: string): Promise<string> => {
+    const resolved = await resolvePluginModulePath(packageRoot, String(manifest.name), modulePath);
+    return pathToFileURL(resolved).href;
+  };
 
   const normalizedGlobalServices =
     globalServices === undefined
@@ -97,12 +105,7 @@ const normalizeExternalContributionModules = async (
       : await Promise.all(
           globalServices.map(async (contribution) => {
             if (contribution.module === undefined) return contribution;
-            const resolved = await resolvePluginModulePath(
-              packageRoot,
-              String(manifest.name),
-              contribution.module,
-            );
-            return { ...contribution, module: pathToFileURL(resolved).href };
+            return { ...contribution, module: await normalizeContributionModulePath(contribution.module) };
           }),
         );
   const normalizedDownloaders =
@@ -111,13 +114,17 @@ const normalizeExternalContributionModules = async (
       : await Promise.all(
           downloaders.map(async (contribution) => {
             if (contribution.module === undefined) return contribution;
-            const resolved = await resolvePluginModulePath(
-              packageRoot,
-              String(manifest.name),
-              contribution.module,
-            );
-            return { ...contribution, module: pathToFileURL(resolved).href };
+            return { ...contribution, module: await normalizeContributionModulePath(contribution.module) };
           }),
+        );
+  const normalizedInteractionServices =
+    interactionServices === undefined
+      ? undefined
+      : await Promise.all(
+          interactionServices.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeContributionModulePath(contribution.module),
+          })),
         );
 
   return {
@@ -126,6 +133,9 @@ const normalizeExternalContributionModules = async (
       ...manifest.contributes,
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
+      ...(normalizedInteractionServices === undefined
+        ? {}
+        : { interactionServices: normalizedInteractionServices }),
     },
   };
 };

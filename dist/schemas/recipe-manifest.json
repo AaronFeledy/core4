@@ -512,7 +512,8 @@
               "confirm",
               "number",
               "secret",
-              "path"
+              "path",
+              "editor"
             ],
             "type": "string"
           },

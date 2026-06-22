@@ -206,6 +206,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   MessageWarnEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   MessageErrorEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PaintBannerEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PromptSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  InteractionServiceContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
 } as const satisfies Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>;
 
 type JsonObject = Record<string, unknown>;

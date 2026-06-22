@@ -1,5 +1,11 @@
 import { Schema } from "effect";
 
+import {
+  choicesUnavailableFields,
+  interactionRequiredFields,
+  promptValidationFields,
+} from "./interaction.ts";
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
@@ -81,31 +87,16 @@ export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsEr
 
 export class RecipeMissingAnswerError extends Schema.TaggedError<RecipeMissingAnswerError>()(
   "RecipeMissingAnswerError",
-  {
-    message: Schema.String,
-    promptName: Schema.String,
-    remediation: Schema.String,
-  },
+  { ...interactionRequiredFields },
 ) {}
 
 export class RecipePromptValidationError extends Schema.TaggedError<RecipePromptValidationError>()(
   "RecipePromptValidationError",
-  {
-    message: Schema.String,
-    promptName: Schema.String,
-    promptType: Schema.String,
-    issue: Schema.String,
-    remediation: Schema.String,
-  },
+  { ...promptValidationFields },
 ) {}
 
 export class RecipeChoicesError extends Schema.TaggedError<RecipeChoicesError>()("RecipeChoicesError", {
-  message: Schema.String,
-  promptName: Schema.String,
-  command: Schema.String,
-  kind: Schema.Literal("command-failed", "unparseable", "empty"),
-  remediation: Schema.String,
-  exitCode: Schema.optional(Schema.Number),
+  ...choicesUnavailableFields,
 }) {}
 
 export class RecipeRunNotAllowedError extends Schema.TaggedError<RecipeRunNotAllowedError>()(

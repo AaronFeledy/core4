@@ -1,4 +1,4 @@
-import { type Context, Effect, Layer, type Scope } from "effect";
+import { type Context, Effect, Layer, Scope } from "effect";
 
 import type {
   App,
@@ -59,6 +59,7 @@ export const openLandoRuntime = (
       ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
     );
     const context = (yield* Layer.build(layer)) as unknown as RuntimeContext;
+    const runtimeScope = yield* Effect.scope;
 
     const defaultTarget: ResolvedAppTarget | undefined =
       scratchInput === undefined
@@ -85,9 +86,15 @@ export const openLandoRuntime = (
 
     const app = (selector?: AppSelector): Effect.Effect<App, AppResolveError> => {
       if (selector === undefined && defaultTarget !== undefined) {
-        return buildAppHandle(defaultTarget).pipe(Effect.provide(context));
+        return buildAppHandle(defaultTarget).pipe(
+          Effect.provideService(Scope.Scope, runtimeScope),
+          Effect.provide(context),
+        );
       }
-      return resolveApp(selector ?? { cwd: capturedCwd }).pipe(Effect.provide(context));
+      return resolveApp(selector ?? { cwd: capturedCwd }).pipe(
+        Effect.provideService(Scope.Scope, runtimeScope),
+        Effect.provide(context),
+      );
     };
 
     return {

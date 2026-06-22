@@ -8,13 +8,141 @@ tags: [beta, docs, library, embedding]
 
 # Embedding the Lando runtime
 
-Embedding hosts create one scoped runtime layer with `makeLandoRuntime()`, provide it to
-Effect programs, and close the host scope when the runtime is no longer needed. Library
-mode keeps host applications safe by default: logging is silent, renderer output is JSON,
-plugin discovery is explicit-only, telemetry is disabled unless opted in, and signal
-handlers are not installed by runtime construction.
+Embedding hosts have two complementary surfaces. The **App handle** is the preferred
+app lifecycle path: `openLandoRuntime()` retains one scoped runtime, `runtime.app()`
+resolves a root-bound `App` handle, and `app.start()`, `app.info()`, and `app.stop()`
+drive the app while Effect scopes clean everything up when the host scope closes.
+Layer-native hosts that compose their own Effect program keep using
+`makeLandoRuntime()` directly. Both surfaces share the same bootstrap: logging is
+silent, the renderer is JSON, plugin discovery is explicit-only, telemetry is
+disabled unless opted in, and signal handlers are not installed by runtime
+construction.
+
+## App lifecycle with `openLandoRuntime`
+
+Reach for the App handle whenever you want to start, inspect, and stop a project the
+way the CLI does. `openLandoRuntime()` acquires the runtime once in the caller's
+`Scope`; `runtime.app(selector?)` resolves a branded `App` handle whose one-shot
+methods (`info`, `exec`, `tooling`, `config.lint`) need no further services and whose
+live-resource methods (`start`, `logs`, `events.subscribe`) stay bound to the
+retained runtime scope. A no-selector `runtime.app()` resolves the project at the
+runtime's construction working directory, and the handle stays bound to that root
+even if the host later changes its process working directory.
+
+```ts
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+
+const program = Effect.gen(function* () {
+  const runtime = yield* openLandoRuntime({ cwd: process.cwd() });
+  const app = yield* runtime.app();
+  yield* app.start();
+  const info = yield* app.info();
+  yield* app.stop();
+  return info;
+});
+
+// Closing the scope tears down any start-state resources the handle is holding.
+const info = await Effect.runPromise(Effect.scoped(program));
+```
+
+`app.start()` keeps start-state resources (such as file-sync sessions) alive on a
+managed scope between calls; `app.stop()`, `app.restart()`, `app.destroy()`, and
+runtime-scope close each tear that scope down exactly once. Use
+`app.start({ detached: true })` when you want the started resources to outlive the
+runtime scope, matching the CLI's detached semantics.
+
+## Layer-native hosts with `makeLandoRuntime`
+
+Hosts that build their own Effect program provide `makeLandoRuntime()` as a `Layer`
+and resolve service tags directly. This is the right surface when you need a service
+that the App handle does not expose, or when you are composing Lando services into a
+larger Effect application. `makeLandoRuntime()` is scoped, option-validated,
+idempotent, and CLI-bootstrap-equivalent; repeated runtimes stay isolated from each
+other.
+
+## Running arbitrary effects and command operations
+
+A retained runtime also exposes `runtime.run(effect)`, which provides the retained
+context to any Effect program without re-acquiring the bootstrap layer:
+
+```ts
+import { CacheService } from "@lando/core";
+
+await Effect.runPromise(
+  Effect.scoped(
+    openLandoRuntime({ cwd: process.cwd() }).pipe(
+      Effect.flatMap((runtime) =>
+        runtime.run(CacheService.pipe(Effect.flatMap((cache) => cache.read("key")))),
+      ),
+    ),
+  ),
+);
+```
+
+For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
+entry point, while the lower-level Effect operations behind built-in commands remain
+available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
+`stopApp`). These are building blocks for hosts that want command parity without
+OCLIF — they return typed results rather than rendered text — but they are not the
+preferred app lifecycle API. Prefer the `App` handle for lifecycle work and reach
+for the raw operations only when you need command-level dispatch.
 
 <Guide>
+  <Scenario id="app-lifecycle">
+    <Step name="start-info-stop">
+      <Run
+        runtime="library"
+        code={`const providerLayers = [
+  LandoTesting.withService(LandoCore.RuntimeProvider, LandoTesting.TestRuntimeProvider),
+  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
+    list: Effect.succeed([]),
+    capabilities: Effect.succeed(LandoTesting.TestRuntimeProvider.capabilities),
+    select: () => Effect.succeed(LandoTesting.TestRuntimeProvider),
+  }),
+];
+yield* Effect.promise(() =>
+  Bun.write(
+    join(context.testDir, ".lando.yml"),
+    "name: embedded-app\nruntime: 4\nprovider: test\nservices:\n  cache:\n    type: redis\n    primary: true\n",
+  ),
+);
+
+const lifecycle = yield* LandoCore.openLandoRuntime({
+  cwd: context.testDir,
+  plugins: { policy: "bundled-only", layers: providerLayers },
+}).pipe(
+  Effect.flatMap((runtime) => runtime.app()),
+  Effect.flatMap((app) =>
+    app.start().pipe(
+      Effect.flatMap((started) => app.info().pipe(Effect.map((info) => ({ started, info })))),
+      Effect.flatMap((acc) => app.stop().pipe(Effect.map((stopped) => ({ ...acc, stopped })))),
+    ),
+  ),
+);
+
+expect(lifecycle.info.app).toBe("embedded-app");
+expect(lifecycle.started.servicesStarted.map((service) => service.name)).toContain("cache");
+expect(lifecycle.stopped.servicesStopped).toContain("cache");`}
+        displayCode={`import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+
+const program = openLandoRuntime({ cwd: process.cwd() }).pipe(
+  Effect.flatMap((runtime) => runtime.app()),
+  Effect.flatMap((app) =>
+    app.start().pipe(
+      Effect.flatMap(() => app.info()),
+      Effect.tap(() => app.stop()),
+    ),
+  ),
+);
+
+const info = await Effect.runPromise(Effect.scoped(program));
+console.log(info.app, info.services.map((service) => service.service));`}
+      />
+    </Step>
+  </Scenario>
+
   <Scenario id="library-default-runtime">
     <Step name="inspect-defaults">
       <Run
