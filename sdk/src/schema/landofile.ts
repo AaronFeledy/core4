@@ -4,6 +4,7 @@ import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
+import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 
@@ -336,6 +337,8 @@ const LandofileShapeBase = Schema.Struct({
   version: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),
   include: Schema.optional(Schema.Array(Schema.String)),
+  remotes: Schema.optional(Schema.Record({ key: Schema.String, value: RemoteConfig })),
+  sync: Schema.optional(Schema.Record({ key: Schema.String, value: DatasetBinding })),
   volumes: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
   networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
