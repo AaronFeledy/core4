@@ -1653,3 +1653,9 @@
   - The App handle is opaque/branded via a non-exported `declare const AppBrand: unique symbol` field; core builds a plain object and final-casts to `App`. This is what lets US-343/347 add `share*`/`pull`/`push`/`remote` methods later without a breaking change.
   - US-289 owns selector validation + a working (cwd-resolving) handle; US-290 owns retained-runtime acquire-once + root-bound capture (handle methods may still re-discover from cwd at this stage), and US-291 owns managed lifecycle scopes/detached-start. Keep that split when extending.
 ---
+
+## 2026-06-21 19:31 CDT - US-289 Review
+- Fixed selector validation gaps in the App-handle resolver: lower-precedence `cwd`/`root` fields are now validated against higher-precedence `id`, `landofile`, and `root` selectors instead of being ignored or treated as unresolvable, and decoded Landofile selectors now share the reserved `global` app-id guard used by discovery.
+- Review notes (deferred/rejected): QA/security review-work lanes passed; goal/code/context lanes hung without deliverables and were replaced by focused parent review. Left the pre-existing lint warning in `core/src/cli/commands/stop.ts` alone because it predates this review and does not fail lint.
+- Verification: typecheck, lint passed; focused selector/resolve/import-boundary/SDK export/tagged-error tests passed; `git diff --check` passed. TypeScript LSP diagnostics could not run because the LSP server is not installed and was previously declined.
+---

@@ -7,7 +7,7 @@ import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { loadUserLandofile } from "../cli/app-resolution.ts";
+import { assertUserAppIdNotReserved, loadUserLandofile } from "../cli/app-resolution.ts";
 import { makeAppHandle } from "./handle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
@@ -70,11 +70,47 @@ const planFromShape = (shape: LandofileShape): Effect.Effect<AppPlan, AppResolve
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
     const capabilities = yield* registry.capabilities;
+    yield* assertUserAppIdNotReserved(shape);
     return yield* planner.plan(shape, capabilities);
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
 const planAt = (dir: string | undefined): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
   dir === undefined || dir === process.cwd() ? planFromDiscovery : withProcessCwd(dir, planFromDiscovery);
+
+const selectorMismatch = (detail: string): AppResolveError =>
+  new AppResolveError({
+    message: "App selector fields do not resolve to the same app.",
+    reason: "mismatch",
+    detail,
+  });
+
+const sameResolvedApp = (left: AppPlan, right: AppPlan): boolean =>
+  left.id === right.id && left.root === right.root;
+
+const validatePlanMatch = (
+  primary: AppPlan,
+  lower: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
+  detail: string,
+): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+  lower.pipe(
+    Effect.flatMap((resolved) =>
+      sameResolvedApp(primary, resolved) ? Effect.succeed(primary) : Effect.fail(selectorMismatch(detail)),
+    ),
+  );
+
+const validateLowerSelectors = (
+  primary: Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
+  checks: ReadonlyArray<readonly [Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>, string]>,
+): Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices> =>
+  primary.pipe(
+    Effect.flatMap((plan) =>
+      checks.reduce(
+        (effect, [check, detail]) =>
+          effect.pipe(Effect.flatMap(() => validatePlanMatch(plan, check, detail))),
+        Effect.succeed(plan) as Effect.Effect<AppPlan, AppResolveError, ResolvePlanServices>,
+      ),
+    ),
+  );
 
 const resolvePlan = (
   selector: NormalizedAppSelector,
@@ -83,13 +119,22 @@ const resolvePlan = (
     case "cwd":
       return planAt(selector.cwd);
     case "root":
-      return planAt(selector.cwd ?? selector.root);
+      return validateLowerSelectors(
+        planAt(selector.root),
+        selector.cwd === undefined ? [] : [[planAt(selector.cwd), "root+cwd"]],
+      );
     case "landofile-path":
-      return planAt(selector.root ?? dirname(selector.path));
+      return validateLowerSelectors(planAt(dirname(selector.path)), [
+        ...(selector.root === undefined ? [] : ([[planAt(selector.root), "landofile+root"]] as const)),
+        ...(selector.cwd === undefined ? [] : ([[planAt(selector.cwd), "landofile+cwd"]] as const)),
+      ]);
     case "landofile-shape":
-      return withProcessCwd(selector.cwd ?? selector.root, planFromShape(selector.shape));
+      return validateLowerSelectors(
+        withProcessCwd(selector.root, planFromShape(selector.shape)),
+        selector.cwd === undefined ? [] : [[planAt(selector.cwd), "landofile+cwd"]],
+      );
     case "id":
-      return selector.root === undefined
+      return selector.root === undefined && selector.cwd === undefined
         ? Effect.fail(
             new AppResolveError({
               message: `Cannot resolve app by id \`${selector.id}\` without a known root at this bootstrap level.`,
@@ -97,7 +142,12 @@ const resolvePlan = (
               detail: selector.id,
             }),
           )
-        : planAt(selector.cwd ?? selector.root).pipe(
+        : validateLowerSelectors(
+            planAt(selector.root ?? selector.cwd),
+            selector.root !== undefined && selector.cwd !== undefined
+              ? [[planAt(selector.cwd), "id+root+cwd"]]
+              : [],
+          ).pipe(
             Effect.flatMap((plan) =>
               plan.id === selector.id
                 ? Effect.succeed(plan)
