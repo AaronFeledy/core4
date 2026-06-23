@@ -169,6 +169,12 @@ describe("telemetry profile placeholders", () => {
       "word abcdefghijklmnopqrstuvwxyzabc done",
     );
   });
+
+  test("applies secrets-profile string passes (signed query params, URL userinfo)", () => {
+    expect(t.redactString("https://cdn/x?access_token=SECRETVAL&z=1")).toBe("[url]");
+    expect(t.redactString("?access_token=SECRETVAL")).toBe("?access_token=[redacted]");
+    expect(t.redactString("https://user:pw@proxy:3128/x")).toBe("[url]");
+  });
 });
 
 describe("transcript profile placeholders", () => {

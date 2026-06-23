@@ -124,8 +124,6 @@ const HOME_ALIAS_PATTERN = /(?<![\w])~(?:\/[\w.+@-]+)+/gu;
 const POSIX_PATH_PATTERN = /(?<![\w@~./])\/(?:[\w.+@-]+\/)*[\w.+@-]+/gu;
 const EMAIL_PATTERN = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu;
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu;
-const TELEMETRY_SECRET_ASSIGNMENT_PATTERN =
-  /\b([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=(?:[^\s,;"'\]}]+)/giu;
 const HOSTNAME_PATTERN = /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}\b/giu;
 const HIGH_ENTROPY_TOKEN_PATTERN = /\b[A-Za-z0-9_-]{25,}\b/gu;
 
@@ -140,8 +138,6 @@ const redactTelemetryString = (text: string): string =>
     .replace(POSIX_PATH_PATTERN, PATH)
     .replace(EMAIL_PATTERN, EMAIL)
     .replace(UUID_PATTERN, ID)
-    .replace(TELEMETRY_SECRET_ASSIGNMENT_PATTERN, (_m, name: string) => `${name}=${REDACTED}`)
-    .replace(BEARER_TOKEN_PATTERN, (_m, scheme: string) => `${scheme} ${REDACTED}`)
     .replace(HOSTNAME_PATTERN, HOST)
     .replace(HIGH_ENTROPY_TOKEN_PATTERN, (match) => (hasLetterAndDigit(match) ? REDACTED : match));
 
@@ -367,7 +363,7 @@ export const createRedactor = (profile: RedactionProfile, options: CreateRedacto
 
   const patternString =
     profile === "telemetry"
-      ? redactTelemetryString
+      ? (text: string) => redactTelemetryString(redactSecretsString(text))
       : profile === "transcript"
         ? (text: string) => redactTranscriptString(text, env)
         : redactSecretsString;
