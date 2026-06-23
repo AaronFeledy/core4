@@ -62,10 +62,22 @@ export interface PromptIO {
  * Buffers chunks across calls so consecutive `readLine` invocations
  * receive consecutive lines from the same upstream stream.
  */
-const createLineReader = (stream: NodeJS.ReadableStream) => {
+/**
+ * Line-buffered reader over a Node Readable that survives across `readLine`
+ * calls. A single instance must be reused by every prompt batch reading the same
+ * stream so input buffered ahead of a newline is never stranded between batches.
+ */
+export interface PromptLineReader {
+  readonly readLine: (signal?: AbortSignal) => Promise<string>;
+}
+
+export const createLineReader = (stream: NodeJS.ReadableStream): PromptLineReader => {
   let buffer = "";
   let done = false;
   let iterator: AsyncIterator<Buffer | string> | undefined;
+  // A read abandoned by `raceAbort` leaves its `iterator.next()` unsettled; reuse
+  // that pending promise on the next read so input is never dropped or reordered.
+  let pendingNext: Promise<IteratorResult<Buffer | string>> | undefined;
 
   const readLine = async (signal?: AbortSignal): Promise<string> => {
     while (true) {
@@ -82,7 +94,10 @@ const createLineReader = (stream: NodeJS.ReadableStream) => {
         return tail;
       }
       iterator ??= stream[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
-      const { value, done: streamDone } = await raceAbort(iterator.next(), signal);
+      pendingNext ??= iterator.next() as Promise<IteratorResult<Buffer | string>>;
+      const result = await raceAbort(pendingNext, signal);
+      pendingNext = undefined;
+      const { value, done: streamDone } = result;
       if (streamDone) {
         done = true;
         continue;
@@ -100,6 +115,8 @@ interface StdioPromptIOOptions {
   readonly stderr?: NodeJS.WritableStream;
   /** Aborting this signal rejects an in-flight `readLine` with `PromptCancelledError`. */
   readonly signal?: AbortSignal;
+  /** Reuse a persistent reader across batches so buffered input survives between calls. */
+  readonly lineReader?: PromptLineReader;
 }
 
 /**
@@ -112,7 +129,7 @@ export const createStdioPromptIO = (options: StdioPromptIOOptions = {}): PromptI
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
   const signal = options.signal;
-  const reader = createLineReader(stdin);
+  const reader = options.lineReader ?? createLineReader(stdin);
   const isTTY = stdin instanceof ReadStream && stdin.isTTY === true;
 
   const readLine = async (readOptions?: PromptReadOptions): Promise<string> => {

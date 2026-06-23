@@ -37,8 +37,8 @@ describe("OpenTUI cold-start canary (S11)", () => {
     }
   });
 
-  test("the core CLI driver loader reaches the renderer plugin only through a dynamic import", () => {
-    const loader = readSource("core/src/cli/prompts/interactive-driver.ts");
+  test("the core driver loader reaches the renderer plugin only through a dynamic import", () => {
+    const loader = readSource("core/src/interaction/interactive-driver.ts");
     expect(loader).not.toMatch(/import\s[^;]*from\s+["']@lando\/renderer-lando["']/);
     expect(loader).toMatch(/import\(\s*RENDERER_PLUGIN_SPECIFIER\s*\)/);
   });

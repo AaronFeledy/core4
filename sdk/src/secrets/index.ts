@@ -7,3 +7,4 @@
  * secret values out of user-visible output.
  */
 export * from "./redactor.ts";
+export * from "./redactor-profiles.ts";

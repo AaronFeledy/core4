@@ -30,6 +30,7 @@ import {
 import type {
   PromptBatchOptions,
   PromptChoice,
+  PromptMode,
   PromptSpec,
   RecipePrompt,
   PromptAnswer as SdkPromptAnswer,
@@ -52,9 +53,13 @@ import {
   PromptCancelledError,
   type PromptDriver,
   type PromptIO,
+  type PromptLineReader,
   collectPrompts,
+  createLineReader,
   createStdioPromptIO,
 } from "../recipes/prompts/index.ts";
+import { type InteractiveDriverGate, resolveInteractivePromptDriver } from "./interactive-driver.ts";
+import { getInteractionServiceOverride } from "./testing-override.ts";
 
 const STDIO_INTERACTION_ID = "stdio";
 
@@ -67,6 +72,22 @@ export type ResolveInteractionDriver = (gate: {
   readonly nonInteractive: boolean;
 }) => Promise<PromptDriver | undefined>;
 
+/** Adapts the OpenTUI prompt-driver loader to the {@link ResolveInteractionDriver} seam; overrides are test-only. */
+export const makeDefaultResolveInteractionDriver = (
+  overrides: Pick<InteractiveDriverGate, "env" | "importRendererPlugin"> = {},
+): ResolveInteractionDriver => {
+  return (gate) =>
+    resolveInteractivePromptDriver({
+      isTTY: gate.isTTY,
+      yes: gate.yes,
+      nonInteractive: gate.nonInteractive,
+      ...(overrides.env === undefined ? {} : { env: overrides.env }),
+      ...(overrides.importRendererPlugin === undefined
+        ? {}
+        : { importRendererPlugin: overrides.importRendererPlugin }),
+    });
+};
+
 /** Construction inputs; all optional so tests can script stdin/stdout and inject a driver. */
 export interface InteractionServiceDeps {
   readonly stdin?: NodeJS.ReadableStream;
@@ -75,7 +96,12 @@ export interface InteractionServiceDeps {
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly resolveDriver?: ResolveInteractionDriver;
   readonly id?: string;
+  readonly defaultMode?: PromptMode;
 }
+
+type InternalPromptBatchOptions = PromptBatchOptions & {
+  readonly choicesRunner?: ChoicesCommandRunner;
+};
 
 const isTtyStdin = (stdin: NodeJS.ReadableStream): boolean =>
   (stdin as Partial<Pick<RawCapableTty, "isTTY">>).isTTY === true;
@@ -163,13 +189,14 @@ const interruptedCancellation = (): InteractionCancelledError =>
 const resolveGate = (
   options: PromptBatchOptions | undefined,
   isTty: boolean,
+  defaultMode: PromptMode,
 ): { readonly yes: boolean; readonly nonInteractive: boolean; readonly interactive: boolean } => {
   const yes = options?.yes === true;
   let interactive: boolean;
   if (options?.interactive === true) interactive = true;
   else if (options?.interactive === false) interactive = false;
   else {
-    const mode = options?.mode ?? "auto";
+    const mode = options?.mode ?? defaultMode;
     interactive = mode === "interactive" ? true : mode === "non-interactive" ? false : isTty;
   }
   return { yes, nonInteractive: !interactive, interactive };
@@ -191,10 +218,16 @@ const readAnswersFileJson = async (path: string): Promise<Record<string, string>
 export const makeInteractionService = (deps: InteractionServiceDeps = {}): InteractionServiceShape => {
   const stdin = deps.stdin ?? process.stdin;
   const id = deps.id ?? STDIO_INTERACTION_ID;
+  const defaultMode: PromptMode = deps.defaultMode ?? "auto";
+  // One reader per service instance: buffered-ahead stdin survives across batches.
+  const lineReader: PromptLineReader = createLineReader(stdin);
+  // Serialize batches: the shared reader and its buffer are mutable single-stream state.
+  const promptLock = Effect.unsafeMakeSemaphore(1);
 
   const buildIo = (rendererOption: Option.Option<RendererService>, signal: AbortSignal): PromptIO => {
     const base = createStdioPromptIO({
       stdin,
+      lineReader,
       ...(deps.stdout === undefined ? {} : { stdout: deps.stdout }),
       ...(deps.stderr === undefined ? {} : { stderr: deps.stderr }),
       signal,
@@ -266,11 +299,13 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     Effect.gen(function* () {
       const rendererOption = yield* Effect.serviceOption(Renderer);
       const tty = isTtyStdin(stdin);
-      const gate = resolveGate(options, tty);
+      const gate = resolveGate(options, tty, defaultMode);
       const cwd = options?.cwd ?? process.cwd();
       const explicit = options?.answers ?? {};
       const answersFilePath =
         options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
+      const choicesRunner =
+        (options as InternalPromptBatchOptions | undefined)?.choicesRunner ?? deps.choicesRunner;
       const fromFile =
         answersFilePath === undefined
           ? {}
@@ -293,10 +328,11 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         yes: gate.yes,
         nonInteractive: gate.nonInteractive,
         cwd,
-        ...(deps.choicesRunner === undefined ? {} : { choicesRunner: deps.choicesRunner }),
+        ...(options?.runs === undefined ? {} : { runs: options.runs }),
+        ...(choicesRunner === undefined ? {} : { choicesRunner }),
         ...(driver === undefined ? {} : { interactiveDriver: driver }),
       };
-      return yield* runEngine(collect, rendererOption);
+      return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
     });
 
   const promptAll = (
@@ -354,7 +390,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   };
 };
 
-export const InteractionServiceLive: Layer.Layer<InteractionService> = Layer.succeed(
-  InteractionService,
-  makeInteractionService(),
+export const InteractionServiceLive: Layer.Layer<InteractionService> = Layer.suspend(() =>
+  Layer.succeed(
+    InteractionService,
+    getInteractionServiceOverride() ??
+      makeInteractionService({ resolveDriver: makeDefaultResolveInteractionDriver() }),
+  ),
 );

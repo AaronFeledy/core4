@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, Context, Effect, Either, Exit, Layer, Option, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
@@ -11,6 +11,7 @@ import {
   CommandRegistry,
   ConfigService,
   FileSystem,
+  InteractionService,
   LandofileService,
   Logger,
   PluginRegistry,
@@ -23,7 +24,7 @@ import {
 } from "@lando/sdk/services";
 
 import { installSignalHandlers } from "../../src/runtime/interrupt.ts";
-import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
@@ -341,5 +342,86 @@ describe("makeLandoRuntime", () => {
     const error = expectRuntimeBootstrapError(exit);
     expect(error.message).toContain("plugins.layers[0]");
     expect(error.message).toContain("Effect Layer");
+  });
+
+  test("accepts and preserves the interaction mode option", () => {
+    const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)({
+      bootstrap: "minimal",
+      interaction: "non-interactive",
+    });
+    expect(Either.isRight(decoded)).toBe(true);
+    if (Either.isRight(decoded)) expect(decoded.right.interaction).toBe("non-interactive");
+  });
+
+  test("rejects an invalid interaction mode", () => {
+    const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)({
+      bootstrap: "minimal",
+      interaction: "loud",
+    });
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("the interaction mode flows to the constructed InteractionService default", async () => {
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            makeLandoRuntime({ bootstrap: "minimal", interaction: "non-interactive" }),
+          );
+          const interaction = Context.get(context, InteractionService);
+          return yield* Effect.exit(
+            Effect.scoped(interaction.promptAll([{ name: "app", type: "text", message: "Name?" }])),
+          );
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    const failure = Cause.failureOption((exit as Exit.Failure<unknown, unknown>).cause);
+    expect(Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined).toBe(
+      "InteractionRequiredError",
+    );
+  });
+
+  test("honors an explicit interaction mode override", async () => {
+    const answers = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            makeLandoRuntime({ bootstrap: "minimal", interaction: "non-interactive" }),
+          );
+          const interaction = Context.get(context, InteractionService);
+          return yield* Effect.scoped(
+            interaction.promptAll([{ name: "app", type: "text", message: "Name?", default: "fallback" }], {
+              yes: true,
+            }),
+          );
+        }),
+      ),
+    );
+    expect(answers).toEqual({ app: "fallback" });
+  });
+
+  test("a host InteractionService override in plugins.layers wins", async () => {
+    const hostService = {
+      id: "host-interaction",
+      isInteractive: Effect.succeed(false),
+      prompt: () => Effect.succeed("host" as never),
+      promptAll: () => Effect.succeed({ app: "host" } as never),
+      confirm: () => Effect.succeed(true),
+      select: () => Effect.succeed("host" as never),
+      secret: () => Effect.succeed("host" as never),
+    };
+    const context = await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(
+          makeLandoRuntime({
+            bootstrap: "minimal",
+            plugins: { layers: [Layer.succeed(InteractionService, hostService)] },
+          }),
+        ),
+      ),
+    );
+    const interaction = Context.get(context, InteractionService);
+    expect(interaction.id).toBe("host-interaction");
   });
 });

@@ -6,8 +6,11 @@ import { Effect, Schema } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 
+import type { PromptSpec } from "@lando/sdk/schema";
+
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
+import { makeInteractionService } from "../../interaction/service.ts";
 import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
-import { type PromptIO, createStdioPromptIO } from "../../recipes/prompts/io.ts";
 
 export const PLUGIN_NEW_TEMPLATE_IDS = [
   "service-type",
@@ -32,7 +35,7 @@ export interface PluginNewOptions {
   readonly answersFile?: string | undefined;
   readonly nonInteractive?: boolean;
   readonly cwd?: string | undefined;
-  readonly promptIO?: PromptIO | undefined;
+  readonly interaction?: InteractionPrompter | undefined;
 }
 
 export interface PluginNewResult {
@@ -82,12 +85,12 @@ const parseAnswersFile = async (path: string): Promise<Record<string, string>> =
   return out;
 };
 
-const readAnswer = async (io: PromptIO, message: string, fallback?: string): Promise<string> => {
-  const suffix = fallback === undefined ? "" : ` [${fallback}]`;
-  io.write(`${message}${suffix}: `);
-  const raw = (await io.readLine()).trim();
-  return raw === "" && fallback !== undefined ? fallback : raw;
-};
+const NAME_PROMPT = "name";
+const TEMPLATE_PROMPT = "template";
+const CSPACE_PROMPT = "cspace";
+const DESCRIPTION_PROMPT = "description";
+
+const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
 interface ResolvedPluginNewOptions {
   readonly name: string;
@@ -97,25 +100,63 @@ interface ResolvedPluginNewOptions {
   readonly description: string;
 }
 
+const defaultInteractionPrompter = (): InteractionPrompter =>
+  makePromiseInteractionPrompter(makeInteractionService());
+
 const resolvePluginNewOptions = async (options: PluginNewOptions): Promise<ResolvedPluginNewOptions> => {
   const cwd = options.cwd ?? process.cwd();
   const fileAnswers =
     options.answersFile === undefined ? {} : await parseAnswersFile(resolve(cwd, options.answersFile));
   const flagAnswers = parseAnswerFlags(options.answers ?? []);
   const answers = { ...fileAnswers, ...flagAnswers };
-  const io = options.promptIO ?? createStdioPromptIO();
-  const nonInteractive = options.nonInteractive === true || io.isTTY !== true;
+  const nonInteractive = options.nonInteractive === true;
+  const prompter = nonInteractive ? undefined : (options.interaction ?? defaultInteractionPrompter());
 
   let name = options.name ?? answers.name;
   let template = options.template ?? answers.template;
   let cspace = options.cspace ?? answers.cspace;
   let description = options.description ?? answers.description;
 
-  if (!nonInteractive) {
-    name = name ?? (await readAnswer(io, "Plugin package name"));
-    template = template ?? (await readAnswer(io, "Template", "bare"));
-    cspace = cspace ?? (await readAnswer(io, "Contribution namespace", defaultCspace(name)));
-    description = description ?? (await readAnswer(io, "Description", `${name} plugin`));
+  if (prompter !== undefined) {
+    // Name resolves first because cspace/description defaults derive from it.
+    if (name === undefined) {
+      const named = await prompter.promptAll([
+        { name: NAME_PROMPT, type: "text", message: "Plugin package name" },
+      ]);
+      name = asString(named[NAME_PROMPT]);
+    }
+    const resolvedName = name ?? "";
+    const specs: ReadonlyArray<PromptSpec> = [
+      ...(template === undefined
+        ? [{ name: TEMPLATE_PROMPT, type: "text", message: "Template", default: "bare" } as PromptSpec]
+        : []),
+      ...(cspace === undefined
+        ? [
+            {
+              name: CSPACE_PROMPT,
+              type: "text",
+              message: "Contribution namespace",
+              default: defaultCspace(resolvedName),
+            } as PromptSpec,
+          ]
+        : []),
+      ...(description === undefined
+        ? [
+            {
+              name: DESCRIPTION_PROMPT,
+              type: "text",
+              message: "Description",
+              default: `${resolvedName} plugin`,
+            } as PromptSpec,
+          ]
+        : []),
+    ];
+    if (specs.length > 0) {
+      const collected = await prompter.promptAll(specs);
+      template = template ?? asString(collected[TEMPLATE_PROMPT]);
+      cspace = cspace ?? asString(collected[CSPACE_PROMPT]);
+      description = description ?? asString(collected[DESCRIPTION_PROMPT]);
+    }
   }
 
   const missing = [

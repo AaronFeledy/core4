@@ -4,11 +4,15 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
 
+import { ChoicesUnavailableError } from "@lando/sdk/errors";
 import { Renderer } from "@lando/sdk/services";
 
 import { makeRendererServiceLiveForMode } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeInteractionService } from "../../src/interaction/service.ts";
+import {
+  makeDefaultResolveInteractionDriver,
+  makeInteractionService,
+} from "../../src/interaction/service.ts";
 
 type RendererService = Context.Tag.Service<typeof Renderer>;
 
@@ -96,6 +100,22 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     expect(answers).toEqual({ app: "default-app" });
   });
 
+  test("sequential batches on one service share a single stdin reader (no lost buffered input)", async () => {
+    // One push delivers BOTH answers: a per-call reader would strand "second" at EOF.
+    const single = new Readable();
+    single.push("first\nsecond\n");
+    single.push(null);
+    const service = makeInteractionService({ stdin: single, stdout: capturingWritable().stream });
+    const a = await runScoped(
+      service.promptAll([{ name: "one", type: "text", message: "One?" }], { interactive: true }),
+    );
+    const b = await runScoped(
+      service.promptAll([{ name: "two", type: "text", message: "Two?" }], { interactive: true }),
+    );
+    expect(a).toEqual({ one: "first" });
+    expect(b).toEqual({ two: "second" });
+  });
+
   test("interactive resolution reads scripted stdin", async () => {
     const capture = capturingWritable();
     const service = makeInteractionService({ stdin: scriptedStdin(["typed-value"]), stdout: capture.stream });
@@ -103,6 +123,36 @@ describe("InteractionServiceLive — answer-source precedence", () => {
       service.promptAll([{ name: "app", type: "text", message: "Name?" }], { interactive: true }),
     );
     expect(answers).toEqual({ app: "typed-value" });
+  });
+
+  test("defaultMode non-interactive overrides the auto-on-TTY default for an empty batch", async () => {
+    // On a TTY stdin the implicit `auto` default would read stdin; defaultMode
+    // non-interactive must instead fail fast on an unseeded required prompt.
+    const ttyStdin = scriptedStdin(["should-not-be-read"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      stdout: capturingWritable().stream,
+      defaultMode: "non-interactive",
+    });
+    const exit = await runScopedExit(service.promptAll([{ name: "app", type: "text", message: "Name?" }]));
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(failureTag(exit)).toBe("InteractionRequiredError");
+  });
+
+  test("per-batch mode overrides defaultMode", async () => {
+    const ttyStdin = scriptedStdin(["typed"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const capture = capturingWritable();
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      stdout: capture.stream,
+      defaultMode: "non-interactive",
+    });
+    const answers = await runScoped(
+      service.promptAll([{ name: "app", type: "text", message: "Name?" }], { mode: "interactive" }),
+    );
+    expect(answers).toEqual({ app: "typed" });
   });
 
   test("auto mode is non-interactive when stdin is not a TTY", async () => {
@@ -160,6 +210,104 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     );
 
     expect(answers).toEqual({ app: "from-cwd" });
+  });
+
+  test("promptAll forwards the runs allowlist to dynamic choicesFrom prompts", async () => {
+    let invoked = 0;
+    const service = makeInteractionService({
+      stdin: neverStdin(),
+      choicesRunner: async () => {
+        invoked += 1;
+        return { exitCode: 0, stdout: "8.3\n", stderr: "" };
+      },
+    });
+
+    const exit = await runScopedExit(
+      service.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP version?",
+            choicesFrom: { command: "services:list", args: ["--type=php"], parse: "lines" },
+          },
+        ],
+        { interactive: false, runs: ["git"] },
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none();
+    expect(Option.isSome(failure) ? failure.value : undefined).toBeInstanceOf(ChoicesUnavailableError);
+    if (Option.isSome(failure) && failure.value instanceof ChoicesUnavailableError) {
+      expect(failure.value.command).toBe("services:list");
+      expect(failure.value.message).toContain("runs: allowlist");
+    }
+    expect(invoked).toBe(0);
+  });
+
+  test("promptAll accepts a batch-scoped choicesRunner override", async () => {
+    let invoked = 0;
+    const service = makeInteractionService({
+      stdin: scriptedStdin(["8.3"]),
+      stdout: capturingWritable().stream,
+    });
+
+    const answers = await runScoped(
+      service.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP version?",
+            choicesFrom: { command: "services:list", args: ["--type=php"], parse: "lines" },
+          },
+        ],
+        {
+          interactive: true,
+          choicesRunner: async () => {
+            invoked += 1;
+            return { exitCode: 0, stdout: "8.2\n8.3\n", stderr: "" };
+          },
+        } as Parameters<typeof service.promptAll>[1] & { choicesRunner: unknown },
+      ),
+    );
+
+    expect(answers).toEqual({ phpVersion: "8.3" });
+    expect(invoked).toBe(1);
+  });
+});
+
+describe("InteractionServiceLive — rich driver wiring (S2)", () => {
+  test("the default resolver loads the rich driver when an interactive TTY gate passes", async () => {
+    const resolve = makeDefaultResolveInteractionDriver({
+      env: {},
+      importRendererPlugin: async () => ({
+        loadInteractivePromptDriver: async () => ({ readRaw: async () => "from-driver" }),
+      }),
+    });
+    const driver = await resolve({ isTTY: true, yes: false, nonInteractive: false });
+    expect(driver).toBeDefined();
+    expect(await driver?.readRaw({})).toBe("from-driver");
+  });
+
+  test("the default resolver bypasses the driver under --yes / non-interactive / non-TTY", async () => {
+    let importAttempts = 0;
+    const resolve = makeDefaultResolveInteractionDriver({
+      env: {},
+      importRendererPlugin: async () => {
+        importAttempts += 1;
+        return { loadInteractivePromptDriver: async () => ({ readRaw: async () => "x" }) };
+      },
+    });
+    expect(await resolve({ isTTY: true, yes: true, nonInteractive: false })).toBeUndefined();
+    expect(await resolve({ isTTY: true, yes: false, nonInteractive: true })).toBeUndefined();
+    expect(await resolve({ isTTY: false, yes: false, nonInteractive: false })).toBeUndefined();
+    expect(importAttempts).toBe(0);
+  });
+
+  test("the default service is constructed with a rich-driver seam", () => {
+    expect(typeof makeDefaultResolveInteractionDriver).toBe("function");
   });
 });
 

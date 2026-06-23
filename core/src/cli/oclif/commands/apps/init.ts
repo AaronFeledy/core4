@@ -12,7 +12,11 @@ import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
-import { mergeAnswerSources, parseAnswerFlags } from "../../../prompts/answer-flags.ts";
+import {
+  mergeAnswerSources,
+  parseAnswerFlags,
+  resolveNonInteractive,
+} from "../../../prompts/answer-flags.ts";
 import {
   makeRendererServiceLiveForMode,
   resolveCliRendererMode,
@@ -61,7 +65,11 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
     answers,
     ...(flags.answers === undefined ? {} : { answersFile: flags.answers }),
     yes: flags.yes === true,
-    nonInteractive: flags.interactive === true ? false : flags["no-interactive"] === true,
+    nonInteractive: resolveNonInteractive({
+      interactive: flags.interactive === true,
+      noInteractive: flags["no-interactive"] === true,
+      isTTY: process.stdin.isTTY,
+    }),
     ...sourceOptions,
     ...(flags.name === undefined ? {} : { name: flags.name }),
     ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
@@ -148,7 +156,14 @@ export default class InitCommand extends LandoCommandBase {
 
     let result: InitAppResult;
     try {
-      const options = initOptionsFromInput(parsed);
+      const options = {
+        ...initOptionsFromInput(parsed),
+        onWarn: (message: string) => {
+          Effect.runSync(
+            writeDiagnosticLine(message).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+          );
+        },
+      };
       result = await initApp(options);
     } catch (error) {
       const text = formatBugReport({

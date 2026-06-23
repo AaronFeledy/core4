@@ -11,6 +11,7 @@
 - `ProviderCapabilities` adds the data-plane capability fields `volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, and `ephemeralMounts`; `EphemeralRunSpec` adds mount/stdin/stdout/env/remove options; `RuntimeProviderShape` adds `runStream` plus the eight data-plane methods. These are additive provider-contract extensions for the §10.11 data plane.
 - `@lando/sdk/renderer` is a type/contract-only subpath (like `@lando/sdk/expressions`). It exports the terminal-renderer contracts `RendererIO`, `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, `RendererContribution`, and `RendererContributionFactory` so the bundled `@lando/renderer-lando` plugin can assemble the default `lando` renderer without importing core internals. It exports no runtime values and so does not appear in the `Object.keys()` runtime export checks; the visual implementation (task-tree painter, keybindings, formatters) stays in core and is injected through `RendererRuntimePrimitives`.
 - `@lando/sdk/verified-stream` is the shared stream → SHA-256 → temp-file → atomic-rename helper used by verified artifact consumers. It exports runtime helpers like `@lando/sdk/landofile`, but no Live layers, service tags, OCLIF imports, or core runtime dependencies.
+- `@lando/sdk/secrets` is the canonical redaction primitive. In addition to the prior `createSecretRedactor` value layer and the `REDACTED` (`[redacted]`) sentinel, it adds the pure runtime helpers `createRedactor(profile, options)` (returning `{ redactString, redactValue }`), the `REDACTION_PROFILES` tuple (`secrets`/`telemetry`/`transcript`) with its `RedactionProfile` type, and the `PATTERN_CLASSES` catalog. The module stays pure and dependency-free (no `@lando/core`, no Effect runtime, no Node/Bun IO); transcript environment roots are supplied by the caller via `options.env` rather than read from `node:os`. `@lando/core/secrets` re-exports this subpath. These are additive Beta helpers and carry no compatibility freeze (the `@lando/sdk/secrets` runtime surface is not part of the frozen schema/service-tag `toEqual` lists below).
 - `LandofileShape` accepts raw `remotes:` and `sync:` maps for the RemoteSource/Dataset contract freeze. `remotes.<name>` uses the published `RemoteConfig` structural shape and source-specific validation remains deferred to the selected source; `sync.<dataset>` uses `DatasetBinding` (`service`, `path`) and inference logic remains deferred to the 4.1 pull/push orchestration.
 
 ## Additive Alpha schema exports
@@ -394,6 +395,9 @@
 - `FileSyncContractMatrixReport`
 - `HealthcheckExpectation`
 - `HostPlatformId`
+- `InteractionContractHarness`
+- `InteractionContractRenderer`
+- `InteractionServiceSpec`
 - `ManagedFileContractHarness`
 - `PluginContractInput`
 - `ProviderDataPlaneContractInput`
@@ -424,6 +428,8 @@
 - `runDatasetContract`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
+- `makeInteractionContractRenderer`
+- `runInteractionContract`
 - `runManagedFileContract`
 - `runPluginContract`
 - `runProviderDataPlaneContract`

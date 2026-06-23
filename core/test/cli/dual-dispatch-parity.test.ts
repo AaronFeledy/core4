@@ -62,6 +62,12 @@ describe("dual-dispatch argv parser parity", () => {
     expect(initOptionsFromInput(input).nonInteractive).toBe(true);
   });
 
+  test("apps:init defaults to non-interactive when stdin is not a TTY", () => {
+    const input = compiledInput("apps:init", []);
+
+    expect(initOptionsFromInput(input).nonInteractive).toBe(true);
+  });
+
   test("app:logs uses the same parsed input shape as the OCLIF helper", () => {
     const input = compiledInput("app:logs", ["--service", "appserver", "--tail", "25"]);
 

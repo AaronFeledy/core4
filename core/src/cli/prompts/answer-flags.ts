@@ -85,3 +85,7 @@ export const resolveInteractivityGate = (flags: InteractivityFlags): Interactivi
     mode === "interactive" ? true : mode === "non-interactive" ? false : flags.isTTY === true;
   return { yes: flags.yes === true, interactive, nonInteractive: !interactive, mode };
 };
+
+/** The single non-interactivity decision shared by every command-dispatch path. */
+export const resolveNonInteractive = (flags: InteractivityFlags): boolean =>
+  resolveInteractivityGate(flags).nonInteractive;

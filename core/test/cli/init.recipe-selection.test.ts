@@ -2,9 +2,62 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Readable, Writable } from "node:stream";
+
+import { Effect } from "effect";
+
+import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
+import type { ConfirmSpec, PromptAnswers } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { createBufferedPromptIO } from "../../src/recipes/prompts/io.ts";
+import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
+import { makeInteractionService } from "../../src/interaction/service.ts";
+
+const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
+  Readable.from(lines.map((line) => `${line}\n`));
+
+const capturingWritable = () => {
+  let text = "";
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      text += chunk.toString();
+      callback();
+    },
+  });
+  return { stream, text: () => text };
+};
+
+// Forcing mode:"interactive" lets scripted stdin drive the real line engine without a real tty.ReadStream.
+const serviceBackedPrompter = (
+  stdin: NodeJS.ReadableStream,
+  stdout: NodeJS.WritableStream,
+  stderr: NodeJS.WritableStream,
+): InteractionPrompter => {
+  const service = makeInteractionService({ stdin, stdout, stderr });
+  return {
+    promptAll: (specs: ReadonlyArray<PromptSpec>, options?: PromptBatchOptions) =>
+      Effect.runPromise(Effect.scoped(service.promptAll(specs, { ...options, mode: "interactive" }))),
+    confirm: (spec: ConfirmSpec) =>
+      Effect.runPromise(Effect.scoped(service.confirm({ ...spec, mode: "interactive" }))),
+  };
+};
+
+const fakePrompter = (answersByName: Readonly<Record<string, string>>) => {
+  const calls: Array<{ specs: ReadonlyArray<PromptSpec>; options?: PromptBatchOptions }> = [];
+  const prompter: InteractionPrompter = {
+    promptAll: async (specs, options) => {
+      calls.push({ specs, options });
+      const out: Record<string, string> = {};
+      for (const spec of specs) {
+        const explicit = options?.answers?.[spec.name];
+        out[spec.name] = explicit ?? answersByName[spec.name] ?? String(spec.default ?? "");
+      }
+      return out as PromptAnswers;
+    },
+    confirm: async () => true,
+  };
+  return { prompter, calls };
+};
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -62,7 +115,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: scripted stdin picks recipe by id then answers prompts", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "empty\nci-empty-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Pick a recipe");
       expect(result.stdout).toContain("Empty Landofile");
@@ -75,7 +128,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: scripted stdin picks recipe by index", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "17\nidx-pick-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created idx-pick-app at");
       expect(await Bun.file(join(dir, "idx-pick-app", ".lando.yml")).exists()).toBe(true);
@@ -86,7 +139,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: blank input picks the default recipe (node-postgres)", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "\ndefault-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created default-app at");
       expect(await Bun.file(join(dir, "default-app", ".lando.yml")).exists()).toBe(true);
@@ -94,37 +147,65 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
     });
   });
 
-  test("buffered IO: invalid recipe re-prompts and then accepts a valid one", async () => {
+  test("service-backed prompter: invalid recipe re-prompts and then accepts a valid one", async () => {
     await withTempCwd(async (dir) => {
-      const io = createBufferedPromptIO({ inputs: ["totally-bogus", "empty", "valid-app"] });
+      const stdout = capturingWritable();
+      const stderr = capturingWritable();
+      const interaction = serviceBackedPrompter(
+        scriptedStdin(["totally-bogus", "empty", "valid-app"]),
+        stdout.stream,
+        stderr.stream,
+      );
       const result = await initApp({
         cwd: dir,
         full: false,
-        io,
+        interaction,
         postInitIO: { out: () => {}, err: () => {} },
       });
       expect(result.appName).toBe("valid-app");
       expect(await Bun.file(join(dir, "valid-app", ".lando.yml")).exists()).toBe(true);
-      const stderr = io.stderr();
-      expect(stderr).toContain('no choice matches "totally-bogus"');
-      const stdout = io.stdout();
-      expect(stdout).toContain("Pick a recipe");
-      expect(stdout).toContain("Empty Landofile");
+      expect(stderr.text()).toContain('no choice matches "totally-bogus"');
+      expect(stdout.text()).toContain("Pick a recipe");
+      expect(stdout.text()).toContain("Empty Landofile");
     });
   });
 
-  test("buffered IO: explicit --recipe bypasses the recipe-selection prompt", async () => {
+  test("fake prompter: explicit --recipe bypasses the recipe-selection prompt", async () => {
     await withTempCwd(async (dir) => {
-      const io = createBufferedPromptIO({ inputs: ["bypass-app"] });
+      const { prompter, calls } = fakePrompter({ name: "bypass-app" });
       const result = await initApp({
         cwd: dir,
         full: false,
         recipe: "empty",
-        io,
+        interaction: prompter,
         postInitIO: { out: () => {}, err: () => {} },
       });
       expect(result.appName).toBe("bypass-app");
-      expect(io.stdout()).not.toContain("Pick a recipe");
+      const promptedNames = calls.flatMap((call) => call.specs.map((spec) => spec.name));
+      expect(promptedNames).not.toContain("__recipe__");
+    });
+  });
+
+  test("custom interaction receives the init choicesRunner override", async () => {
+    await withTempCwd(async (dir) => {
+      const choicesRunner = async () => ({ exitCode: 0, stdout: "from-runner\n", stderr: "" });
+      const { prompter, calls } = fakePrompter({ name: "runner-app" });
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "empty",
+        interaction: prompter,
+        choicesRunner,
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+
+      expect(result.appName).toBe("runner-app");
+      expect(
+        calls.some(
+          (call) =>
+            (call.options as { choicesRunner?: unknown } | undefined)?.choicesRunner === choicesRunner,
+        ),
+      ).toBe(true);
     });
   });
 });

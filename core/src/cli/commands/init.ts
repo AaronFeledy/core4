@@ -8,12 +8,16 @@ import type {
   FileFormat,
   ManagedFile,
   PortablePath,
+  PromptBatchOptions,
   RecipePrompt,
   RecipePromptChoice,
 } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { resolveUserDataRoot } from "../../config/roots.ts";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
+import { makeInteractionService } from "../../interaction/service.ts";
+import { getInteractionServiceOverride } from "../../interaction/testing-override.ts";
 import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
@@ -22,14 +26,7 @@ import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
-import {
-  type ChoicesCommandRunner,
-  type PromptAnswers,
-  type PromptDriver,
-  type PromptIO,
-  collectPrompts,
-  createStdioPromptIO,
-} from "../../recipes/prompts/index.ts";
+import type { ChoicesCommandRunner, PromptAnswers } from "../../recipes/prompts/index.ts";
 import { type RecipeRegistryClient, resolveRegistryRecipeSource } from "../../recipes/registry-source.ts";
 import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
 import {
@@ -46,8 +43,6 @@ import {
   publishTreeStartAsync,
 } from "../progress.ts";
 import { readAnswersFile } from "../prompts/answer-flags.ts";
-import { resolveInteractivePromptDriver } from "../prompts/interactive-driver.ts";
-import { tryDriverConfirm } from "../prompts/interactive.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
 import { parseInitSourceFlags } from "./init-source.ts";
 
@@ -83,21 +78,15 @@ const buildRecipeSelectPrompt = (): RecipePrompt => {
 
 const resolveRecipeSelection = async (
   options: InitAppOptions,
-  io: PromptIO | undefined,
+  interaction: InteractionPrompter | undefined,
   cwd: string,
-  driver: PromptDriver | undefined,
 ): Promise<string> => {
   if (options.recipe !== undefined && options.recipe !== "") return options.recipe;
-  const interactive = options.nonInteractive !== true && io !== undefined && options.yes !== true;
+  const interactive = options.nonInteractive !== true && interaction !== undefined && options.yes !== true;
   if (!interactive) return NODE_POSTGRES_RECIPE_ID;
-  const collected = await collectPrompts({
-    prompts: [buildRecipeSelectPrompt()],
-    answers: {},
-    yes: false,
-    nonInteractive: false,
+  const collected = await (interaction as InteractionPrompter).promptAll([buildRecipeSelectPrompt()], {
     cwd,
-    io: io as PromptIO,
-    ...(driver === undefined ? {} : { interactiveDriver: driver }),
+    mode: "interactive",
   });
   const picked = collected[RECIPE_SELECT_PROMPT];
   return typeof picked === "string" ? picked : NODE_POSTGRES_RECIPE_ID;
@@ -125,12 +114,12 @@ export interface InitAppOptions {
   readonly answersFile?: string;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
-  readonly io?: PromptIO;
-  readonly interactiveDriver?: PromptDriver;
+  readonly interaction?: InteractionPrompter;
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
+  readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
   readonly destination?: string;
@@ -181,40 +170,31 @@ const loadGitRecipe = async (options: InitAppOptions) => {
   return parseResolvedRecipe(resolved);
 };
 
-const CONFIRM_YES_RE = /^(?:y|yes)$/iu;
-
-const loadTarballRecipe = async (
-  options: InitAppOptions,
-  io: PromptIO | undefined,
-  driver: PromptDriver | undefined,
-) => {
+const loadTarballRecipe = async (options: InitAppOptions, interaction: InteractionPrompter | undefined) => {
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
     url: options.url,
     path: options.path,
     checksum: options.checksum,
   });
-  const interactive = options.nonInteractive !== true && options.yes !== true && io !== undefined;
-  const warn = (message: string): void => {
-    (io ?? createStdioPromptIO()).writeError(`${message}\n`);
-  };
+  const interactive = options.nonInteractive !== true && options.yes !== true && interaction !== undefined;
   const confirmUnverified = interactive
-    ? async (): Promise<boolean> => {
-        const message = "Continue installing this recipe without checksum verification?";
-        const viaDriver = await tryDriverConfirm(driver, io as PromptIO, { message, name: "checksum" });
-        if (viaDriver !== undefined) return viaDriver;
-        (io as PromptIO).write(`${message} [y/N] `);
-        const answer = await (io as PromptIO).readLine();
-        return CONFIRM_YES_RE.test(answer.trim());
-      }
+    ? async (sha256: string): Promise<boolean> =>
+        (interaction as InteractionPrompter).confirm({
+          message: `No --checksum supplied for this tarball recipe; downloaded SHA-256 is ${sha256}. Continue without checksum verification?`,
+          name: "checksum",
+          default: false,
+          mode: "interactive",
+        })
     : undefined;
+  const onWarn = confirmUnverified === undefined ? (options.onWarn ?? options.postInitIO?.err) : undefined;
   const resolved = await resolveTarballRecipeSource({
     url: sourceOptions.url ?? "",
     ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
     ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
-    onWarn: warn,
+    ...(onWarn === undefined ? {} : { onWarn }),
     ...(confirmUnverified === undefined ? {} : { confirmUnverified }),
   });
   return parseResolvedRecipe(resolved);
@@ -270,29 +250,21 @@ const composeAnswers = async (options: InitAppOptions): Promise<Record<string, s
   return out;
 };
 
-const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
-  if (options.nonInteractive === true) return undefined;
-  if (options.io !== undefined) return options.io;
-  return createStdioPromptIO();
-};
+// Standalone callers still route through the single InteractionService chokepoint.
+const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionPrompter =>
+  makePromiseInteractionPrompter(
+    getInteractionServiceOverride() ??
+      makeInteractionService(choicesRunner === undefined ? {} : { choicesRunner }),
+  );
 
-const resolveDriver = async (
-  options: InitAppOptions,
-  io: PromptIO | undefined,
-): Promise<PromptDriver | undefined> => {
-  if (options.interactiveDriver !== undefined) return options.interactiveDriver;
-  if (io === undefined) return undefined;
-  return resolveInteractivePromptDriver({
-    isTTY: io.isTTY,
-    ...(options.yes === undefined ? {} : { yes: options.yes }),
-    ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
-  });
+type InternalPromptBatchOptions = PromptBatchOptions & {
+  readonly choicesRunner?: ChoicesCommandRunner;
 };
 
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
-  const io = resolveIO(options);
-  const driver = await resolveDriver(options, io);
+  const prompter = options.interaction ?? defaultInitPrompter(options.choicesRunner);
+  const interactivePrompter = options.nonInteractive === true ? undefined : prompter;
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
     url: options.url,
@@ -304,12 +276,12 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const recipeRef =
     sourceOptions.source !== undefined && remoteRef !== undefined
       ? remoteRef
-      : await resolveRecipeSelection(options, io, cwd, driver);
+      : await resolveRecipeSelection(options, interactivePrompter, cwd);
   const { resolved, manifest } =
     sourceOptions.source === "git"
       ? await loadGitRecipe(options)
       : sourceOptions.source === "tarball"
-        ? await loadTarballRecipe(options, io, driver)
+        ? await loadTarballRecipe(options, interactivePrompter)
         : sourceOptions.source === "npm"
           ? await loadNpmRecipe(options)
           : sourceOptions.source === "registry"
@@ -326,19 +298,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const prompts = manifest.prompts ?? [];
 
   const presetAnswers = await composeAnswers(options);
-  const useDefaults = options.yes === true;
 
-  const collected = await collectPrompts({
-    prompts,
+  const collected = await prompter.promptAll(prompts, {
     answers: presetAnswers,
-    yes: useDefaults,
-    nonInteractive: options.nonInteractive === true || io === undefined,
     cwd,
-    ...(io === undefined ? {} : { io }),
-    ...(driver === undefined ? {} : { interactiveDriver: driver }),
-    ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
+    ...(options.yes === undefined ? {} : { yes: options.yes }),
+    interactive: options.nonInteractive !== true,
     ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
-  });
+    ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
+  } satisfies InternalPromptBatchOptions);
 
   const appNameValue = collected[APP_NAME_PROMPT];
   if (typeof appNameValue !== "string" || appNameValue === "") {

@@ -10,6 +10,7 @@ import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "
 
 import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
+import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makePluginTrustStore } from "../../src/plugins/trust-store.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
@@ -785,9 +786,38 @@ describe("meta:plugin:add command", () => {
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
       const cause = JSON.stringify(exit.cause);
-      expect(cause).toContain("NotImplementedError");
+      expect(cause).toContain("InteractionRequiredError");
       expect(cause).toContain("--trust");
     }
+  });
+
+  test("the default trust prompter routes confirmation through interaction.confirm", async () => {
+    const spawner = {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
+        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-default-confirm"), {
+          name: "@lando/plugin-default-confirm",
+          version: "0.1.0",
+        });
+        return {
+          exitCode: 0,
+          stderr: "",
+          packageRoot: join(cwd, "node_modules", "@lando/plugin-default-confirm"),
+        };
+      },
+    };
+    const interaction: InteractionPrompter = {
+      promptAll: async () => ({}),
+      confirm: async () => true,
+    };
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-default-confirm",
+        spawner,
+        interaction,
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(result.trustSource).toBe("prompt");
   });
 
   test("prompt-confirmed trust persists to the in-memory store for the current install session", async () => {

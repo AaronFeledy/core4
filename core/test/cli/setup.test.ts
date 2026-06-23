@@ -31,6 +31,7 @@ import {
   makeSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
+  maybeSelectSetupProvider,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
@@ -38,6 +39,7 @@ import SetupCommand, {
 import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
+import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
@@ -1541,6 +1543,67 @@ describe("meta:setup command", () => {
   });
 
   describe("provider selection precedence", () => {
+    const recordingPrompter = (chosen: string): { prompter: InteractionPrompter; calls: number } => {
+      const state = { calls: 0 };
+      const prompter: InteractionPrompter = {
+        promptAll: async () => ({}),
+        confirm: async () => false,
+        select: async () => {
+          state.calls += 1;
+          return chosen as never;
+        },
+      };
+      return {
+        prompter,
+        get calls() {
+          return state.calls;
+        },
+      };
+    };
+
+    test("default-source selection resolves through InteractionService.select", async () => {
+      const recorder = recordingPrompter("podman");
+      const chosen = await maybeSelectSetupProvider({
+        resolution: { providerId: ProviderId.make("lando"), source: "default" },
+        yes: false,
+        nonInteractive: false,
+        skipProvider: false,
+        interaction: recorder.prompter,
+      });
+      expect(String(chosen)).toBe("podman");
+      expect(recorder.calls).toBe(1);
+    });
+
+    test("non-default source skips the provider prompt entirely", async () => {
+      const recorder = recordingPrompter("podman");
+      const chosen = await maybeSelectSetupProvider({
+        resolution: { providerId: ProviderId.make("docker"), source: "flag" },
+        yes: false,
+        nonInteractive: false,
+        skipProvider: false,
+        interaction: recorder.prompter,
+      });
+      expect(String(chosen)).toBe("docker");
+      expect(recorder.calls).toBe(0);
+    });
+
+    test("--yes / --no-interactive / --skip-provider keep the resolved default without prompting", async () => {
+      for (const gate of [
+        { yes: true, nonInteractive: false, skipProvider: false },
+        { yes: false, nonInteractive: true, skipProvider: false },
+        { yes: false, nonInteractive: false, skipProvider: true },
+      ]) {
+        const recorder = recordingPrompter("podman");
+        const chosen = await maybeSelectSetupProvider({
+          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          ...gate,
+          interaction: recorder.prompter,
+        });
+        expect(String(chosen)).toBe("lando");
+        expect(recorder.calls).toBe(0);
+      }
+    });
+
     const buildRegistryThatCapturesPlan = (provider: typeof TestRuntimeProvider) => {
       const observed: { providerId?: string } = {};
       const registry = {

@@ -45,4 +45,14 @@ tags: [beta, docs, library, testing]
       <Variable name="channel" value="next" display="@lando/core/testing is stable on the next channel for Beta 1" />
     </Step>
   </Scenario>
+
+  <Scenario id="interaction-test-double" render={false} reason="The interaction test double drives prompt flows without a terminal and is verified by the SDK interaction contract suite without a provider backed app">
+    <Step name="seeded-prompts">
+      <Variable name="factory" value="makeTestInteractionService" display="@lando/core/testing exports makeTestInteractionService for driving prompt flows without a terminal" />
+      <Variable name="answers" value="seeded by prompt name" display="Seeded answers are keyed by prompt name and reuse the real makeInteractionService engine so coercion, validation, and precedence match the Live service" />
+      <Variable name="stdin" value="never opened" display="The test double fails on any stdin read, so a seeded flow can never block on the terminal" />
+      <Variable name="transcript" value="captured" display="The service captures a prompt transcript that hosts can assert against" />
+      <Variable name="contract" value="runInteractionContract" display="@lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees" />
+    </Step>
+  </Scenario>
 </Guide>

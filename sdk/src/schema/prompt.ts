@@ -93,4 +93,6 @@ export interface PromptBatchOptions {
   readonly mode?: PromptMode;
   /** Working directory used for `path`-type resolution. */
   readonly cwd?: string;
+  /** Command ids allowed for dynamic `choicesFrom` prompts. */
+  readonly runs?: ReadonlyArray<string>;
 }

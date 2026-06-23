@@ -118,9 +118,15 @@ interface RunResult {
   readonly stderr: string;
 }
 
+interface RunProcessOptions {
+  readonly cwd?: string;
+  readonly env?: Record<string, string>;
+  readonly stdin?: string;
+}
+
 const runProcess = async (
   cmd: ReadonlyArray<string>,
-  options: { readonly cwd?: string; readonly env?: Record<string, string> } = {},
+  options: RunProcessOptions = {},
 ): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
@@ -128,7 +134,12 @@ const runProcess = async (
     env: options.env ?? process.env,
     stdout: "pipe",
     stderr: "pipe",
+    stdin: options.stdin === undefined ? "ignore" : "pipe",
   });
+  if (options.stdin !== undefined && proc.stdin !== undefined) {
+    proc.stdin.write(options.stdin);
+    proc.stdin.end();
+  }
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
     new Response(proc.stdout).text(),
@@ -137,10 +148,10 @@ const runProcess = async (
   return { exitCode, stdout, stderr };
 };
 
-const runSourceCli = (args: ReadonlyArray<string>, opts?: { cwd?: string; env?: Record<string, string> }) =>
+const runSourceCli = (args: ReadonlyArray<string>, opts?: RunProcessOptions) =>
   runProcess([process.execPath, sourceCli, ...args], opts);
 
-const runCompiledCli = (args: ReadonlyArray<string>, opts?: { cwd?: string; env?: Record<string, string> }) =>
+const runCompiledCli = (args: ReadonlyArray<string>, opts?: RunProcessOptions) =>
   runProcess([compiledBinary, ...args], opts);
 
 /**
@@ -723,6 +734,10 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       await expectJsonEnvelopeParity(["meta:plugin:new", "--no-interactive"], "NotImplementedError");
     }, 30_000);
 
+    test("new: non-TTY default missing input fails identically under renderer=json", async () => {
+      await expectJsonEnvelopeParity(["meta:plugin:new"], "NotImplementedError");
+    }, 30_000);
+
     test("test: rejects an unknown flag before `--` on both paths", async () => {
       await expectUnknownFlagParity(["meta:plugin:test", "--bogus"], "--bogus");
     }, 30_000);
@@ -947,6 +962,115 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         isolated.cleanup();
       }
     }, 60_000);
+  });
+
+  describe("answer-source and interactivity resolution at parity", () => {
+    test("apps:init: flag answers + --no-interactive scaffold identically", async () => {
+      const isolated = makeIsolatedEnv();
+      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-src-"));
+      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-cmp-"));
+      const args: ReadonlyArray<string> = [
+        "apps:init",
+        "--recipe=empty",
+        "--name=parity-init-app",
+        "--no-interactive",
+      ];
+      try {
+        const source = await runSourceCli(args, { cwd: sourceCwd, env: isolated.env });
+        const compiled = await runCompiledCli(args, { cwd: compiledCwd, env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(readFileSync(join(sourceCwd, "parity-init-app", ".lando.yml"), "utf-8")).toBe(
+          readFileSync(join(compiledCwd, "parity-init-app", ".lando.yml"), "utf-8"),
+        );
+      } finally {
+        rmSync(sourceCwd, { recursive: true, force: true });
+        rmSync(compiledCwd, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("apps:init: piped (non-TTY) stdin resolves the default recipe identically on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-stdin-src-"));
+      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-stdin-cmp-"));
+      // Piped stdin is non-TTY, so both paths resolve non-interactively to the
+      // default recipe + slugified name — the scripted lines are never consumed.
+      const stdin = "empty\nstdin-init-app\n";
+      try {
+        const source = await runSourceCli(["apps:init", "--name=piped-init-app"], {
+          cwd: sourceCwd,
+          env: isolated.env,
+          stdin,
+        });
+        const compiled = await runCompiledCli(["apps:init", "--name=piped-init-app"], {
+          cwd: compiledCwd,
+          env: isolated.env,
+          stdin,
+        });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+      } finally {
+        rmSync(sourceCwd, { recursive: true, force: true });
+        rmSync(compiledCwd, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:plugin:new: repeatable --answer flags resolve remaining values identically", async () => {
+      const isolated = makeIsolatedEnv();
+      const sourceDest = mkdtempSync(join(tmpdir(), "lando-parity-new-ans-src-"));
+      const compiledDest = mkdtempSync(join(tmpdir(), "lando-parity-new-ans-cmp-"));
+      const args = (dest: string): ReadonlyArray<string> => [
+        "meta:plugin:new",
+        "@acme/lando-plugin-parity-ans",
+        join(dest, "p"),
+        "--answer=template=bare",
+        "--answer=cspace=acme",
+        "--answer=description=Demo plugin",
+        "--no-interactive",
+      ];
+      try {
+        const source = await runSourceCli(args(sourceDest), { env: isolated.env });
+        const compiled = await runCompiledCli(args(compiledDest), { env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+        expect(readFileSync(join(sourceDest, "p", "plugin.yaml"), "utf-8")).toBe(
+          readFileSync(join(compiledDest, "p", "plugin.yaml"), "utf-8"),
+        );
+      } finally {
+        rmSync(sourceDest, { recursive: true, force: true });
+        rmSync(compiledDest, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:plugin:add --trust: missing spec rejects identically under renderer=json", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        await expectJsonEnvelopeParity(["meta:plugin:add", "--trust"], "NotImplementedError", {
+          env: isolated.env,
+        });
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:plugin:add --trust: an invalid spec rejects identically on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        await expectJsonEnvelopeParity(
+          ["meta:plugin:add", "git+https://example.com/x.git", "--trust"],
+          "NotImplementedError",
+          { env: isolated.env },
+        );
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
   });
 });
 
