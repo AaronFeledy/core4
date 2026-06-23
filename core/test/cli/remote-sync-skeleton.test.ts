@@ -291,6 +291,48 @@ describe("remote sync command skeleton", () => {
     });
   });
 
+  test("pull and push reject invalid or empty dataset selections", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      const plan = TestDataset.context.plan;
+      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const layer = Layer.mergeAll(
+        Layer.succeed(RemoteSource, TestRemoteSource.source),
+        Layer.succeed(Dataset, TestDataset.dataset),
+        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("target supplies the plan"),
+        }),
+      );
+
+      const invalidPull = await Effect.runPromiseExit(
+        operations
+          .appPull({ cwd: dir, remote: "test", env: "dev", only: ["bogus"], yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+      const emptyPush = await Effect.runPromiseExit(
+        operations
+          .appPush({ cwd: dir, remote: "test", env: "dev", only: [], yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+
+      expect(invalidPull._tag).toBe("Failure");
+      expect(emptyPush._tag).toBe("Failure");
+      if (invalidPull._tag === "Failure") {
+        expect(JSON.stringify(invalidPull.cause.toJSON())).toContain("Unsupported dataset kind bogus");
+      }
+      if (emptyPush._tag === "Failure") {
+        expect(JSON.stringify(emptyPush.cause.toJSON())).toContain("No dataset kinds were selected");
+      }
+    });
+  });
+
   test("pull fails closed when confirmation is required but no InteractionService is available", async () => {
     await withTempRemoteApp(async (dir) => {
       const operations = await import("@lando/core/cli/operations");

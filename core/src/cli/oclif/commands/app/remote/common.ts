@@ -63,7 +63,8 @@ export const remoteFormatFromInput = (input: unknown): "text" | "json" =>
 
 const onlyValue = (value: unknown): ReadonlyArray<string> | undefined => {
   const raw = stringValue(value);
-  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw === undefined) return undefined;
+  if (raw.length === 0) return [];
   return raw
     .split(",")
     .map((part) => part.trim())

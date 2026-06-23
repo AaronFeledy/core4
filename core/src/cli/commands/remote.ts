@@ -244,16 +244,53 @@ const resolvePlan = (
   });
 };
 
+const validDatasetKinds = [
+  "database",
+  "files",
+  "config",
+  "blob",
+] as const satisfies ReadonlyArray<DatasetKind>;
+
+const isDatasetKind = (kind: string): kind is DatasetKind => validDatasetKinds.includes(kind as DatasetKind);
+
 const datasetKinds = (
   sourceDatasets: ReadonlyArray<DatasetKind>,
   requested: ReadonlyArray<string> | undefined,
-): ReadonlyArray<DatasetKind> => {
-  if (requested === undefined || requested.length === 0) return sourceDatasets;
-  return requested.filter(
-    (kind): kind is DatasetKind =>
-      kind === "database" || kind === "files" || kind === "config" || kind === "blob",
-  );
-};
+): Effect.Effect<ReadonlyArray<DatasetKind>, RemoteDatasetUnsupportedError> =>
+  Effect.gen(function* () {
+    if (requested === undefined) return sourceDatasets;
+    if (requested.length === 0) {
+      return yield* Effect.fail(
+        new RemoteDatasetUnsupportedError({
+          message: "No dataset kinds were selected.",
+          remediation: "Pass at least one dataset kind with --only, such as --only=database.",
+        }),
+      );
+    }
+
+    const selected: DatasetKind[] = [];
+    for (const kind of requested) {
+      if (!isDatasetKind(kind)) {
+        return yield* Effect.fail(
+          new RemoteDatasetUnsupportedError({
+            message: `Unsupported dataset kind ${kind}.`,
+            dataset: kind,
+            remediation: `Use one of: ${validDatasetKinds.join(", ")}.`,
+          }),
+        );
+      }
+      if (!sourceDatasets.includes(kind)) {
+        return yield* Effect.fail(
+          new RemoteDatasetUnsupportedError({
+            message: `RemoteSource does not support dataset kind ${kind}.`,
+            dataset: kind,
+          }),
+        );
+      }
+      selected.push(kind);
+    }
+    return selected;
+  });
 
 const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof LandofileShape.Type) => ({
   app: plan.id,
@@ -380,7 +417,7 @@ export const appPull = (
     const source = yield* resolveRemoteSource(entry);
     const dataset = yield* Effect.serviceOption(Dataset);
     if (dataset._tag === "None") return yield* Effect.fail(unavailable("Dataset"));
-    const kinds = datasetKinds(source.capabilities.datasets, options.only);
+    const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
     const env = options.env ?? "dev";
     const plan = yield* resolvePlan(options.cwd, target);
     const artifacts: DataEndpoint[] = [];
@@ -437,7 +474,7 @@ export const appPush = (
     }
     const dataset = yield* Effect.serviceOption(Dataset);
     if (dataset._tag === "None") return yield* Effect.fail(unavailable("Dataset"));
-    const kinds = datasetKinds(source.capabilities.datasets, options.only);
+    const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
     const env = options.env ?? "dev";
     if (source.capabilities.protectedByDefault?.includes(env) === true && options.force !== true) {
       return yield* Effect.fail(
