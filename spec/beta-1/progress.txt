@@ -649,3 +649,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - When consolidating the three redaction modules in US-300, the primitive is the byte-faithful target: copy semantics already match except sentinel case and the transcript double-bracket fix. The `secrets` profile intentionally has NO double-marker collapse (matching `cli/redact.ts`); only `transcript` collapses `[redacted]]` → `[redacted]`. Env defaults (homedir/tmpdir/userInfo/hostname) must stay in the core wrapper, never the pure primitive.
   - `RedactionProfile` had to be backed by a runtime `REDACTION_PROFILES` tuple because `exports.test.ts` asserts `.toBeDefined()`, which a bare TS type cannot satisfy; the type is derived as `(typeof REDACTION_PROFILES)[number]`.
 ---
+
+## 2026-06-23 05:24 CDT - US-298 Review
+- Fixed confirmed redaction primitive blockers from review: bare uppercase secret assignments such as `API_KEY=...`, `PASSWORD=...`, and `TOKEN=...` now redact, `redactValue` no longer throws on throwing proxies/getters, and the published pattern-class catalog now includes the missing fixed normalizing/transcript classes.
+- Review notes (deferred/rejected): rejected migration of existing core emitters onto the primitive as US-300 scope; rejected `RedactionService` runtime wiring as US-299 scope; rejected the redaction-boundary lint gate as US-301 scope; existing uppercase `[REDACTED]` call-site sentinels remain legacy behavior until those stories.
+- Verification: typecheck and lint passed; focused SDK secrets, boundary, exports, and backward-compat tests passed; manual SDK/core re-export driver passed; LSP diagnostics were unavailable because the TypeScript LSP is not installed in this harness.
+---

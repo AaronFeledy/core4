@@ -17,6 +17,14 @@ describe("createRedactor surface", () => {
     expect(PATTERN_CLASSES.bearerToken).toBeDefined();
     expect(PATTERN_CLASSES.signedQueryParam).toBeDefined();
     expect(PATTERN_CLASSES.secretKeyedField).toBeDefined();
+    expect(PATTERN_CLASSES.uncPath).toBeDefined();
+    expect(PATTERN_CLASSES.homeAlias).toBeDefined();
+    expect(PATTERN_CLASSES.highEntropyToken).toBeDefined();
+    expect(PATTERN_CLASSES.port).toBeDefined();
+    expect(PATTERN_CLASSES.containerId).toBeDefined();
+    expect(PATTERN_CLASSES.digest).toBeDefined();
+    expect(PATTERN_CLASSES.providerId).toBeDefined();
+    expect(PATTERN_CLASSES.root).toBeDefined();
     expect(PATTERN_CLASSES.secretAssignment.pattern).toBeInstanceOf(RegExp);
   });
 });
@@ -25,8 +33,9 @@ describe("secrets profile (pattern layer)", () => {
   const r = createRedactor("secrets");
 
   test("masks env-style secret assignments (keyword embedded in an UPPER key)", () => {
-    // A bare `API_KEY=` is consumed by the greedy key prefix and left unmasked;
-    // this preserves the existing secrets-class behavior byte-for-byte.
+    expect(r.redactString("PASSWORD=hunter2 ok")).toBe("PASSWORD=[redacted] ok");
+    expect(r.redactString("TOKEN=abcd ok")).toBe("TOKEN=[redacted] ok");
+    expect(r.redactString("API_KEY=abcd ok")).toBe("API_KEY=[redacted] ok");
     expect(r.redactString("MY_API_KEY=abcd1234")).toBe("MY_API_KEY=[redacted]");
     expect(r.redactString("DATABASE_PASSWORD=hunter2 ok")).toBe("DATABASE_PASSWORD=[redacted] ok");
   });
@@ -104,6 +113,31 @@ describe("redactValue structure preservation (AC5)", () => {
     expect(() => r.redactValue(cyc)).not.toThrow();
     const out = r.redactValue(cyc) as Record<string, unknown>;
     expect(out.password).toBe("[redacted]");
+  });
+
+  test("never throws on exotic objects", () => {
+    const throwingProxy = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error("ownKeys boom");
+        },
+      },
+    );
+    expect(() => r.redactValue(throwingProxy)).not.toThrow();
+    expect(r.redactValue(throwingProxy)).toBe("[redacted]");
+  });
+
+  test("redacts throwing object properties without leaking sibling values", () => {
+    const value = {
+      safe: "ok",
+      get unstable() {
+        throw new Error("getter boom");
+      },
+    };
+    const out = r.redactValue(value) as Record<string, unknown>;
+    expect(out.safe).toBe("ok");
+    expect(out.unstable).toBe("[redacted]");
   });
 
   test("passes through null/undefined/number/bool unchanged", () => {

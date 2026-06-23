@@ -99,7 +99,7 @@ const SECRET_KEY_PATTERN =
   /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
 
 const SECRET_ASSIGNMENT_PATTERN =
-  /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]}]+)/gu;
+  /\b([A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]}]+)/gu;
 
 const URL_USERINFO_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
 
@@ -174,6 +174,12 @@ const GENERIC_PATH_PATTERNS: readonly RegExp[] = [
   /%USERPROFILE%[^"\s'`]*/gi,
   /%TEMP%[^"\s'`]*/gi,
 ];
+
+const TRANSCRIPT_ROOT_PATTERN =
+  /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?|\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?|\/root(?:\/[^\s"'`]*)?|\/var\/folders\/[^/]+\/T(?:\/[^\s"'`]*)?|\/tmp\/(?:lando-)?[^/\s"'`]+(?:\/[^\s"'`]*)?|[A-Za-z]:\\(?:Users|AppData\\Local\\Temp)[^"\s'`]*|%USERPROFILE%[^"\s'`]*|%TEMP%[^"\s'`]*/giu;
+const PORT_PATTERN = /:(\d{2,5})\b/gu;
+const CONTAINER_ID_PATTERN = /\b(?:[0-9a-f]{12}|[0-9a-f]{16,63})\b/giu;
+const DIGEST_PATTERN = /\bsha256:[0-9a-f]{64}\b/giu;
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -281,6 +287,28 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
   email: { pattern: EMAIL_PATTERN, replace: EMAIL },
   uuid: { pattern: UUID_PATTERN, replace: ID },
   hostname: { pattern: HOSTNAME_PATTERN, replace: HOST },
+  uncPath: { pattern: UNC_PATH_PATTERN, replace: PATH },
+  homeAlias: { pattern: HOME_ALIAS_PATTERN, replace: PATH },
+  highEntropyToken: {
+    pattern: HIGH_ENTROPY_TOKEN_PATTERN,
+    replace: (match: string) => (hasLetterAndDigit(match) ? REDACTED : match),
+  },
+  port: {
+    pattern: PORT_PATTERN,
+    replace: (match: string, portText: string) => {
+      const port = Number(portText);
+      if (!Number.isFinite(port)) return match;
+      if (WELL_KNOWN_PORTS.has(port)) return match;
+      return port >= 1024 ? `:${PORT_PH}` : match;
+    },
+  },
+  containerId: { pattern: CONTAINER_ID_PATTERN, replace: CONTAINER_ID_PH },
+  digest: { pattern: DIGEST_PATTERN, replace: `sha256:${DIGEST_PH}` },
+  providerId: {
+    pattern: /\b([A-Za-z0-9_-]+[_-](?:web|app|db|svc)[_-][A-Za-z0-9_-]+)\b/gi,
+    replace: PROVIDER_ID_PH,
+  },
+  root: { pattern: TRANSCRIPT_ROOT_PATTERN, replace: HOME_PH },
 });
 
 // --- deep value walker ---
@@ -304,9 +332,23 @@ const redactValueWith = (
     return { name: value.name, message: profileString(value.message) };
   }
 
+  let keys: string[];
+  try {
+    keys = Object.keys(value as Record<string, unknown>);
+  } catch {
+    return REDACTED;
+  }
+
   const out: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+  for (const key of keys) {
     if (SECRET_KEY_PATTERN.test(key)) {
+      out[key] = REDACTED;
+      continue;
+    }
+    let raw: unknown;
+    try {
+      raw = (value as Record<string, unknown>)[key];
+    } catch {
       out[key] = REDACTED;
       continue;
     }
