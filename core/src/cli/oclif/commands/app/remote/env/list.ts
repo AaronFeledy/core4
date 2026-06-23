@@ -14,8 +14,8 @@ export const remoteEnvListSpec: LandoCommandSpec = {
   flags: remoteConfigFlags,
   resultSchema: RemoteEnvListResultSchema,
   run: (input) => appRemoteEnvList(remoteEnvListOptionsFromInput(input)),
-  render: (result, input) =>
-    renderRemoteEnvListResult(result as never, remoteEnvListOptionsFromInput(input).format),
+  render: (result, input, ctx) =>
+    renderRemoteEnvListResult(result as never, remoteEnvListOptionsFromInput(input).format, ctx),
 };
 
 export default class RemoteEnvListCommand extends LandoCommandBase {
@@ -25,11 +25,6 @@ export default class RemoteEnvListCommand extends LandoCommandBase {
   static override bootstrap = remoteEnvListSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = await this.parse(RemoteEnvListCommand);
-    await this.runEffect({
-      ...remoteEnvListSpec,
-      render: (result) =>
-        renderRemoteEnvListResult(result as never, remoteEnvListOptionsFromInput(parsed).format),
-    });
+    await this.runEffect(remoteEnvListSpec);
   }
 }
