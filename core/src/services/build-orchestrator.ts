@@ -26,7 +26,9 @@ const buildService = (
   Effect.gen(function* () {
     const redaction = yield* Effect.serviceOption(RedactionService);
     const redactor =
-      redaction._tag === "Some" ? yield* redaction.value.forProfile("secrets") : identityRedactor;
+      redaction._tag === "Some"
+        ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+        : identityRedactor;
     const appRef = appRefFor(plan);
     const redactedAppRef = {
       kind: appRef.kind,

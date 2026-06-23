@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Fiber, Layer, Stream } from "effect";
+import { type Context, DateTime, Effect, Fiber, Layer, Stream } from "effect";
 
 import { ProviderInternalError } from "@lando/core/errors";
 import {
@@ -203,6 +203,63 @@ describe("BuildOrchestratorLive", () => {
       expect(String(event.providerId)).not.toContain("topsecret");
       expect(String(event.providerId)).toContain("[redacted]");
       expect(DateTime.isDateTime(event.timestamp)).toBe(true);
+    }
+  });
+
+  test("includes env-derived tokens in the build-event redactor", async () => {
+    const previousToken = process.env.BUN_AUTH_TOKEN;
+    process.env.BUN_AUTH_TOKEN = "envbuildsecret";
+    const secretProviderId = ProviderId.make("test-envbuildsecret");
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-envbuildsecret"),
+      provider: secretProviderId,
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      slug: "myapp-envbuildsecret",
+      root: AbsolutePath.make("/srv/envbuildsecret/myapp"),
+      provider: secretProviderId,
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
+    };
+    const envRedactionLayer = Layer.succeed(RedactionService, {
+      forProfile: (_profile, options) =>
+        Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
+    } satisfies Context.Tag.Service<typeof RedactionService>);
+
+    try {
+      const events = await Effect.runPromise(
+        Effect.flatMap(EventService, (eventService) =>
+          Effect.gen(function* () {
+            const subscriber = yield* eventService
+              .subscribe("*")
+              .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            yield* Effect.sleep("10 millis");
+            yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
+            return yield* Fiber.join(subscriber);
+          }),
+        ).pipe(
+          Effect.provide(
+            BuildOrchestratorLive.pipe(
+              Layer.provideMerge(EventServiceLive),
+              Layer.provideMerge(registryLayer(provider)),
+              Layer.provideMerge(envRedactionLayer),
+            ),
+          ),
+        ),
+      );
+
+      expect(JSON.stringify(Array.from(events))).not.toContain("envbuildsecret");
+    } finally {
+      if (previousToken === undefined) {
+        Reflect.deleteProperty(process.env, "BUN_AUTH_TOKEN");
+      } else {
+        process.env.BUN_AUTH_TOKEN = previousToken;
+      }
     }
   });
 
