@@ -389,6 +389,14 @@ describe("@lando/sdk package exports", () => {
     expect(landofile.LandofileEmitError).toBeDefined();
   });
 
+  test("verified-stream entry point exports the shared hash-and-persist helper", async () => {
+    const verifiedStream = await import("@lando/sdk/verified-stream");
+
+    expect(verifiedStream.persistVerifiedStream).toBeDefined();
+    expect(verifiedStream.collectVerifiedStream).toBeDefined();
+    expect(verifiedStream.VerifiedStreamError).toBeDefined();
+  });
+
   test("app entry point resolves (type-only App handle contracts)", async () => {
     const app = await import("@lando/sdk/app");
 
