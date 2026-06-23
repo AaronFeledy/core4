@@ -127,4 +127,13 @@ describe("CLI runtime telemetry precedence", () => {
       expect(cliRuntimeOptions({ bootstrap: "none" }).telemetry).toBe(false);
     });
   });
+
+  test("CLI runtime options default prompts to auto mode", async () => {
+    await withEnv({}, async () => {
+      expect(cliRuntimeOptions({ bootstrap: "minimal" }).interaction).toBe("auto");
+      expect(cliRuntimeOptions({ bootstrap: "minimal", interaction: "non-interactive" }).interaction).toBe(
+        "non-interactive",
+      );
+    });
+  });
 });

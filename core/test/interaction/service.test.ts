@@ -125,6 +125,36 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     expect(answers).toEqual({ app: "typed-value" });
   });
 
+  test("defaultMode non-interactive overrides the auto-on-TTY default for an empty batch", async () => {
+    // On a TTY stdin the implicit `auto` default would read stdin; defaultMode
+    // non-interactive must instead fail fast on an unseeded required prompt.
+    const ttyStdin = scriptedStdin(["should-not-be-read"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      stdout: capturingWritable().stream,
+      defaultMode: "non-interactive",
+    });
+    const exit = await runScopedExit(service.promptAll([{ name: "app", type: "text", message: "Name?" }]));
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(failureTag(exit)).toBe("InteractionRequiredError");
+  });
+
+  test("per-batch mode overrides defaultMode", async () => {
+    const ttyStdin = scriptedStdin(["typed"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const capture = capturingWritable();
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      stdout: capture.stream,
+      defaultMode: "non-interactive",
+    });
+    const answers = await runScoped(
+      service.promptAll([{ name: "app", type: "text", message: "Name?" }], { mode: "interactive" }),
+    );
+    expect(answers).toEqual({ app: "typed" });
+  });
+
   test("auto mode is non-interactive when stdin is not a TTY", async () => {
     const service = makeInteractionService({ stdin: neverStdin() });
     const interactive = await Effect.runPromise(service.isInteractive);

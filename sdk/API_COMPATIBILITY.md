@@ -391,6 +391,9 @@
 - `FileSyncContractMatrixReport`
 - `HealthcheckExpectation`
 - `HostPlatformId`
+- `InteractionContractHarness`
+- `InteractionContractRenderer`
+- `InteractionServiceSpec`
 - `ManagedFileContractHarness`
 - `PluginContractInput`
 - `ProviderDataPlaneContractInput`
@@ -411,6 +414,8 @@
 - `UnsupportedServiceContractCell`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
+- `makeInteractionContractRenderer`
+- `runInteractionContract`
 - `runManagedFileContract`
 - `runPluginContract`
 - `runProviderDataPlaneContract`

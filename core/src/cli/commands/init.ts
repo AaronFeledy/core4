@@ -17,6 +17,7 @@ import { RecipeManifestService } from "@lando/sdk/services";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
 import { makeInteractionService } from "../../interaction/service.ts";
+import { getInteractionServiceOverride } from "../../interaction/testing-override.ts";
 import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
@@ -252,7 +253,8 @@ const composeAnswers = async (options: InitAppOptions): Promise<Record<string, s
 // Standalone callers still route through the single InteractionService chokepoint.
 const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionPrompter =>
   makePromiseInteractionPrompter(
-    makeInteractionService(choicesRunner === undefined ? {} : { choicesRunner }),
+    getInteractionServiceOverride() ??
+      makeInteractionService(choicesRunner === undefined ? {} : { choicesRunner }),
   );
 
 type InternalPromptBatchOptions = PromptBatchOptions & {

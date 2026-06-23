@@ -54,8 +54,13 @@ export const resolveCliTelemetryEnabled = (): boolean => resolveCliTelemetryStat
 
 export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
   options: LandoRuntimeOptions & { readonly bootstrap: TBootstrap },
-): LandoRuntimeOptions & { readonly bootstrap: TBootstrap; readonly telemetry: boolean } => ({
+): LandoRuntimeOptions & {
+  readonly bootstrap: TBootstrap;
+  readonly interaction: NonNullable<LandoRuntimeOptions["interaction"]>;
+  readonly telemetry: boolean;
+} => ({
   ...options,
+  interaction: options.interaction ?? "auto",
   telemetry:
     options.bootstrap === "none"
       ? (options.telemetry ?? false)

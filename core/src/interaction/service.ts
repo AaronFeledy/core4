@@ -30,6 +30,7 @@ import {
 import type {
   PromptBatchOptions,
   PromptChoice,
+  PromptMode,
   PromptSpec,
   RecipePrompt,
   PromptAnswer as SdkPromptAnswer,
@@ -58,6 +59,7 @@ import {
   createStdioPromptIO,
 } from "../recipes/prompts/index.ts";
 import { type InteractiveDriverGate, resolveInteractivePromptDriver } from "./interactive-driver.ts";
+import { getInteractionServiceOverride } from "./testing-override.ts";
 
 const STDIO_INTERACTION_ID = "stdio";
 
@@ -94,6 +96,7 @@ export interface InteractionServiceDeps {
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly resolveDriver?: ResolveInteractionDriver;
   readonly id?: string;
+  readonly defaultMode?: PromptMode;
 }
 
 type InternalPromptBatchOptions = PromptBatchOptions & {
@@ -186,13 +189,14 @@ const interruptedCancellation = (): InteractionCancelledError =>
 const resolveGate = (
   options: PromptBatchOptions | undefined,
   isTty: boolean,
+  defaultMode: PromptMode,
 ): { readonly yes: boolean; readonly nonInteractive: boolean; readonly interactive: boolean } => {
   const yes = options?.yes === true;
   let interactive: boolean;
   if (options?.interactive === true) interactive = true;
   else if (options?.interactive === false) interactive = false;
   else {
-    const mode = options?.mode ?? "auto";
+    const mode = options?.mode ?? defaultMode;
     interactive = mode === "interactive" ? true : mode === "non-interactive" ? false : isTty;
   }
   return { yes, nonInteractive: !interactive, interactive };
@@ -214,6 +218,7 @@ const readAnswersFileJson = async (path: string): Promise<Record<string, string>
 export const makeInteractionService = (deps: InteractionServiceDeps = {}): InteractionServiceShape => {
   const stdin = deps.stdin ?? process.stdin;
   const id = deps.id ?? STDIO_INTERACTION_ID;
+  const defaultMode: PromptMode = deps.defaultMode ?? "auto";
   // One reader per service instance: buffered-ahead stdin survives across batches.
   const lineReader: PromptLineReader = createLineReader(stdin);
   // Serialize batches: the shared reader and its buffer are mutable single-stream state.
@@ -294,7 +299,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     Effect.gen(function* () {
       const rendererOption = yield* Effect.serviceOption(Renderer);
       const tty = isTtyStdin(stdin);
-      const gate = resolveGate(options, tty);
+      const gate = resolveGate(options, tty, defaultMode);
       const cwd = options?.cwd ?? process.cwd();
       const explicit = options?.answers ?? {};
       const answersFilePath =
@@ -385,7 +390,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   };
 };
 
-export const InteractionServiceLive: Layer.Layer<InteractionService> = Layer.succeed(
-  InteractionService,
-  makeInteractionService({ resolveDriver: makeDefaultResolveInteractionDriver() }),
+export const InteractionServiceLive: Layer.Layer<InteractionService> = Layer.suspend(() =>
+  Layer.succeed(
+    InteractionService,
+    getInteractionServiceOverride() ??
+      makeInteractionService({ resolveDriver: makeDefaultResolveInteractionDriver() }),
+  ),
 );
