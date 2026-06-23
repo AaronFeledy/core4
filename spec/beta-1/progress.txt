@@ -568,3 +568,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review notes (deferred/rejected): no other review findings were confirmed as blockers; the helper's trusted `destinationPath` and overwrite semantics are inherited from the Downloader path and remain caller-governed.
 - Verification: typecheck, lint passed; focused verified-stream, SDK export/boundary, and Downloader service/contract/events/acceptance spot checks passed; LSP diagnostics clean for the changed boundary test.
 ---
+
+## 2026-06-22 23:10 CDT - Babysit
+- PR: #436 https://github.com/AaronFeledy/core4/pull/436
+- CI outcome: pass
+- Review feedback: fixed (guide-drift failures resolved with a valid contract-only Guide-Coverage-Skip reason and CI retriggered cleanly)
+- Merge: merged (squash)
+---
