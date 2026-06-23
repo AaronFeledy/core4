@@ -358,11 +358,14 @@ describe("@lando/sdk package exports", () => {
     expect(services.Dataset).toBeDefined();
   });
 
-  test("secrets entry point exports the single value redactor", async () => {
+  test("secrets entry point exports the canonical redaction primitive", async () => {
     const secrets = await import("@lando/sdk/secrets");
 
     expect(secrets.createSecretRedactor).toBeDefined();
     expect(secrets.REDACTED).toBeDefined();
+    expect(secrets.createRedactor).toBeDefined();
+    expect(secrets.REDACTION_PROFILES).toBeDefined();
+    expect(secrets.PATTERN_CLASSES).toBeDefined();
   });
 
   test("root entry point exposes the Secrets namespace", async () => {
@@ -370,6 +373,16 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdk.Secrets.createSecretRedactor).toBeDefined();
     expect(sdk.Secrets.REDACTED).toBeDefined();
+    expect(sdk.Secrets.createRedactor).toBeDefined();
+    expect(sdk.Secrets.REDACTION_PROFILES).toBeDefined();
+  });
+
+  test("@lando/core/secrets re-exports the @lando/sdk/secrets primitive", async () => {
+    const coreSecrets = await import("@lando/core/secrets");
+
+    expect(coreSecrets.createRedactor).toBeDefined();
+    expect(coreSecrets.createSecretRedactor).toBeDefined();
+    expect(coreSecrets.REDACTED).toBe("[redacted]");
   });
 
   test("template entry point exports the pluggable engine contract surface", async () => {
