@@ -549,11 +549,11 @@ events:
 proxy:
   <service>: <RouteConfig[]>
 
-remotes:                               # named remote data-sync sources for `lando pull`/`push` (§10.12); feature is 4.1
+remotes:                               # named RemoteSource configs for `lando pull`/`push` (§10.12); feature is 4.1
   <name>:
     source: <remoteSource-id>          # e.g. pantheon | rsync | s3 | local; validated by that source's configSchema
     <source-specific-config>           # e.g. site/token (pantheon), host/path (rsync), bucket/prefix (s3)
-sync:                                  # optional dataset→service bindings (usually inferred; §10.12)
+sync:                                  # optional Dataset→service bindings (usually inferred; §10.12)
   <datasetId>:
     service: <service-name>
     path: <container-path>             # files datasets only
@@ -651,7 +651,7 @@ A Landofile that includes `compose:` is rejected at parse time with `LandofileFo
 
 Config translation is the explicit path for turning external configuration formats into v4 Landofile data. Core owns the translation pipeline; plugins own format-specific translators.
 
-Examples of external formats include Terraform outputs, framework metadata, hosting-provider config, cloud-service descriptors, and legacy Lando v3 Landofiles. v3 compatibility remains out of core: an external plugin MAY contribute a `lando-v3` translator, but core treats it the same as any other translator.
+Examples of external formats include Terraform outputs, framework metadata, hosting platform config, cloud-service descriptors, and legacy Lando v3 Landofiles. v3 compatibility remains out of core: an external plugin MAY contribute a `lando-v3` translator, but core treats it the same as any other translator.
 
 Rules:
 
