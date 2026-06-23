@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveInteractivePromptDriver } from "../../../src/cli/prompts/interactive-driver.ts";
+import { resolveInteractivePromptDriver } from "../../../src/interaction/interactive-driver.ts";
 import { PromptCancelledError } from "../../../src/recipes/prompts/driver.ts";
 
 const fakePlugin = (readRaw: (request: unknown) => Promise<string>) => ({

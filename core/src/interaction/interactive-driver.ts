@@ -1,5 +1,5 @@
 /**
- * CLI-side resolver for the OpenTUI-backed interactive prompt driver.
+ * Resolver for the OpenTUI-backed interactive prompt driver.
  *
  * The rich driver lives in the bundled `@lando/renderer-lando` plugin and is
  * reached only through a lazy dynamic import so OpenTUI never lands on the
@@ -11,9 +11,13 @@
  * `--no-interactive` deterministic override. Any import/probe failure also
  * yields `undefined`, so a missing or broken renderer plugin can never break a
  * command.
+ *
+ * Lives under `core/src/interaction/` (not `core/src/cli/`) so the default
+ * `InteractionServiceLive` can wire it in as its rich-driver seam without a
+ * cli→core layering inversion.
  */
 
-import { PromptCancelledError, type PromptDriver } from "../../recipes/prompts/driver.ts";
+import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver.ts";
 
 interface RawPromptDriver {
   readonly readRaw: (request: unknown) => Promise<string>;

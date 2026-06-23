@@ -27,13 +27,16 @@ import {
 
 import { NetworkTrust } from "../../../../http-client/network-trust.ts";
 import {
+  type InteractionPrompter,
+  makePromiseInteractionPrompter,
+} from "../../../../interaction/prompter.ts";
+import { makeInteractionService } from "../../../../interaction/service.ts";
+import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionResolution,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../../../providers/precedence.ts";
-import { PromptCancelledError } from "../../../../recipes/prompts/driver.ts";
-import { createStdioPromptIO } from "../../../../recipes/prompts/io.ts";
 import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 import {
   type SetupNetworkTrustFetch,
@@ -49,8 +52,6 @@ import {
   writeSetupReadiness,
 } from "../../../commands/setup-readiness.ts";
 import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
-import { resolveInteractivePromptDriver } from "../../../prompts/interactive-driver.ts";
-import { tryDriverSelect } from "../../../prompts/interactive.ts";
 import { isDecoratedContext } from "../../../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../../../renderer/summary.ts";
 
@@ -170,33 +171,28 @@ const SETUP_PROVIDER_CHOICES: ReadonlyArray<{ value: string; label: string }> = 
   { value: "podman", label: "Podman (existing installation required)" },
 ];
 
-const maybeSelectSetupProvider = async (params: {
+export const maybeSelectSetupProvider = async (params: {
   readonly resolution: ProviderSelectionResolution;
   readonly yes: boolean;
   readonly nonInteractive: boolean;
   readonly skipProvider: boolean;
+  readonly interaction?: InteractionPrompter;
 }): Promise<ProviderId> => {
   const fallback = params.resolution.providerId;
   if (params.resolution.source !== "default") return fallback;
   if (params.yes || params.nonInteractive || params.skipProvider) return fallback;
-  const io = createStdioPromptIO();
-  if (!io.isTTY) return fallback;
-  const driver = await resolveInteractivePromptDriver({
-    isTTY: io.isTTY,
-    yes: params.yes,
-    nonInteractive: params.nonInteractive,
-  });
-  if (driver === undefined) return fallback;
+  const interaction = params.interaction ?? makePromiseInteractionPrompter(makeInteractionService());
   try {
-    const chosen = await tryDriverSelect(driver, io, {
+    const chosen = await interaction.select({
       message: "Select the container runtime provider for Lando",
       name: "provider",
       default: String(fallback),
       choices: SETUP_PROVIDER_CHOICES,
+      yes: params.yes,
+      ...(params.nonInteractive ? { interactive: false } : {}),
     });
-    return chosen === undefined ? fallback : ProviderId.make(chosen);
-  } catch (cause) {
-    if (cause instanceof PromptCancelledError) return fallback;
+    return chosen === "" ? fallback : ProviderId.make(chosen);
+  } catch {
     return fallback;
   }
 };

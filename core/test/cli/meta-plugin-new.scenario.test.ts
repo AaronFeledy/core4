@@ -5,13 +5,42 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { Readable, Writable } from "node:stream";
+
 import {
   PLUGIN_NEW_TEMPLATE_IDS,
   pluginNew,
   renderPluginNewResult,
 } from "../../src/cli/commands/plugin-new.ts";
-import { createBufferedPromptIO } from "../../src/recipes/prompts/io.ts";
+import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
+import { makeInteractionService } from "../../src/interaction/service.ts";
 import { listTree } from "./_util/fs-tree.ts";
+
+const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
+  Readable.from(lines.map((line) => `${line}\n`));
+
+const capturingWritable = () => {
+  let text = "";
+  const stream = new Writable({
+    write(chunk, _encoding, callback) {
+      text += chunk.toString();
+      callback();
+    },
+  });
+  return { stream, text: () => text };
+};
+
+const serviceBackedPrompter = (
+  stdin: NodeJS.ReadableStream,
+  stdout: NodeJS.WritableStream,
+): InteractionPrompter => {
+  const service = makeInteractionService({ stdin, stdout });
+  return {
+    promptAll: (specs, options) =>
+      Effect.runPromise(Effect.scoped(service.promptAll(specs, { ...options, mode: "interactive" }))),
+    confirm: (spec) => Effect.runPromise(Effect.scoped(service.confirm({ ...spec, mode: "interactive" }))),
+  };
+};
 
 let root: string;
 
@@ -183,24 +212,30 @@ describe("meta:plugin:new command", () => {
   });
 
   test("interactive mode prompts for name, template, cspace, and description", async () => {
-    const io = createBufferedPromptIO({
-      inputs: ["@acme/lando-plugin-interactive", "template-engine", "interactive", "Interactive plugin"],
-      isTTY: true,
-    });
+    const stdout = capturingWritable();
+    const interaction = serviceBackedPrompter(
+      scriptedStdin([
+        "@acme/lando-plugin-interactive",
+        "template-engine",
+        "interactive",
+        "Interactive plugin",
+      ]),
+      stdout.stream,
+    );
 
     const result = await Effect.runPromise(
       pluginNew({
         destination: join(root, "interactive-plugin"),
-        promptIO: io,
+        interaction,
       }),
     );
 
     expect(result.name).toBe("@acme/lando-plugin-interactive");
     expect(result.template).toBe("template-engine");
     expect(result.cspace).toBe("interactive");
-    expect(io.stdout()).toContain("Plugin package name");
-    expect(io.stdout()).toContain("Template");
-    expect(io.stdout()).toContain("Contribution namespace");
-    expect(io.stdout()).toContain("Description");
+    expect(stdout.text()).toContain("Plugin package name");
+    expect(stdout.text()).toContain("Template");
+    expect(stdout.text()).toContain("Contribution namespace");
+    expect(stdout.text()).toContain("Description");
   });
 });

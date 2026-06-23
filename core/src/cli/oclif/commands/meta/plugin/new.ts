@@ -1,6 +1,7 @@
 import { Args, Flags } from "@oclif/core";
 
 import { type PluginNewResult, pluginNew, renderPluginNewResult } from "../../../../commands/plugin-new.ts";
+import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown) => {
@@ -24,7 +25,10 @@ const extractInput = (input: unknown) => {
     description: stringFlag("description"),
     answers: arrayFlag("answer"),
     answersFile: stringFlag("answers"),
-    nonInteractive: flags["no-interactive"] === true,
+    nonInteractive: resolveNonInteractive({
+      noInteractive: flags["no-interactive"] === true,
+      isTTY: process.stdin.isTTY,
+    }),
   };
 };
 

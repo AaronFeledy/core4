@@ -6,6 +6,7 @@ import { Effect, Either, Schema } from "effect";
 
 import {
   type ConfigError,
+  InteractionRequiredError,
   type LandoCommandError,
   NotImplementedError,
   PluginManifestError,
@@ -15,6 +16,8 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
+import { makeInteractionService } from "../../interaction/service.ts";
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { publish } from "../../recipes/git-source.ts";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner.ts";
@@ -28,15 +31,12 @@ import {
   resolveNpmPackageVersion,
   verifyNpmPackageDistIntegrity,
 } from "../../recipes/npm-source.ts";
-import { createStdioPromptIO } from "../../recipes/prompts/io.ts";
 import {
   type TarballRecipeExtractor,
   type TarballRecipeFetcher,
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
 } from "../../recipes/tarball-source.ts";
-import { resolveInteractivePromptDriver } from "../prompts/interactive-driver.ts";
-import { tryDriverConfirm } from "../prompts/interactive.ts";
 
 export interface PluginAddSpawner {
   readonly install: (request: {
@@ -74,6 +74,7 @@ export interface PluginAddOptions {
   readonly extractor?: TarballRecipeExtractor;
   readonly bunSelfSpawner?: BunSelfSpawner;
   readonly prompter?: PluginAddPrompter;
+  readonly interaction?: InteractionPrompter;
   readonly trustStore?: PluginTrustStore;
 }
 
@@ -89,10 +90,10 @@ export interface PluginAddResult {
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
 
-const trustNonInteractiveError = (spec: string): NotImplementedError =>
-  new NotImplementedError({
+const trustNonInteractiveError = (spec: string): InteractionRequiredError =>
+  new InteractionRequiredError({
     message: "Plugin trust prompt cannot run non-interactively without --trust.",
-    commandId: "meta:plugin:add",
+    promptName: "trust",
     remediation: `Re-run \`lando plugin:add ${spec} --trust\` to confirm the plugin should run as trusted host code, or persist trust first with \`lando plugin:trust <name>\`.`,
   });
 
@@ -313,19 +314,17 @@ const installFromNpm = async (
   return { created: true, packageDir };
 };
 
-const defaultPrompter: PluginAddPrompter = {
-  confirmTrust: async ({ pluginName }) => {
-    const io = createStdioPromptIO();
-    if (!io.isTTY) return false;
-    const message = `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session?`;
-    const driver = await resolveInteractivePromptDriver({ isTTY: io.isTTY });
-    const viaDriver = await tryDriverConfirm(driver, io, { message, name: "trust" });
-    if (viaDriver !== undefined) return viaDriver;
-    io.write(`${message} [y/N] `);
-    const line = (await io.readLine()).trim().toLowerCase();
-    return line === "y" || line === "yes";
-  },
-};
+const defaultInteractionPrompter = (): InteractionPrompter =>
+  makePromiseInteractionPrompter(makeInteractionService());
+
+const trustPrompterFromInteraction = (interaction: InteractionPrompter): PluginAddPrompter => ({
+  confirmTrust: ({ pluginName }) =>
+    interaction.confirm({
+      message: `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session?`,
+      name: "trust",
+      default: false,
+    }),
+});
 
 const ensureTrust = async (
   manifest: PluginManifest,
@@ -350,7 +349,8 @@ const ensureTrust = async (
   if (options.nonInteractive === true) {
     throw trustNonInteractiveError(options.spec);
   }
-  const prompter = options.prompter ?? defaultPrompter;
+  const prompter =
+    options.prompter ?? trustPrompterFromInteraction(options.interaction ?? defaultInteractionPrompter());
   const ok = await prompter.confirmTrust({ pluginName: manifest.name, spec: options.spec });
   if (!ok) throw trustRejectedError(manifest.name);
   store.add(trustName);
@@ -361,7 +361,12 @@ export const pluginAdd = (
   options: PluginAddOptions,
 ): Effect.Effect<
   PluginAddResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | RecipeSourceError,
+  | ConfigError
+  | InteractionRequiredError
+  | LandoCommandError
+  | NotImplementedError
+  | PluginManifestError
+  | RecipeSourceError,
   ConfigService | PersistentPluginTrustStore
 > =>
   Effect.gen(function* () {
@@ -464,7 +469,7 @@ export const pluginAdd = (
         return ensureTrust(manifest, trustName, options, persistentStore);
       },
       catch: (cause) =>
-        cause instanceof NotImplementedError
+        cause instanceof NotImplementedError || cause instanceof InteractionRequiredError
           ? cause
           : new NotImplementedError({
               message: `Unexpected trust failure: ${String(cause)}`,

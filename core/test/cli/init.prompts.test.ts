@@ -110,7 +110,7 @@ describe("lando init — answers and prompting", () => {
   test("interactive: re-prompts on validation failure, then succeeds", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "\nBad Name\ngood-name\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created good-name at");
       expect(await Bun.file(join(dir, "good-name", ".lando.yml")).exists()).toBe(true);
