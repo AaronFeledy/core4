@@ -9,7 +9,7 @@ import {
   runRemoteSourceContract,
 } from "@lando/sdk/test";
 
-import { TestDataset, TestRemoteSource, localRemoteSource } from "@lando/core/testing";
+import { TestDataset, TestRemoteSource, localRemoteSource, makeTestRemoteSource } from "@lando/core/testing";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -48,6 +48,27 @@ describe("RemoteSource + Dataset contract suites", () => {
       artifact: localRemoteSource.artifact,
       observations: localRemoteSource.observations,
       events: () => Effect.sync(() => localRemoteSource.events()),
+    };
+
+    const result = await run(runRemoteSourceContract(harness));
+    expect(result).toBeUndefined();
+  });
+
+  test("no-tool TestRemoteSource satisfies the RemoteSource contract", async () => {
+    const noTool = makeTestRemoteSource({ name: "no-tool" }).pipe(Effect.runSync);
+    const harness: RemoteSourceContractHarness = {
+      name: "no-tool TestRemoteSource",
+      source: noTool.noToolSource,
+      config: noTool.config,
+      supportedEnv: noTool.supportedEnv,
+      protectedEnv: noTool.protectedEnv,
+      missingEnv: noTool.missingEnv,
+      supportedDataset: noTool.supportedDataset,
+      unsupportedDataset: noTool.unsupportedDataset,
+      noPushSource: noTool.noPushSource,
+      artifact: noTool.artifact,
+      observations: noTool.observations,
+      events: () => Effect.sync(() => noTool.events()),
     };
 
     const result = await run(runRemoteSourceContract(harness));

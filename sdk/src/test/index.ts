@@ -3287,6 +3287,11 @@ const commandIncludesCredential = (
     (credential) => credential.length > 0 && JSON.stringify(record.command).includes(credential),
   );
 
+const stringValues = (record: Readonly<Record<string, unknown>> | undefined): ReadonlyArray<string> =>
+  Object.values(record ?? {}).filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+
 export const runRemoteSourceContract = (
   harness: RemoteSourceContractHarness,
 ): Effect.Effect<void, ContractFailure> =>
@@ -3367,16 +3372,19 @@ export const runRemoteSourceContract = (
     const toolsAfterFetch = yield* harness.observations.toolProvisions();
     const delegationsAfterFetch = yield* harness.observations.datasetDelegations();
     const finalizersAfterFetch = yield* harness.observations.finalizers();
-    yield* requireRemoteSyncContract(
-      egressAfterFetch.length > egressBefore &&
-        egressAfterFetch.some((record) => record.request.url === locator.endpoint) &&
-        toolsAfterFetch.length > toolBefore &&
+    const toolProvisioningSatisfied =
+      source.capabilities.tool === undefined ||
+      (toolsAfterFetch.length > toolBefore &&
         toolsAfterFetch.some(
           (record) =>
             record.request.destination.kind === "memory" &&
             record.request.url.startsWith("https://") &&
             record.request.callerId?.includes("tool-provision") === true,
-        ) &&
+        ));
+    yield* requireRemoteSyncContract(
+      egressAfterFetch.length > egressBefore &&
+        egressAfterFetch.some((record) => record.request.url === locator.endpoint) &&
+        toolProvisioningSatisfied &&
         delegationsAfterFetch.length > delegationsBefore &&
         delegationsAfterFetch.some(
           (record) => record.operation === "fetch" && record.endpoint._tag === fetched._tag,
@@ -3475,11 +3483,25 @@ export const runRemoteSourceContract = (
     );
 
     const events = yield* harness.events();
-    yield* requireRemoteSyncContract(events.length >= 4, "fetch/send emit Sync lifecycle events", events);
     yield* requireRemoteSyncContract(
-      !eventJson(events).includes("REMOTE-CONTRACT-SECRET"),
-      "RemoteSource lifecycle events redact tokens and remote secrets",
+      events.some((event) => event.eventName === "pre-dataset-fetch") &&
+        events.some((event) => event.eventName === "post-dataset-fetch") &&
+        events.some((event) => event.eventName === "pre-dataset-send") &&
+        events.some((event) => event.eventName === "post-dataset-send"),
+      "fetch/send emit Sync lifecycle events",
       events,
+    );
+    const remoteSecretValues = [
+      ...Object.entries(harness.config)
+        .filter(([key]) => key !== "source")
+        .flatMap(([, value]) => (typeof value === "string" ? [value] : [])),
+      ...stringValues(locator.metadata),
+      ...stringValues(protectedLocator.metadata),
+    ];
+    yield* requireRemoteSyncContract(
+      remoteSecretValues.every((secret) => !eventJson(events).includes(secret)),
+      "RemoteSource lifecycle events redact tokens and remote secrets",
+      { remoteSecretValues, events },
     );
   });
 
@@ -3585,9 +3607,9 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
       events,
     );
     yield* requireRemoteSyncContract(
-      !eventJson(events).includes("DATASET-CONTRACT-SECRET"),
+      credentialValues.every((secret) => !eventJson(events).includes(secret)),
       "Dataset lifecycle events redact credentials and dataset secrets",
-      events,
+      { credentialValues, events },
     );
   });
 

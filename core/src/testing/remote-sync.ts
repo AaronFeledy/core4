@@ -106,6 +106,7 @@ export interface TestRemoteSourceObservations {
 export interface TestRemoteSourceHandle {
   readonly source: RemoteSourceShape;
   readonly noPushSource: RemoteSourceShape;
+  readonly noToolSource: RemoteSourceShape;
   readonly config: RemoteConfig;
   readonly supportedEnv: RemoteEnvId;
   readonly protectedEnv: RemoteEnvId;
@@ -135,6 +136,7 @@ export interface TestDatasetHandle {
 const makeRemoteSource = (input: {
   readonly id: string;
   readonly push: boolean;
+  readonly tool?: string | undefined;
   readonly captured: Array<LandoEvent>;
   readonly records: {
     readonly egress: Array<RemoteEgressRecord>;
@@ -148,9 +150,9 @@ const makeRemoteSource = (input: {
     environments: true,
     push: input.push,
     datasets: [supportedDataset],
-    tool: "test-remote-cli",
     auth: "token",
     protectedByDefault: [protectedEnv],
+    ...(input.tool === undefined ? {} : { tool: input.tool }),
   };
   const environments = [
     { id: supportedEnv, label: "Development", default: true, datasets: [supportedDataset] },
@@ -238,25 +240,27 @@ const makeRemoteSource = (input: {
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => void input.records.finalizers.push({ operation: "fetch", remote: input.id })),
         );
-        yield* downloader
-          .download({
-            url: `https://tools.example.test/${capabilities.tool ?? "remote-cli"}.tgz`,
-            destination: { kind: "memory" },
-            expectedSha256: emptySha256,
-            callerId: `${input.id}:tool-provision`,
-            redactionTokens: [TEST_REMOTE_SECRET],
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new RemoteToolMissingError({
-                  message: "Tool provisioning failed",
-                  remote: input.id,
-                  tool: capabilities.tool,
-                  cause,
-                }),
-            ),
-          );
+        if (capabilities.tool !== undefined) {
+          yield* downloader
+            .download({
+              url: `https://tools.example.test/${capabilities.tool}.tgz`,
+              destination: { kind: "memory" },
+              expectedSha256: emptySha256,
+              callerId: `${input.id}:tool-provision`,
+              redactionTokens: [TEST_REMOTE_SECRET],
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new RemoteToolMissingError({
+                    message: "Tool provisioning failed",
+                    remote: input.id,
+                    tool: capabilities.tool,
+                    cause,
+                  }),
+              ),
+            );
+        }
         yield* http.stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/fetch` }).pipe(
           Effect.mapError(
             (cause) =>
@@ -320,25 +324,27 @@ const makeRemoteSource = (input: {
         yield* Effect.addFinalizer(() =>
           Effect.sync(() => void input.records.finalizers.push({ operation: "send", remote: input.id })),
         );
-        yield* downloader
-          .download({
-            url: `https://tools.example.test/${capabilities.tool ?? "remote-cli"}.tgz`,
-            destination: { kind: "memory" },
-            expectedSha256: emptySha256,
-            callerId: `${input.id}:tool-provision`,
-            redactionTokens: [TEST_REMOTE_SECRET],
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new RemoteToolMissingError({
-                  message: "Tool provisioning failed",
-                  remote: input.id,
-                  tool: capabilities.tool,
-                  cause,
-                }),
-            ),
-          );
+        if (capabilities.tool !== undefined) {
+          yield* downloader
+            .download({
+              url: `https://tools.example.test/${capabilities.tool}.tgz`,
+              destination: { kind: "memory" },
+              expectedSha256: emptySha256,
+              callerId: `${input.id}:tool-provision`,
+              redactionTokens: [TEST_REMOTE_SECRET],
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new RemoteToolMissingError({
+                    message: "Tool provisioning failed",
+                    remote: input.id,
+                    tool: capabilities.tool,
+                    cause,
+                  }),
+              ),
+            );
+        }
         yield* http
           .stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/send` })
           .pipe(
@@ -384,8 +390,15 @@ export const makeTestRemoteSource = (options: { readonly name?: string } = {}) =
     const id = options.name ?? "test";
 
     return {
-      source: makeRemoteSource({ id, push: true, captured, records }),
-      noPushSource: makeRemoteSource({ id: `${id}-no-push`, push: false, captured, records }),
+      source: makeRemoteSource({ id, push: true, tool: "test-remote-cli", captured, records }),
+      noPushSource: makeRemoteSource({
+        id: `${id}-no-push`,
+        push: false,
+        tool: "test-remote-cli",
+        captured,
+        records,
+      }),
+      noToolSource: makeRemoteSource({ id: `${id}-no-tool`, push: true, captured, records }),
       config: { source: id, token: TEST_REMOTE_SECRET },
       supportedEnv,
       protectedEnv,
@@ -485,6 +498,7 @@ export const makeTestDataset = () =>
         const bindingError = rejectCodeTree(ctx);
         if (bindingError !== undefined) return Effect.fail(bindingError);
         return Effect.gen(function* () {
+          appliedBytes = null;
           captured.push(
             event({
               _tag: "pre-dataset-capture",

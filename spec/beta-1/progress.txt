@@ -587,7 +587,7 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 ---
 
 ## 2026-06-23 01:20 CDT - US-346 Review
-- Fixed a confirmed contract-suite blocker: the Dataset suite now also proves dataset credentials are not embedded in service command argv, and the core test double exposes the DataMover service command observations needed for that assertion.
+- Fixed confirmed contract-suite blockers: the Dataset suite now proves credentials are not embedded in service command argv, the RemoteSource suite accepts valid remotes with no vendor tool while still asserting Downloader provisioning when a tool is declared, required fetch/send event names are asserted, redaction checks use harness-provided secrets, and the exported `TestDataset` fixture is repeatable across contract runs.
 - Review notes (deferred/rejected): none.
-- Verification: typecheck, lint passed; focused contract/export spot checks passed (`core/test/remote-sync/contract.test.ts`, `sdk/test/library/exports.test.ts`, `core/test/library/core-testing-export.test.ts`).
+- Verification: typecheck, lint passed; focused contract/export spot checks passed (`core/test/remote-sync/contract.test.ts`, `sdk/test/library/exports.test.ts`, `core/test/library/core-testing-export.test.ts`); repeatability smoke passed by running `runDatasetContract` twice against exported `TestDataset`.
 ---
