@@ -17,6 +17,57 @@ import {
 
 const noEnv: Record<string, string | undefined> = {};
 
+const PLATFORM_CASES = [
+  {
+    platform: "linux",
+    home: "/home/tester",
+    env: noEnv,
+    defaults: {
+      userConfRoot: "/home/tester/.config/lando",
+      userCacheRoot: "/home/tester/.cache/lando",
+      userDataRoot: "/home/tester/.local/share/lando",
+      systemPluginRoot: "/usr/local/share/lando",
+    },
+  },
+  {
+    platform: "wsl",
+    home: "/home/tester",
+    env: noEnv,
+    defaults: {
+      userConfRoot: "/home/tester/.config/lando",
+      userCacheRoot: "/home/tester/.cache/lando",
+      userDataRoot: "/home/tester/.local/share/lando",
+      systemPluginRoot: "/usr/local/share/lando",
+    },
+  },
+  {
+    platform: "darwin",
+    home: "/Users/tester",
+    env: noEnv,
+    defaults: {
+      userConfRoot: "/Users/tester/Library/Application Support/Lando",
+      userCacheRoot: "/Users/tester/Library/Caches/Lando",
+      userDataRoot: "/Users/tester/Library/Application Support/Lando",
+      systemPluginRoot: "/usr/local/share/lando",
+    },
+  },
+  {
+    platform: "win32",
+    home: "C:\\Users\\tester",
+    env: {
+      APPDATA: "C:\\Users\\tester\\AppData\\Roaming",
+      LOCALAPPDATA: "C:\\Users\\tester\\AppData\\Local",
+      PROGRAMDATA: "C:\\ProgramData",
+    },
+    defaults: {
+      userConfRoot: "C:\\Users\\tester\\AppData\\Roaming\\Lando",
+      userCacheRoot: "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache",
+      userDataRoot: "C:\\Users\\tester\\AppData\\Local\\Lando\\Data",
+      systemPluginRoot: "C:\\ProgramData\\Lando",
+    },
+  },
+] as const;
+
 const tmpDirs: string[] = [];
 const makeConfRoot = (configYml?: string): string => {
   const dir = mkdtempSync(join(tmpdir(), "lando-paths-test-"));
@@ -118,6 +169,83 @@ describe("resolveLandoRoots platform-default matrix (§7.5)", () => {
 describe("resolveLandoRoots precedence order (§7.5)", () => {
   const home = "/home/tester";
 
+  for (const entry of PLATFORM_CASES) {
+    test(`${entry.platform} defaults cover every root`, () => {
+      expect(resolveLandoRoots({ platform: entry.platform, home: entry.home, env: entry.env })).toEqual(
+        entry.defaults,
+      );
+    });
+
+    test(`${entry.platform} explicit overrides win for every root`, () => {
+      const roots = resolveLandoRoots({
+        platform: entry.platform,
+        home: entry.home,
+        env: {
+          ...entry.env,
+          LANDO_USER_CONF_ROOT: "/env/conf",
+          LANDO_USER_CACHE_ROOT: "/env/cache",
+          LANDO_USER_DATA_ROOT: "/env/data",
+          LANDO_SYSTEM_PLUGIN_ROOT: "/env/sys",
+        },
+        userConfRoot: "/explicit/conf",
+        userCacheRoot: "/explicit/cache",
+        userDataRoot: "/explicit/data",
+        systemPluginRoot: "/explicit/sys",
+      });
+      expect(roots).toEqual({
+        userConfRoot: "/explicit/conf",
+        userCacheRoot: "/explicit/cache",
+        userDataRoot: "/explicit/data",
+        systemPluginRoot: "/explicit/sys",
+      });
+    });
+
+    test(`${entry.platform} LANDO_* env wins for every root`, () => {
+      const confRoot = makeConfRoot(
+        ["userCacheRoot: /cfg/cache", "userDataRoot: /cfg/data", "systemPluginRoot: /cfg/sys"].join("\n"),
+      );
+      const roots = resolveLandoRoots({
+        platform: entry.platform,
+        home: entry.home,
+        env: {
+          ...entry.env,
+          LANDO_USER_CONF_ROOT: confRoot,
+          LANDO_USER_CACHE_ROOT: "/env/cache",
+          LANDO_USER_DATA_ROOT: "/env/data",
+          LANDO_SYSTEM_PLUGIN_ROOT: "/env/sys",
+        },
+      });
+      expect(roots).toEqual({
+        userConfRoot: confRoot,
+        userCacheRoot: "/env/cache",
+        userDataRoot: "/env/data",
+        systemPluginRoot: "/env/sys",
+      });
+    });
+
+    test(`${entry.platform} config.yml wins over defaults for configurable roots`, () => {
+      const confRoot = makeConfRoot(
+        [
+          "userConfRoot: /cfg/conf",
+          "userCacheRoot: /cfg/cache",
+          "userDataRoot: /cfg/data",
+          "systemPluginRoot: /cfg/sys",
+        ].join("\n"),
+      );
+      const roots = resolveLandoRoots({
+        platform: entry.platform,
+        home: entry.home,
+        env: { ...entry.env, LANDO_USER_CONF_ROOT: confRoot },
+      });
+      expect(roots).toEqual({
+        userConfRoot: confRoot,
+        userCacheRoot: "/cfg/cache",
+        userDataRoot: "/cfg/data",
+        systemPluginRoot: "/cfg/sys",
+      });
+    });
+  }
+
   test("explicit override wins over env, config, and default for every root", () => {
     const confRoot = makeConfRoot(
       [
@@ -206,6 +334,34 @@ describe("userConfRoot self-reference rule (§7.5)", () => {
     expect(roots.userConfRoot).toBe(confRoot);
     // The sibling root is still read from that same config.yml.
     expect(roots.userDataRoot).toBe("/cfg/data");
+  });
+
+  test("LANDO_CONFIG__user_conf_root selects which config.yml is read", () => {
+    const ignoredRoot = makeConfRoot("userDataRoot: /ignored/data\n");
+    const selectedRoot = makeConfRoot("userDataRoot: /overlay/data\n");
+    const roots = resolveLandoRoots({
+      platform: "linux",
+      home,
+      env: {
+        LANDO_USER_CONF_ROOT: ignoredRoot,
+        LANDO_CONFIG__user_conf_root: selectedRoot,
+      },
+    });
+    expect(roots.userConfRoot).toBe(selectedRoot);
+    expect(roots.userDataRoot).toBe("/overlay/data");
+  });
+
+  test("explicit userConfRoot override wins over env-overlay conf root", () => {
+    const explicitRoot = makeConfRoot("userDataRoot: /explicit/data\n");
+    const overlayRoot = makeConfRoot("userDataRoot: /overlay/data\n");
+    const roots = resolveLandoRoots({
+      platform: "linux",
+      home,
+      userConfRoot: explicitRoot,
+      env: { LANDO_CONFIG__user_conf_root: overlayRoot },
+    });
+    expect(roots.userConfRoot).toBe(explicitRoot);
+    expect(roots.userDataRoot).toBe("/explicit/data");
   });
 
   test("conf root resolves from platform default when no override/env is set, even with config userConfRoot", () => {

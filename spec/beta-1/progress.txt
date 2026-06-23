@@ -757,3 +757,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Under `exactOptionalPropertyTypes`, a helper that forwards `overrides.platform` (`string | undefined`) into a `platform?: string` parameter fails typecheck — type the receiving param `?: string | undefined` explicitly.
   - The §12.1 sanitization collapses runs of disallowed chars to a single `-` then strips leading/trailing `-`, so `"My App!"` → `"My-App"` (one trailing hyphen, not two) before the `-<fingerprint>` suffix; assert the single-hyphen form in tests.
 ---
+
+## 2026-06-23 17:27 CDT - US-302 Review
+- Fixed confirmed review blockers in the Paths primitive: `resolveLandoRoots` now locates `config.yml` through the shared overlay-aware conf-root seam so `LANDO_CONFIG__user_conf_root` stays consistent with `ConfigService`, and the focused paths tests now cover override/env/config/default precedence across linux, darwin, win32, and wsl.
+- Review notes (deferred/rejected): rejected the missing `@lando/core/paths` package export as US-305 scope per the source PRD split; rejected raw `appPluginsDir(appId)` sanitization as a non-blocking latent concern because US-302 only returns strings and current app ids are not untrusted filesystem writes.
+- Verification: typecheck and lint passed; focused paths/config spot checks passed (`core/test/config/paths.test.ts`, `core/test/unit/config-paths.test.ts`, `core/test/services/env-overrides.test.ts`).
+- **Learnings for future iterations:** Pure root resolvers must still use the shared overlay seam for config-file location; inject env into `resolveConfigFileRoot` rather than reading `process.env` directly when testing cross-platform root behavior.
+---

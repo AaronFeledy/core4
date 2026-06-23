@@ -28,6 +28,7 @@ import { join as hostJoin } from "node:path";
 
 import type { HostPlatform } from "@lando/sdk/schema";
 
+import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
 import { parseMinimalYaml } from "./yaml-min.ts";
 
 /** The four roots Lando resolves (§7.5). */
@@ -228,8 +229,8 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   const defaults = platformDefaults(platform, overrides);
 
-  // 1. Fix the conf root WITHOUT reading config.yml (option → env → default).
-  const userConfRoot = overrides.userConfRoot ?? nonEmpty(env.LANDO_USER_CONF_ROOT) ?? defaults.userConfRoot;
+  const baseConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT) ?? defaults.userConfRoot;
+  const userConfRoot = overrides.userConfRoot ?? resolveConfigFileRoot(baseConfRoot, envOverlay(env), env);
 
   // 2. config.yml is located from the fixed conf root; read lazily and at most
   //    once, only for roots that fall through option + env.

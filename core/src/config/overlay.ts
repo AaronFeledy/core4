@@ -101,7 +101,11 @@ export const rootEnvOverlay = (
  * provided `baseConfRoot` default. A non-string overlay value falls back to
  * `baseConfRoot`.
  */
-export const resolveConfigFileRoot = (baseConfRoot: string, overlay: Record<string, unknown>): string => {
-  const roots = deepMerge({ userConfRoot: baseConfRoot }, deepMerge(rootEnvOverlay(), overlay));
+export const resolveConfigFileRoot = (
+  baseConfRoot: string,
+  overlay: Record<string, unknown>,
+  env: Record<string, string | undefined> = process.env,
+): string => {
+  const roots = deepMerge({ userConfRoot: baseConfRoot }, deepMerge(rootEnvOverlay(env), overlay));
   return typeof roots.userConfRoot === "string" ? roots.userConfRoot : baseConfRoot;
 };
