@@ -327,6 +327,51 @@ describe("remote sync command skeleton", () => {
     });
   });
 
+  test("pull and push report missing Dataset as a dataset error", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      const plan = TestDataset.context.plan;
+      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      const layer = Layer.mergeAll(
+        Layer.succeed(RemoteSource, TestRemoteSource.source),
+        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("target supplies the plan"),
+        }),
+      );
+
+      const pullExit = await Effect.runPromiseExit(
+        operations
+          .appPull({ cwd: dir, remote: "test", env: "dev", only: ["database"], yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+      const pushExit = await Effect.runPromiseExit(
+        operations
+          .appPush({ cwd: dir, remote: "test", env: "dev", only: ["database"], yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+
+      expect(pullExit._tag).toBe("Failure");
+      expect(pushExit._tag).toBe("Failure");
+      if (pullExit._tag === "Failure") {
+        const error = JSON.stringify(pullExit.cause.toJSON());
+        expect(error).toContain("RemoteDatasetUnsupportedError");
+        expect(error).not.toContain("RemoteProviderUnavailableError");
+      }
+      if (pushExit._tag === "Failure") {
+        const error = JSON.stringify(pushExit.cause.toJSON());
+        expect(error).toContain("RemoteDatasetUnsupportedError");
+        expect(error).not.toContain("RemoteProviderUnavailableError");
+      }
+    });
+  });
+
   test("pull and push reject invalid or empty dataset selections", async () => {
     await withTempRemoteApp(async (dir) => {
       const operations = await import("@lando/core/cli/operations");
@@ -365,6 +410,70 @@ describe("remote sync command skeleton", () => {
       }
       if (emptyPush._tag === "Failure") {
         expect(JSON.stringify(emptyPush.cause.toJSON())).toContain("No dataset kinds were selected");
+      }
+    });
+  });
+
+  test("default multi-kind sync fails before partial transfer when a Dataset is missing", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "multi", config: { source: "multi" } }),
+      );
+      const plan = TestDataset.context.plan;
+      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      let fetches = 0;
+      let sends = 0;
+      const multiKindSource = {
+        ...TestRemoteSource.source,
+        id: "multi",
+        capabilities: { ...TestRemoteSource.source.capabilities, datasets: ["database", "files"] as const },
+        fetch: () =>
+          Effect.sync(() => {
+            fetches += 1;
+            return TestRemoteSource.artifact;
+          }),
+        send: () =>
+          Effect.sync(() => {
+            sends += 1;
+          }),
+      };
+      const layer = Layer.mergeAll(
+        Layer.succeed(RemoteSource, multiKindSource),
+        Layer.succeed(Dataset, TestDataset.dataset),
+        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("target supplies the plan"),
+        }),
+      );
+
+      const pullExit = await Effect.runPromiseExit(
+        operations
+          .appPull({ cwd: dir, remote: "multi", env: "dev", yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+      const pushExit = await Effect.runPromiseExit(
+        operations
+          .appPush({ cwd: dir, remote: "multi", env: "dev", yes: true }, target)
+          .pipe(Effect.provide(layer)) as Effect.Effect<unknown, unknown, never>,
+      );
+
+      expect(pullExit._tag).toBe("Failure");
+      expect(pushExit._tag).toBe("Failure");
+      expect(fetches).toBe(0);
+      expect(sends).toBe(0);
+      if (pullExit._tag === "Failure") {
+        expect(JSON.stringify(pullExit.cause.toJSON())).toContain(
+          "No Dataset is installed for dataset kind files",
+        );
+      }
+      if (pushExit._tag === "Failure") {
+        expect(JSON.stringify(pushExit.cause.toJSON())).toContain(
+          "No Dataset is installed for dataset kind files",
+        );
       }
     });
   });
