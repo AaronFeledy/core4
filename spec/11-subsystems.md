@@ -786,7 +786,7 @@ Core owns the remote-sync intent, schemas, tagged errors, CLI/API shape, safety 
 
 **Scope.** Remote sync moves **datasets — database, user files, and config — never application code.** Code is git's job (matching DDEV/Docksal). A `RemoteSource` that would write into the app's tracked source tree is rejected (`DatasetBindingError`). `pull` is destructive locally (overwrites a dataset); `push` is destructive remotely.
 
-**Why two abstractions, not one `HostingProvider`.** A monolithic hosting provider re-implements DB dump, file tar, gzip, progress, and redaction per provider — an N×M explosion. Splitting `Dataset` (a `database` dataset is identical whether the remote is Pantheon, rsync, or S3) from `RemoteSource` (an rsync transport works for DB *and* files) makes it N+M: a new hoster is one `RemoteSource`; a new dataset kind is one `Dataset`; they compose for free. "Hosting" is the marquee *category* of `RemoteSource`, not the contract name — the contract also covers rsync/ssh/s3/url/local and future peer/CI-artifact remotes.
+**Why two abstractions, not one monolithic hoster abstraction.** A monolithic hosting provider re-implements DB dump, file tar, gzip, progress, and redaction per provider — an N×M explosion. Splitting `Dataset` (a `database` dataset is identical whether the remote is Pantheon, rsync, or S3) from `RemoteSource` (an rsync transport works for DB *and* files) makes it N+M: a new hoster is one `RemoteSource`; a new dataset kind is one `Dataset`; they compose for free. "Hosting" is the marquee *category* of `RemoteSource`, not the contract name — the contract also covers rsync/ssh/s3/url/local and future peer/CI-artifact remotes.
 
 ```ts
 export class RemoteSource extends Context.Service<RemoteSource, {

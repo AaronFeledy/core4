@@ -520,3 +520,11 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review feedback: fixed (main conflict resolved, guide-drift failures resolved with a contract-only Guide-Coverage-Skip reason, and CI retriggered cleanly)
 - Merge: merged (squash)
 ---
+
+## 2026-06-22 19:21 CDT - US-348
+- Settled the remote-sync naming surface on `RemoteSource` with "hosting" retained only as category language, and locked it with a canonical surface test covering the spec catalog, plugin contribution rows, contract-suite rows, Sync events, Landofile keys, App methods, ROADMAP, AGENTS governance note, and SDK service tags.
+- Recorded the RemoteSource/Dataset contract-freeze rule in AGENTS.md: `RemoteSource` owns HttpClient/tool-provisioning egress, `Dataset` owns DataMover landing, the split is N+M, remote sync never moves application code, and the real connector feature wave is 4.1.
+- Verification: typecheck and lint passed; focused remote-sync surface gate passed; adjacent remote-sync schema, Landofile schema, and SDK export spot checks passed; explicit grep proved no old contract identifier remains under `spec/` or AGENTS.md.
+- **Learnings for future iterations:**
+  - Spec/PRD naming-settle stories should include a repo-reading gate over both docs and live SDK exports so acceptance text, ROADMAP prose, and implementation tags cannot drift independently.
+---
