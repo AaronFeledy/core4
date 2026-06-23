@@ -8,6 +8,7 @@ import type {
   FileFormat,
   ManagedFile,
   PortablePath,
+  PromptBatchOptions,
   RecipePrompt,
   RecipePromptChoice,
 } from "@lando/sdk/schema";
@@ -254,6 +255,10 @@ const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionP
     makeInteractionService(choicesRunner === undefined ? {} : { choicesRunner }),
   );
 
+type InternalPromptBatchOptions = PromptBatchOptions & {
+  readonly choicesRunner?: ChoicesCommandRunner;
+};
+
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
   const prompter = options.interaction ?? defaultInitPrompter(options.choicesRunner);
@@ -298,7 +303,8 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     ...(options.yes === undefined ? {} : { yes: options.yes }),
     interactive: options.nonInteractive !== true,
     ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
-  });
+    ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
+  } satisfies InternalPromptBatchOptions);
 
   const appNameValue = collected[APP_NAME_PROMPT];
   if (typeof appNameValue !== "string" || appNameValue === "") {

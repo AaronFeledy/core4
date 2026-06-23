@@ -185,6 +185,29 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       expect(promptedNames).not.toContain("__recipe__");
     });
   });
+
+  test("custom interaction receives the init choicesRunner override", async () => {
+    await withTempCwd(async (dir) => {
+      const choicesRunner = async () => ({ exitCode: 0, stdout: "from-runner\n", stderr: "" });
+      const { prompter, calls } = fakePrompter({ name: "runner-app" });
+      const result = await initApp({
+        cwd: dir,
+        full: false,
+        recipe: "empty",
+        interaction: prompter,
+        choicesRunner,
+        postInitIO: { out: () => {}, err: () => {} },
+      });
+
+      expect(result.appName).toBe("runner-app");
+      expect(
+        calls.some(
+          (call) =>
+            (call.options as { choicesRunner?: unknown } | undefined)?.choicesRunner === choicesRunner,
+        ),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
