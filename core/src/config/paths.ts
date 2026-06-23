@@ -229,8 +229,11 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
   const platform = normalizeHostPlatform({ platform: overrides.platform, env });
   const defaults = platformDefaults(platform, overrides);
 
-  const baseConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT) ?? defaults.userConfRoot;
-  const userConfRoot = overrides.userConfRoot ?? resolveConfigFileRoot(baseConfRoot, envOverlay(env), env);
+  const envConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT);
+  const baseConfRoot = envConfRoot ?? defaults.userConfRoot;
+  const userConfRoot =
+    overrides.userConfRoot ??
+    resolveConfigFileRoot(baseConfRoot, envOverlay(env), { ...env, LANDO_USER_CONF_ROOT: envConfRoot });
 
   const readConfig = makeConfigReader(userConfRoot);
 

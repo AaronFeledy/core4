@@ -371,6 +371,16 @@ describe("userConfRoot self-reference rule", () => {
     const roots = resolveLandoRoots({ platform: "linux", home, env: noEnv });
     expect(roots.userConfRoot).toBe("/home/tester/.config/lando");
   });
+
+  test("empty LANDO_USER_CONF_ROOT is ignored instead of becoming a relative config root", () => {
+    const roots = resolveLandoRoots({
+      platform: "linux",
+      home,
+      env: { LANDO_USER_CONF_ROOT: "" },
+    });
+
+    expect(roots.userConfRoot).toBe("/home/tester/.config/lando");
+  });
 });
 
 describe("env short-circuit keeps the fast path IO-free", () => {
