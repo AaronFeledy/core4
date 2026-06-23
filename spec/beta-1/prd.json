@@ -2568,8 +2568,8 @@
         "Lint passes."
       ],
       "priority": 143,
-      "passes": false,
-      "notes": "TunnelService contract freeze (spec \u00a710.2.2, \u00a73.4, \u00a73.5, \u00a74.2, \u00a79.5, \u00a713.1). Contract-only; the `lando share` feature + bundled provider are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore), PRD-14 (probe/events)."
+      "passes": true,
+      "notes": "Shipped contract-only TunnelService SDK surface: schema/service/error/event contracts, tunnelServices manifest contribution, public schema artifacts, SDK contract suite, and @lando/core/testing TestTunnelService. No bundled tunnel provider or app:share connector wiring; those remain 4.1."
     },
     {
       "id": "US-343",

@@ -36,6 +36,7 @@ import {
   RemoteDatasetUnsupportedError,
   RemoteEnvNotFoundError,
   RemoteProtectedEnvError,
+  TunnelTargetUnresolvedError,
 } from "../errors/index.ts";
 
 import {
@@ -69,6 +70,7 @@ import {
   ServiceName,
   ServicePlan,
   type StorageScope,
+  type TunnelTarget,
   type VolumeInfo,
   type VolumeRef,
 } from "../schema/index.ts";
@@ -94,6 +96,7 @@ import type {
   RuntimeProviderShape,
   ServiceTypeHostFacts,
   ServiceTypeShape,
+  TunnelServiceShape,
 } from "../services/index.ts";
 
 export class ContractFailure extends Schema.TaggedError<ContractFailure>()("ContractFailure", {
@@ -3648,6 +3651,173 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
 
 export const makeRemoteSourceContractSuite = runRemoteSourceContract;
 export const makeDatasetContractSuite = runDatasetContract;
+
+export type TunnelServiceEgressRecord = { readonly url: string; readonly callerId?: string | undefined };
+export type TunnelServiceToolProvisionRecord = { readonly request: DownloadRequest };
+export type TunnelServiceFinalizerRecord = { readonly sessionId: string; readonly provider: string };
+export type TunnelServiceDetachedStateRecord = {
+  readonly operation: "record" | "reconcile" | "remove";
+  readonly sessionId: string;
+};
+export type TunnelServiceProbeRecord = {
+  readonly sessionId: string;
+  readonly publicUrl?: string | undefined;
+};
+
+export interface TunnelServiceContractObservations {
+  readonly egressRequests: () => Effect.Effect<ReadonlyArray<TunnelServiceEgressRecord>>;
+  readonly toolProvisions: () => Effect.Effect<ReadonlyArray<TunnelServiceToolProvisionRecord>>;
+  readonly finalizers: () => Effect.Effect<ReadonlyArray<TunnelServiceFinalizerRecord>>;
+  readonly detachedState: () => Effect.Effect<ReadonlyArray<TunnelServiceDetachedStateRecord>>;
+  readonly probes: () => Effect.Effect<ReadonlyArray<TunnelServiceProbeRecord>>;
+  readonly dataMoverUses: () => Effect.Effect<ReadonlyArray<unknown>>;
+  readonly redactionTokens: ReadonlyArray<string>;
+}
+
+export interface TunnelServiceContractHarness {
+  readonly name: string;
+  readonly service: TunnelServiceShape;
+  readonly unsupportedTarget: TunnelTarget;
+  readonly observations: TunnelServiceContractObservations;
+  readonly events: () => Effect.Effect<ReadonlyArray<LandoEvent>>;
+}
+
+const tunnelContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({ message: `TunnelService contract failed: ${assertion}`, assertion, details });
+
+const requireTunnelContract = (condition: boolean, assertion: string, details?: unknown) =>
+  condition ? Effect.void : Effect.fail(tunnelContractFailure(assertion, details));
+
+const mapTunnelFailure =
+  (assertion: string) =>
+  (details: unknown): ContractFailure =>
+    tunnelContractFailure(assertion, details);
+
+const tunnelEventJson = (events: ReadonlyArray<LandoEvent>): string => JSON.stringify(events);
+
+export const runTunnelServiceContract = (
+  harness: TunnelServiceContractHarness,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    const service = harness.service;
+    const target: TunnelTarget = { _tag: "route", routeId: "https", hostname: "app.lndo.site" };
+
+    yield* requireTunnelContract(service.id.length > 0, "TunnelService declares a non-empty id", service.id);
+    yield* requireTunnelContract(
+      service.capabilities.ephemeralUrls === true && service.capabilities.detached === true,
+      "TunnelService declares public URL and detached capabilities honestly",
+      service.capabilities,
+    );
+
+    const unsupportedStart = yield* Effect.either(
+      Effect.scoped(service.start({ app: TEST_APP_ID, target: harness.unsupportedTarget })),
+    );
+    yield* requireTunnelContract(
+      Either.isLeft(unsupportedStart) && unsupportedStart.left instanceof TunnelTargetUnresolvedError,
+      "unsupported app target fails TunnelTargetUnresolvedError",
+      unsupportedStart,
+    );
+
+    const egressBefore = (yield* harness.observations.egressRequests()).length;
+    const toolsBefore = (yield* harness.observations.toolProvisions()).length;
+    const probesBefore = (yield* harness.observations.probes()).length;
+    const finalizersBefore = (yield* harness.observations.finalizers()).length;
+    const session = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target })).pipe(
+      Effect.mapError(mapTunnelFailure("foreground start resolves under a Scope")),
+    );
+    yield* requireTunnelContract(
+      session.provider === service.id && session.status === "ready" && session.detached === false,
+      "foreground start returns a ready session for the selected provider",
+      session,
+    );
+    const egressAfterStart = yield* harness.observations.egressRequests();
+    const toolsAfterStart = yield* harness.observations.toolProvisions();
+    const probesAfterStart = yield* harness.observations.probes();
+    const finalizersAfterStart = yield* harness.observations.finalizers();
+    const toolSatisfied =
+      service.capabilities.connectorBinary === false ||
+      toolsAfterStart.slice(toolsBefore).some((record) => record.request.url.startsWith("https://"));
+    yield* requireTunnelContract(
+      egressAfterStart.slice(egressBefore).some((record) => record.url.startsWith("https://")) &&
+        toolSatisfied &&
+        probesAfterStart.slice(probesBefore).some((record) => record.sessionId === session.id) &&
+        finalizersAfterStart.slice(finalizersBefore).some((record) => record.sessionId === session.id),
+      "start records HttpClient egress, tool provisioning, readiness probe, and Scope finalization",
+      { egressAfterStart, toolsAfterStart, probesAfterStart, finalizersAfterStart },
+    );
+
+    const detached = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target, detached: true })).pipe(
+      Effect.mapError(mapTunnelFailure("detached start resolves")),
+    );
+    yield* requireTunnelContract(
+      detached.detached === true,
+      "detached start returns a detached session",
+      detached,
+    );
+    const status = yield* service
+      .status({ sessionId: detached.id })
+      .pipe(Effect.mapError(mapTunnelFailure("status resolves for a detached session")));
+    const listed = yield* service
+      .list({ app: TEST_APP_ID })
+      .pipe(Effect.mapError(mapTunnelFailure("list resolves for an app filter")));
+    yield* requireTunnelContract(
+      status === "ready" && listed.some((entry) => entry.id === detached.id),
+      "status/list reconcile detached session state",
+      { status, listed },
+    );
+    yield* service
+      .stop({ sessionId: detached.id })
+      .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a detached session")));
+    const stopped = yield* service
+      .status({ sessionId: detached.id })
+      .pipe(Effect.mapError(mapTunnelFailure("status resolves after stop")));
+    yield* requireTunnelContract(stopped === "stopped", "stop updates session status to stopped", stopped);
+
+    const finalizersBeforeInterrupt = (yield* harness.observations.finalizers()).length;
+    const fiber = yield* Effect.fork(Effect.scoped(service.start({ app: TEST_APP_ID, target })));
+    yield* Effect.sleep(Duration.millis(1));
+    yield* Fiber.interrupt(fiber);
+    yield* requireTunnelContract(
+      (yield* harness.observations.finalizers()).length > finalizersBeforeInterrupt,
+      "interrupted foreground start finalizes connector resources",
+      yield* harness.observations.finalizers(),
+    );
+
+    const detachedRecords = yield* harness.observations.detachedState();
+    yield* requireTunnelContract(
+      detachedRecords.some((record) => record.operation === "record" && record.sessionId === detached.id) &&
+        detachedRecords.some(
+          (record) => record.operation === "reconcile" && record.sessionId === detached.id,
+        ) &&
+        detachedRecords.some((record) => record.operation === "remove" && record.sessionId === detached.id),
+      "detached sessions record, reconcile, and remove StateStore-backed state",
+      detachedRecords,
+    );
+
+    const events = yield* harness.events();
+    yield* requireTunnelContract(
+      events.some((event) => event.eventName === "pre-tunnel-start") &&
+        events.some((event) => event.eventName === "post-tunnel-start") &&
+        events.some((event) => event.eventName === "tunnel-ready") &&
+        events.some((event) => event.eventName === "pre-tunnel-stop") &&
+        events.some((event) => event.eventName === "post-tunnel-stop") &&
+        events.some((event) => event.eventName === "tunnel-status"),
+      "TunnelService emits the Tunnel lifecycle event scope",
+      events,
+    );
+    yield* requireTunnelContract(
+      harness.observations.redactionTokens.every((secret) => !tunnelEventJson(events).includes(secret)),
+      "Tunnel lifecycle events redact public URLs, auth URLs, and tokens",
+      { tokens: harness.observations.redactionTokens, events },
+    );
+    yield* requireTunnelContract(
+      (yield* harness.observations.dataMoverUses()).length === 0,
+      "TunnelService never delegates local byte movement through DataMover",
+      yield* harness.observations.dataMoverUses(),
+    );
+  });
+
+export const makeTunnelServiceContractSuite = runTunnelServiceContract;
 
 const downloaderContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `Downloader contract failed: ${assertion}`, assertion, details });

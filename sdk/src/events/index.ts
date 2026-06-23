@@ -11,5 +11,6 @@ export * from "./provider.ts";
 export * from "./renderer.ts";
 export * from "./sync.ts";
 export * from "./task.ts";
+export * from "./tunnel.ts";
 export * from "./union.ts";
 export type { AppRef } from "../schema/networking.ts";

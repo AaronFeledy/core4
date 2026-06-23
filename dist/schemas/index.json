@@ -973,6 +973,78 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Capabilities.",
+    "docsPath": "docs/reference/schemas/tunnel-capabilities.mdx",
+    "id": "TunnelCapabilities",
+    "jsonSchemaPath": "dist/schemas/tunnel-capabilities.json",
+    "packageExport": "@lando/sdk/schema#TunnelCapabilities",
+    "title": "Tunnel Capabilities"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Target.",
+    "docsPath": "docs/reference/schemas/tunnel-target.mdx",
+    "id": "TunnelTarget",
+    "jsonSchemaPath": "dist/schemas/tunnel-target.json",
+    "packageExport": "@lando/sdk/schema#TunnelTarget",
+    "title": "Tunnel Target"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Start Request.",
+    "docsPath": "docs/reference/schemas/tunnel-start-request.mdx",
+    "id": "TunnelStartRequest",
+    "jsonSchemaPath": "dist/schemas/tunnel-start-request.json",
+    "packageExport": "@lando/sdk/schema#TunnelStartRequest",
+    "title": "Tunnel Start Request"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Stop Request.",
+    "docsPath": "docs/reference/schemas/tunnel-stop-request.mdx",
+    "id": "TunnelStopRequest",
+    "jsonSchemaPath": "dist/schemas/tunnel-stop-request.json",
+    "packageExport": "@lando/sdk/schema#TunnelStopRequest",
+    "title": "Tunnel Stop Request"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Status Request.",
+    "docsPath": "docs/reference/schemas/tunnel-status-request.mdx",
+    "id": "TunnelStatusRequest",
+    "jsonSchemaPath": "dist/schemas/tunnel-status-request.json",
+    "packageExport": "@lando/sdk/schema#TunnelStatusRequest",
+    "title": "Tunnel Status Request"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Session.",
+    "docsPath": "docs/reference/schemas/tunnel-session.mdx",
+    "id": "TunnelSession",
+    "jsonSchemaPath": "dist/schemas/tunnel-session.json",
+    "packageExport": "@lando/sdk/schema#TunnelSession",
+    "title": "Tunnel Session"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Status.",
+    "docsPath": "docs/reference/schemas/tunnel-status.mdx",
+    "id": "TunnelStatus",
+    "jsonSchemaPath": "dist/schemas/tunnel-status.json",
+    "packageExport": "@lando/sdk/schema#TunnelStatus",
+    "title": "Tunnel Status"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Session Filter.",
+    "docsPath": "docs/reference/schemas/tunnel-session-filter.mdx",
+    "id": "TunnelSessionFilter",
+    "jsonSchemaPath": "dist/schemas/tunnel-session-filter.json",
+    "packageExport": "@lando/sdk/schema#TunnelSessionFilter",
+    "title": "Tunnel Session Filter"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Managed File.",
     "docsPath": "docs/reference/schemas/managed-file.mdx",
     "id": "ManagedFile",
@@ -1771,6 +1843,60 @@
     "jsonSchemaPath": "dist/schemas/post-dataset-send-event.json",
     "packageExport": "@lando/sdk/schema#PostDatasetSendEvent",
     "title": "Post Dataset Send Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Tunnel Start Event.",
+    "docsPath": "docs/reference/schemas/pre-tunnel-start-event.mdx",
+    "id": "PreTunnelStartEvent",
+    "jsonSchemaPath": "dist/schemas/pre-tunnel-start-event.json",
+    "packageExport": "@lando/sdk/schema#PreTunnelStartEvent",
+    "title": "Pre Tunnel Start Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Tunnel Start Event.",
+    "docsPath": "docs/reference/schemas/post-tunnel-start-event.mdx",
+    "id": "PostTunnelStartEvent",
+    "jsonSchemaPath": "dist/schemas/post-tunnel-start-event.json",
+    "packageExport": "@lando/sdk/schema#PostTunnelStartEvent",
+    "title": "Post Tunnel Start Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Ready Event.",
+    "docsPath": "docs/reference/schemas/tunnel-ready-event.mdx",
+    "id": "TunnelReadyEvent",
+    "jsonSchemaPath": "dist/schemas/tunnel-ready-event.json",
+    "packageExport": "@lando/sdk/schema#TunnelReadyEvent",
+    "title": "Tunnel Ready Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Tunnel Stop Event.",
+    "docsPath": "docs/reference/schemas/pre-tunnel-stop-event.mdx",
+    "id": "PreTunnelStopEvent",
+    "jsonSchemaPath": "dist/schemas/pre-tunnel-stop-event.json",
+    "packageExport": "@lando/sdk/schema#PreTunnelStopEvent",
+    "title": "Pre Tunnel Stop Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Tunnel Stop Event.",
+    "docsPath": "docs/reference/schemas/post-tunnel-stop-event.mdx",
+    "id": "PostTunnelStopEvent",
+    "jsonSchemaPath": "dist/schemas/post-tunnel-stop-event.json",
+    "packageExport": "@lando/sdk/schema#PostTunnelStopEvent",
+    "title": "Post Tunnel Stop Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Tunnel Status Event.",
+    "docsPath": "docs/reference/schemas/tunnel-status-event.mdx",
+    "id": "TunnelStatusEvent",
+    "jsonSchemaPath": "dist/schemas/tunnel-status-event.json",
+    "packageExport": "@lando/sdk/schema#TunnelStatusEvent",
+    "title": "Tunnel Status Event"
   },
   {
     "deprecated": false,

@@ -1,0 +1,23 @@
+---
+title: Tunnel Ready Event
+description: Public Lando schema contract for Tunnel Ready Event.
+---
+
+# Tunnel Ready Event
+
+Public Lando schema contract for Tunnel Ready Event.
+
+[JSON Schema artifact](../../../dist/schemas/tunnel-ready-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `tunnel-ready` | — | — |
+| `eventName` | Yes | `string` | — | — | `tunnel-ready` | — | — |
+| `app` | Yes | `string` | a string | — | — | — | — |
+| `provider` | Yes | `string` | a string | — | — | — | — |
+| `sessionId` | No | `string` | — | — | — | — | — |
+| `targetSummary` | Yes | `string` | a string | — | — | — | — |
+| `detached` | Yes | `boolean` | a boolean | — | — | — | — |
+| `publicUrlSummary` | No | `string` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `status` | Yes | `string` | — | — | `ready` | — | — |

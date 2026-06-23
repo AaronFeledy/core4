@@ -79,6 +79,15 @@ describe("@lando/sdk package exports", () => {
     expect(schema.DatasetApplyOptions).toBeDefined();
     expect(schema.DatasetApplyResult).toBeDefined();
     expect(schema.SyncResult).toBeDefined();
+    expect(schema.TunnelCapabilities).toBeDefined();
+    expect(schema.TunnelTarget).toBeDefined();
+    expect(schema.TunnelStartRequest).toBeDefined();
+    expect(schema.TunnelStopRequest).toBeDefined();
+    expect(schema.TunnelStatusRequest).toBeDefined();
+    expect(schema.TunnelSession).toBeDefined();
+    expect(schema.TunnelStatus).toBeDefined();
+    expect(schema.TunnelSessionFilter).toBeDefined();
+    expect(schema.TunnelServiceContribution).toBeDefined();
     expect(schema.FileFormat).toBeDefined();
     expect(schema.ContentSource).toBeDefined();
     expect(schema.ManagedFile).toBeDefined();
@@ -171,6 +180,14 @@ describe("@lando/sdk package exports", () => {
       "DatasetApplyOptions",
       "DatasetApplyResult",
       "SyncResult",
+      "TunnelCapabilities",
+      "TunnelTarget",
+      "TunnelStartRequest",
+      "TunnelStopRequest",
+      "TunnelStatusRequest",
+      "TunnelSession",
+      "TunnelStatus",
+      "TunnelSessionFilter",
     ] as const) {
       const jsonSchema = schema.getJsonSchema(schemaName) as { readonly $schema?: unknown };
 
@@ -244,6 +261,13 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DatasetCaptureError).toBeDefined();
     expect(errors.DatasetApplyError).toBeDefined();
     expect(errors.DatasetBindingError).toBeDefined();
+    expect(errors.TunnelProviderUnavailableError).toBeDefined();
+    expect(errors.TunnelTargetUnresolvedError).toBeDefined();
+    expect(errors.TunnelAuthRequiredError).toBeDefined();
+    expect(errors.TunnelStartError).toBeDefined();
+    expect(errors.TunnelReadyTimeoutError).toBeDefined();
+    expect(errors.TunnelDetachedStateError).toBeDefined();
+    expect(errors.TunnelStopError).toBeDefined();
     expect(errors.VolumeOperationError).toBeDefined();
     expect(errors.ServiceCopyError).toBeDefined();
     expect(errors.ArtifactTransferError).toBeDefined();
@@ -326,6 +350,12 @@ describe("@lando/sdk package exports", () => {
     expect(events.PostDatasetCaptureEvent).toBeDefined();
     expect(events.PreDatasetSendEvent).toBeDefined();
     expect(events.PostDatasetSendEvent).toBeDefined();
+    expect(events.PreTunnelStartEvent).toBeDefined();
+    expect(events.PostTunnelStartEvent).toBeDefined();
+    expect(events.TunnelReadyEvent).toBeDefined();
+    expect(events.PreTunnelStopEvent).toBeDefined();
+    expect(events.PostTunnelStopEvent).toBeDefined();
+    expect(events.TunnelStatusEvent).toBeDefined();
     expect(events.DeprecationUsedEvent).toBeDefined();
     expect(events.LandoEvent).toBeDefined();
   });
@@ -356,6 +386,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.DataMover).toBeDefined();
     expect(services.RemoteSource).toBeDefined();
     expect(services.Dataset).toBeDefined();
+    expect(services.TunnelService).toBeDefined();
   });
 
   test("secrets entry point exports the canonical redaction primitive", async () => {
@@ -459,6 +490,13 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runDatasetContract).toBeDefined();
     expect(sdkTest.makeRemoteSourceContractSuite).toBeDefined();
     expect(sdkTest.makeDatasetContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the tunnel contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runTunnelServiceContract).toBeDefined();
+    expect(sdkTest.makeTunnelServiceContractSuite).toBeDefined();
   });
 
   test("test entry point exports the interaction contract suite", async () => {

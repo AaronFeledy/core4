@@ -641,6 +641,60 @@
         ]
       },
       "type": "array"
+    },
+    "tunnelServices": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "basicAuth": {
+                "type": "boolean"
+              },
+              "connectorBinary": {
+                "type": "boolean"
+              },
+              "detached": {
+                "type": "boolean"
+              },
+              "ephemeralUrls": {
+                "type": "boolean"
+              },
+              "stableUrls": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "connectorBinary",
+              "ephemeralUrls",
+              "stableUrls",
+              "basicAuth",
+              "detached"
+            ],
+            "type": "object"
+          },
+          "enabledByDefault": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     }
   },
   "required": [],

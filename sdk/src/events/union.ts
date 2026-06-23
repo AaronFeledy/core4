@@ -72,6 +72,14 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "./task.ts";
+import {
+  PostTunnelStartEvent,
+  PostTunnelStopEvent,
+  PreTunnelStartEvent,
+  PreTunnelStopEvent,
+  TunnelReadyEvent,
+  TunnelStatusEvent,
+} from "./tunnel.ts";
 
 export const LandoEvent = Schema.Union(
   PreBootstrapEvent,
@@ -121,6 +129,12 @@ export const LandoEvent = Schema.Union(
   PostDatasetCaptureEvent,
   PreDatasetSendEvent,
   PostDatasetSendEvent,
+  PreTunnelStartEvent,
+  PostTunnelStartEvent,
+  TunnelReadyEvent,
+  PreTunnelStopEvent,
+  PostTunnelStopEvent,
+  TunnelStatusEvent,
   PreProviderApplyEvent,
   PostProviderApplyEvent,
   PreProviderExecEvent,

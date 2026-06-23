@@ -1,0 +1,25 @@
+---
+title: Post Tunnel Stop Event
+description: Public Lando schema contract for Post Tunnel Stop Event.
+---
+
+# Post Tunnel Stop Event
+
+Public Lando schema contract for Post Tunnel Stop Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-tunnel-stop-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-tunnel-stop` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-tunnel-stop` | — | — |
+| `app` | Yes | `string` | a string | — | — | — | — |
+| `provider` | Yes | `string` | a string | — | — | — | — |
+| `sessionId` | No | `string` | — | — | — | — | — |
+| `targetSummary` | Yes | `string` | a string | — | — | — | — |
+| `detached` | Yes | `boolean` | a boolean | — | — | — | — |
+| `publicUrlSummary` | No | `string` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |
