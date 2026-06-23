@@ -734,6 +734,10 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       await expectJsonEnvelopeParity(["meta:plugin:new", "--no-interactive"], "NotImplementedError");
     }, 30_000);
 
+    test("new: non-TTY default missing input fails identically under renderer=json", async () => {
+      await expectJsonEnvelopeParity(["meta:plugin:new"], "NotImplementedError");
+    }, 30_000);
+
     test("test: rejects an unknown flag before `--` on both paths", async () => {
       await expectUnknownFlagParity(["meta:plugin:test", "--bogus"], "--bogus");
     }, 30_000);

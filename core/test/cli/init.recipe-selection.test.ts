@@ -115,7 +115,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: scripted stdin picks recipe by id then answers prompts", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "empty\nci-empty-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Pick a recipe");
       expect(result.stdout).toContain("Empty Landofile");
@@ -128,7 +128,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: scripted stdin picks recipe by index", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "17\nidx-pick-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created idx-pick-app at");
       expect(await Bun.file(join(dir, "idx-pick-app", ".lando.yml")).exists()).toBe(true);
@@ -139,7 +139,7 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
   test("subprocess: blank input picks the default recipe (node-postgres)", async () => {
     await withTempCwd(async (dir) => {
       const scriptedStdin = "\ndefault-app\n";
-      const result = await runCli(["init"], dir, { stdin: scriptedStdin });
+      const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created default-app at");
       expect(await Bun.file(join(dir, "default-app", ".lando.yml")).exists()).toBe(true);
