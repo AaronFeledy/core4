@@ -24,6 +24,7 @@ import {
   type SyncResult as SyncResultType,
   type VolumeRef,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   DataMover,
@@ -37,6 +38,7 @@ import {
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../app-resolution.ts";
+import type { RenderContext } from "../renderer-boundary.ts";
 
 export const RemoteEntrySchema = Schema.Struct({ name: Schema.String, config: RemoteConfig });
 export const RemoteListResultSchema = Schema.Array(RemoteEntrySchema);
@@ -128,6 +130,22 @@ const unavailable = (requested?: string): RemoteProviderUnavailableError =>
       "Install a RemoteSource plugin for this remote, then rerun the command. Bundled remotes ship in Lando 4.1.",
   });
 
+const secretOutputRedactor = createRedactor("secrets");
+const telemetryOutputRedactor = createRedactor("telemetry");
+
+const redactConfig = (config: RemoteConfigType): RemoteConfigType =>
+  secretOutputRedactor.redactValue(config) as RemoteConfigType;
+
+const redactEntry = (entry: RemoteEntry): RemoteEntry => ({ ...entry, config: redactConfig(entry.config) });
+
+const redactMutationResult = (result: RemoteMutationResult): RemoteMutationResult => ({
+  ...result,
+  config: redactConfig(result.config),
+});
+
+const redactSyncResult = (result: SyncResultType): SyncResultType =>
+  telemetryOutputRedactor.redactValue(result) as SyncResultType;
+
 const loadRemoteLandofile = (
   cwd = process.cwd(),
 ): Effect.Effect<LoadedRemoteLandofile, LandofileNotFoundError | LandofileParseError> =>
@@ -189,10 +207,17 @@ const chooseRemote = (
   landofile: typeof LandofileShape.Type,
   requested: string | undefined,
 ): Effect.Effect<RemoteEntry, RemoteProviderUnavailableError> => {
-  const entries = remoteEntries(landofile);
-  const match = requested === undefined ? entries[0] : entries.find((entry) => entry.name === requested);
-  if (match !== undefined) return Effect.succeed(match);
-  return Effect.fail(unavailable(requested));
+  return Effect.gen(function* () {
+    const entries = remoteEntries(landofile);
+    const match = requested === undefined ? entries[0] : entries.find((entry) => entry.name === requested);
+    if (match !== undefined) return match;
+
+    const sourceOption = yield* Effect.serviceOption(RemoteSource);
+    if (sourceOption._tag === "Some" && (requested === undefined || sourceOption.value.id === requested)) {
+      return { name: sourceOption.value.id, config: { source: sourceOption.value.id } };
+    }
+    return yield* Effect.fail(unavailable(requested));
+  });
 };
 
 const resolveRemoteSource = (entry: RemoteEntry) =>
@@ -241,7 +266,15 @@ const confirmDestructive = (message: string, options: RemoteSyncOptions) =>
   Effect.gen(function* () {
     if (options.yes === true || options.noInteractive === true) return;
     const interaction = yield* Effect.serviceOption(InteractionService);
-    if (interaction._tag === "None") return;
+    if (interaction._tag === "None") {
+      return yield* Effect.fail(
+        new RemoteProtectedEnvError({
+          message: "Remote sync requires confirmation, but no InteractionService is available.",
+          remediation:
+            "Provide an InteractionService or re-run with -y/--yes after verifying the remote target.",
+        }),
+      );
+    }
     const confirmed = yield* Effect.scoped(
       interaction.value.confirm({ message, default: false, mode: "interactive" }),
     );
@@ -266,7 +299,9 @@ const snapshotBeforeApply = (store: VolumeRef | null, options: RemoteSyncOptions
 export const appRemoteList = (
   options: RemoteListOptions = {},
 ): Effect.Effect<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> =>
-  loadRemoteLandofile(options.cwd).pipe(Effect.map(({ landofile }) => remoteEntries(landofile)));
+  loadRemoteLandofile(options.cwd).pipe(
+    Effect.map(({ landofile }) => remoteEntries(landofile).map(redactEntry)),
+  );
 
 export const appRemoteAdd = (
   options: RemoteAddOptions,
@@ -276,7 +311,12 @@ export const appRemoteAdd = (
     const remotes = { ...(loaded.landofile.remotes ?? {}), [options.name]: options.config };
     const next = { ...loaded.landofile, remotes };
     yield* writeLandofile(loaded.file, next);
-    return { app: next.name ?? "app", remote: options.name, file: loaded.file, config: options.config };
+    return redactMutationResult({
+      app: next.name ?? "app",
+      remote: options.name,
+      file: loaded.file,
+      config: options.config,
+    });
   });
 
 export const appRemoteRemove = (
@@ -292,7 +332,12 @@ export const appRemoteRemove = (
     const { [options.name]: _removed, ...remotes } = loaded.landofile.remotes ?? {};
     const next = { ...loaded.landofile, remotes };
     yield* writeLandofile(loaded.file, next);
-    return { app: next.name ?? "app", remote: options.name, file: loaded.file, config: existing };
+    return redactMutationResult({
+      app: next.name ?? "app",
+      remote: options.name,
+      file: loaded.file,
+      config: existing,
+    });
   });
 
 export const appRemoteEnvList = (
@@ -363,7 +408,15 @@ export const appPull = (
       );
       changed = changed || applied.changed;
     }
-    return { direction: "pull", remote: entry.name, env, datasets: kinds, changed, artifacts, snapshots };
+    return redactSyncResult({
+      direction: "pull",
+      remote: entry.name,
+      env,
+      datasets: kinds,
+      changed,
+      artifacts,
+      snapshots,
+    });
   });
 
 export const appPush = (
@@ -419,21 +472,22 @@ export const appPush = (
         }),
       );
     }
-    return {
+    return redactSyncResult({
       direction: "push",
       remote: entry.name,
       env,
       datasets: kinds,
       changed: artifacts.length > 0,
       artifacts,
-    };
+    });
   });
 
 export const renderRemoteListResult = (
   result: ReadonlyArray<RemoteEntry>,
   format: "text" | "json" = "text",
+  ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   if (result.length === 0) return "No remotes configured.";
   return result.map((entry) => `${entry.name}\t${entry.config.source}`).join("\n");
 };
@@ -442,31 +496,47 @@ export const renderRemoteMutationResult = (
   result: RemoteMutationResult,
   action: "added" | "removed",
   format: "text" | "json" = "text",
+  ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${action}: ${result.remote}`;
 };
 
 export const renderRemoteTestResult = (
   result: RemoteTestResult,
   format: "text" | "json" = "text",
+  ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${result.ok ? "ok" : "failed"}${result.env === undefined ? "" : `: ${result.env}`}${result.message === undefined ? "" : ` - ${result.message}`}`;
 };
 
 export const renderRemoteEnvListResult = (
   result: ReadonlyArray<RemoteEnvironmentType>,
   format: "text" | "json" = "text",
+  ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   if (result.length === 0) return "No remote environments.";
   return result.map((entry) => `${entry.id}${entry.default === true ? "\t(default)" : ""}`).join("\n");
 };
 
-export const renderSyncResult = (result: SyncResultType, format: "text" | "json" = "text"): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+export const renderSyncResult = (
+  result: SyncResultType,
+  format: "text" | "json" = "text",
+  ctx?: RenderContext,
+): string => {
+  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${result.direction}: ${result.remote}@${result.env} (${result.datasets.join(", ")})${result.changed ? " changed" : " unchanged"}`;
 };
+
+export const appRemote = {
+  list: appRemoteList,
+  add: appRemoteAdd,
+  remove: appRemoteRemove,
+  test: appRemoteTest,
+  setup: appRemoteSetup,
+  env: { list: appRemoteEnvList },
+} as const;
 
 export { SyncResult };

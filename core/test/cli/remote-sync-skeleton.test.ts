@@ -15,7 +15,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import type { SyncResult } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape } from "@lando/sdk/services";
+
+import { renderSyncResult } from "../../src/cli/commands/remote.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -25,6 +28,15 @@ interface RemoteOperations {
     readonly remote?: string;
     readonly env?: string;
     readonly only?: ReadonlyArray<string>;
+    readonly yes?: boolean;
+    readonly noSnapshot?: boolean;
+  }) => Effect.Effect<unknown, unknown>;
+  readonly appPush: (options: {
+    readonly cwd?: string;
+    readonly remote?: string;
+    readonly env?: string;
+    readonly only?: ReadonlyArray<string>;
+    readonly force?: boolean;
     readonly yes?: boolean;
   }) => Effect.Effect<unknown, unknown>;
   readonly appRemoteAdd: (options: {
@@ -36,6 +48,17 @@ interface RemoteOperations {
     ReadonlyArray<unknown>,
     unknown
   >;
+  readonly appRemoteTest: (options?: {
+    readonly cwd?: string;
+    readonly remote?: string;
+    readonly env?: string;
+  }) => Effect.Effect<unknown, unknown>;
+  readonly appRemote: {
+    readonly list: RemoteOperations["appRemoteList"];
+    readonly add: RemoteOperations["appRemoteAdd"];
+    readonly test: RemoteOperations["appRemoteTest"];
+    readonly env: { readonly list: unknown };
+  };
 }
 
 const requireRemoteOperations = async (): Promise<RemoteOperations> => {
@@ -51,6 +74,20 @@ const requireRemoteOperations = async (): Promise<RemoteOperations> => {
     typeof operations.appRemoteList,
     "appRemoteList must be exported from @lando/core/cli/operations",
   ).toBe("function");
+  expect(typeof operations.appPush, "appPush must be exported from @lando/core/cli/operations").toBe(
+    "function",
+  );
+  expect(
+    typeof operations.appRemoteTest,
+    "appRemoteTest must be exported from @lando/core/cli/operations",
+  ).toBe("function");
+  const appRemote = operations.appRemote as { readonly [key: string]: unknown } | undefined;
+  expect(typeof appRemote?.list, "appRemote.list must be exported").toBe("function");
+  expect(typeof appRemote?.add, "appRemote.add must be exported").toBe("function");
+  expect(typeof appRemote?.test, "appRemote.test must be exported").toBe("function");
+  expect(typeof (appRemote?.env as { readonly list?: unknown } | undefined)?.list, "appRemote.env.list").toBe(
+    "function",
+  );
   return operations as unknown as RemoteOperations;
 };
 
@@ -122,6 +159,41 @@ describe("remote sync command skeleton", () => {
       expect(text).toContain("source: local");
       expect(JSON.stringify(remotes)).toContain("stage");
       expect(JSON.stringify(remotes)).toContain("https://example.test/site");
+    });
+  });
+
+  test("remote command results redact secret-bearing config fields", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await requireRemoteOperations();
+
+      const added = await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "stage", config: TestRemoteSource.config }),
+      );
+      const remotes = await Effect.runPromise(operations.appRemoteList({ cwd: dir }));
+      const text = await Bun.file(join(dir, ".lando.yml")).text();
+
+      expect(JSON.stringify(added)).toContain("[redacted]");
+      expect(JSON.stringify(remotes)).toContain("[redacted]");
+      expect(text).toContain("token:");
+      expect(text).not.toContain("[redacted]");
+    });
+  });
+
+  test("remote selection can use the sole installed RemoteSource without a Landofile remote", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await requireRemoteOperations();
+      const result = await Effect.runPromise(
+        operations
+          .appRemoteTest({ cwd: dir, remote: "test", env: TestRemoteSource.supportedEnv })
+          .pipe(Effect.provide(Layer.succeed(RemoteSource, TestRemoteSource.source))) as Effect.Effect<
+          { readonly ok: boolean; readonly env?: string },
+          unknown,
+          never
+        >,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.env).toBe(TestRemoteSource.supportedEnv);
     });
   });
 
@@ -216,6 +288,214 @@ describe("remote sync command skeleton", () => {
       if (exit._tag === "Failure") {
         expect(JSON.stringify(exit.cause.toJSON())).toContain("RemoteProviderUnavailableError");
       }
+    });
+  });
+
+  test("pull fails closed when confirmation is required but no InteractionService is available", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      const plan = TestDataset.context.plan;
+
+      const exit = await Effect.runPromiseExit(
+        operations
+          .appPull(
+            {
+              cwd: dir,
+              remote: "test",
+              env: TestRemoteSource.supportedEnv,
+              only: [TestDataset.dataset.kind],
+            },
+            { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+          )
+          .pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(RemoteSource, TestRemoteSource.source),
+                Layer.succeed(Dataset, TestDataset.dataset),
+                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+                Layer.succeed(RuntimeProviderRegistry, {
+                  list: Effect.succeed([]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.die("target supplies the plan"),
+                }),
+              ),
+            ),
+          ) as Effect.Effect<unknown, unknown, never>,
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(JSON.stringify(exit.cause.toJSON())).toContain("RemoteProtectedEnvError");
+      }
+    });
+  });
+
+  test("push and remote test fail with RemoteProviderUnavailableError when no RemoteSource is installed", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await requireRemoteOperations();
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "stage", config: { source: "local" } }),
+      );
+
+      const pushExit = await Effect.runPromiseExit(
+        operations.appPush({ cwd: dir, remote: "stage", env: "dev", only: ["database"], yes: true }),
+      );
+      const testExit = await Effect.runPromiseExit(operations.appRemoteTest({ cwd: dir, remote: "stage" }));
+
+      expect(pushExit._tag).toBe("Failure");
+      expect(testExit._tag).toBe("Failure");
+      if (pushExit._tag === "Failure") {
+        expect(JSON.stringify(pushExit.cause.toJSON())).toContain("RemoteProviderUnavailableError");
+      }
+      if (testExit._tag === "Failure") {
+        expect(JSON.stringify(testExit.cause.toJSON())).toContain("RemoteProviderUnavailableError");
+      }
+    });
+  });
+
+  test("push enforces source capabilities and protected environments", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "no-push", config: { source: "test-no-push" } }),
+      );
+      const plan = TestDataset.context.plan;
+      const baseLayer = Layer.mergeAll(
+        Layer.succeed(Dataset, TestDataset.dataset),
+        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("target supplies the plan"),
+        }),
+      );
+      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+
+      const noPushExit = await Effect.runPromiseExit(
+        operations
+          .appPush(
+            { cwd: dir, remote: "no-push", env: "dev", only: [TestDataset.dataset.kind], yes: true },
+            target,
+          )
+          .pipe(
+            Effect.provide(
+              Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.noPushSource)),
+            ),
+          ) as Effect.Effect<unknown, unknown, never>,
+      );
+      const protectedExit = await Effect.runPromiseExit(
+        operations
+          .appPush(
+            {
+              cwd: dir,
+              remote: "test",
+              env: TestRemoteSource.protectedEnv,
+              only: [TestDataset.dataset.kind],
+              yes: true,
+            },
+            target,
+          )
+          .pipe(
+            Effect.provide(Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.source))),
+          ) as Effect.Effect<unknown, unknown, never>,
+      );
+      const forced = (await Effect.runPromise(
+        operations
+          .appPush(
+            {
+              cwd: dir,
+              remote: "test",
+              env: TestRemoteSource.protectedEnv,
+              only: [TestDataset.dataset.kind],
+              force: true,
+              yes: true,
+            },
+            target,
+          )
+          .pipe(
+            Effect.provide(Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.source))),
+          ) as Effect.Effect<unknown, unknown, never>,
+      )) as { readonly direction: string; readonly env: string };
+
+      expect(noPushExit._tag).toBe("Failure");
+      expect(protectedExit._tag).toBe("Failure");
+      if (noPushExit._tag === "Failure") {
+        expect(JSON.stringify(noPushExit.cause.toJSON())).toContain("RemoteDatasetUnsupportedError");
+      }
+      if (protectedExit._tag === "Failure") {
+        expect(JSON.stringify(protectedExit.cause.toJSON())).toContain("RemoteProtectedEnvError");
+      }
+      expect(forced.direction).toBe("push");
+      expect(forced.env).toBe(TestRemoteSource.protectedEnv);
+    });
+  });
+
+  test("pull honors no-snapshot and renderer json mode", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      let snapshotCalls = 0;
+      const dataMover: DataMoverShape = {
+        transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
+        transferStream: () =>
+          Effect.die("external transfer stream is not used by the orchestration skeleton"),
+        snapshot: () =>
+          Effect.sync(() => {
+            snapshotCalls += 1;
+            return { id: "unexpected", store: { app: TestDataset.context.plan.id, store: "database" } };
+          }),
+        restore: () => Effect.void,
+        listSnapshots: () => Effect.succeed([]),
+        removeSnapshot: () => Effect.void,
+        pruneSnapshots: () => Effect.succeed([]),
+      };
+      const plan = TestDataset.context.plan;
+      const result = (await Effect.runPromise(
+        operations
+          .appPull(
+            {
+              cwd: dir,
+              remote: "test",
+              env: TestRemoteSource.supportedEnv,
+              only: [TestDataset.dataset.kind],
+              noSnapshot: true,
+              yes: true,
+            },
+            { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+          )
+          .pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(RemoteSource, TestRemoteSource.source),
+                Layer.succeed(Dataset, TestDataset.dataset),
+                Layer.succeed(DataMover, dataMover),
+                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+                Layer.succeed(RuntimeProviderRegistry, {
+                  list: Effect.succeed([]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.die("target supplies the plan"),
+                }),
+              ),
+            ),
+          ) as Effect.Effect<unknown, unknown, never>,
+      )) as SyncResult;
+
+      expect(snapshotCalls).toBe(0);
+      expect(result.snapshots).toEqual([]);
+      expect(
+        JSON.parse(renderSyncResult(result, "text", { mode: "json", columns: undefined, isTTY: false })),
+      ).toEqual(result);
     });
   });
 });

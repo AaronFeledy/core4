@@ -17,7 +17,14 @@ export const remoteFormatFlag = Flags.string({
 });
 export const remoteNameArg = Args.string({ description: "Remote name.", required: false });
 export const remoteSourceArg = Args.string({ description: "RemoteSource id.", required: false });
-export const remoteEnvArg = Args.string({ description: "Remote environment id.", required: false });
+export const remoteSelectorArg = Args.string({
+  description: "Remote selector, optionally <remote>@<env>.",
+  required: false,
+});
+export const remoteEnvArg = Args.string({
+  description: "Remote selector, optionally <remote>@<env>.",
+  required: false,
+});
 
 export const remoteSkeletonFlags = {
   remote: Flags.string({ description: "Remote name." }),
@@ -51,6 +58,9 @@ const stringValue = (value: unknown): string | undefined => (typeof value === "s
 const booleanValue = (value: unknown): boolean => value === true;
 const formatValue = (value: unknown): "text" | "json" => (value === "json" ? "json" : "text");
 
+export const remoteFormatFromInput = (input: unknown): "text" | "json" =>
+  formatValue(recordOf(recordOf(input).flags).format);
+
 const onlyValue = (value: unknown): ReadonlyArray<string> | undefined => {
   const raw = stringValue(value);
   if (raw === undefined || raw.length === 0) return undefined;
@@ -60,12 +70,31 @@ const onlyValue = (value: unknown): ReadonlyArray<string> | undefined => {
     .filter((part) => part.length > 0);
 };
 
+const remoteSelection = (
+  remoteFlag: unknown,
+  selectorArg: unknown,
+): { readonly remote?: string; readonly env?: string } => {
+  const flaggedRemote = stringValue(remoteFlag);
+  const selector = stringValue(selectorArg);
+  if (flaggedRemote !== undefined) {
+    return { remote: flaggedRemote, ...(selector === undefined ? {} : { env: selector }) };
+  }
+  if (selector === undefined) return {};
+  const separator = selector.indexOf("@");
+  if (separator === -1) return { remote: selector };
+  const remote = selector.slice(0, separator);
+  const env = selector.slice(separator + 1);
+  return {
+    ...(remote.length === 0 ? {} : { remote }),
+    ...(env.length === 0 ? {} : { env }),
+  };
+};
+
 export const remoteSyncOptionsFromInput = (input: unknown): RemoteSyncOptions => {
   const flags = recordOf(recordOf(input).flags);
   const args = recordOf(recordOf(input).args);
   const options: Record<string, unknown> = {};
-  const remote = stringValue(flags.remote);
-  const env = stringValue(args.env);
+  const { remote, env } = remoteSelection(flags.remote, args.env);
   const only = onlyValue(flags.only);
   if (remote !== undefined) options.remote = remote;
   if (env !== undefined) options.env = env;
@@ -78,7 +107,7 @@ export const remoteSyncOptionsFromInput = (input: unknown): RemoteSyncOptions =>
 };
 
 export const remoteListOptionsFromInput = (input: unknown): RemoteListOptions => ({
-  format: formatValue(recordOf(recordOf(input).flags).format),
+  format: remoteFormatFromInput(input),
 });
 
 export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
@@ -98,7 +127,7 @@ export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
   return {
     name,
     config: config as { readonly source: string } & Readonly<Record<string, unknown>>,
-    format: formatValue(flags.format),
+    format: remoteFormatFromInput(input),
   };
 };
 
@@ -107,16 +136,15 @@ export const remoteRemoveOptionsFromInput = (input: unknown): RemoteRemoveOption
   const args = recordOf(recordOf(input).args);
   return {
     name: stringValue(args.name) ?? stringValue(flags.remote) ?? "default",
-    format: formatValue(flags.format),
+    format: remoteFormatFromInput(input),
   };
 };
 
 export const remoteTestOptionsFromInput = (input: unknown): RemoteTestOptions => {
   const flags = recordOf(recordOf(input).flags);
   const args = recordOf(recordOf(input).args);
-  const options: Record<string, unknown> = { format: formatValue(flags.format) };
-  const remote = stringValue(flags.remote);
-  const env = stringValue(args.env);
+  const options: Record<string, unknown> = { format: remoteFormatFromInput(input) };
+  const { remote, env } = remoteSelection(flags.remote, args.env);
   if (remote !== undefined) options.remote = remote;
   if (env !== undefined) options.env = env;
   return options as unknown as RemoteTestOptions;
