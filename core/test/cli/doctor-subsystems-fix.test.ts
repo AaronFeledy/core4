@@ -197,11 +197,11 @@ describe("doctor --fix recovery", () => {
       now: new Date("1970-01-01T00:00:00.000Z"),
     });
 
-    expect(proxy?.context.fixError).toContain("API_TOKEN=[REDACTED]");
-    expect(proxy?.context.fixError).toContain("DATABASE_PASSWORD=[REDACTED]");
-    expect(text).toContain("API_TOKEN=[REDACTED]");
+    expect(proxy?.context.fixError).toContain("API_TOKEN=[redacted]");
+    expect(proxy?.context.fixError).toContain("DATABASE_PASSWORD=[redacted]");
+    expect(text).toContain("API_TOKEN=[redacted]");
     expect(text).not.toContain("abc123");
-    expect(ndjson).toContain("DATABASE_PASSWORD=[REDACTED]");
+    expect(ndjson).toContain("DATABASE_PASSWORD=[redacted]");
     expect(ndjson).not.toContain("hunter2");
   });
 

@@ -262,9 +262,9 @@ describe("meta:doctor command", () => {
       expect(text).toContain("setup-readiness: warn");
       expect(text).toContain("setupProviderId: podman");
       expect(text).toContain("lastFailedStep: proxy");
-      expect(text).toContain("[REDACTED]");
+      expect(text).toContain("[redacted]");
       expect(text).not.toContain("super-secret");
-      expect(ndjson).toContain("[REDACTED]");
+      expect(ndjson).toContain("[redacted]");
       expect(ndjson).not.toContain("super-secret");
 
       const payloads = ndjson

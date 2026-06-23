@@ -14,10 +14,10 @@ describe("redactDetails", () => {
     });
     expect(out).toEqual({
       username: "alice",
-      password: "[REDACTED]",
-      apiKey: "[REDACTED]",
-      api_key: "[REDACTED]",
-      Authorization: "[REDACTED]",
+      password: "[redacted]",
+      apiKey: "[redacted]",
+      api_key: "[redacted]",
+      Authorization: "[redacted]",
       noise: "ok",
     });
   });
@@ -27,7 +27,7 @@ describe("redactDetails", () => {
       "request body: Env=[POSTGRES_PASSWORD=hunter2,REDIS_TOKEN=abc] command=postgres",
     );
     expect(out).toBe(
-      "request body: Env=[POSTGRES_PASSWORD=[REDACTED],REDIS_TOKEN=[REDACTED]] command=postgres",
+      "request body: Env=[POSTGRES_PASSWORD=[redacted],REDIS_TOKEN=[redacted]] command=postgres",
     );
   });
 
@@ -39,8 +39,8 @@ describe("redactDetails", () => {
     });
     expect(out).toEqual({
       service: "database",
-      env: ["POSTGRES_PASSWORD=[REDACTED]", "POSTGRES_DB=lando"],
-      nested: { secret: "[REDACTED]", deep: { token: "[REDACTED]" } },
+      env: ["POSTGRES_PASSWORD=[redacted]", "POSTGRES_DB=lando"],
+      nested: { secret: "[redacted]", deep: { token: "[redacted]" } },
     });
   });
 
@@ -56,7 +56,7 @@ describe("redactDetails", () => {
     const error = new Error("connection refused; POSTGRES_PASSWORD=hunter2 in url");
     const out = redactDetails(error) as { name: string; message: string };
     expect(out.name).toBe("Error");
-    expect(out.message).toContain("[REDACTED]");
+    expect(out.message).toContain("[redacted]");
     expect(out.message).not.toContain("hunter2");
   });
 });

@@ -71,9 +71,9 @@ describe("buildBugReport: envelope extraction", () => {
       context: ctx(),
     });
     expect(env.body).not.toContain("hunter2");
-    expect(env.body).toContain("DATABASE_PASSWORD=[REDACTED]");
+    expect(env.body).toContain("DATABASE_PASSWORD=[redacted]");
     expect(env.body).not.toContain("abc");
-    expect(env.body).toContain("SECRET_TOKEN=[REDACTED]");
+    expect(env.body).toContain("SECRET_TOKEN=[redacted]");
   });
 
   test("redacts env-style secrets in remediation", () => {
@@ -87,7 +87,7 @@ describe("buildBugReport: envelope extraction", () => {
     });
     expect(env.remediation).toBeDefined();
     expect(env.remediation).not.toContain("secretvalue");
-    expect(env.remediation).toContain("MY_API_TOKEN=[REDACTED]");
+    expect(env.remediation).toContain("MY_API_TOKEN=[redacted]");
   });
 
   test("logsDir is <cacheRoot>/logs and cacheDir is <cacheRoot>", () => {
@@ -213,7 +213,7 @@ describe("renderJsonBugReport: single NDJSON line", () => {
       }),
     );
     expect(line).not.toContain("leakedvalue");
-    expect(line).toContain("FOO_TOKEN=[REDACTED]");
+    expect(line).toContain("FOO_TOKEN=[redacted]");
   });
 
   test("_tag is the first key in the serialized JSON", () => {

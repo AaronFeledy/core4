@@ -515,7 +515,7 @@ describe("meta:setup command", () => {
         ["ca", "satisfied"],
         ["proxy", "failed"],
       ]);
-      expect(JSON.stringify(readiness)).toContain("[REDACTED]");
+      expect(JSON.stringify(readiness)).toContain("[redacted]");
       expect(JSON.stringify(readiness)).not.toContain("super-secret");
       expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain("lando setup");
       expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain(
