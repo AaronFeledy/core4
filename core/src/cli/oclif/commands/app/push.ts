@@ -2,14 +2,12 @@ import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema
 
 import { appPush, renderSyncResult } from "../../../commands/remote.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
-import { remoteEnvArg, remoteSkeletonFlags, remoteSyncOptionsFromInput } from "./remote/common.ts";
-
-const formatFromInput = (input: unknown): "text" | "json" => {
-  const flags = typeof input === "object" && input !== null && "flags" in input ? input.flags : undefined;
-  return typeof flags === "object" && flags !== null && "format" in flags && flags.format === "json"
-    ? "json"
-    : "text";
-};
+import {
+  remoteEnvArg,
+  remoteFormatFromInput,
+  remoteSkeletonFlags,
+  remoteSyncOptionsFromInput,
+} from "./remote/common.ts";
 
 export const pushSpec: LandoCommandSpec<SyncResultType> = {
   id: "app:push",
@@ -21,7 +19,8 @@ export const pushSpec: LandoCommandSpec<SyncResultType> = {
   args: { env: remoteEnvArg },
   resultSchema: SyncResult,
   run: (input) => appPush(remoteSyncOptionsFromInput(input)),
-  render: (result, input) => renderSyncResult(result as SyncResultType, formatFromInput(input)),
+  render: (result, input, ctx) =>
+    renderSyncResult(result as SyncResultType, remoteFormatFromInput(input), ctx),
 };
 
 export default class PushCommand extends LandoCommandBase {
@@ -33,10 +32,6 @@ export default class PushCommand extends LandoCommandBase {
   static override bootstrap = pushSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = await this.parse(PushCommand);
-    await this.runEffect({
-      ...pushSpec,
-      render: (result) => renderSyncResult(result as SyncResultType, formatFromInput(parsed)),
-    });
+    await this.runEffect(pushSpec);
   }
 }
