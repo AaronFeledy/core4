@@ -700,3 +700,10 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review notes (deferred/rejected): rejected the HostProxyService finding because current code only has `HostProxyServiceDisabled` and no payload-emitting host-proxy implementation to redact; rejected the `SecretStore.get` fail-open finding because the published `SecretStore` failure channel is `SecretNotFoundError` only, matching the intended listed-id race swallow behavior.
 - Verification: typecheck and lint passed; focused redaction service, process-runner, shell-runner, bun-self-runner, build-orchestrator, renderer-boundary redaction, and AC#6 spot checks passed.
 ---
+
+## 2026-06-23 13:29 CDT - US-347
+- Shipped the provider-aware remote-sync CLI and App-handle skeleton: `app:pull`/`app:push` plus top-level aliases, the `app:remote:*` command family, `App.pull`/`App.push`/`App.remote`, and `@lando/core/cli/operations` exports now dispatch through the frozen `RemoteSource`/`Dataset` contracts while staying connector-free for 4.1.
+- `remote add`/`remote remove`/`remote list` edit/read the raw `remotes:` Landofile block via the canonical serializer without requiring a provider; provider-backed `pull`/`push`/`remote test/setup/env:list` fail with `RemoteProviderUnavailableError` when no matching `RemoteSource` is installed. The orchestration skeleton wires confirmation, safety snapshots before apply, dataset filtering, protected-env force handling, and `TestRemoteSource`/`TestDataset` coverage.
+- Source-mode and compiled dispatch now share the explicit OCLIF command registry; the manifest generator removes the stale manifest before discovery so newly registered commands are emitted into `oclif.manifest.json`/`compiled-manifest.ts`.
+- Verification: typecheck, lint, build, focused remote-sync/App-handle tests, compiled-dispatch parity spot checks, and manual source + compiled CLI smokes passed (`app:remote:add`, `app:remote:list`, and expected no-provider `app:pull` failure with remediation).
+---
