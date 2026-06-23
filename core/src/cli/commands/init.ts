@@ -176,9 +176,9 @@ const loadTarballRecipe = async (options: InitAppOptions, interaction: Interacti
   });
   const interactive = options.nonInteractive !== true && options.yes !== true && interaction !== undefined;
   const confirmUnverified = interactive
-    ? async (): Promise<boolean> =>
+    ? async (sha256: string): Promise<boolean> =>
         (interaction as InteractionPrompter).confirm({
-          message: "Continue installing this recipe without checksum verification?",
+          message: `No --checksum supplied for this tarball recipe; downloaded SHA-256 is ${sha256}. Continue without checksum verification?`,
           name: "checksum",
           default: false,
           mode: "interactive",

@@ -7,6 +7,7 @@ import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/error
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
+import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
 import {
   type TarballRecipeFetcher,
@@ -374,6 +375,45 @@ describe("resolveTarballRecipeSource", () => {
 });
 
 describe("initApp tarball source boundary", () => {
+  test("tarball checksum confirmation includes the downloaded SHA-256 guidance", async () => {
+    await withTempRoot(async (dir) => {
+      const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
+      const prompts: Array<string> = [];
+      const interaction: InteractionPrompter = {
+        promptAll: async () => ({}),
+        confirm: async (spec) => {
+          prompts.push(spec.message);
+          return true;
+        },
+        select: async (spec) => {
+          const value = spec.default ?? spec.choices[0]?.value;
+          if (value === undefined) throw new Error("select test prompt has no value");
+          return value;
+        },
+      };
+
+      let caught: unknown;
+      try {
+        await initApp({
+          cwd: dir,
+          full: false,
+          source: "tarball",
+          url: "https://example.test/recipe.tar.gz",
+          userDataRoot: join(dir, "data"),
+          tarballRecipeFetcher: fetcherFor(bytes),
+          interaction,
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain("No --checksum supplied");
+      expect(prompts[0]).toContain(sha256(bytes));
+    });
+  });
+
   test("tarball recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
     await withTempRoot(async (dir) => {
       const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
