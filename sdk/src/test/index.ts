@@ -3384,25 +3384,26 @@ export const runRemoteSourceContract = (
     const toolsAfterFetch = yield* harness.observations.toolProvisions();
     const delegationsAfterFetch = yield* harness.observations.datasetDelegations();
     const finalizersAfterFetch = yield* harness.observations.finalizers();
+    const newFetchEgress = egressAfterFetch.slice(egressBefore);
+    const newFetchTools = toolsAfterFetch.slice(toolBefore);
+    const newFetchDelegations = delegationsAfterFetch.slice(delegationsBefore);
+    const newFetchFinalizers = finalizersAfterFetch.slice(finalizersBefore);
     const toolProvisioningSatisfied =
       source.capabilities.tool === undefined ||
-      (toolsAfterFetch.length > toolBefore &&
-        toolsAfterFetch.some(
+      (newFetchTools.length > 0 &&
+        newFetchTools.some(
           (record) =>
             record.request.destination.kind === "memory" &&
             record.request.url.startsWith("https://") &&
             record.request.callerId?.includes("tool-provision") === true,
         ));
     yield* requireRemoteSyncContract(
-      egressAfterFetch.length > egressBefore &&
-        egressAfterFetch.some((record) => record.request.url === locator.endpoint) &&
+      newFetchEgress.some((record) => record.request.url === locator.endpoint) &&
         toolProvisioningSatisfied &&
-        delegationsAfterFetch.length > delegationsBefore &&
-        delegationsAfterFetch.some(
+        newFetchDelegations.some(
           (record) => record.operation === "fetch" && record.endpoint._tag === fetched._tag,
         ) &&
-        finalizersAfterFetch.length > finalizersBefore &&
-        finalizersAfterFetch.some((record) => record.operation === "fetch" && record.remote === source.id),
+        newFetchFinalizers.some((record) => record.operation === "fetch" && record.remote === source.id),
       "fetch records egress, tool provisioning, dataset delegation, and Scope finalization",
       {
         before: { egressBefore, toolBefore, delegationsBefore, finalizersBefore },
@@ -3573,16 +3574,17 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
     );
     const transfersAfterApply = yield* harness.observations.dataMoverTransfers();
     const streamsAfterApply = yield* harness.observations.dataMoverStreams();
+    const newApplyTransfers = transfersAfterApply.slice(transfersBefore);
+    const newApplyStreams = streamsAfterApply.slice(streamsBefore);
     yield* requireRemoteSyncContract(
-      transfersAfterApply.length >= transfersBefore + 2 &&
-        transfersAfterApply.some(
+      newApplyTransfers.length >= 2 &&
+        newApplyTransfers.some(
           (record) => record.operation === "capture" && record.endpoint._tag === artifact._tag,
         ) &&
-        transfersAfterApply.some(
+        newApplyTransfers.some(
           (record) => record.operation === "apply" && record.endpoint._tag === artifact._tag,
         ) &&
-        streamsAfterApply.length > streamsBefore &&
-        streamsAfterApply.some(
+        newApplyStreams.some(
           (record) => record.operation === "capture" && record.endpoint._tag === artifact._tag,
         ),
       "capture/apply delegate byte movement to DataMover hooks",
@@ -3593,11 +3595,11 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
     );
     const credentialValues = Object.values(harness.context.creds ?? {});
     yield* requireRemoteSyncContract(
-      [...transfersAfterApply, ...streamsAfterApply].every(
+      [...newApplyTransfers, ...newApplyStreams].every(
         (record) => !commandIncludesCredential(record, credentialValues),
       ),
       "Dataset credentials are not passed through service command argv",
-      { credentials: credentialValues, transfers: transfersAfterApply, streams: streamsAfterApply },
+      { credentials: credentialValues, transfers: newApplyTransfers, streams: newApplyStreams },
     );
 
     const replay = yield* Effect.scoped(dataset.apply(harness.context, artifact)).pipe(
