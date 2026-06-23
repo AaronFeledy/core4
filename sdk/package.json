@@ -30,6 +30,7 @@
     "./renderer": "./src/renderer/index.ts",
     "./secrets": "./src/secrets/index.ts",
     "./template": "./src/template/index.ts",
+    "./verified-stream": "./src/verified-stream/index.ts",
     "./test": "./src/test/index.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
