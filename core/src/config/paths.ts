@@ -1,13 +1,13 @@
 /**
  * `@lando/core/paths` — the single, Effect-free, OCLIF-free primitive that owns
- * Lando's four roots and every path derived from them (§7.5 / §7.5.1 / §12).
+ * Lando's four roots and every path derived from them.
  *
  * This module constructs no `Context.Service` and imports neither `effect` nor
- * `@oclif/core`, so it is safe on the level-`none` cold-start fast path (§3.2),
+ * `@oclif/core`, so it is safe on the level-`none` cold-start fast path,
  * inside `scripts/`, and for embedding hosts / plugin utilities that need a path
  * before (or without) a runtime. Only a type-only `@lando/sdk` import is used.
  *
- * Resolution order, per root (§7.5):
+ * Resolution order, per root:
  *   explicit `RootOverrides` field
  *     → `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT`
  *       / `LANDO_SYSTEM_PLUGIN_ROOT`
@@ -31,7 +31,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
 import { parseMinimalYaml } from "./yaml-min.ts";
 
-/** The four roots Lando resolves (§7.5). */
+/** The four roots Lando resolves. */
 export interface LandoRoots {
   readonly userConfRoot: string;
   readonly userCacheRoot: string;
@@ -41,7 +41,7 @@ export interface LandoRoots {
 
 /**
  * Per-root overrides plus deterministic `platform`/`env`/`home` injection for
- * testing and host isolation (§7.5.1). Every field is optional; omitted fields
+ * testing and host isolation. Every field is optional; omitted fields
  * fall through to env → config.yml → platform default.
  */
 export interface RootOverrides {
@@ -58,7 +58,7 @@ export interface RootOverrides {
 export interface LandoPaths {
   readonly roots: LandoRoots;
   readonly platform: HostPlatform;
-  // userData-scoped (§12.4)
+  // userData-scoped
   readonly pluginsDir: string;
   readonly appPluginsDir: (appId: string) => string;
   readonly pluginAuthFile: string;
@@ -67,14 +67,14 @@ export interface LandoPaths {
   readonly certsDir: string;
   readonly runtimeDir: string;
   readonly globalAppRoot: string;
-  // userCache-scoped (§12.1 / §12.4)
+  // userCache-scoped
   readonly logsDir: string;
   readonly scratchDir: string;
   readonly scratchRegistryFile: string;
   readonly appCacheDir: (appName: string, appRoot: string) => string;
   readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
   readonly fileSyncSessionsDir: string;
-  // userConf-scoped (§7.5 / §12.4)
+  // userConf-scoped
   readonly configFile: string;
   readonly configDir: string;
   readonly globalConfigFile: string;
@@ -83,7 +83,7 @@ export interface LandoPaths {
 // --- platform resolution -----------------------------------------------------
 
 /**
- * Resolve the {@link HostPlatform} that selects the §7.5 platform-default
+ * Resolve the {@link HostPlatform} that selects the platform-default
  * column. WSL is detected as `linux` + (`WSL_DISTRO_NAME` | `WSL_INTEROP`); any
  * unknown platform falls back to the Linux column.
  */
@@ -124,7 +124,7 @@ const joinFor =
     return parts.join(sep);
   };
 
-// --- platform default matrix (§7.5) -----------------------------------------
+// --- platform default matrix -------------------------------------------------
 
 const homeOf = (overrides: RootOverrides): string => {
   if (overrides.home !== undefined) return overrides.home;
@@ -219,7 +219,7 @@ const makeConfigReader = (confRoot: string): ((key: string) => string | undefine
 // --- root resolution ---------------------------------------------------------
 
 /**
- * Resolve the four roots applying the §7.5 order per root: explicit override →
+ * Resolve the four roots in order per root: explicit override →
  * `LANDO_*` env → `config.yml` → platform default. The conf root is fixed first
  * (option → env → default); `config.yml` is then located from it, and a
  * `userConfRoot` value inside `config.yml` never relocates that load.
@@ -232,8 +232,6 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
   const baseConfRoot = nonEmpty(env.LANDO_USER_CONF_ROOT) ?? defaults.userConfRoot;
   const userConfRoot = overrides.userConfRoot ?? resolveConfigFileRoot(baseConfRoot, envOverlay(env), env);
 
-  // 2. config.yml is located from the fixed conf root; read lazily and at most
-  //    once, only for roots that fall through option + env.
   const readConfig = makeConfigReader(userConfRoot);
 
   const resolveOther = (
@@ -271,7 +269,7 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
   };
 };
 
-// --- §12.1 app-name sanitization + app-root fingerprint ----------------------
+// --- app-name sanitization + app-root fingerprint ----------------------------
 
 const sanitizeAppName = (appName: string): string => {
   const cleaned = appName.replace(/[^A-Za-z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "");
@@ -291,9 +289,9 @@ const appRootFingerprint = (appRoot: string): string =>
 // --- derived path factory ----------------------------------------------------
 
 /**
- * Resolve every root and return builders for every §12 path the catalog names.
- * App-scoped builders apply the §12.1 name sanitization and app-root
- * fingerprint so two apps sharing a `name:` never collide.
+ * Resolve every root and return builders for every derived path in the catalog.
+ * App-scoped builders sanitize app names and fingerprint the app root so two
+ * apps sharing a `name:` never collide.
  */
 export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
   const env = overrides.env ?? process.env;

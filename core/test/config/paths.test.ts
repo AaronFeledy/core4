@@ -109,7 +109,7 @@ describe("normalizeHostPlatform", () => {
   });
 });
 
-describe("resolveLandoRoots platform-default matrix (§7.5)", () => {
+describe("resolveLandoRoots platform-default matrix", () => {
   const home = "/home/tester";
 
   test("linux XDG defaults", () => {
@@ -166,7 +166,7 @@ describe("resolveLandoRoots platform-default matrix (§7.5)", () => {
   });
 });
 
-describe("resolveLandoRoots precedence order (§7.5)", () => {
+describe("resolveLandoRoots precedence order", () => {
   const home = "/home/tester";
 
   for (const entry of PLATFORM_CASES) {
@@ -318,7 +318,7 @@ describe("resolveLandoRoots precedence order (§7.5)", () => {
   });
 });
 
-describe("userConfRoot self-reference rule (§7.5)", () => {
+describe("userConfRoot self-reference rule", () => {
   const home = "/home/tester";
 
   test("a userConfRoot value inside config.yml never relocates the config load", () => {
@@ -393,7 +393,7 @@ describe("env short-circuit keeps the fast path IO-free", () => {
   });
 });
 
-describe("makeLandoPaths derived builders (§12)", () => {
+describe("makeLandoPaths derived builders", () => {
   const home = "/home/tester";
   const linux = (env: Record<string, string | undefined> = noEnv): RootOverrides => ({
     platform: "linux",
