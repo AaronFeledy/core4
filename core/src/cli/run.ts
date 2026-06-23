@@ -620,7 +620,7 @@ const appRuntimeLayer = () =>
   makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
 
 const compiledFormat = (input: CompiledCommandInput): "text" | "json" =>
-  input.flags.format === "json" ? "json" : "text";
+  input.flags.format === "json" || input.rendererMode === "json" ? "json" : "text";
 
 const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
