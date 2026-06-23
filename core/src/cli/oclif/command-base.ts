@@ -76,6 +76,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
+  readonly resultSchema?: unknown;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
@@ -91,6 +92,14 @@ const MVP_COMMAND_IDS = new Set([
   "app:includes:verify",
   "app:info",
   "app:logs",
+  "app:pull",
+  "app:push",
+  "app:remote:add",
+  "app:remote:env:list",
+  "app:remote:list",
+  "app:remote:remove",
+  "app:remote:setup",
+  "app:remote:test",
   "app:rebuild",
   "app:restart",
   "app:shell",
