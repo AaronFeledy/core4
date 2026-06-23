@@ -36,6 +36,7 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
   ScratchAppError,
@@ -469,7 +470,7 @@ export interface AppRemoteApi {
     options: AppRemoteRemoveOptions,
   ) => Effect.Effect<
     AppRemoteMutationResult,
-    LandofileNotFoundError | LandofileParseError | RemoteProviderUnavailableError
+    LandofileNotFoundError | LandofileParseError | RemoteError | RemoteProviderUnavailableError
   >;
   readonly test: (options?: AppRemoteTestOptions) => Effect.Effect<RemoteTestResult, RemoteSyncError>;
   readonly setup: (options?: AppRemoteSetupOptions) => Effect.Effect<RemoteTestResult, RemoteSyncError>;

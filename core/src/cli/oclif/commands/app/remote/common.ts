@@ -107,9 +107,11 @@ export const remoteSyncOptionsFromInput = (input: unknown): RemoteSyncOptions =>
   return options as unknown as RemoteSyncOptions;
 };
 
-export const remoteListOptionsFromInput = (input: unknown): RemoteListOptions => ({
-  format: remoteFormatFromInput(input),
-});
+export const remoteListOptionsFromInput = (input: unknown): RemoteListOptions => {
+  const remote = stringValue(recordOf(recordOf(input).flags).remote);
+  const format = remoteFormatFromInput(input);
+  return remote === undefined ? { format } : { remote, format };
+};
 
 export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
   const flags = recordOf(recordOf(input).flags);

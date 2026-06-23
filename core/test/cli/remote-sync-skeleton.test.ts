@@ -44,8 +44,12 @@ interface RemoteOperations {
     readonly name: string;
     readonly config: RemoteConfigInput;
   }) => Effect.Effect<unknown, unknown>;
-  readonly appRemoteList: (options?: { readonly cwd?: string }) => Effect.Effect<
+  readonly appRemoteList: (options?: { readonly cwd?: string; readonly remote?: string }) => Effect.Effect<
     ReadonlyArray<unknown>,
+    unknown
+  >;
+  readonly appRemoteRemove: (options: { readonly cwd?: string; readonly name: string }) => Effect.Effect<
+    unknown,
     unknown
   >;
   readonly appRemoteTest: (options?: {
@@ -73,6 +77,10 @@ const requireRemoteOperations = async (): Promise<RemoteOperations> => {
   expect(
     typeof operations.appRemoteList,
     "appRemoteList must be exported from @lando/core/cli/operations",
+  ).toBe("function");
+  expect(
+    typeof operations.appRemoteRemove,
+    "appRemoteRemove must be exported from @lando/core/cli/operations",
   ).toBe("function");
   expect(typeof operations.appPush, "appPush must be exported from @lando/core/cli/operations").toBe(
     "function",
@@ -151,14 +159,42 @@ describe("remote sync command skeleton", () => {
           config: { source: "local", url: "https://example.test/site" },
         }),
       );
+      await Effect.runPromise(
+        operations.appRemoteAdd({
+          cwd: dir,
+          name: "prod",
+          config: { source: "other", url: "https://example.test/prod" },
+        }),
+      );
       const remotes = await Effect.runPromise(operations.appRemoteList({ cwd: dir }));
+      const filtered = await Effect.runPromise(operations.appRemoteList({ cwd: dir, remote: "stage" }));
       const text = await Bun.file(join(dir, ".lando.yml")).text();
 
       expect(text).toContain("remotes:");
       expect(text).toContain("stage:");
       expect(text).toContain("source: local");
       expect(JSON.stringify(remotes)).toContain("stage");
+      expect(JSON.stringify(remotes)).toContain("prod");
       expect(JSON.stringify(remotes)).toContain("https://example.test/site");
+      expect(JSON.stringify(filtered)).toContain("stage");
+      expect(JSON.stringify(filtered)).not.toContain("prod");
+    });
+  });
+
+  test("remote remove reports a missing Landofile remote without plugin remediation", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await requireRemoteOperations();
+
+      const exit = await Effect.runPromiseExit(operations.appRemoteRemove({ cwd: dir, name: "stage" }));
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const error = JSON.stringify(exit.cause.toJSON());
+        expect(error).toContain("RemoteError");
+        expect(error).toContain("Remote stage is not configured");
+        expect(error).not.toContain("RemoteProviderUnavailableError");
+        expect(error).not.toContain("plugin:add");
+      }
     });
   });
 

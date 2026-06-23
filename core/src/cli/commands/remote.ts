@@ -6,6 +6,7 @@ import {
   LandofileNotFoundError,
   LandofileParseError,
   RemoteDatasetUnsupportedError,
+  RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
 } from "@lando/sdk/errors";
@@ -75,6 +76,7 @@ export interface RemoteSyncOptions {
 
 export interface RemoteListOptions {
   readonly cwd?: string;
+  readonly remote?: string;
   readonly format?: "text" | "json";
 }
 
@@ -337,7 +339,12 @@ export const appRemoteList = (
   options: RemoteListOptions = {},
 ): Effect.Effect<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> =>
   loadRemoteLandofile(options.cwd).pipe(
-    Effect.map(({ landofile }) => remoteEntries(landofile).map(redactEntry)),
+    Effect.map(({ landofile }) => {
+      const entries = remoteEntries(landofile);
+      return (
+        options.remote === undefined ? entries : entries.filter((entry) => entry.name === options.remote)
+      ).map(redactEntry);
+    }),
   );
 
 export const appRemoteAdd = (
@@ -358,14 +365,18 @@ export const appRemoteAdd = (
 
 export const appRemoteRemove = (
   options: RemoteRemoveOptions,
-): Effect.Effect<
-  RemoteMutationResult,
-  LandofileNotFoundError | LandofileParseError | RemoteProviderUnavailableError
-> =>
+): Effect.Effect<RemoteMutationResult, LandofileNotFoundError | LandofileParseError | RemoteError> =>
   Effect.gen(function* () {
     const loaded = yield* loadRemoteLandofile(options.cwd);
     const existing = loaded.landofile.remotes?.[options.name];
-    if (existing === undefined) return yield* Effect.fail(unavailable(options.name));
+    if (existing === undefined) {
+      return yield* Effect.fail(
+        new RemoteError({
+          message: `Remote ${options.name} is not configured in this Landofile.`,
+          remote: options.name,
+        }),
+      );
+    }
     const { [options.name]: _removed, ...remotes } = loaded.landofile.remotes ?? {};
     const next = { ...loaded.landofile, remotes };
     yield* writeLandofile(loaded.file, next);
