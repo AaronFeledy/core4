@@ -776,3 +776,19 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Verification: typecheck and lint passed; focused paths/config spot checks passed (`core/test/config/paths.test.ts`, `core/test/unit/config-paths.test.ts`, `core/test/services/env-overrides.test.ts`).
 - **Learnings for future iterations:** Pure root resolvers must still use the shared overlay seam for config-file location; inject env into `resolveConfigFileRoot` rather than reading `process.env` directly when testing cross-platform root behavior.
 ---
+## [2026-06-23 18:35 CDT] - Babysit
+- PR: #445 https://github.com/AaronFeledy/core4/pull/445
+- CI outcome: pass
+- Review feedback: fixed (merge conflict resolved; Bugbot empty user-conf-root finding fixed)
+- Merge: merged (squash)
+---
+## 2026-06-23 19:05 CDT - US-303
+- Published the `PathsService` SDK contract: a new `sdk/src/services/paths.ts` defines the canonical `LandoRoots`/`RootOverrides`/`LandoPaths` type shapes (four roots, active `platform`, and every §12 derived-path builder) plus the `PathsService` Context.Tag (`@lando/core/PathsService`), with the matching `declare class` mirror in `sdk/src/services/index.ts`. The pure resolver `core/src/config/paths.ts` (US-302) now imports those three types type-only from `@lando/sdk/services` and re-exports them, making the SDK the single source of truth while keeping the runtime resolvers and the level-`none` cold-start fast path effect-free.
+- Added `userCacheRoot` and `systemPluginRoot` as optional `AbsolutePath` fields to `GlobalConfig` (alongside `userConfRoot`/`userDataRoot`), registered the two field-description exemptions, regenerated the schema snapshot + `dist/schemas` + `docs/reference` artifacts, and recorded `PathsService` as an additive service tag in `sdk/API_COMPATIBILITY.md`. The Live-layer wiring (PathsServiceLive into bootstrap, ConfigService base derivation) is deliberately deferred to US-304.
+- Verification: typecheck, lint passed; SDK spot checks green (backward-compatibility, exports, public-schema-contracts, landofile, global-config-renderer — 277 tests), core paths/config + cache-paths spot checks green (73 tests), cold-start fast-path + import-boundary + paint-banner canaries green (49 tests), schema-snapshot drift gate green (25 tests). Codegen is idempotent (`git diff` stable). Manual runtime QA confirmed `PathsService.key === "@lando/core/PathsService"`, `GlobalConfig` decodes both new `AbsolutePath` fields, and `@lando/core/schema` re-exports the updated struct.
+- **Learnings for future iterations:**
+  - Adding FIELDS to an already-registered public JSON schema (`GlobalConfig`) is NOT the four-place schema lockstep — that lockstep is only for registering a NEW schema. You only: add the struct fields, add `<Schema>.<field>` to `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` (the existing root fields carry no TSDoc, so exempt rather than describe), then `codegen:schema-snapshot`. The `PUBLIC_SCHEMA_CONTRACT_FIXTURES` map already keys `GlobalConfig`, and its happy-path fixtures are auto-generated from the JSON schema, so optional fields need no fixture edit.
+  - `GlobalConfig` is embedded in `TemplateRenderContext`, so a `GlobalConfig` field add also regenerates `dist/schemas/template-render-context.json` — expect and stage that second artifact.
+  - A new additive SDK service tag whose service value is a plain resolved object (not Effects) can set the tag's shape to a single type reference (`Context.Tag(...)<Tag, LandoPaths>`), mirroring `DataMover`/`DataMoverShape`. The backward-compat test extracts `[]` members for a type-reference shape that arrives via `export *` (not a local interface in index.ts), which is fine because additive tags are name-only set-equality, not signature-frozen.
+  - `@lando/core/paths` is NOT a package export until US-305; in US-303 the re-export is consumed only via the relative `core/src/config/paths.ts` module path. Don't QA it through the package subpath yet.
+---

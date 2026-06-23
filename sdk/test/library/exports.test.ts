@@ -354,6 +354,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.Downloader).toBeDefined();
     expect(services.DataMover).toBeDefined();
+    expect(services.PathsService).toBeDefined();
     expect(services.RemoteSource).toBeDefined();
     expect(services.Dataset).toBeDefined();
   });

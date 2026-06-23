@@ -97,6 +97,7 @@ import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
 import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
+import type { LandoPaths } from "./paths.ts";
 import type {
   CertificateAuthorityShape,
   HealthcheckRunnerShape,
@@ -164,6 +165,7 @@ export * from "./global-app.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
+export * from "./paths.ts";
 export * from "./planner.ts";
 export * from "./platform.ts";
 export * from "./plugins.ts";
@@ -682,6 +684,11 @@ export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
 >() {}
 
 export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+
+export declare class PathsService extends Context.Tag("@lando/core/PathsService")<
+  PathsService,
+  LandoPaths
+>() {}
 
 export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<
   RemoteSource,

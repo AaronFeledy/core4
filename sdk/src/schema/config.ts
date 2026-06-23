@@ -46,6 +46,8 @@ export type NetworkConfig = typeof NetworkConfig.Type;
 export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
   userConfRoot: Schema.optional(AbsolutePath),
+  userCacheRoot: Schema.optional(AbsolutePath),
+  systemPluginRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),

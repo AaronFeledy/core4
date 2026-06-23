@@ -353,6 +353,7 @@
 - `ManagedFileService`
 - `RemoteSource`
 - `Dataset`
+- `PathsService`
 - `PluginSource`
 - `PluginTrustStore`
 - `PrivilegeService`
