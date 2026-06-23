@@ -1,5 +1,5 @@
 /**
- * Verified streaming-hash + atomic-persist helper.
+ * `@lando/sdk/verified-stream` — stream -> SHA-256 -> temp-file -> atomic-rename helper.
  *
  * Pipes a `Stream<Uint8Array>` through a SHA-256 hasher while writing
  * incrementally to a unique temp file on the destination filesystem, verifies
@@ -8,10 +8,6 @@
  * mismatch, persistence failure, and `Effect.interrupt`; a verified rename never
  * fires until both checks pass, so an existing destination is never clobbered by
  * a bad fetch.
- *
- * Pure, dependency-injectable streaming hash + persist helper. Stays
- * core-internal until a second consumer (e.g. bulk data moves) justifies
- * lifting it into the SDK. No network I/O and no runtime services.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, rename, unlink } from "node:fs/promises";
@@ -169,7 +165,7 @@ export const persistVerifiedStream = <E>(
 /**
  * Buffer `body` in memory, hashing and counting bytes, and verify the expected
  * checksum/size. No disk is touched. Use only when the caller explicitly wants
- * an in-memory (`memory`) download.
+ * an in-memory download.
  */
 export const collectVerifiedStream = <E>(
   params: CollectVerifiedStreamParams<E>,

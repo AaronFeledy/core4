@@ -10,7 +10,7 @@ import {
   VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
-} from "../../src/downloader/verified-stream.ts";
+} from "@lando/sdk/verified-stream";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

@@ -31,9 +31,13 @@ import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "@lan
 import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
+import {
+  type VerifiedStreamError,
+  collectVerifiedStream,
+  persistVerifiedStream,
+} from "@lando/sdk/verified-stream";
 
 import { HttpClient } from "../http-client/service.ts";
-import { type VerifiedStreamError, collectVerifiedStream, persistVerifiedStream } from "./verified-stream.ts";
 
 const CAPABILITIES: DownloaderCapabilities = {
   schemes: ["https", "file"],

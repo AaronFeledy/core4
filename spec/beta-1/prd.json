@@ -2457,8 +2457,8 @@
         "Lint passes."
       ],
       "priority": 137,
-      "passes": false,
-      "notes": "Data-movement primitive (spec \u00a710.3.3, \u00a710.11.2). Depends on PRD-09 (HttpClient/Downloader network primitives)."
+      "passes": true,
+      "notes": "Published @lando/sdk/verified-stream as the shared stream-to-SHA256-to-temp-to-atomic-rename helper, migrated DownloaderLive and its behavior tests to import the SDK subpath, removed the core-private helper copy, added an SDK import-boundary assertion, and documented the additive helper surface. Verified Downloader contract/service regressions stayed green."
     },
     {
       "id": "US-337",
