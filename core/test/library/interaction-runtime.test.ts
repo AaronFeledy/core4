@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 import { initApp } from "../../src/cli/commands/init.ts";
 import { makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
+import { withInteractionServiceOverride } from "../../src/interaction/testing-override.ts";
 import { makeTestInteractionService } from "../../src/testing/interaction.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -40,6 +41,28 @@ describe("embedding host drives apps:init non-interactively with TestInteraction
       });
 
       expect(result.appName).toBe("lib-app");
+      expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
+      const names = interaction.transcript().map((entry) => entry.name);
+      expect(names).toContain("name");
+    });
+  });
+
+  test("default init prompter honors an active InteractionService override", async () => {
+    await withTempCwd(async (dir) => {
+      const interaction = makeTestInteractionService({
+        answers: { name: "override-app", php: "8.3" },
+      });
+
+      const result = await withInteractionServiceOverride(interaction.service, () =>
+        initApp({
+          cwd: dir,
+          full: false,
+          recipe: "lamp",
+          postInitIO: { out: () => {}, err: () => {} },
+        }),
+      );
+
+      expect(result.appName).toBe("override-app");
       expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);
       const names = interaction.transcript().map((entry) => entry.name);
       expect(names).toContain("name");
