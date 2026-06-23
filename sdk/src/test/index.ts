@@ -3446,20 +3446,33 @@ export const runRemoteSourceContract = (
       protectedWithoutForce,
     );
 
+    const sendEgressBefore = (yield* harness.observations.egressRequests()).length;
+    const sendDelegationsBefore = (yield* harness.observations.datasetDelegations()).length;
     const sendFinalizersBefore = (yield* harness.observations.finalizers()).length;
     yield* Effect.scoped(
       source.send(protectedLocator, harness.artifact, { protectedEnvConfirmed: true }),
     ).pipe(Effect.mapError(mapRemoteSyncFailure("confirmed protected send resolves under a Scope")));
+    const egressAfterSend = yield* harness.observations.egressRequests();
+    const delegationsAfterSend = yield* harness.observations.datasetDelegations();
+    const finalizersAfterSend = yield* harness.observations.finalizers();
+    const newSendEgress = egressAfterSend.slice(sendEgressBefore);
+    const newSendDelegations = delegationsAfterSend.slice(sendDelegationsBefore);
+    const newSendFinalizers = finalizersAfterSend.slice(sendFinalizersBefore);
     yield* requireRemoteSyncContract(
-      (yield* harness.observations.finalizers()).length > sendFinalizersBefore &&
-        (yield* harness.observations.egressRequests()).some(
-          (record) => record.request.url === protectedLocator.endpoint,
-        ) &&
-        (yield* harness.observations.datasetDelegations()).some(
+      newSendFinalizers.some((record) => record.operation === "send" && record.remote === source.id) &&
+        newSendEgress.some((record) => record.request.url === protectedLocator.endpoint) &&
+        newSendDelegations.some(
           (record) => record.operation === "send" && record.endpoint._tag === harness.artifact._tag,
         ),
-      "send finalizes Scope-bound resources",
-      yield* harness.observations.finalizers(),
+      "send records egress, dataset delegation, and Scope finalization",
+      {
+        before: {
+          egressBefore: sendEgressBefore,
+          delegationsBefore: sendDelegationsBefore,
+          finalizersBefore: sendFinalizersBefore,
+        },
+        after: { egressAfterSend, delegationsAfterSend, finalizersAfterSend },
+      },
     );
 
     const sendInterruptFinalizersBefore = (yield* harness.observations.finalizers()).length;
