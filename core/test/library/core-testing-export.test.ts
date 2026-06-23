@@ -75,6 +75,11 @@ describe("@lando/core/testing package export", () => {
     expect(testing.provideTestRuntime).toBeFunction();
     expect(testing.withService).toBeFunction();
     expect(testing.TestRuntimeLayer).toBeDefined();
+    expect(testing.TestRemoteSource).toBeDefined();
+    expect(testing.makeTestRemoteSource).toBeFunction();
+    expect(testing.localRemoteSource).toBeDefined();
+    expect(testing.TestDataset).toBeDefined();
+    expect(testing.makeTestDataset).toBeFunction();
     expect(testing.ScenarioContext).toBeDefined();
     expect(testing.withScenarioContext).toBeFunction();
     expect(testing.ScenarioContextFactory).toBeDefined();
@@ -143,7 +148,7 @@ describe("@lando/core/testing package export", () => {
         [
           process.execPath,
           "-e",
-          "const mod = await import('@lando/core/testing'); const names = ['makeTestRuntime', 'provideTestRuntime', 'withService', 'TestRuntimeLayer', 'TestRuntimeProvider', 'ScenarioContext', 'withScenarioContext', 'ScenarioContextFactory', 'TestClock', 'TestContext']; const missing = names.filter((name) => mod[name] === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
+          "const mod = await import('@lando/core/testing'); const names = ['makeTestRuntime', 'provideTestRuntime', 'withService', 'TestRuntimeLayer', 'TestRuntimeProvider', 'TestRemoteSource', 'makeTestRemoteSource', 'localRemoteSource', 'TestDataset', 'makeTestDataset', 'ScenarioContext', 'withScenarioContext', 'ScenarioContextFactory', 'TestClock', 'TestContext']; const missing = names.filter((name) => mod[name] === undefined); console.log(mod.TestRuntimeProvider.id); console.log(JSON.stringify(missing)); console.log(Bun.resolveSync('@lando/core/testing', process.cwd())); process.exit(missing.length === 0 ? 0 : 1);",
         ],
         consumerDir,
       );

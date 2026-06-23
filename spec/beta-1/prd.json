@@ -2643,7 +2643,7 @@
         "Lint passes."
       ],
       "priority": 147,
-      "passes": false,
+      "passes": true,
       "notes": "RemoteSource + Dataset contract suites + TestRemoteSource/local/TestDataset (spec \u00a713.1, \u00a710.12). Extends the PRD-14 contract-kit pattern. Depends on US-344, US-345, PRD-14 (contract kit), PRD-16 (TestDataMover)."
     },
     {

@@ -385,6 +385,9 @@
 - `ContractMatrixCellResult`
 - `ContractMatrixOptions`
 - `ContractMatrixReport`
+- `DatasetContractHarness`
+- `DatasetContractObservations`
+- `DatasetDataMoverRecord`
 - `EndpointExpectation`
 - `FileSyncContractMatrixCell`
 - `FileSyncContractMatrixCellResult`
@@ -398,6 +401,13 @@
 - `ManagedFileContractHarness`
 - `PluginContractInput`
 - `ProviderDataPlaneContractInput`
+- `RemoteSourceContractHarness`
+- `RemoteSourceContractObservations`
+- `RemoteSourceDatasetDelegationRecord`
+- `RemoteSourceEgressRecord`
+- `RemoteSourceFinalizerRecord`
+- `RemoteSourceProbeRecord`
+- `RemoteSourceToolProvisionRecord`
 - `ServiceContractExpectations`
 - `ServiceContractInput`
 - `ServiceContractMatrixCell`
@@ -413,6 +423,9 @@
 - `UnsupportedContractCell`
 - `UnsupportedFileSyncContractCell`
 - `UnsupportedServiceContractCell`
+- `makeDatasetContractSuite`
+- `makeRemoteSourceContractSuite`
+- `runDatasetContract`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
 - `makeInteractionContractRenderer`
@@ -421,5 +434,6 @@
 - `runPluginContract`
 - `runProviderDataPlaneContract`
 - `runProviderContractMatrix`
+- `runRemoteSourceContract`
 - `runServiceContract`
 - `runServiceContractMatrix`
