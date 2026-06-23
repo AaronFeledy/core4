@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { PublicTranscript } from "@lando/sdk/docs/components";
+import { createRedactor } from "@lando/sdk/secrets";
 
 import {
   type RedactionEnvironment,
@@ -31,6 +32,43 @@ const windowsEnv: RedactionEnvironment = {
 };
 
 describe("public transcript redaction (US-249)", () => {
+  test("redactPublicTranscriptText matches createRedactor(transcript) for every transcript class", () => {
+    const profile = createRedactor("transcript", { env: posixEnv });
+
+    const inputs = [
+      "/home/aaron/projects/foo",
+      "/tmp/lando-abc123",
+      "logged in as user aaron",
+      "host devbox ready",
+      "listening on :54321",
+      "container a1b2c3d4e5f6",
+      "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "provider myapp_web_ab12cd34",
+      "curl https://example.com?token=secret",
+    ];
+
+    for (const input of inputs) {
+      expect(redactPublicTranscriptText(input, posixEnv)).toBe(profile.redactString(input));
+    }
+  });
+
+  test("transcript profile placeholders appear in redacted soup output", () => {
+    const soup =
+      "/home/aaron /tmp/x on devbox user aaron :54321 a1b2c3d4e5f6 myapp_web_ab12cd34 sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef ?token=leak";
+
+    const out = redactPublicTranscriptText(soup, posixEnv);
+
+    expect(out).toContain("<HOME>");
+    expect(out).toContain("<TMP>");
+    expect(out).toContain("<USER>");
+    expect(out).toContain("<HOST>");
+    expect(out).toContain("<PORT>");
+    expect(out).toContain("<CONTAINER_ID>");
+    expect(out).toContain("<PROVIDER_ID>");
+    expect(out).toContain("sha256:<DIGEST>");
+    expect(out).toContain("[redacted]");
+  });
+
   test("redacts POSIX temp dirs, home, app roots, fixture roots, usernames, hostnames, random ports, container ids, provider ids, and secrets", () => {
     const input =
       "started in /home/aaron/projects/myapp with tmp /tmp/lando-abc123 fixture /tmp/lando-fixture-abc123 on host devbox user aaron port :54321 container a1b2c3d4e5f6 provider myapp_web_ab12cd34 token=secret123 ACCESS_TOKEN='quoted-env-token' --token=\"quoted-token\" --password 'quoted-password' --api-key='quoted-api-key' ?X-Amz-Signature=deadbeef";

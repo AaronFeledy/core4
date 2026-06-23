@@ -289,7 +289,7 @@ describe("runServiceContract", () => {
       "service plan default-credential values are not leaked into argv",
     );
     expect(JSON.stringify(result.cause.error.details)).not.toContain("lando-secret-leak");
-    expect(JSON.stringify(result.cause.error.details)).toContain("[REDACTED]");
+    expect(JSON.stringify(result.cause.error.details)).toContain("[redacted]");
   });
 });
 

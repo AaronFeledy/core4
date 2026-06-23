@@ -45,6 +45,7 @@ import {
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
+import { redactString } from "./redact.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
@@ -296,7 +297,7 @@ export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
         "provider-podman currently supports local Unix sockets and Windows Podman Desktop named pipes only.",
       remediation:
         "Set DOCKER_HOST to a unix:// Podman socket, unset it to use the platform default, or on Windows use the Podman Desktop npipe://./pipe/<machine> socket.",
-      details: { socketPath: socketPath.replace(/^([^:]+:\/\/)[^@/]+@/u, "$1<redacted>@") },
+      details: { socketPath: redactString(socketPath) },
     });
   }
 }

@@ -29,7 +29,7 @@ import {
 } from "@lando/sdk/errors";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "@lando/sdk/events";
 import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@lando/sdk/schema";
-import { createSecretRedactor } from "@lando/sdk/secrets";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
 import {
   type VerifiedStreamError,
@@ -187,11 +187,11 @@ const noopDownloaderEvents: DownloaderEvents = {
 export const makeLiveDownloaderEvents = (
   eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
 ): DownloaderEvents => {
-  const { redact } = createSecretRedactor([]);
+  const redactText = createRedactor("secrets").redactString;
   const publish: DownloaderEvents["publish"] = Option.isSome(eventService)
     ? (event) => eventService.value.publish(event).pipe(Effect.catchAllCause(() => Effect.void))
     : () => Effect.void;
-  return { redactText: redact, publish };
+  return { redactText, publish };
 };
 
 /** Controlled, content-free failure summary — never raw URLs, query, or causes. */
@@ -254,7 +254,7 @@ export const makeDownloaderService = (
   capabilities: CAPABILITIES,
   download: (request) => {
     const origin = urlOrigin(request.url);
-    const { redact: tokenRedact } = createSecretRedactor(request.redactionTokens ?? []);
+    const tokenRedact = createRedactor("secrets", { values: request.redactionTokens ?? [] }).redactString;
     const redact = (text: string): string => tokenRedact(events.redactText(text));
     const callerId = request.callerId;
 
