@@ -1784,42 +1784,89 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (argv[0] === "pull" || argv[0] === "app:pull") {
+  if (argv[0] === "pull" || argv[0] === "app:pull" || argv[0] === "pull:app") {
     await runPull(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "push" || argv[0] === "app:push") {
+  if (argv[0] === "push" || argv[0] === "app:push" || argv[0] === "push:app") {
     await runPush(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:list") {
+  if (
+    argv[0] === "app:remote:list" ||
+    argv[0] === "remote:app:list" ||
+    argv[0] === "remote:list:app" ||
+    argv[0] === "app:list:remote" ||
+    argv[0] === "list:app:remote" ||
+    argv[0] === "list:remote:app"
+  ) {
     await runRemoteList(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:add") {
+  if (
+    argv[0] === "app:remote:add" ||
+    argv[0] === "remote:app:add" ||
+    argv[0] === "remote:add:app" ||
+    argv[0] === "app:add:remote" ||
+    argv[0] === "add:app:remote" ||
+    argv[0] === "add:remote:app"
+  ) {
     await runRemoteAdd(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:remove") {
+  if (
+    argv[0] === "app:remote:remove" ||
+    argv[0] === "remote:app:remove" ||
+    argv[0] === "remote:remove:app" ||
+    argv[0] === "app:remove:remote" ||
+    argv[0] === "remove:app:remote" ||
+    argv[0] === "remove:remote:app"
+  ) {
     await runRemoteRemove(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:test") {
+  if (
+    argv[0] === "app:remote:test" ||
+    argv[0] === "remote:app:test" ||
+    argv[0] === "remote:test:app" ||
+    argv[0] === "app:test:remote" ||
+    argv[0] === "test:app:remote" ||
+    argv[0] === "test:remote:app"
+  ) {
     await runRemoteTest(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:setup") {
+  if (
+    argv[0] === "app:remote:setup" ||
+    argv[0] === "remote:app:setup" ||
+    argv[0] === "remote:setup:app" ||
+    argv[0] === "app:setup:remote" ||
+    argv[0] === "setup:app:remote" ||
+    argv[0] === "setup:remote:app"
+  ) {
     await runRemoteSetup(argv.slice(1));
     return;
   }
 
-  if (argv[0] === "app:remote:env:list") {
+  if (
+    argv[0] === "app:remote:env:list" ||
+    argv[0] === "app:env:remote:list" ||
+    argv[0] === "env:app:remote:list" ||
+    argv[0] === "env:remote:app:list" ||
+    argv[0] === "env:remote:list:app" ||
+    argv[0] === "app:remote:list:env" ||
+    argv[0] === "remote:app:env:list" ||
+    argv[0] === "remote:env:app:list" ||
+    argv[0] === "remote:env:list:app" ||
+    argv[0] === "remote:list:app:env" ||
+    argv[0] === "remote:list:env:app"
+  ) {
     await runRemoteEnvList(argv.slice(1));
     return;
   }

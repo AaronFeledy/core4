@@ -16,7 +16,7 @@ import {
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 import type { SyncResult } from "@lando/sdk/schema";
-import type { DataMoverShape, InteractionServiceShape } from "@lando/sdk/services";
+import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
 
 import { renderSyncResult } from "../../src/cli/commands/remote.ts";
 
@@ -172,6 +172,9 @@ describe("remote sync command skeleton", () => {
     expect(source).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
     expect(source).toContain("renderRemoteTestResult(value, options.format, ctx)");
     expect(source).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
+    expect(source).toContain('argv[0] === "pull:app"');
+    expect(source).toContain('argv[0] === "remote:list:app"');
+    expect(source).toContain('argv[0] === "remote:list:env:app"');
   });
 
   test("remote add writes remotes and remote list reads them without a provider", async () => {
@@ -332,6 +335,62 @@ describe("remote sync command skeleton", () => {
       expect(confirms).toBe(1);
       expect(delegations.map((entry) => entry.operation)).toContain("fetch");
       expect(transfers.map((entry) => entry.operation)).toContain("apply");
+    });
+  });
+
+  test("pull uses the remote default environment and deduplicates selected datasets", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "default-env", config: { source: "default-env" } }),
+      );
+      const plan = TestDataset.context.plan;
+      const target = { plan, root: dir, app: { kind: "user" as const, id: plan.id, root: plan.root } };
+      let fetches = 0;
+      const defaultEnvSource: RemoteSourceShape = {
+        ...TestRemoteSource.source,
+        id: "default-env",
+        listEnvironments: () =>
+          Effect.succeed([{ id: "stage", label: "Stage", default: true, datasets: ["database" as const] }]),
+        resolve: (_config: RemoteConfigInput, env: string, dataset: string) => {
+          if (dataset !== "database") return Effect.die("unexpected dataset");
+          return Effect.succeed({
+            remote: "default-env",
+            env,
+            dataset: "database" as const,
+            endpoint: `memory://default-env/${env}`,
+          });
+        },
+        fetch: () =>
+          Effect.sync(() => {
+            fetches += 1;
+            return TestRemoteSource.artifact;
+          }),
+      };
+
+      const result = (await Effect.runPromise(
+        operations
+          .appPull({ cwd: dir, remote: "default-env", only: ["database", "database"], yes: true }, target)
+          .pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(RemoteSource, defaultEnvSource),
+                Layer.succeed(Dataset, TestDataset.dataset),
+                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
+                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+                Layer.succeed(RuntimeProviderRegistry, {
+                  list: Effect.succeed([]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.die("target supplies the plan"),
+                }),
+              ),
+            ),
+          ) as Effect.Effect<unknown, unknown, never>,
+      )) as SyncResult;
+
+      expect(result.env).toBe("stage");
+      expect(result.datasets).toEqual(["database"]);
+      expect(fetches).toBe(1);
     });
   });
 

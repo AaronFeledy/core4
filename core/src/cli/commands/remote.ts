@@ -33,6 +33,7 @@ import {
   InteractionService,
   LandofileService,
   RemoteSource,
+  type RemoteSourceShape,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -289,7 +290,7 @@ const datasetKinds = (
           }),
         );
       }
-      selected.push(kind);
+      if (!selected.includes(kind)) selected.push(kind);
     }
     return selected;
   });
@@ -302,6 +303,12 @@ const missingDataset = (kind?: DatasetKind): RemoteDatasetUnsupportedError =>
         : `No Dataset is installed for dataset kind ${kind}.`,
     ...(kind === undefined ? {} : { dataset: kind }),
     remediation: "Install a Dataset plugin for the requested kind, then rerun the command.",
+  });
+
+const defaultRemoteEnv = (source: RemoteSourceShape, config: RemoteConfigType) =>
+  Effect.gen(function* () {
+    const environments = yield* source.listEnvironments(config);
+    return environments.find((candidate) => candidate.default === true)?.id ?? environments[0]?.id ?? "dev";
   });
 
 const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof LandofileShape.Type) => ({
@@ -441,7 +448,7 @@ export const appPull = (
     const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
     const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
     if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
-    const env = options.env ?? "dev";
+    const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
     const plan = yield* resolvePlan(options.cwd, target);
     const artifacts: DataEndpoint[] = [];
     const snapshots = [];
@@ -492,7 +499,7 @@ export const appPush = (
     const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
     const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
     if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
-    const env = options.env ?? "dev";
+    const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
     if (source.capabilities.protectedByDefault?.includes(env) === true && options.force !== true) {
       return yield* Effect.fail(
         new RemoteProtectedEnvError({
