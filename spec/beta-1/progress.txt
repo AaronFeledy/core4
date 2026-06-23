@@ -562,3 +562,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:**
   - `@lando/sdk/verified-stream` is now the canonical shared helper for stream → SHA-256 → temp-file → atomic rename. DataMover/ManagedFile-style byte consumers should import it instead of adding another hash/temp/rename implementation.
 ---
+
+## 2026-06-22 22:43 CDT - US-336 Review
+- Reviewed the shared verified-stream helper extraction against PRD-16 and fixed the confirmed boundary-test gap: the SDK subpath guard now asserts the exact allowed import specifiers and rejects Effect layer/service runtime symbols instead of relying on substring checks.
+- Review notes (deferred/rejected): no other review findings were confirmed as blockers; the helper's trusted `destinationPath` and overwrite semantics are inherited from the Downloader path and remain caller-governed.
+- Verification: typecheck, lint passed; focused verified-stream, SDK export/boundary, and Downloader service/contract/events/acceptance spot checks passed; LSP diagnostics clean for the changed boundary test.
+---
