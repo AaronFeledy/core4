@@ -4,9 +4,9 @@
 // answer-source precedence the Live service applies — while never opening a real
 // terminal. Requested prompts are captured in a transcript for assertions.
 
-import { Layer as EffectLayer, type Layer } from "effect";
+import { Effect, Layer as EffectLayer, type Layer } from "effect";
 
-import type { PromptBatchOptions, PromptSpec, PromptType } from "@lando/sdk/schema";
+import type { PromptAnswer, PromptBatchOptions, PromptSpec, PromptType } from "@lando/sdk/schema";
 import {
   type ConfirmSpec,
   InteractionService,
@@ -88,7 +88,9 @@ export const makeTestInteractionService = (
     isInteractive: engine.isInteractive,
     prompt: (spec) => {
       recordPrompt(records, spec);
-      return engine.prompt(spec);
+      return engine
+        .promptAll([spec], mergeAnswers(seeded, undefined))
+        .pipe(Effect.map((answers) => answers[spec.name] as PromptAnswer));
     },
     promptAll: (specs, options) => promptAllSpecs(specs, options),
     confirm: (spec: ConfirmSpec) => {

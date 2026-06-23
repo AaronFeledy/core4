@@ -25,6 +25,12 @@ describe("makeTestInteractionService", () => {
     expect(answers).toEqual({ app: "blog" });
   });
 
+  test("resolves a single seeded prompt by prompt name", async () => {
+    const handle = makeTestInteractionService({ answers: { app: "blog" } });
+    const answer = await runScoped(handle.service.prompt({ name: "app", type: "text", message: "Name?" }));
+    expect(answer).toBe("blog");
+  });
+
   test("captures the requested prompt transcript", async () => {
     const handle = makeTestInteractionService({ answers: { app: "blog", region: "us" } });
     await runScoped(
