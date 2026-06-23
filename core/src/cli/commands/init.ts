@@ -294,6 +294,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     cwd,
     ...(options.yes === undefined ? {} : { yes: options.yes }),
     interactive: options.nonInteractive !== true,
+    ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
   });
 
   const appNameValue = collected[APP_NAME_PROMPT];
