@@ -551,6 +551,19 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Piped/non-TTY stdin is non-interactive by design (the `mode: auto` gate keys off `isTTY`), so subprocess dispatch-parity probes cannot drive interactive prompts via scripted stdin — answer-resolution parity must be proven with `--answer`/`--recipe`/flag inputs, not piped lines. Both dispatch paths must compute `nonInteractive` through the shared `resolveNonInteractive` helper.
   - Migrating an ad-hoc prompt to a published interaction error (e.g. `InteractionRequiredError`) means widening the command's Effect error union AND any `instanceof` catch clause that re-wraps trust/prompt failures, and updating the asserting test in the same change.
 ---
+## 2026-06-22 19:21 CDT - US-348
+- Settled the remote-sync naming surface on `RemoteSource` with "hosting" retained only as category language, and locked it with a canonical surface test covering the spec catalog, plugin contribution rows, contract-suite rows, Sync events, Landofile keys, App methods, ROADMAP, AGENTS governance note, and SDK service tags.
+- Recorded the RemoteSource/Dataset contract-freeze rule in AGENTS.md: `RemoteSource` owns HttpClient/tool-provisioning egress, `Dataset` owns DataMover landing, the split is N+M, remote sync never moves application code, and the real connector feature wave is 4.1.
+- Verification: typecheck and lint passed; focused remote-sync surface gate passed; adjacent remote-sync schema, Landofile schema, and SDK export spot checks passed; explicit grep proved no old contract identifier remains under `spec/` or AGENTS.md.
+- **Learnings for future iterations:**
+  - Spec/PRD naming-settle stories should include a repo-reading gate over both docs and live SDK exports so acceptance text, ROADMAP prose, and implementation tags cannot drift independently.
+---
+
+## 2026-06-22 20:57 CDT - US-348 Review
+- Tightened the naming freeze after review: remaining hyphenated legacy hosting-provider wording was rephrased in spec/PRD text, and the consistency gate now rejects both `HostingProvider` and `hosting-provider` token forms in the spec tree.
+- Review notes (deferred/rejected): no other review findings were confirmed as blockers.
+- Verification: typecheck, lint/deprecation check, and `bun test core/test/build/remote-sync-surface.test.ts` passed; LSP diagnostics clean for the changed test.
+---
 
 ## 2026-06-22 21:50 CDT - US-296 Review
 - Fixed confirmed prompt-migration review blockers: `apps:init` and source-mode `meta:plugin:new` now use the shared TTY-aware `resolveNonInteractive` gate instead of flag-only non-interactive detection, preserving `--interactive` as the explicit opt-in for piped/scripted stdin prompts; the tarball init checksum confirmation now keeps the downloaded SHA-256 guidance in the InteractionService prompt text.
