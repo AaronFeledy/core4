@@ -74,7 +74,12 @@ const redactShellEvent = (options: ShellCommandOptions | undefined, event: Lando
   });
 
 const publishRedactedShellEvent = (options: ShellCommandOptions | undefined, event: LandoEvent) =>
-  redactShellEvent(options, event).pipe(Effect.flatMap(publishShellEvent));
+  Effect.serviceOption(RedactionService).pipe(
+    Effect.flatMap((redaction) => {
+      if (redaction._tag === "None") return Effect.void;
+      return redactShellEvent(options, event).pipe(Effect.flatMap(publishShellEvent));
+    }),
+  );
 
 const shellEventShape = (command: string, options: ShellCommandOptions | undefined) => ({
   command,

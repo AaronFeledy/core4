@@ -133,4 +133,16 @@ describe("ShellRunnerLive", () => {
     expect(payload).not.toContain("topsecret");
     expect(payload).toContain("[redacted]");
   });
+
+  test("does not publish shell exec events without RedactionService", async () => {
+    const events: LandoEvent[] = [];
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shellRunner) =>
+        shellRunner.exec("echo topsecret", { env: { BUN_AUTH_TOKEN: "topsecret" } }),
+      ).pipe(Effect.provide(Layer.mergeAll(ShellRunnerLive, captureEventsLayer(events)))),
+    );
+
+    expect(result.stdout).toContain("topsecret");
+    expect(events).toEqual([]);
+  });
 });
