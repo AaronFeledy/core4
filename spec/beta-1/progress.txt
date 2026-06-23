@@ -707,3 +707,8 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Source-mode and compiled dispatch now share the explicit OCLIF command registry; the manifest generator removes the stale manifest before discovery so newly registered commands are emitted into `oclif.manifest.json`/`compiled-manifest.ts`.
 - Verification: typecheck, lint, build, focused remote-sync/App-handle tests, compiled-dispatch parity spot checks, and manual source + compiled CLI smokes passed (`app:remote:add`, `app:remote:list`, and expected no-provider `app:pull` failure with remediation).
 ---
+## 2026-06-23 15:15 CDT - US-347 Review
+- Fixed confirmed review blockers in the remote-sync skeleton: remote selectors now support `<remote>[@env]` plus the sole-installed `RemoteSource` fallback, destructive sync fails closed without an `InteractionService`, remote command outputs redact secret-bearing config and transfer details, and `--renderer=json` routes remote result rendering through JSON mode.
+- Review notes (deferred/rejected): rejected a literal static `@lando/core/cli` operation re-export because that entry point is intentionally OCLIF/Effect-free; `appPull`/`appPush` and `appRemote.*` remain on the published `@lando/core/cli/operations` subpath, with import-boundary coverage.
+- Verification: typecheck and lint passed; focused remote skeleton, App-handle, RemoteSource/Dataset contract, remote surface, packed App-handle export, entry-point, and import-boundary spot checks passed.
+---
