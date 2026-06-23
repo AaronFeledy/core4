@@ -215,6 +215,37 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     }
     expect(invoked).toBe(0);
   });
+
+  test("promptAll accepts a batch-scoped choicesRunner override", async () => {
+    let invoked = 0;
+    const service = makeInteractionService({
+      stdin: scriptedStdin(["8.3"]),
+      stdout: capturingWritable().stream,
+    });
+
+    const answers = await runScoped(
+      service.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP version?",
+            choicesFrom: { command: "services:list", args: ["--type=php"], parse: "lines" },
+          },
+        ],
+        {
+          interactive: true,
+          choicesRunner: async () => {
+            invoked += 1;
+            return { exitCode: 0, stdout: "8.2\n8.3\n", stderr: "" };
+          },
+        } as Parameters<typeof service.promptAll>[1] & { choicesRunner: unknown },
+      ),
+    );
+
+    expect(answers).toEqual({ phpVersion: "8.3" });
+    expect(invoked).toBe(1);
+  });
 });
 
 describe("InteractionServiceLive — rich driver wiring (S2)", () => {

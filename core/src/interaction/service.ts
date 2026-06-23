@@ -96,6 +96,10 @@ export interface InteractionServiceDeps {
   readonly id?: string;
 }
 
+type InternalPromptBatchOptions = PromptBatchOptions & {
+  readonly choicesRunner?: ChoicesCommandRunner;
+};
+
 const isTtyStdin = (stdin: NodeJS.ReadableStream): boolean =>
   (stdin as Partial<Pick<RawCapableTty, "isTTY">>).isTTY === true;
 
@@ -295,6 +299,8 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       const explicit = options?.answers ?? {};
       const answersFilePath =
         options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
+      const choicesRunner =
+        (options as InternalPromptBatchOptions | undefined)?.choicesRunner ?? deps.choicesRunner;
       const fromFile =
         answersFilePath === undefined
           ? {}
@@ -318,7 +324,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         nonInteractive: gate.nonInteractive,
         cwd,
         ...(options?.runs === undefined ? {} : { runs: options.runs }),
-        ...(deps.choicesRunner === undefined ? {} : { choicesRunner: deps.choicesRunner }),
+        ...(choicesRunner === undefined ? {} : { choicesRunner }),
         ...(driver === undefined ? {} : { interactiveDriver: driver }),
       };
       return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
