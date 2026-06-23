@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 
 import {
   type BunSelfSpawner,
@@ -60,17 +61,9 @@ export interface RunPostInitOptions {
   readonly recipeRoot?: string;
 }
 
-const REDACTED = "[REDACTED]";
+const secretsRedactor = createRedactor("secrets");
 
-const SECRET_ENV_PATTERN =
-  /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]\}]+)/gu;
-
-const REGISTRY_URL_PATTERN = /\/\/([^@\s/:]+):([^@\s/:]+)@/gu;
-
-export const redactBunOutput = (text: string): string =>
-  text
-    .replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`)
-    .replace(REGISTRY_URL_PATTERN, `//$1:${REDACTED}@`);
+export const redactBunOutput = (text: string): string => secretsRedactor.redactString(text);
 
 const realpathOrUndefined = async (path: string): Promise<string | undefined> => {
   try {

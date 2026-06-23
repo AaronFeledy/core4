@@ -274,9 +274,9 @@ describe("runPostInit — bun.install", () => {
     const raw =
       "Failed env: NPM_TOKEN=abc123 REG_PASSWORD=hunter2 url=https://user:hunter3@registry.example.com/pkg";
     const out = redactBunOutput(raw);
-    expect(out).toContain("NPM_TOKEN=[REDACTED]");
-    expect(out).toContain("REG_PASSWORD=[REDACTED]");
-    expect(out).toContain("//user:[REDACTED]@");
+    expect(out).toContain("NPM_TOKEN=[redacted]");
+    expect(out).toContain("REG_PASSWORD=[redacted]");
+    expect(out).toContain("url=https://[redacted]@registry.example.com/pkg");
     expect(out).not.toContain("abc123");
     expect(out).not.toContain("hunter2");
     expect(out).not.toContain("hunter3");
