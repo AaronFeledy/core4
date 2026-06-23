@@ -48,6 +48,7 @@ import { InteractionService as InteractionServiceTag } from "@lando/sdk/services
 
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
 import type { LoggerMode } from "../logging/service.ts";
+import type { RedactionService } from "../redaction/service.ts";
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 import { RuntimeCwd } from "./cwd.ts";
@@ -136,6 +137,7 @@ type MinimalRuntimeServices =
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
+  | RedactionService
   | Downloader;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;

@@ -3,8 +3,10 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
 
+import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
+import { SecretStoreLive } from "../services/secret-store.ts";
 import {
   type RendererMode,
   type ResolveRendererModeResult,
@@ -223,6 +225,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     isTTY: io.isTTY === true,
   };
   const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, io);
+  const failureDiagnosticsLayer = Layer.mergeAll(
+    rendererLayer,
+    RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
+  );
   const commandLayer = (
     options.renderEvents === true
       ? Layer.mergeAll(
@@ -241,7 +247,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
-        const message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
+        let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
+        const redaction = yield* Effect.serviceOption(RedactionService);
+        if (redaction._tag === "Some") {
+          const redactor = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+          message = redactor.redactString(message);
+        }
         yield* writeDiagnosticLine(message);
         yield* Effect.sync(() => {
           (
@@ -252,28 +263,30 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           )(1);
         });
       });
-    const providedExit = yield* Effect.exit(
+    const commandOutcome = yield* Effect.exit(
       Effect.gen(function* () {
         const commandExit = yield* Effect.exit(effect);
         if (options.suppressDeprecationDiagnostics !== true) {
           yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
         }
-        return commandExit;
+        if (Exit.isFailure(commandExit)) {
+          yield* renderFailure(commandExit.cause);
+          return { _tag: "handled-failure" } as const;
+        }
+        return { _tag: "success", value: commandExit.value } as const;
       }).pipe(Effect.provide(commandLayer)),
     );
-    if (Exit.isFailure(providedExit)) {
-      yield* renderFailure(providedExit.cause);
+    if (Exit.isFailure(commandOutcome)) {
+      yield* renderFailure(commandOutcome.cause);
       return;
     }
-    const exit = providedExit.value;
-    if (Exit.isSuccess(exit)) {
-      const rendered = options.render?.(exit.value, renderContext);
-      if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
+    if (commandOutcome.value._tag === "handled-failure") {
       return;
     }
-    yield* renderFailure(exit.cause);
+    const rendered = options.render?.(commandOutcome.value.value, renderContext);
+    if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
   });
-  await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));
+  await Effect.runPromise(program.pipe(Effect.provide(failureDiagnosticsLayer)));
 };
 
 export const readConfigRendererValue = async (): Promise<string | undefined> => {

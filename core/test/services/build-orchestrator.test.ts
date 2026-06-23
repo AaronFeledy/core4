@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Fiber, Layer, Stream } from "effect";
+import { type Context, DateTime, Effect, Fiber, Layer, Stream } from "effect";
 
 import { ProviderInternalError } from "@lando/core/errors";
 import {
@@ -17,7 +17,9 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { RedactionService } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
@@ -76,6 +78,10 @@ const layer = (provider = TestRuntimeProvider) =>
     Layer.provideMerge(EventServiceLive),
     Layer.provideMerge(registryLayer(provider)),
   );
+
+const redactionLayer = Layer.succeed(RedactionService, {
+  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+});
 
 describe("BuildOrchestratorLive", () => {
   test("builds every service sequentially and publishes build events in order", async () => {
@@ -143,5 +149,168 @@ describe("BuildOrchestratorLive", () => {
 
     expect(calls).toEqual(["web"]);
     expect(error).toBe(failure);
+  });
+
+  test("redacts build event free-text fields while preserving DateTime timestamps", async () => {
+    const secretProviderId = ProviderId.make("test-topsecret");
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-topsecret"),
+      provider: secretProviderId,
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("myapp-topsecret"),
+      slug: "myapp-topsecret",
+      root: AbsolutePath.make("/srv/topsecret/myapp"),
+      provider: secretProviderId,
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
+    };
+
+    const events = await Effect.runPromise(
+      Effect.flatMap(EventService, (eventService) =>
+        Effect.gen(function* () {
+          const subscriber = yield* eventService
+            .subscribe("*")
+            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
+          return yield* Fiber.join(subscriber);
+        }),
+      ).pipe(
+        Effect.provide(
+          BuildOrchestratorLive.pipe(
+            Layer.provideMerge(EventServiceLive),
+            Layer.provideMerge(registryLayer(provider)),
+            Layer.provideMerge(redactionLayer),
+          ),
+        ),
+      ),
+    );
+
+    expect(Array.from(events)).toHaveLength(2);
+    for (const event of events) {
+      expect(event.appRef.id).not.toContain("topsecret");
+      expect(event.appRef.id).toContain("[redacted]");
+      expect(event.appRef.root).not.toContain("topsecret");
+      expect(event.appRef.root).toContain("[redacted]");
+      expect(String(event.serviceName)).not.toContain("topsecret");
+      expect(String(event.serviceName)).toContain("[redacted]");
+      expect(String(event.providerId)).not.toContain("topsecret");
+      expect(String(event.providerId)).toContain("[redacted]");
+      expect(DateTime.isDateTime(event.timestamp)).toBe(true);
+    }
+  });
+
+  test("includes env-derived tokens in the build-event redactor", async () => {
+    const previousToken = process.env.BUN_AUTH_TOKEN;
+    process.env.BUN_AUTH_TOKEN = "envbuildsecret";
+    const secretProviderId = ProviderId.make("test-envbuildsecret");
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-envbuildsecret"),
+      provider: secretProviderId,
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      slug: "myapp-envbuildsecret",
+      root: AbsolutePath.make("/srv/envbuildsecret/myapp"),
+      provider: secretProviderId,
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
+    };
+    const envRedactionLayer = Layer.succeed(RedactionService, {
+      forProfile: (_profile, options) =>
+        Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
+    } satisfies Context.Tag.Service<typeof RedactionService>);
+
+    try {
+      const events = await Effect.runPromise(
+        Effect.flatMap(EventService, (eventService) =>
+          Effect.gen(function* () {
+            const subscriber = yield* eventService
+              .subscribe("*")
+              .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            yield* Effect.sleep("10 millis");
+            yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
+            return yield* Fiber.join(subscriber);
+          }),
+        ).pipe(
+          Effect.provide(
+            BuildOrchestratorLive.pipe(
+              Layer.provideMerge(EventServiceLive),
+              Layer.provideMerge(registryLayer(provider)),
+              Layer.provideMerge(envRedactionLayer),
+            ),
+          ),
+        ),
+      );
+
+      expect(JSON.stringify(Array.from(events))).not.toContain("envbuildsecret");
+    } finally {
+      if (previousToken === undefined) {
+        Reflect.deleteProperty(process.env, "BUN_AUTH_TOKEN");
+      } else {
+        process.env.BUN_AUTH_TOKEN = previousToken;
+      }
+    }
+  });
+
+  test("resolves the build-event redactor at build time, not layer construction", async () => {
+    let profileReads = 0;
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-latersecret"),
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      slug: "myapp-latersecret",
+      root: AbsolutePath.make("/srv/latersecret/myapp"),
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId, ref: "ok" }),
+    };
+    const lazyRedactionLayer = Layer.succeed(RedactionService, {
+      forProfile: () =>
+        Effect.sync(() => {
+          profileReads += 1;
+          return createRedactor("secrets", { values: ["latersecret"] });
+        }),
+    });
+
+    const events = await Effect.runPromise(
+      Effect.flatMap(EventService, (eventService) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* BuildOrchestrator;
+          expect(profileReads).toBe(0);
+          const subscriber = yield* eventService
+            .subscribe("*")
+            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          yield* orchestrator.build(secretPlan);
+          return yield* Fiber.join(subscriber);
+        }),
+      ).pipe(
+        Effect.provide(
+          BuildOrchestratorLive.pipe(
+            Layer.provideMerge(EventServiceLive),
+            Layer.provideMerge(registryLayer(provider)),
+            Layer.provideMerge(lazyRedactionLayer),
+          ),
+        ),
+      ),
+    );
+
+    expect(profileReads).toBe(1);
+    expect(JSON.stringify(Array.from(events))).not.toContain("latersecret");
   });
 });

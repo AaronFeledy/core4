@@ -23,6 +23,7 @@ import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
+import { RedactionServiceLive } from "../../../redaction/service.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
 import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
@@ -49,6 +50,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     ProcessRunnerLive,
     PrivilegeServiceLive,
     SecretStoreLive,
+    RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
     Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),
     Layer.suspend(() => InteractionServiceLive),
     DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive))),
