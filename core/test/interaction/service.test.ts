@@ -8,7 +8,10 @@ import { Renderer } from "@lando/sdk/services";
 
 import { makeRendererServiceLiveForMode } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeInteractionService } from "../../src/interaction/service.ts";
+import {
+  makeDefaultResolveInteractionDriver,
+  makeInteractionService,
+} from "../../src/interaction/service.ts";
 
 type RendererService = Context.Tag.Service<typeof Renderer>;
 
@@ -96,6 +99,22 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     expect(answers).toEqual({ app: "default-app" });
   });
 
+  test("sequential batches on one service share a single stdin reader (no lost buffered input)", async () => {
+    // One push delivers BOTH answers: a per-call reader would strand "second" at EOF.
+    const single = new Readable();
+    single.push("first\nsecond\n");
+    single.push(null);
+    const service = makeInteractionService({ stdin: single, stdout: capturingWritable().stream });
+    const a = await runScoped(
+      service.promptAll([{ name: "one", type: "text", message: "One?" }], { interactive: true }),
+    );
+    const b = await runScoped(
+      service.promptAll([{ name: "two", type: "text", message: "Two?" }], { interactive: true }),
+    );
+    expect(a).toEqual({ one: "first" });
+    expect(b).toEqual({ two: "second" });
+  });
+
   test("interactive resolution reads scripted stdin", async () => {
     const capture = capturingWritable();
     const service = makeInteractionService({ stdin: scriptedStdin(["typed-value"]), stdout: capture.stream });
@@ -160,6 +179,39 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     );
 
     expect(answers).toEqual({ app: "from-cwd" });
+  });
+});
+
+describe("InteractionServiceLive — rich driver wiring (S2)", () => {
+  test("the default resolver loads the rich driver when an interactive TTY gate passes", async () => {
+    const resolve = makeDefaultResolveInteractionDriver({
+      env: {},
+      importRendererPlugin: async () => ({
+        loadInteractivePromptDriver: async () => ({ readRaw: async () => "from-driver" }),
+      }),
+    });
+    const driver = await resolve({ isTTY: true, yes: false, nonInteractive: false });
+    expect(driver).toBeDefined();
+    expect(await driver?.readRaw({})).toBe("from-driver");
+  });
+
+  test("the default resolver bypasses the driver under --yes / non-interactive / non-TTY", async () => {
+    let importAttempts = 0;
+    const resolve = makeDefaultResolveInteractionDriver({
+      env: {},
+      importRendererPlugin: async () => {
+        importAttempts += 1;
+        return { loadInteractivePromptDriver: async () => ({ readRaw: async () => "x" }) };
+      },
+    });
+    expect(await resolve({ isTTY: true, yes: true, nonInteractive: false })).toBeUndefined();
+    expect(await resolve({ isTTY: true, yes: false, nonInteractive: true })).toBeUndefined();
+    expect(await resolve({ isTTY: false, yes: false, nonInteractive: false })).toBeUndefined();
+    expect(importAttempts).toBe(0);
+  });
+
+  test("the default service is constructed with a rich-driver seam", () => {
+    expect(typeof makeDefaultResolveInteractionDriver).toBe("function");
   });
 });
 

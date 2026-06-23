@@ -11,6 +11,7 @@ import {
   parseAnswerSources,
   readAnswersFile,
   resolveInteractivityGate,
+  resolveNonInteractive,
 } from "../../src/cli/prompts/answer-flags.ts";
 
 describe("answer-flags — answer sources", () => {
@@ -89,5 +90,12 @@ describe("answer-flags — interactivity gate", () => {
 
   test("--yes is reported orthogonally to interactivity", () => {
     expect(resolveInteractivityGate({ yes: true, isTTY: false })).toMatchObject({ yes: true });
+  });
+
+  test("resolveNonInteractive is non-interactive when --no-interactive is set or stdin is not a TTY", () => {
+    expect(resolveNonInteractive({ noInteractive: true, isTTY: true })).toBe(true);
+    expect(resolveNonInteractive({ noInteractive: false, isTTY: false })).toBe(true);
+    expect(resolveNonInteractive({ noInteractive: false, isTTY: true })).toBe(false);
+    expect(resolveNonInteractive({ isTTY: true })).toBe(false);
   });
 });

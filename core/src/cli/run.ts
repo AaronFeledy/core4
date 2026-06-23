@@ -143,6 +143,7 @@ import { uninstallOptionsFromInput } from "./oclif/commands/meta/uninstall.ts";
 import { updateOptionsFromInput } from "./oclif/commands/meta/update.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
+import { resolveNonInteractive } from "./prompts/answer-flags.ts";
 import {
   type RenderContext,
   makeRendererServiceLiveForMode,
@@ -1301,7 +1302,7 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
     return;
   }
   await runCompiledCommand(
-    pluginAdd({ spec, trust, nonInteractive: process.stdin.isTTY !== true }),
+    pluginAdd({ spec, trust, nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }) }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginAddResult,
   );
@@ -1323,7 +1324,10 @@ const runMetaPluginNew = async (argv: ReadonlyArray<string>): Promise<void> => {
           ? answerFlag
           : undefined,
       answersFile: typeof input.flags.answers === "string" ? input.flags.answers : undefined,
-      nonInteractive: input.flags["no-interactive"] === true || process.stdin.isTTY !== true,
+      nonInteractive: resolveNonInteractive({
+        noInteractive: input.flags["no-interactive"] === true,
+        isTTY: process.stdin.isTTY,
+      }),
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginNewResult,
@@ -1379,7 +1383,10 @@ const parsePluginPublish = (argv: ReadonlyArray<string>): PluginPublishOptions =
     ...(typeof flags.registry === "string" ? { registry: flags.registry } : {}),
     dryRun: flags["dry-run"] === true,
     noTest: flags["no-test"] === true,
-    nonInteractive: flags["no-interactive"] === true || process.stdin.isTTY !== true,
+    nonInteractive: resolveNonInteractive({
+      noInteractive: flags["no-interactive"] === true,
+      isTTY: process.stdin.isTTY,
+    }),
   };
 };
 

@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { type PluginAddResult, pluginAdd, renderPluginAddResult } from "../../../../commands/plugin-add.ts";
+import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
@@ -43,7 +44,7 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
       return yield* pluginAdd({
         spec: parsed.spec,
         trust: parsed.trust || parsed.yes,
-        nonInteractive: process.stdin.isTTY !== true,
+        nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
       });
     }),
   render: (result) => renderPluginAddResult(result as PluginAddResult),

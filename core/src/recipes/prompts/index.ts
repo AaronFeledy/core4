@@ -24,9 +24,11 @@ export {
 } from "./driver.ts";
 export {
   createBufferedPromptIO,
+  createLineReader,
   createStdioPromptIO,
   type BufferedPromptIO,
   type PromptIO,
+  type PromptLineReader,
   type PromptReadOptions,
 } from "./io.ts";
 export {

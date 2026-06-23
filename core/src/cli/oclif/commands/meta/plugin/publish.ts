@@ -7,6 +7,7 @@ import {
   pluginPublish,
   renderPluginPublishResult,
 } from "../../../../commands/plugin-publish.ts";
+import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown): PluginPublishOptions => {
@@ -21,7 +22,10 @@ const extractInput = (input: unknown): PluginPublishOptions => {
     ...(registry === undefined ? {} : { registry }),
     dryRun: flags["dry-run"] === true,
     noTest: flags["no-test"] === true,
-    nonInteractive: flags["no-interactive"] === true || process.stdin.isTTY !== true,
+    nonInteractive: resolveNonInteractive({
+      noInteractive: flags["no-interactive"] === true,
+      isTTY: process.stdin.isTTY,
+    }),
   };
 };
 
