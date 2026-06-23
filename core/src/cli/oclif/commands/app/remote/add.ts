@@ -15,8 +15,8 @@ export const remoteAddSpec: LandoCommandSpec = {
   args: { name: remoteNameArg, source: remoteSourceArg },
   resultSchema: RemoteMutationResultSchema,
   run: (input) => appRemoteAdd(remoteAddOptionsFromInput(input)),
-  render: (result, input) =>
-    renderRemoteMutationResult(result as never, "added", remoteAddOptionsFromInput(input).format),
+  render: (result, input, ctx) =>
+    renderRemoteMutationResult(result as never, "added", remoteAddOptionsFromInput(input).format, ctx),
 };
 
 export default class RemoteAddCommand extends LandoCommandBase {
@@ -27,11 +27,6 @@ export default class RemoteAddCommand extends LandoCommandBase {
   static override bootstrap = remoteAddSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = await this.parse(RemoteAddCommand);
-    await this.runEffect({
-      ...remoteAddSpec,
-      render: (result) =>
-        renderRemoteMutationResult(result as never, "added", remoteAddOptionsFromInput(parsed).format),
-    });
+    await this.runEffect(remoteAddSpec);
   }
 }

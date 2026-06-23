@@ -15,8 +15,8 @@ export const remoteRemoveSpec: LandoCommandSpec = {
   args: { name: remoteNameArg },
   resultSchema: RemoteMutationResultSchema,
   run: (input) => appRemoteRemove(remoteRemoveOptionsFromInput(input)),
-  render: (result, input) =>
-    renderRemoteMutationResult(result as never, "removed", remoteRemoveOptionsFromInput(input).format),
+  render: (result, input, ctx) =>
+    renderRemoteMutationResult(result as never, "removed", remoteRemoveOptionsFromInput(input).format, ctx),
 };
 
 export default class RemoteRemoveCommand extends LandoCommandBase {
@@ -27,11 +27,6 @@ export default class RemoteRemoveCommand extends LandoCommandBase {
   static override bootstrap = remoteRemoveSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = await this.parse(RemoteRemoveCommand);
-    await this.runEffect({
-      ...remoteRemoveSpec,
-      render: (result) =>
-        renderRemoteMutationResult(result as never, "removed", remoteRemoveOptionsFromInput(parsed).format),
-    });
+    await this.runEffect(remoteRemoveSpec);
   }
 }

@@ -14,8 +14,8 @@ export const remoteListSpec: LandoCommandSpec = {
   flags: remoteConfigFlags,
   resultSchema: RemoteListResultSchema,
   run: (input) => appRemoteList(remoteListOptionsFromInput(input)),
-  render: (result, input) =>
-    renderRemoteListResult(result as never, remoteListOptionsFromInput(input).format),
+  render: (result, input, ctx) =>
+    renderRemoteListResult(result as never, remoteListOptionsFromInput(input).format, ctx),
 };
 
 export default class RemoteListCommand extends LandoCommandBase {
@@ -25,10 +25,6 @@ export default class RemoteListCommand extends LandoCommandBase {
   static override bootstrap = remoteListSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = await this.parse(RemoteListCommand);
-    await this.runEffect({
-      ...remoteListSpec,
-      render: (result) => renderRemoteListResult(result as never, remoteListOptionsFromInput(parsed).format),
-    });
+    await this.runEffect(remoteListSpec);
   }
 }
