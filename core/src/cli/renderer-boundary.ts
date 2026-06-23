@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
 
+import { RedactionService } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import {
@@ -241,7 +242,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
-        const message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
+        let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
+        const redaction = yield* Effect.serviceOption(RedactionService);
+        if (redaction._tag === "Some") {
+          const redactor = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+          message = redactor.redactString(message);
+        }
         yield* writeDiagnosticLine(message);
         yield* Effect.sync(() => {
           (
@@ -271,7 +277,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
       return;
     }
-    yield* renderFailure(exit.cause);
+    yield* renderFailure(exit.cause).pipe(Effect.provide(commandLayer));
   });
   await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));
 };

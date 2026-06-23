@@ -17,7 +17,9 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { RedactionService } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
@@ -76,6 +78,10 @@ const layer = (provider = TestRuntimeProvider) =>
     Layer.provideMerge(EventServiceLive),
     Layer.provideMerge(registryLayer(provider)),
   );
+
+const redactionLayer = Layer.succeed(RedactionService, {
+  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+});
 
 describe("BuildOrchestratorLive", () => {
   test("builds every service sequentially and publishes build events in order", async () => {
@@ -143,5 +149,60 @@ describe("BuildOrchestratorLive", () => {
 
     expect(calls).toEqual(["web"]);
     expect(error).toBe(failure);
+  });
+
+  test("redacts build event free-text fields while preserving DateTime timestamps", async () => {
+    const secretProviderId = ProviderId.make("test-topsecret");
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-topsecret"),
+      provider: secretProviderId,
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("myapp-topsecret"),
+      slug: "myapp-topsecret",
+      root: AbsolutePath.make("/srv/topsecret/myapp"),
+      provider: secretProviderId,
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
+    };
+
+    const events = await Effect.runPromise(
+      Effect.flatMap(EventService, (eventService) =>
+        Effect.gen(function* () {
+          const subscriber = yield* eventService
+            .subscribe("*")
+            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
+          return yield* Fiber.join(subscriber);
+        }),
+      ).pipe(
+        Effect.provide(
+          BuildOrchestratorLive.pipe(
+            Layer.provideMerge(EventServiceLive),
+            Layer.provideMerge(registryLayer(provider)),
+            Layer.provideMerge(redactionLayer),
+          ),
+        ),
+      ),
+    );
+
+    expect(Array.from(events)).toHaveLength(2);
+    for (const event of events) {
+      expect(event.appRef.id).not.toContain("topsecret");
+      expect(event.appRef.id).toContain("[redacted]");
+      expect(event.appRef.root).not.toContain("topsecret");
+      expect(event.appRef.root).toContain("[redacted]");
+      expect(String(event.serviceName)).not.toContain("topsecret");
+      expect(String(event.serviceName)).toContain("[redacted]");
+      expect(String(event.providerId)).not.toContain("topsecret");
+      expect(String(event.providerId)).toContain("[redacted]");
+      expect(DateTime.isDateTime(event.timestamp)).toBe(true);
+    }
   });
 });

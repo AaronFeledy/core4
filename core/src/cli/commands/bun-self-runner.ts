@@ -3,6 +3,8 @@ import { Effect } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
+import { RedactionService } from "../../redaction/service.ts";
+
 export interface BunSelfSpawnerOptions {
   readonly cmd: ReadonlyArray<string>;
   readonly env: Readonly<Record<string, string>>;
@@ -78,6 +80,33 @@ const publishBunSelfEvent = (event: Readonly<Record<string, unknown>>) =>
     ),
   );
 
+const redactBunSelfEvent = (
+  event: Readonly<Record<string, unknown>>,
+  env: Readonly<Record<string, string>> | undefined,
+) =>
+  Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    if (redaction._tag === "None") return event;
+    const redactor = yield* redaction.value.forProfile("secrets", {
+      sourceEnv: { ...process.env, ...(env ?? {}) },
+    });
+    return {
+      ...event,
+      ...(typeof event.verb === "string" ? { verb: redactor.redactString(event.verb) } : {}),
+      ...(typeof event.callerSubsystem === "string"
+        ? { callerSubsystem: redactor.redactString(event.callerSubsystem) }
+        : {}),
+      ...(Array.isArray(event.argv)
+        ? {
+            argv: event.argv.map((entry) =>
+              typeof entry === "string" ? redactor.redactString(entry) : entry,
+            ),
+          }
+        : {}),
+      ...(typeof event.cwd === "string" ? { cwd: redactor.redactString(event.cwd) } : {}),
+    };
+  });
+
 export const bunSelfRun = (
   options: BunSelfRunOptions,
 ): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
@@ -97,15 +126,18 @@ export const bunSelfRun = (
     const cwd = options.cwd ?? process.cwd();
     const verb = options.verb ?? options.argv[0] ?? "run";
     const callerSubsystem = options.callerSubsystem ?? "cli:meta:bun";
-    yield* publishBunSelfEvent({
-      _tag: "pre-bun-self-exec",
-      verb,
-      callerSubsystem,
-      argv: [...options.argv],
-      cwd,
-      mode: "embedded",
-      timestamp: new Date().toISOString(),
-    });
+    yield* redactBunSelfEvent(
+      {
+        _tag: "pre-bun-self-exec",
+        verb,
+        callerSubsystem,
+        argv: [...options.argv],
+        cwd,
+        mode: "embedded",
+        timestamp: new Date().toISOString(),
+      },
+      options.env,
+    ).pipe(Effect.flatMap(publishBunSelfEvent));
     const { exitCode } = yield* Effect.promise(() =>
       spawner.spawn({
         cmd: [execPath, ...options.argv],
@@ -113,16 +145,19 @@ export const bunSelfRun = (
         cwd,
       }),
     );
-    yield* publishBunSelfEvent({
-      _tag: "post-bun-self-exec",
-      verb,
-      callerSubsystem,
-      argv: [...options.argv],
-      cwd,
-      mode: "embedded",
-      exitCode,
-      timestamp: new Date().toISOString(),
-    });
+    yield* redactBunSelfEvent(
+      {
+        _tag: "post-bun-self-exec",
+        verb,
+        callerSubsystem,
+        argv: [...options.argv],
+        cwd,
+        mode: "embedded",
+        exitCode,
+        timestamp: new Date().toISOString(),
+      },
+      options.env,
+    ).pipe(Effect.flatMap(publishBunSelfEvent));
     return { exitCode };
   });
 

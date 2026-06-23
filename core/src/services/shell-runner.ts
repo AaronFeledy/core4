@@ -2,8 +2,10 @@ import { $ } from "bun";
 import { type Context, Effect, Layer } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import { type ProcessResult, type ShellCommandOptions, ShellRunner } from "@lando/sdk/services";
 
+import { RedactionService } from "../redaction/service.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
 const decoder = new TextDecoder();
@@ -39,6 +41,31 @@ const toProcessResult = (output: ShellOutput): ProcessResult => ({
 const isShellExecError = (cause: unknown): cause is ShellExecError =>
   typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "ShellExecError";
 
+const identityRedactor: Pick<Redactor, "redactString"> = { redactString: (text) => text };
+
+const redactorForOptions = (options: ShellCommandOptions | undefined) =>
+  Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    if (redaction._tag === "None") return identityRedactor;
+    return yield* redaction.value.forProfile("secrets", {
+      sourceEnv: { ...process.env, ...(options?.env ?? {}) },
+    });
+  });
+
+const redactShellError = (options: ShellCommandOptions | undefined, error: ShellExecError) =>
+  Effect.gen(function* () {
+    const redactor = yield* redactorForOptions(options);
+    return new ShellExecError({
+      message: redactor.redactString(error.message),
+      command: redactor.redactString(error.command),
+      ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+      ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
+      ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
+      ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
+      cause: error.cause,
+    });
+  });
+
 const execShell = async (command: string, options?: ShellCommandOptions): Promise<ProcessResult> => {
   let shell = $`${{ raw: command }}`.quiet().nothrow();
 
@@ -67,7 +94,7 @@ const shellRunnerService: Context.Tag.Service<typeof ShellRunner> = {
     Effect.tryPromise({
       try: () => execShell(command, options),
       catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
-    }),
+    }).pipe(Effect.catchAll((error) => Effect.flatMap(redactShellError(options, error), Effect.fail))),
   run: (command, options) => shellRunnerService.exec(command, options),
   runScript: (path, options) => shellRunnerService.exec(`bun ${quoteShellPath(path)}`, options),
 };

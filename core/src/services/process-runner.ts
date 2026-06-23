@@ -1,12 +1,15 @@
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import {
   type ProcessResult,
   ProcessRunner,
   type ProcessSpawnOptions,
   type ProcessStreamChunk,
 } from "@lando/sdk/services";
+
+import { RedactionService } from "../redaction/service.ts";
 
 const textEncoder = new TextEncoder();
 
@@ -35,6 +38,37 @@ const timeoutError = (input: ProcessSpawnOptions, elapsedMs: number): ProcessTim
     cmd: input.cmd,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     elapsedMs,
+  });
+
+const identityRedactor: Pick<Redactor, "redactString"> = { redactString: (text) => text };
+
+const redactorForInput = (input: ProcessSpawnOptions) =>
+  Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    if (redaction._tag === "None") return identityRedactor;
+    return yield* redaction.value.forProfile("secrets", {
+      sourceEnv: { ...process.env, ...(input.env ?? {}) },
+    });
+  });
+
+const redactProcessError = (input: ProcessSpawnOptions, error: ProcessExecError | ProcessTimeoutError) =>
+  Effect.gen(function* () {
+    const redactor = yield* redactorForInput(input);
+    if (error instanceof ProcessTimeoutError) {
+      return new ProcessTimeoutError({
+        message: redactor.redactString(error.message),
+        cmd: redactor.redactString(error.cmd),
+        ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+        elapsedMs: error.elapsedMs,
+      });
+    }
+    return new ProcessExecError({
+      message: redactor.redactString(error.message),
+      cmd: redactor.redactString(error.cmd),
+      ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+      ...(error.errno === undefined ? {} : { errno: error.errno }),
+      cause: error.cause,
+    });
   });
 
 interface BunFileSink {
@@ -153,8 +187,13 @@ const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
         cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
           ? cause
           : execError(input, cause),
-    }),
-  stream: (input) => Stream.fromAsyncIterable(streamProcess(input), (cause) => execError(input, cause)),
+    }).pipe(Effect.catchAll((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail))),
+  stream: (input) =>
+    Stream.fromAsyncIterable(streamProcess(input), (cause) => execError(input, cause)).pipe(
+      Stream.catchAll((error) =>
+        Stream.fromEffect(redactProcessError(input, error).pipe(Effect.flatMap(Effect.fail))),
+      ),
+    ),
 };
 
 export const ProcessRunnerLive = Layer.succeed(ProcessRunner, processRunnerService);
