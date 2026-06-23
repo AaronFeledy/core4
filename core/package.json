@@ -56,7 +56,10 @@
   "oclif": {
     "bin": "lando",
     "dirname": "lando",
-    "commands": "./src/cli/oclif/commands",
+    "commands": {
+      "strategy": "explicit",
+      "target": "./src/cli/oclif/compiled-commands.ts"
+    },
     "plugins": ["@oclif/plugin-help"],
     "topicSeparator": " ",
     "flexibleTaxonomy": true,
