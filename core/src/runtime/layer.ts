@@ -44,6 +44,9 @@ import type {
   ToolingEngine,
 } from "@lando/sdk/services";
 
+import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
+
+import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
@@ -112,6 +115,8 @@ export const LandoRuntimeOptions = Schema.Struct({
   renderer: Schema.optional(Schema.String),
   /** Telemetry: opt-in only in library mode. */
   telemetry: Schema.optional(Schema.Boolean),
+  /** Default prompt interactivity. Library mode defaults to `non-interactive`. */
+  interaction: Schema.optional(Schema.Literal("auto", "interactive", "non-interactive")),
   /** Cache root override. Defaults to `<userCacheRoot>/lando`. */
   cacheRoot: Schema.optional(Schema.String),
   /** Signal handling: the host owns SIGINT/SIGTERM by default. Set true to install the same handler the CLI uses. */
@@ -295,17 +300,27 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(hostLayersResult.left);
   }
 
+  // Library mode defaults prompts to non-interactive; the option overrides the
+  // bootstrap default mode and is itself overridden by an explicit host
+  // InteractionService in plugins.layers (merged last, so it wins).
+  const interactionMode = decoded.right.interaction ?? "non-interactive";
+  const interactionOverride = Layer.succeed(
+    InteractionServiceTag,
+    makeInteractionService({
+      defaultMode: interactionMode,
+      resolveDriver: makeDefaultResolveInteractionDriver(),
+    }),
+  ) as unknown as Layer.Layer<unknown, unknown, unknown>;
+
+  const baseHostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> = [
+    Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
+    interactionOverride,
+    ...hostLayersResult.right,
+  ];
   const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
     decoded.right.installSignalHandlers === true
-      ? [
-          Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
-          ...hostLayersResult.right,
-          signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
-        ]
-      : [
-          Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
-          ...hostLayersResult.right,
-        ];
+      ? [...baseHostLayers, signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>]
+      : baseHostLayers;
   return mergeRuntimeWithHostLayers(
     baseLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
     hostLayers,

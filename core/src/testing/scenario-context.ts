@@ -15,8 +15,10 @@ import {
 import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 
 import { redactDetails } from "../cli/redact.ts";
+import { withInteractionServiceOverride } from "../interaction/testing-override.ts";
 import { FileSystemLive } from "../services/file-system.ts";
 import { CORE_VERSION } from "../version.ts";
+import { makeTestInteractionService } from "./interaction.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime.ts";
 
 /**
@@ -599,6 +601,23 @@ const advanceWorkingDirectoryAfterInit = (
   if (appName !== undefined && appName !== "") setWorkingDirectory(join(cwd, appName));
 };
 
+// When a scenario `<Run answers>` drives `init`/`apps:init`, route the prompt
+// answers through a seeded `TestInteractionService` so the executable-guide
+// scenario answer flow is backed by the published test double, not only the
+// `--answer=` argv path. Real CLI parsing/rendering is preserved: answers still
+// flow as flags too, and any non-init command runs the dispatch unchanged.
+const runInitDispatchWithSeededAnswers = (
+  args: ReadonlyArray<string>,
+  options: ScenarioRunOptions | undefined,
+  runDispatch: () => Promise<void>,
+): Promise<void> => {
+  const answers = options?.answers;
+  const isInit = args[0] === "init" || args[0] === "apps:init";
+  if (!isInit || answers === undefined || Object.keys(answers).length === 0) return runDispatch();
+  const interaction = makeTestInteractionService({ answers });
+  return withInteractionServiceOverride(interaction.service, runDispatch);
+};
+
 const invokeRealCli = async (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
@@ -616,7 +635,9 @@ const invokeRealCli = async (
     process.chdir(cwd);
     process.exitCode = undefined;
     const cli = await import("../cli/index.ts");
-    await cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
+    const runDispatch = () =>
+      cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
+    await runInitDispatchWithSeededAnswers(args, options, runDispatch);
     const stdoutText = stdout.content();
     const stderrText = stderr.content();
     const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
