@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,9 +9,12 @@ import { RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sd
 import { RecipePrompt } from "@lando/sdk/schema";
 
 import {
+  type EditorRunner,
   collectPrompts,
   createBufferedPromptIO,
+  createDefaultEditorRunner,
   parseAnswerFlags,
+  resolveEditorCommand,
 } from "../../../src/recipes/prompts/index.ts";
 
 const prompt = (input: unknown): typeof RecipePrompt.Type => Schema.decodeUnknownSync(RecipePrompt)(input);
@@ -675,5 +678,258 @@ describe("collectPrompts — non-interactive default-less prompts fail fast", ()
       nonInteractive: true,
     });
     expect(answers.ssl).toBe(false);
+  });
+});
+
+describe("collectPrompts — editor", () => {
+  test("interactive: opens a scripted $VISUAL editor and captures the multi-line buffer", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-editor-test-"));
+    const script = join(dir, "fake-editor.sh");
+    await writeFile(script, 'printf "First line\\nSecond line\\nThird line\\n" > "$1"\n', "utf8");
+    try {
+      const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+      const answers = await collectPrompts({
+        prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+        io,
+        editorRunner: createDefaultEditorRunner({ env: { ...process.env, VISUAL: `sh ${script}` } }),
+      });
+      expect(answers.notes).toBe("First line\nSecond line\nThird line\n");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("interactive: seeds the buffer with the recipe default and applies validate rules", async () => {
+    const seeds: string[] = [];
+    const runner: EditorRunner = async ({ content }) => {
+      seeds.push(content);
+      return { kind: "edited", content: "release/v4.0.0" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "branch",
+          type: "editor",
+          message: "Branch",
+          default: "main",
+          validate: { pattern: "^[a-z0-9./-]+$", message: "lowercase only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.branch).toBe("release/v4.0.0");
+    expect(seeds).toEqual(["main"]);
+  });
+
+  test("interactive: blank edited buffer substitutes the recipe default", async () => {
+    const runner: EditorRunner = async () => ({ kind: "edited", content: "" });
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("seeded");
+  });
+
+  test("interactive: blank edited buffer without default re-opens the editor", async () => {
+    let call = 0;
+    const runner: EditorRunner = async () => {
+      call += 1;
+      return { kind: "edited", content: call === 1 ? "" : "filled" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("filled");
+    expect(call).toBe(2);
+    expect(io.stderr()).toContain("Value is required");
+  });
+
+  test("interactive: re-opens the editor on validation failure until the buffer is valid", async () => {
+    let call = 0;
+    const runner: EditorRunner = async () => {
+      call += 1;
+      return { kind: "edited", content: call === 1 ? "Bad Value" : "good-value" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "slug",
+          type: "editor",
+          message: "Slug",
+          validate: { pattern: "^[a-z][a-z0-9-]*$", message: "kebab-case only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.slug).toBe("good-value");
+    expect(call).toBe(2);
+    expect(io.stderr()).toContain("Invalid value: kebab-case only");
+  });
+
+  test("interactive: retries with the default seed when blank edited content validates against the default", async () => {
+    const seeds: string[] = [];
+    const runner: EditorRunner = async ({ content }) => {
+      seeds.push(content);
+      return { kind: "edited", content: seeds.length === 1 ? "" : "good-value" };
+    };
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "slug",
+          type: "editor",
+          message: "Slug",
+          default: "Bad Value",
+          validate: { pattern: "^[a-z][a-z0-9-]*$", message: "kebab-case only" },
+        }),
+      ],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.slug).toBe("good-value");
+    expect(seeds).toEqual(["Bad Value", "Bad Value"]);
+    expect(io.stderr()).toContain("Invalid value: kebab-case only");
+  });
+
+  test("interactive: skips external editor when stdin is not a TTY and reads a line instead", async () => {
+    let editorInvoked = false;
+    const runner: EditorRunner = async () => {
+      editorInvoked = true;
+      return { kind: "edited", content: "from editor" };
+    };
+    const io = createBufferedPromptIO({ inputs: ["typed non-tty"], isTTY: false });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: runner,
+    });
+    expect(answers.notes).toBe("typed non-tty");
+    expect(editorInvoked).toBe(false);
+  });
+
+  test("interactive: falls back to text line read when no editor is configured (no hang)", async () => {
+    const io = createBufferedPromptIO({ inputs: ["typed inline"], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      io,
+      editorRunner: createDefaultEditorRunner({ env: { VISUAL: "", EDITOR: "" } }),
+    });
+    expect(answers.notes).toBe("typed inline");
+  });
+
+  test("interactive: falls back to text line read when the editor exits non-zero", async () => {
+    const io = createBufferedPromptIO({ inputs: ["typed after failure"], isTTY: true });
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "stale seed" })],
+      io,
+      editorRunner: createDefaultEditorRunner({
+        env: { VISUAL: "false" },
+      }),
+    });
+    expect(answers.notes).toBe("typed after failure");
+    expect(io.stderr()).toContain('Editor command failed for prompt "notes": editor exited with code 1');
+  });
+
+  test("interactive: falls back to text line read when the edited buffer cannot be read", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-editor-read-fail-test-"));
+    const script = join(dir, "remove-buffer.sh");
+    await writeFile(script, 'rm "$1"\n', "utf8");
+    try {
+      const io = createBufferedPromptIO({ inputs: ["typed after read failure"], isTTY: true });
+      const answers = await collectPrompts({
+        prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+        io,
+        editorRunner: createDefaultEditorRunner({ env: { ...process.env, VISUAL: `sh ${script}` } }),
+      });
+      expect(answers.notes).toBe("typed after read failure");
+      expect(io.stderr()).toContain(
+        'Editor command failed for prompt "notes": editor output could not be read',
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("default editor runner removes the temp dir when the seed buffer cannot be written", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-editor-write-fail-test-"));
+    try {
+      const runner = createDefaultEditorRunner({
+        env: { VISUAL: "true" },
+        tmpRoot: root,
+      });
+      const result = await runner({ name: "x".repeat(10_000), content: "seed", cwd: root });
+
+      expect(result).toMatchObject({ kind: "failed" });
+      if (result.kind === "failed") {
+        expect(result.reason).toContain("editor buffer could not be written");
+      }
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("non-interactive: resolves the recipe default with text semantics", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes", default: "seeded" })],
+      nonInteractive: true,
+    });
+    expect(answers.notes).toBe("seeded");
+  });
+
+  test("non-interactive: missing required editor answer raises RecipeMissingAnswerError", async () => {
+    const promise = collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "notes",
+    });
+  });
+
+  test("supplied --answer for an editor prompt is validated as text", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "notes", type: "editor", message: "Edit notes" })],
+      answers: { notes: "supplied multi\nline" },
+      nonInteractive: true,
+    });
+    expect(answers.notes).toBe("supplied multi\nline");
+  });
+});
+
+describe("resolveEditorCommand", () => {
+  test("prefers $VISUAL over $EDITOR and splits argv", () => {
+    expect(resolveEditorCommand({ VISUAL: "code --wait", EDITOR: "vi" })).toEqual({
+      cmd: "code",
+      args: ["--wait"],
+    });
+  });
+
+  test("preserves quoted command paths and arguments", () => {
+    expect(
+      resolveEditorCommand({ VISUAL: '"/opt/Visual Studio Code/bin/code" --wait -c "set ft=yaml"' }),
+    ).toEqual({
+      cmd: "/opt/Visual Studio Code/bin/code",
+      args: ["--wait", "-c", "set ft=yaml"],
+    });
+  });
+
+  test("falls back to $EDITOR when $VISUAL is empty/whitespace", () => {
+    expect(resolveEditorCommand({ VISUAL: "  ", EDITOR: "nano" })).toEqual({ cmd: "nano", args: [] });
+  });
+
+  test("returns undefined when neither is configured", () => {
+    expect(resolveEditorCommand({})).toBeUndefined();
+    expect(resolveEditorCommand({ VISUAL: "", EDITOR: "" })).toBeUndefined();
   });
 });

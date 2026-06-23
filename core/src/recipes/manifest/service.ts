@@ -31,6 +31,11 @@ const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.
 // strict decode instead of as an opaque union mismatch.
 const REJECTED_BUN_VERBS = new Set<string>();
 
+// Forward-compat prompt-type gate: every published prompt type (including
+// `editor`) is supported in recipes, so this set is empty. A future deferred
+// prompt type is added here to fail loudly before strict decode.
+const REJECTED_PROMPT_TYPES = new Set<string>();
+
 interface BetaFinding {
   readonly message: string;
 }
@@ -45,9 +50,10 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
     const prompt = raw as Record<string, unknown>;
     const name = typeof prompt.name === "string" ? prompt.name : `prompts[${index}]`;
-    if (prompt.type === "editor") {
+    const type = prompt.type;
+    if (typeof type === "string" && REJECTED_PROMPT_TYPES.has(type)) {
       return {
-        message: `Prompt type \`editor\` in prompt "${name}" is not supported in recipes at ${source}.`,
+        message: `Prompt type \`${type}\` in prompt "${name}" is not supported in recipes at ${source}.`,
       };
     }
   }

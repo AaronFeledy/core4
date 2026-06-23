@@ -20,6 +20,7 @@ tags: [beta, docs, recipes, typescript, programmatic]
       <Variable name="factory" value="export default async (ctx) => ({ id, title, description, version, ... })" display="A recipe.ts may default-export an async (ctx) => Recipe factory instead of a static object" />
       <Variable name="ctx" value="ctx = { cwd, env }" display="The factory receives the recipe directory cwd and the process environment" />
       <Variable name="validation" value="canonical RecipeManifest schema" display="A factory result is decoded through the same schema as recipe.yml; an invalid shape fails with RecipeManifestValidationError" />
+      <Variable name="editorPrompt" value="{ name: 'notes', type: 'editor' }" display="Programmatic recipes can declare editor prompts in the same prompt array as YAML recipes; collection falls back to text semantics when no interactive editor is available" />
     </Step>
   </Scenario>
 

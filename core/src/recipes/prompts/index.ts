@@ -6,6 +6,17 @@ export {
   type PromptAnswers,
 } from "./runtime.ts";
 export {
+  createDefaultEditorRunner,
+  defaultEditorSpawner,
+  resolveEditorCommand,
+  type DefaultEditorRunnerOptions,
+  type EditorRunInput,
+  type EditorRunner,
+  type EditorRunResult,
+  type EditorSpawner,
+  type EditorSpawnerOptions,
+} from "./editor-command.ts";
+export {
   PromptCancelledError,
   type PromptDriver,
   type PromptDriverMode,

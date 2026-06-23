@@ -1,13 +1,16 @@
 /**
- * Built-in recipe prompt runtime: drives the seven prompt
+ * Built-in recipe prompt runtime: drives the eight prompt
  * types (`text | select | multiselect | confirm | number | secret |
- * path`) through a `PromptIO`. Non-interactive mode (`nonInteractive:
- * true`, or `io === undefined`) requires every required prompt to be
- * answered via `answers` or to have a recipe `default:`; missing
- * answers fail with `RecipeMissingAnswerError` and invalid answers
- * fail with `RecipePromptValidationError`. Interactive mode re-prompts
- * on validation failure; `secret` answers are never echoed and never
- * appear in any transcript or error message.
+ * path | editor`) through a `PromptIO`. The `editor` type opens
+ * `$VISUAL`/`$EDITOR` on a temp-file buffer through an injectable
+ * editor runner and falls back to `text` semantics when no editor is
+ * configured or the prompt resolves non-interactively. Non-interactive
+ * mode (`nonInteractive: true`, or `io === undefined`) requires every
+ * required prompt to be answered via `answers` or to have a recipe
+ * `default:`; missing answers fail with `RecipeMissingAnswerError` and
+ * invalid answers fail with `RecipePromptValidationError`. Interactive
+ * mode re-prompts on validation failure; `secret` answers are never
+ * echoed and never appear in any transcript or error message.
  */
 import { access } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
@@ -24,6 +27,7 @@ import {
   parseChoicesOutput,
 } from "./choices-command.ts";
 import { PromptCancelledError, type PromptDriver, type PromptDriverMode } from "./driver.ts";
+import { type EditorRunner, createDefaultEditorRunner } from "./editor-command.ts";
 import type { PromptIO } from "./io.ts";
 
 export type PromptAnswer = string | number | boolean | ReadonlyArray<string | number | boolean>;
@@ -40,6 +44,7 @@ export interface CollectPromptsOptions {
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly runs?: ReadonlyArray<string>;
   readonly interactiveDriver?: PromptDriver;
+  readonly editorRunner?: EditorRunner;
 }
 
 const ACCEPTED_BOOL_TRUE = new Set(["y", "yes", "true", "1", "on"]);
@@ -176,10 +181,9 @@ const coerceAnswer = (prompt: RecipePrompt, raw: string, cwd: string): Promise<C
   switch (prompt.type) {
     case "text":
     case "secret":
-    // `editor` is part of the published prompt vocabulary but recipe manifests
-    // reject it before strict decode (scanPromptBeta), so this arm is currently
-    // unreachable for recipes; it keeps the switch exhaustive until editor
-    // handling is implemented for recipe manifests.
+    // `editor` validates its edited buffer (and any supplied answer or
+    // recipe default) with the same text rules; the interactive editor
+    // launch happens in `runEditorPrompt`, not here.
     case "editor":
       return Promise.resolve(validateText(prompt, raw));
     case "number":
@@ -324,12 +328,52 @@ const tryDriverPrompt = async (run: () => Promise<PromptAnswer>): Promise<Driver
   }
 };
 
+const runEditorPrompt = async (
+  prompt: RecipePrompt,
+  io: PromptIO,
+  cwd: string,
+  editorRunner: EditorRunner,
+): Promise<PromptAnswer | undefined> => {
+  const def = promptDefaultRaw(prompt);
+  let seed = def.hasDefault ? def.raw : "";
+  while (true) {
+    const result = await editorRunner({ name: prompt.name, content: seed, cwd });
+    switch (result.kind) {
+      case "no-editor":
+        return undefined;
+      case "failed":
+        io.writeError(
+          `Editor command failed for prompt "${prompt.name}": ${result.reason}. Falling back to text input.\n`,
+        );
+        return undefined;
+      case "edited": {
+        const effective = result.content === "" && def.hasDefault ? def.raw : result.content;
+        if (effective === "") {
+          io.writeError("Value is required. Please try again.\n");
+          seed = result.content;
+          break;
+        }
+        const coerced = await coerceAnswer(prompt, effective, cwd);
+        if (coerced.ok) return coerced.value;
+        io.writeError(`Invalid value: ${coerced.issue}. Please try again.\n`);
+        seed = effective;
+        break;
+      }
+    }
+  }
+};
+
 const runInteractivePrompt = async (
   prompt: RecipePrompt,
   io: PromptIO,
   cwd: string,
   driver?: PromptDriver,
+  editorRunner?: EditorRunner,
 ): Promise<PromptAnswer> => {
+  if (prompt.type === "editor" && editorRunner !== undefined && io.isTTY) {
+    const edited = await runEditorPrompt(prompt, io, cwd, editorRunner);
+    if (edited !== undefined) return edited;
+  }
   if (driver !== undefined && io.isTTY) {
     const outcome = await tryDriverPrompt(() =>
       runDriverPrompt(
@@ -535,6 +579,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
   const interactive = !nonInteractive && io !== undefined;
   const driver = options.interactiveDriver;
   const choicesRunner = options.choicesRunner ?? createDefaultChoicesCommandRunner();
+  const editorRunner = options.editorRunner ?? createDefaultEditorRunner();
 
   const resolved: Record<string, PromptAnswer> = {};
   for (const prompt of prompts) {
@@ -569,7 +614,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
       throw missingAnswer(prompt);
     }
 
-    resolved[prompt.name] = await runInteractivePrompt(prompt, io as PromptIO, cwd, driver);
+    resolved[prompt.name] = await runInteractivePrompt(prompt, io as PromptIO, cwd, driver, editorRunner);
   }
   return resolved;
 };
