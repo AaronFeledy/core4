@@ -61,7 +61,7 @@ describe("secrets profile (pattern layer)", () => {
   });
 });
 
-describe("value layer applied before pattern layer (AC2)", () => {
+describe("value layer applied before pattern layer", () => {
   test("a registered secret split across a pattern boundary never survives", () => {
     const r = createRedactor("secrets", { values: ["pa:ss@wo.rd"] });
     const out = r.redactString("https://pa:ss@wo.rd/path");
@@ -81,7 +81,7 @@ describe("value layer applied before pattern layer (AC2)", () => {
   });
 });
 
-describe("redactValue structure preservation (AC5)", () => {
+describe("redactValue structure preservation", () => {
   const r = createRedactor("secrets");
 
   test("masks secretKeyedField keys without recursing into the value", () => {
@@ -148,7 +148,7 @@ describe("redactValue structure preservation (AC5)", () => {
   });
 });
 
-describe("telemetry profile placeholders (AC4)", () => {
+describe("telemetry profile placeholders", () => {
   const t = createRedactor("telemetry");
 
   test("normalizes url/path/id/email to placeholders", () => {
@@ -171,7 +171,7 @@ describe("telemetry profile placeholders (AC4)", () => {
   });
 });
 
-describe("transcript profile placeholders (AC4)", () => {
+describe("transcript profile placeholders", () => {
   test("masks env home root to <HOME> when env supplied", () => {
     const tr = createRedactor("transcript", { env: { home: "/home/alice" } });
     expect(tr.redactString("/home/alice/app")).toContain("<HOME>");
