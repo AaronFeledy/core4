@@ -439,6 +439,15 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runDownloaderContract).toBeDefined();
   });
 
+  test("test entry point exports the remote-sync contract suites", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRemoteSourceContract).toBeDefined();
+    expect(sdkTest.runDatasetContract).toBeDefined();
+    expect(sdkTest.makeRemoteSourceContractSuite).toBeDefined();
+    expect(sdkTest.makeDatasetContractSuite).toBeDefined();
+  });
+
   test("test entry point documents plugin contract runner arguments", async () => {
     const source = await readFile(new URL("../../src/test/index.ts", import.meta.url), "utf8");
 
