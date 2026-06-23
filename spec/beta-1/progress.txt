@@ -614,14 +614,20 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 ---
 ## 2026-06-23 03:25:57 CDT - Babysit
 - PR: #438 https://github.com/AaronFeledy/core4/pull/438
-- CI outcome: fail (static-checks-platform (linux-x64) still pending)
+- CI outcome: deferred (static-checks-platform (linux-x64) still pending)
 - Review feedback: fixed (Bugbot findings for init interaction overrides and seeded single-prompt test double)
 - Merge: deferred (updated linux-x64 check remained pending, so merge conditions were not satisfied)
 ---
 ## 2026-06-23 11:10 CDT - US-297 Finish (guide-drift fix)
-- Resolved the open PR's CI failure: all four `guide-scenarios-*` jobs were red on `check:guide-drift`, not a test failure. US-297's surface changes (`core/src/testing/**`, `sdk/src/test/**`, the `@lando/core/testing` interaction double and SDK contract suite) match PRD-11's drift-gate surface globs, but none of PRD-11's owned guides had been touched.
+- Resolved the open PR's CI failure: all five `guide-scenarios-*` jobs were red on `check:guide-drift`, not a test failure. US-297's surface changes (`core/src/testing/**`, `sdk/src/test/**`, the `@lando/core/testing` interaction double and SDK contract suite) match PRD-11's drift-gate surface globs, but none of PRD-11's owned guides had been touched.
 - Documented the newly shipped testing surface in the owned guide `docs/guides/library/testing-runtime.mdx`: added an `interaction-test-double` scenario covering `makeTestInteractionService` (seeded-by-name answers reusing the real engine, never-opened stdin, captured transcript) and the `@lando/sdk/test` `runInteractionContract` suite. This is the correct gate-satisfying action (a new testing double belongs in the testing-runtime guide), not an escape-hatch skip.
 - Verification: typecheck, lint (+ check:deprecations), lint:guides, check:guide-coverage, and check:guide-drift all pass; the guide regenerates to 5 green scenarios via `dev:guides --once` (typecheck + scenario run). The story's contract/service/testing/runtime/library spot checks remained green.
 - **Learnings for future iterations:**
   - When a story changes a surface listed under a PRD's "**CLI / source surface paths covered (drift gate input)**" bullets, the `guide-scenarios-*` CI jobs fail on `check:guide-drift` even though every test passes — the fix is to update one of that PRD's owned guides (or add the `Guide-Coverage-Skip:` PR-body line). Reproduce locally with `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift`; the gate diffs committed changes vs `origin/main`, so an unstaged/uncommitted guide edit is NOT seen until committed — verify a pending fix by passing the path through `GUIDE_DRIFT_CHANGED_FILES` before committing.
+---
+
+## 2026-06-23 03:42 CDT - US-297 Review
+- Reviewed the local guide-drift fix range and corrected misleading progress-log wording: pending CI is now recorded as deferred, and the guide-scenarios job count matches the five-platform matrix.
+- Review notes (deferred/rejected): PRD wording still says host override via `overrides`, but current repo guidance and tests use `plugins.layers` as the host override seam; no code change needed.
+- Verification: typecheck, lint, lint:guides, and `dev:guides docs/guides/library/testing-runtime.mdx --once` passed; LSP diagnostics were unavailable for `.mdx`/`.txt` in this harness.
 ---
