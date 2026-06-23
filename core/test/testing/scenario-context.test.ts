@@ -227,7 +227,7 @@ describe("withScenarioContext", () => {
     expect(raw).not.toContain("secret");
     expect(raw).not.toContain("2026-05-23T12:00:00.000Z");
     expect(raw).not.toContain("lando-scenario-node-postgres-transcript-red");
-    expect(raw).toContain("[REDACTED]");
+    expect(raw).toContain("[redacted]");
     expect(raw).toContain("<timestamp>");
     expect(raw).toContain("<testDir>");
     expect(transcript.frames).toEqual(

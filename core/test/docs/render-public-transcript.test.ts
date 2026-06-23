@@ -147,7 +147,7 @@ describe("public transcript rendering", () => {
 
       const command = loaded.frames[0]?.commandDisplay ?? "";
       expect(command).toContain("<TMP>");
-      expect(command).toContain("[REDACTED]");
+      expect(command).toContain("[redacted]");
       expect(command).not.toContain(tmpdir());
       expect(command).not.toContain("quoted-token");
     } finally {
@@ -190,11 +190,11 @@ describe("public transcript rendering", () => {
     const html = renderPublicTranscriptHtml(leaking, { redactionEnv: { host: "devbox" } });
 
     expect(view.frames[0]?.commandDisplay).toContain("<HOME>");
-    expect(view.frames[0]?.commandDisplay).toContain("[REDACTED]");
+    expect(view.frames[0]?.commandDisplay).toContain("[redacted]");
     expect(view.frames[0]?.resultSummary).toContain("<CONTAINER_ID>");
     expect(view.frames[0]?.resultSummary).toContain("<HOST>");
     expect(view.frames[0]?.resultSummary).toContain("<PORT>");
-    expect(view.frames[1]?.displayText).toContain("[REDACTED]");
+    expect(view.frames[1]?.displayText).toContain("[redacted]");
     expect(view.frames[1]?.displayText).toContain("<TMP>");
 
     expect(html).not.toContain("/home/aaron");

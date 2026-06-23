@@ -326,10 +326,10 @@ describe("build-guide-scenarios public transcript emission", () => {
       expect(jsonCli).not.toContain("s3cr3t");
       const cliRun = cliTx.frames.find((f) => f.kind === "run");
       expect(cliRun?.commandDisplay).toContain("<HOME>");
-      expect(cliRun?.commandDisplay).toContain("[REDACTED]");
-      expect(cliRun?.commandDisplay).toContain("-t=[REDACTED]");
-      expect(cliRun?.commandDisplay).toContain("-k=[REDACTED]");
-      expect(cliRun?.commandDisplay).toContain("-k [REDACTED]");
+      expect(cliRun?.commandDisplay).toContain("[redacted]");
+      expect(cliRun?.commandDisplay).toContain("-t=[redacted]");
+      expect(cliRun?.commandDisplay).toContain("-k=[redacted]");
+      expect(cliRun?.commandDisplay).toContain("-k [redacted]");
       expect(cliTx.frames.every((f) => f.sourceFile === "docs/guides/redact-emit.mdx")).toBe(true);
       expect(cliTx.frames.every((f) => typeof f.sourceLine === "number" && f.sourceLine > 0)).toBe(true);
 
@@ -339,7 +339,7 @@ describe("build-guide-scenarios public transcript emission", () => {
       expect(jsonLib).not.toContain("token secret");
       const libRun = libTx.frames.find((f) => f.kind === "run");
       expect(libRun?.commandDisplay).toContain("<TMP>");
-      expect(libRun?.commandDisplay).toContain("[REDACTED]");
+      expect(libRun?.commandDisplay).toContain("[redacted]");
       expect(libTx.frames.every((f) => f.sourceFile === "docs/guides/redact-emit.mdx")).toBe(true);
       expect(libTx.frames.every((f) => typeof f.sourceLine === "number" && f.sourceLine > 0)).toBe(true);
     } finally {
@@ -549,7 +549,7 @@ describe("build-guide-scenarios public transcript emission", () => {
       expect(cmd).toContain("<HOME>");
       expect(cmd).toContain("<PORT>");
       expect(cmd).toContain("<CONTAINER_ID>");
-      expect(cmd).toContain("[REDACTED]");
+      expect(cmd).toContain("[redacted]");
     } finally {
       await rm(root, { force: true, recursive: true });
     }

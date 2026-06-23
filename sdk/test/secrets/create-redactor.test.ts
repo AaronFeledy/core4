@@ -40,6 +40,18 @@ describe("secrets profile (pattern layer)", () => {
     expect(r.redactString("DATABASE_PASSWORD=hunter2 ok")).toBe("DATABASE_PASSWORD=[redacted] ok");
   });
 
+  test("masks env-style secret assignments with lower/mixed-case keys", () => {
+    expect(r.redactString("token=super-secret ok")).toBe("token=[redacted] ok");
+    expect(r.redactString("Api_Key=abc123 ok")).toBe("Api_Key=[redacted] ok");
+    expect(r.redactString("password=hunter2 ok")).toBe("password=[redacted] ok");
+    expect(r.redactString("MY_TOKEN_VALUE=x ok")).toBe("MY_TOKEN_VALUE=[redacted] ok");
+  });
+
+  test("query-param assignments stay single-marker (owned by the signed-query class)", () => {
+    expect(r.redactString("?access_token=SECRETVAL")).toBe("?access_token=[redacted]");
+    expect(r.redactString("&api_key=abc")).toBe("&api_key=[redacted]");
+  });
+
   test("masks URL userinfo credentials", () => {
     expect(r.redactString("https://user:pw@proxy:3128/x")).toBe("https://[redacted]@proxy:3128/x");
   });
