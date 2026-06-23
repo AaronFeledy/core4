@@ -173,6 +173,22 @@ describe("ProcessRunnerLive", () => {
     expect(payload).toContain("[redacted]");
   });
 
+  test("does not publish process exec events without RedactionService", async () => {
+    const events: LandoEvent[] = [];
+    const result = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (processRunner) =>
+        processRunner.run({
+          cmd: "bun",
+          args: ["-e", "console.log(process.env.BUN_AUTH_TOKEN)"],
+          env: { BUN_AUTH_TOKEN: "topsecret" },
+        }),
+      ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, captureEventsLayer(events)))),
+    );
+
+    expect(result.stdout).toContain("topsecret");
+    expect(events).toEqual([]);
+  });
+
   test("streams stdout and stderr chunks", async () => {
     const chunks = await Effect.runPromise(
       Effect.flatMap(ProcessRunner, (processRunner) =>

@@ -69,7 +69,12 @@ const redactProcessEvent = (input: ProcessSpawnOptions, event: LandoEvent) =>
   });
 
 const publishRedactedProcessEvent = (input: ProcessSpawnOptions, event: LandoEvent) =>
-  redactProcessEvent(input, event).pipe(Effect.flatMap(publishProcessEvent));
+  Effect.serviceOption(RedactionService).pipe(
+    Effect.flatMap((redaction) => {
+      if (redaction._tag === "None") return Effect.void;
+      return redactProcessEvent(input, event).pipe(Effect.flatMap(publishProcessEvent));
+    }),
+  );
 
 const processEventShape = (input: ProcessSpawnOptions) => ({
   cmd: input.cmd,
