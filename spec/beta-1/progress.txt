@@ -738,3 +738,22 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - "Cannot weaken" is proved at each service's REAL redaction point. Two of the five named services (HostProxy disabled, FileSync) have no in-service redaction seam by design; the honest proof is the renderer/diagnostic boundary that actually redacts their output (`core/src/cli/redact.ts`), not a fabricated engine seam.
   - Authored gate/test files are not auto-formatted; run `bun run biome check --write <files>` before `bun run lint` or the `biome check .` gate fails on formatting/import-order.
 ---
+
+## [2026-06-23 16:55 CDT] - Babysit
+- PR: #443 https://github.com/AaronFeledy/core4/pull/443
+- CI outcome: pass
+- Review feedback: fixed (added guide-drift skip reason to PR body and pushed rerun trigger commit)
+- Merge: merged (squash)
+---
+
+## 2026-06-23 17:15 CDT - US-302
+- Shipped the Effect-free `@lando/core/paths` primitive at `core/src/config/paths.ts`: `resolveLandoRoots(options?)`, `makeLandoPaths(options?)`, and `normalizeHostPlatform(input?)`. The module imports only `node:crypto`/`node:fs`/`node:path` and a type-only `HostPlatform` from `@lando/sdk/schema`, so it stays safe on the level-`none` cold-start fast path (no `effect`, no `@oclif/core`, no `@lando/sdk` runtime import).
+- `resolveLandoRoots` applies the §7.5 per-root order (override → `LANDO_*` env → `config.yml` → platform default) with the conf root fixed first so a `userConfRoot` value inside `config.yml` never relocates its own load, and the env short-circuit keeps the conf/data/cache fast path IO-free. The platform-default matrix matches §7.5 verbatim for linux/darwin/win32, with wsl resolving to the Linux column, including the macOS `~/Library/...` and Windows `%APPDATA%`/`%LOCALAPPDATA%`/`%PROGRAMDATA%` paths that did not exist in the old resolvers.
+- `makeLandoPaths` returns `roots`, `platform`, and builders for every §12 path the story names (pluginsDir, appPluginsDir, pluginAuthFile, binDir, keysDir, certsDir, runtimeDir, globalAppRoot, logsDir, scratchDir, scratchRegistryFile, appCacheDir, appPlanCacheFile, fileSyncSessionsDir, configFile, configDir, globalConfigFile); app-scoped builders carry the §12.1 sanitization + 12-hex app-root fingerprint for collision avoidance. Derived builders join with a platform-aware `joinFor(platform)` so win32 emits backslash paths; only the real `config.yml` read uses host-bound `node:path.join`.
+- This is the pure module only; wiring `PathsServiceLive`, publishing the SDK tag, and migrating the legacy `roots.ts`/`cache/paths.ts` resolvers are the later US-303/304/306 stories.
+- Verification: typecheck and lint passed; `core/test/config/paths.test.ts` (24 cases covering every root x precedence layer x linux/darwin/win32/wsl, six-plus derived builders, env short-circuit, self-reference, and app-cache collision avoidance) is green, and the adjacent `config-paths`/`cache/paths` resolver tests stayed green (no regression). Pure module with no CLI surface, so no CLI verification applies.
+- **Learnings for future iterations:**
+  - `node:path.join` resolves separators against the HOST OS, so it cannot build a win32 path on a posix host. A primitive that must emit paths for a RESOLVED (possibly non-host) platform needs its own tiny separator-aware joiner; reserve host-bound `node:path.join` only for IO that actually touches the host filesystem (the `config.yml` read).
+  - Under `exactOptionalPropertyTypes`, a helper that forwards `overrides.platform` (`string | undefined`) into a `platform?: string` parameter fails typecheck — type the receiving param `?: string | undefined` explicitly.
+  - The §12.1 sanitization collapses runs of disallowed chars to a single `-` then strips leading/trailing `-`, so `"My App!"` → `"My-App"` (one trailing hyphen, not two) before the `-<fingerprint>` suffix; assert the single-hyphen form in tests.
+---
