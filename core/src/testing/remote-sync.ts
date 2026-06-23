@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/errors";
 import type {
   AppPlan,
+  CommandSpec,
   DataEndpoint,
   DataTransferProgress,
   DataTransferSpec,
@@ -81,7 +82,11 @@ type DatasetDelegationRecord = {
 };
 type FinalizerRecord = { readonly operation: "fetch" | "send"; readonly remote: string };
 type ProbeRecord = { readonly remote: string; readonly env?: RemoteEnvId };
-type DataMoverRecord = { readonly operation: "capture" | "apply"; readonly endpoint: DataEndpoint };
+type DataMoverRecord = {
+  readonly operation: "capture" | "apply";
+  readonly endpoint: DataEndpoint;
+  readonly command?: CommandSpec | undefined;
+};
 
 const emptySha256 = createHash("sha256").update(new Uint8Array()).digest("hex");
 
@@ -426,10 +431,19 @@ export const makeTestDataset = () =>
       spec.from._tag === "serviceCmd" ? "capture" : "apply";
     const recordEndpoint = (spec: DataTransferSpec): DataEndpoint =>
       spec.from._tag === "serviceCmd" ? spec.to : spec.from;
+    const recordCommand = (spec: DataTransferSpec): CommandSpec | undefined => {
+      if (spec.from._tag === "serviceCmd") return spec.from.command;
+      if (spec.to._tag === "serviceCmd") return spec.to.command;
+      return undefined;
+    };
     const dataMover: DataMoverShape = {
       transfer: (spec) =>
         Effect.sync(() => {
-          transfers.push({ operation: recordOperation(spec), endpoint: recordEndpoint(spec) });
+          transfers.push({
+            operation: recordOperation(spec),
+            endpoint: recordEndpoint(spec),
+            command: recordCommand(spec),
+          });
           return { accelerated: false, sizeBytes: expectedBytes.byteLength };
         }),
       transferStream: (spec) => {
@@ -438,7 +452,11 @@ export const makeTestDataset = () =>
           transferredBytes: expectedBytes.byteLength,
         };
         return Stream.sync(() => {
-          streams.push({ operation: recordOperation(spec), endpoint: recordEndpoint(spec) });
+          streams.push({
+            operation: recordOperation(spec),
+            endpoint: recordEndpoint(spec),
+            command: recordCommand(spec),
+          });
           return progress;
         });
       },

@@ -38,6 +38,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type CommandSpec,
   type DataEndpoint,
   type DataStoreMountPlan,
   type DatasetContext,
@@ -3247,6 +3248,7 @@ export interface DatasetContractObservations {
 export interface DatasetDataMoverRecord {
   readonly operation: "capture" | "apply";
   readonly endpoint: DataEndpoint;
+  readonly command?: CommandSpec | undefined;
 }
 
 export interface DatasetContractHarness {
@@ -3275,6 +3277,15 @@ const sameBytePayload = (left: Uint8Array | null, right: Uint8Array): boolean =>
   left !== null && left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 
 const eventJson = (events: ReadonlyArray<LandoEvent>): string => JSON.stringify(events);
+
+const commandIncludesCredential = (
+  record: DatasetDataMoverRecord,
+  credentials: ReadonlyArray<string>,
+): boolean =>
+  record.command !== undefined &&
+  credentials.some(
+    (credential) => credential.length > 0 && JSON.stringify(record.command).includes(credential),
+  );
 
 export const runRemoteSourceContract = (
   harness: RemoteSourceContractHarness,
@@ -3532,6 +3543,14 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
         before: { transfersBefore, streamsBefore },
         after: { transfers: transfersAfterApply, streams: streamsAfterApply },
       },
+    );
+    const credentialValues = Object.values(harness.context.creds ?? {});
+    yield* requireRemoteSyncContract(
+      [...transfersAfterApply, ...streamsAfterApply].every(
+        (record) => !commandIncludesCredential(record, credentialValues),
+      ),
+      "Dataset credentials are not passed through service command argv",
+      { credentials: credentialValues, transfers: transfersAfterApply, streams: streamsAfterApply },
     );
 
     const replay = yield* Effect.scoped(dataset.apply(harness.context, artifact)).pipe(
