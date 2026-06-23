@@ -20,11 +20,13 @@ const appRefFor = (plan: AppPlan) => ({
 const buildService = (
   events: Context.Tag.Service<typeof EventService>,
   provider: RuntimeProviderShape,
-  redactor: Pick<Redactor, "redactString">,
   plan: AppPlan,
   service: ServicePlan,
 ) =>
   Effect.gen(function* () {
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactor =
+      redaction._tag === "Some" ? yield* redaction.value.forProfile("secrets") : identityRedactor;
     const appRef = appRefFor(plan);
     const redactedAppRef = {
       kind: appRef.kind,
@@ -62,9 +64,6 @@ export const BuildOrchestratorLive = Layer.effect(
   Effect.gen(function* () {
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const redactor =
-      redaction._tag === "Some" ? yield* redaction.value.forProfile("secrets") : identityRedactor;
 
     return {
       build: (plan) =>
@@ -72,7 +71,7 @@ export const BuildOrchestratorLive = Layer.effect(
           const provider = yield* registry.select(plan);
           yield* Effect.forEach(
             Object.values(plan.services),
-            (service) => buildService(events, provider, redactor, plan, service),
+            (service) => buildService(events, provider, plan, service),
             {
               concurrency: 1,
               discard: true,

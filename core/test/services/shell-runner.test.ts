@@ -2,18 +2,26 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { ShellExecError } from "@lando/core/errors";
-import { ShellRunner } from "@lando/core/services";
+import { EventService, ShellRunner } from "@lando/core/services";
 import { createRedactor } from "@lando/sdk/secrets";
-import type { ShellCommandOptions } from "@lando/sdk/services";
+import type { LandoEvent, ShellCommandOptions } from "@lando/sdk/services";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { ShellRunnerLive } from "../../src/services/shell-runner.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
+
+const captureEventsLayer = (events: LandoEvent[]) =>
+  Layer.succeed(EventService, {
+    publish: (event) => Effect.sync(() => events.push(event)),
+    subscribe: () => Stream.empty,
+    subscribeQueue: Queue.unbounded<never>(),
+    waitFor: () => Effect.never,
+  } satisfies EventService.Service);
 
 const execShell = (command: string, options?: ShellCommandOptions) =>
   Effect.runPromise(
@@ -109,5 +117,20 @@ describe("ShellRunnerLive", () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+
+  test("redacts successful pre/post shell event payloads when RedactionService is present", async () => {
+    const events: LandoEvent[] = [];
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shellRunner) =>
+        shellRunner.exec("echo topsecret", { env: { BUN_AUTH_TOKEN: "topsecret" } }),
+      ).pipe(Effect.provide(Layer.mergeAll(ShellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+    );
+
+    expect(result.stdout).toContain("topsecret");
+    expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
+    const payload = JSON.stringify(events);
+    expect(payload).not.toContain("topsecret");
+    expect(payload).toContain("[redacted]");
   });
 });

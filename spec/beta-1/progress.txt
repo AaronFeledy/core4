@@ -672,3 +672,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - When redacting a typed event payload that carries an Effect `DateTime` or other branded object, never pass the whole object through the deep `redactValue` walker (it rebuilds plain objects and would mangle the brand); redact the specific free-text string fields with `redactString` instead.
   - To redact the CLI failure diagnostic, the redaction must run where the message is written: in `renderer-boundary.ts`'s `renderFailure`, and `renderFailure(exit.cause)` must be `.pipe(Effect.provide(commandLayer))` so `Effect.serviceOption(RedactionService)` resolves against the bootstrap-provided service.
 ---
+
+## 2026-06-23 07:52 CDT - US-299 Review
+- Fixed confirmed review blockers in the runtime redaction wiring: `ProcessRunner` and `ShellRunner` now publish optional `pre-/post-*-exec` lifecycle events with command/env/stdout/stderr payloads redacted before `EventService`, `BuildOrchestrator` resolves the redactor at build-event emission time instead of layer construction, and the CLI failure renderer handles command failures inside the already-built command layer so redaction does not require a second runtime construction.
+- Review notes (deferred/rejected): HostProxyService has no current payload-emitting implementation to redact, only the disabled setup/status service; broader plugin-authoring events were pre-existing and outside US-299's explicit named surfaces, so they remain deferred to the broader redaction consumer sweep; US-300/US-301 sentinel migration and redaction-boundary lint gate remain future-story scope.
+- Verification: typecheck and lint passed; focused redaction service, runner, build-orchestrator, bun-self, renderer-boundary, and AC#6 spot checks passed; LSP diagnostics were unavailable because the TypeScript LSP is not installed in this harness.
+---

@@ -258,26 +258,28 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           )(1);
         });
       });
-    const providedExit = yield* Effect.exit(
+    const commandOutcome = yield* Effect.exit(
       Effect.gen(function* () {
         const commandExit = yield* Effect.exit(effect);
         if (options.suppressDeprecationDiagnostics !== true) {
           yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
         }
-        return commandExit;
+        if (Exit.isFailure(commandExit)) {
+          yield* renderFailure(commandExit.cause);
+          return { _tag: "handled-failure" } as const;
+        }
+        return { _tag: "success", value: commandExit.value } as const;
       }).pipe(Effect.provide(commandLayer)),
     );
-    if (Exit.isFailure(providedExit)) {
-      yield* renderFailure(providedExit.cause);
+    if (Exit.isFailure(commandOutcome)) {
+      yield* renderFailure(commandOutcome.cause);
       return;
     }
-    const exit = providedExit.value;
-    if (Exit.isSuccess(exit)) {
-      const rendered = options.render?.(exit.value, renderContext);
-      if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
+    if (commandOutcome.value._tag === "handled-failure") {
       return;
     }
-    yield* renderFailure(exit.cause).pipe(Effect.provide(commandLayer));
+    const rendered = options.render?.(commandOutcome.value.value, renderContext);
+    if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
   });
   await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));
 };

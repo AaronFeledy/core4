@@ -205,4 +205,55 @@ describe("BuildOrchestratorLive", () => {
       expect(DateTime.isDateTime(event.timestamp)).toBe(true);
     }
   });
+
+  test("resolves the build-event redactor at build time, not layer construction", async () => {
+    let profileReads = 0;
+    const secretService = {
+      ...web,
+      name: ServiceName.make("web-latersecret"),
+    } satisfies ServicePlan;
+    const secretPlan: AppPlan = {
+      ...plan,
+      slug: "myapp-latersecret",
+      root: AbsolutePath.make("/srv/latersecret/myapp"),
+      services: { [secretService.name]: secretService },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.succeed({ providerId, ref: "ok" }),
+    };
+    const lazyRedactionLayer = Layer.succeed(RedactionService, {
+      forProfile: () =>
+        Effect.sync(() => {
+          profileReads += 1;
+          return createRedactor("secrets", { values: ["latersecret"] });
+        }),
+    });
+
+    const events = await Effect.runPromise(
+      Effect.flatMap(EventService, (eventService) =>
+        Effect.gen(function* () {
+          const orchestrator = yield* BuildOrchestrator;
+          expect(profileReads).toBe(0);
+          const subscriber = yield* eventService
+            .subscribe("*")
+            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          yield* orchestrator.build(secretPlan);
+          return yield* Fiber.join(subscriber);
+        }),
+      ).pipe(
+        Effect.provide(
+          BuildOrchestratorLive.pipe(
+            Layer.provideMerge(EventServiceLive),
+            Layer.provideMerge(registryLayer(provider)),
+            Layer.provideMerge(lazyRedactionLayer),
+          ),
+        ),
+      ),
+    );
+
+    expect(profileReads).toBe(1);
+    expect(JSON.stringify(Array.from(events))).not.toContain("latersecret");
+  });
 });

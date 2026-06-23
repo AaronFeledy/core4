@@ -2,17 +2,26 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/core/errors";
-import { ProcessRunner } from "@lando/core/services";
+import { EventService, ProcessRunner } from "@lando/core/services";
 import { createRedactor } from "@lando/sdk/secrets";
+import type { LandoEvent } from "@lando/sdk/services";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
+
+const captureEventsLayer = (events: LandoEvent[]) =>
+  Layer.succeed(EventService, {
+    publish: (event) => Effect.sync(() => events.push(event)),
+    subscribe: () => Stream.empty,
+    subscribeQueue: Queue.unbounded<never>(),
+    waitFor: () => Effect.never,
+  } satisfies EventService.Service);
 
 const runProcess = (input: Parameters<ProcessRunner.Service["run"]>[0]) =>
   Effect.runPromise(
@@ -143,6 +152,25 @@ describe("ProcessRunnerLive", () => {
 
     expect(result.stdout).toContain("topsecret");
     expect(result.stdout).not.toContain("[redacted]");
+  });
+
+  test("redacts successful pre/post process event payloads when RedactionService is present", async () => {
+    const events: LandoEvent[] = [];
+    const result = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (processRunner) =>
+        processRunner.run({
+          cmd: "bun",
+          args: ["-e", "console.log(process.env.BUN_AUTH_TOKEN)"],
+          env: { BUN_AUTH_TOKEN: "topsecret" },
+        }),
+      ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, redactionLayer, captureEventsLayer(events)))),
+    );
+
+    expect(result.stdout).toContain("topsecret");
+    expect(events.map((event) => event._tag)).toEqual(["pre-process-exec", "post-process-exec"]);
+    const payload = JSON.stringify(events);
+    expect(payload).not.toContain("topsecret");
+    expect(payload).toContain("[redacted]");
   });
 
   test("streams stdout and stderr chunks", async () => {
