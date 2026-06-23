@@ -317,6 +317,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         yes: gate.yes,
         nonInteractive: gate.nonInteractive,
         cwd,
+        ...(options?.runs === undefined ? {} : { runs: options.runs }),
         ...(deps.choicesRunner === undefined ? {} : { choicesRunner: deps.choicesRunner }),
         ...(driver === undefined ? {} : { interactiveDriver: driver }),
       };

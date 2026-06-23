@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
 
+import { ChoicesUnavailableError } from "@lando/sdk/errors";
 import { Renderer } from "@lando/sdk/services";
 
 import { makeRendererServiceLiveForMode } from "../../src/cli/renderer-boundary.ts";
@@ -179,6 +180,40 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     );
 
     expect(answers).toEqual({ app: "from-cwd" });
+  });
+
+  test("promptAll forwards the runs allowlist to dynamic choicesFrom prompts", async () => {
+    let invoked = 0;
+    const service = makeInteractionService({
+      stdin: neverStdin(),
+      choicesRunner: async () => {
+        invoked += 1;
+        return { exitCode: 0, stdout: "8.3\n", stderr: "" };
+      },
+    });
+
+    const exit = await runScopedExit(
+      service.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP version?",
+            choicesFrom: { command: "services:list", args: ["--type=php"], parse: "lines" },
+          },
+        ],
+        { interactive: false, runs: ["git"] },
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none();
+    expect(Option.isSome(failure) ? failure.value : undefined).toBeInstanceOf(ChoicesUnavailableError);
+    if (Option.isSome(failure) && failure.value instanceof ChoicesUnavailableError) {
+      expect(failure.value.command).toBe("services:list");
+      expect(failure.value.message).toContain("runs: allowlist");
+    }
+    expect(invoked).toBe(0);
   });
 });
 
