@@ -6,5 +6,6 @@
 
 export * from "./downloader.ts";
 export * from "./managed-file.ts";
+export * from "./remote-sync.ts";
 export * from "./scenario-context.ts";
 export * from "./test-runtime.ts";
