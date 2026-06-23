@@ -29,6 +29,7 @@ import type {
   VolumeRef,
 } from "@lando/sdk/schema";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { createSecretRedactor } from "@lando/sdk/secrets";
 import type {
   DataMoverShape,
   DatasetShape,
@@ -41,6 +42,7 @@ import type { HttpClientShape, HttpStreamRequest } from "../http-client/service.
 
 const TEST_REMOTE_SECRET = "REMOTE-CONTRACT-SECRET-493f61";
 const TEST_DATASET_SECRET = "DATASET-CONTRACT-SECRET-8d31f2";
+const testSecretRedactor = createSecretRedactor([TEST_REMOTE_SECRET, TEST_DATASET_SECRET]);
 const INTERRUPT_DIGEST = "interrupt-contract";
 const TIMESTAMP = DateTime.unsafeMake("2026-06-01T00:00:00.000Z");
 
@@ -90,8 +92,7 @@ type DataMoverRecord = {
 
 const emptySha256 = createHash("sha256").update(new Uint8Array()).digest("hex");
 
-const sanitize = (value: string): string =>
-  value.replaceAll(TEST_REMOTE_SECRET, "[redacted]").replaceAll(TEST_DATASET_SECRET, "[redacted]");
+const sanitize = (value: string): string => testSecretRedactor.redact(value);
 
 const event = (value: LandoEvent): LandoEvent => JSON.parse(sanitize(JSON.stringify(value))) as LandoEvent;
 
