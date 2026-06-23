@@ -47,4 +47,33 @@ describe("runWithRendererHandling redaction", () => {
     expect(io.stderr()).toContain("[redacted]");
     expect(io.stderr()).not.toContain("proxypass");
   });
+
+  test("redacts diagnostics when the runtime layer fails before the command runs", async () => {
+    const io = createBufferedRendererIO();
+    const previous = process.env.BUN_AUTH_TOKEN;
+    process.env.BUN_AUTH_TOKEN = "outersecret";
+    try {
+      const failingRuntime = Layer.effect(
+        RedactionService,
+        Effect.fail("boot failed with outersecret"),
+      ) as unknown as Layer.Layer<never, string>;
+
+      await runWithRendererHandling(Effect.succeed("unreached"), {
+        runtime: failingRuntime,
+        rendererMode: "plain",
+        io,
+        formatError: (error) => String(error),
+        setExitCode: () => undefined,
+      });
+    } finally {
+      if (previous === undefined) {
+        process.env.BUN_AUTH_TOKEN = undefined;
+      } else {
+        process.env.BUN_AUTH_TOKEN = previous;
+      }
+    }
+
+    expect(io.stderr()).toContain("[redacted]");
+    expect(io.stderr()).not.toContain("outersecret");
+  });
 });

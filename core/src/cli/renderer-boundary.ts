@@ -3,9 +3,10 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
+import { SecretStoreLive } from "../services/secret-store.ts";
 import {
   type RendererMode,
   type ResolveRendererModeResult,
@@ -224,6 +225,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     isTTY: io.isTTY === true,
   };
   const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, io);
+  const failureDiagnosticsLayer = Layer.mergeAll(
+    rendererLayer,
+    RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
+  );
   const commandLayer = (
     options.renderEvents === true
       ? Layer.mergeAll(
@@ -281,7 +286,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const rendered = options.render?.(commandOutcome.value.value, renderContext);
     if (rendered !== undefined && rendered.length > 0) yield* writeResultLine(rendered);
   });
-  await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));
+  await Effect.runPromise(program.pipe(Effect.provide(failureDiagnosticsLayer)));
 };
 
 export const readConfigRendererValue = async (): Promise<string | undefined> => {
