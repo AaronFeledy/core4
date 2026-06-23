@@ -59,7 +59,7 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).toContain("<PORT>");
     expect(out).toContain("<CONTAINER_ID>");
     expect(out).toContain("<PROVIDER_ID>");
-    expect(out).toContain("[REDACTED]");
+    expect(out).toContain("[redacted]");
   });
 
   test("redacts Windows paths, %USERPROFILE%, %TEMP%, and equivalent secrets", () => {
@@ -80,7 +80,7 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).toContain("<PORT>");
     expect(out).toContain("<CONTAINER_ID>");
     expect(out).toContain("<PROVIDER_ID>");
-    expect(out).toContain("[REDACTED]");
+    expect(out).toContain("[redacted]");
   });
 
   test("redacts provider-specific ids and sha256 digests conservatively", () => {
@@ -148,10 +148,10 @@ describe("public transcript redaction (US-249)", () => {
     const out = redactPublicTranscriptText(input, posixEnv);
 
     expect(out).not.toContain("supersecret");
-    expect(out).toContain("-t=[REDACTED]");
-    expect(out).toContain("-k=[REDACTED]");
-    expect(out).toContain("-k [REDACTED]");
-    expect(out).toContain("-t [REDACTED]");
+    expect(out).toContain("-t=[redacted]");
+    expect(out).toContain("-k=[redacted]");
+    expect(out).toContain("-k [redacted]");
+    expect(out).toContain("-t [redacted]");
   });
 
   test("redacts library-mode displayText and commandDisplay containing paths/secrets", () => {
@@ -177,7 +177,7 @@ describe("public transcript redaction (US-249)", () => {
 
     const f = redacted.frames[0];
     expect(f.displayText).toContain("<HOME>");
-    expect(f.displayText).toContain("[REDACTED]");
+    expect(f.displayText).toContain("[redacted]");
     expect(f.resultSummary).toContain("<HOST>");
     expect(f.sourceFile).toBe("docs/guides/embedding/library-mode.mdx");
     expect(f.sourceLine).toBe(17);
@@ -226,7 +226,7 @@ describe("public transcript redaction (US-249)", () => {
     const f = redacted.frames[0];
     expect(f.displayText).toContain("<HOME>");
     expect(f.displayText).toContain("<PORT>");
-    expect(f.displayText).toContain("[REDACTED]");
+    expect(f.displayText).toContain("[redacted]");
     expect(f.displayText).toContain("<HOST>");
     expect(f.resultSummary).toContain("<CONTAINER_ID>");
     expect(f.sourceFile).toBe("docs/guides/foo.mdx");

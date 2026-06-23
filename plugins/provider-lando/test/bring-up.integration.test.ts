@@ -500,7 +500,7 @@ describe("provider-lando bringUp", () => {
     expect(startError.message).toContain("rootlessport cannot expose privileged port 80");
     expect(startError.message).toContain("net.ipv4.ip_unprivileged_port_start=80");
     expect(startError.message).not.toContain("hunter2");
-    expect(startError.message).toContain("APP_SECRET=[REDACTED]");
+    expect(startError.message).toContain("APP_SECRET=[redacted]");
   });
 
   test("keeps the base message when the Podman failure body is not JSON", async () => {
@@ -543,7 +543,7 @@ describe("provider-lando bringUp", () => {
     expect(startError.service).toBe("database");
     const details = startError.details as { status: number; body: string } | undefined;
     expect(details?.status).toBe(500);
-    expect(details?.body).toContain("[REDACTED]");
+    expect(details?.body).toContain("[redacted]");
     expect(details?.body).not.toContain("hunter2");
   });
 
