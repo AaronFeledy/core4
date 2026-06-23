@@ -2661,7 +2661,7 @@
         "Lint passes."
       ],
       "priority": 148,
-      "passes": false,
+      "passes": true,
       "notes": "RemoteSource CLI/handle skeleton + safety + dual-dispatch parity (spec \u00a78.2, \u00a78.11, \u00a710.12, \u00a716.3). Contract-only skeleton; connector wiring is 4.1. Depends on US-344..US-346, PRD-11 (App handles), PRD-15 (universal JSON), PRD-16 (DataMover snapshot)."
     },
     {

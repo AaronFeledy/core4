@@ -10,7 +10,15 @@ import AppIncludesUpdateCommand from "./commands/app/includes/update.ts";
 import AppIncludesVerifyCommand from "./commands/app/includes/verify.ts";
 import InfoCommand from "./commands/app/info.ts";
 import LogsCommand from "./commands/app/logs.ts";
+import PullCommand from "./commands/app/pull.ts";
+import PushCommand from "./commands/app/push.ts";
 import RebuildCommand from "./commands/app/rebuild.ts";
+import RemoteAddCommand from "./commands/app/remote/add.ts";
+import RemoteEnvListCommand from "./commands/app/remote/env/list.ts";
+import RemoteListCommand from "./commands/app/remote/list.ts";
+import RemoteRemoveCommand from "./commands/app/remote/remove.ts";
+import RemoteSetupCommand from "./commands/app/remote/setup.ts";
+import RemoteTestCommand from "./commands/app/remote/test.ts";
 import RestartCommand from "./commands/app/restart.ts";
 import ShellCommand from "./commands/app/shell.ts";
 import SshCommand from "./commands/app/ssh.ts";
@@ -73,6 +81,14 @@ export default {
   "app:includes:verify": AppIncludesVerifyCommand,
   "app:info": InfoCommand,
   "app:logs": LogsCommand,
+  "app:pull": PullCommand,
+  "app:push": PushCommand,
+  "app:remote:add": RemoteAddCommand,
+  "app:remote:env:list": RemoteEnvListCommand,
+  "app:remote:list": RemoteListCommand,
+  "app:remote:remove": RemoteRemoveCommand,
+  "app:remote:setup": RemoteSetupCommand,
+  "app:remote:test": RemoteTestCommand,
   "app:rebuild": RebuildCommand,
   "app:restart": RestartCommand,
   "app:shell": ShellCommand,

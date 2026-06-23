@@ -93,6 +93,21 @@ import {
 import { pluginUnlink, renderPluginUnlinkResult } from "./commands/plugin-unlink.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
+import {
+  appPull,
+  appPush,
+  appRemoteAdd,
+  appRemoteEnvList,
+  appRemoteList,
+  appRemoteRemove,
+  appRemoteSetup,
+  appRemoteTest,
+  renderRemoteEnvListResult,
+  renderRemoteListResult,
+  renderRemoteMutationResult,
+  renderRemoteTestResult,
+  renderSyncResult,
+} from "./commands/remote.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
   type ScratchStartOptions,
@@ -125,6 +140,15 @@ import { update } from "./commands/update.ts";
 import { version as versionOperation } from "./commands/version.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
+import {
+  remoteAddOptionsFromInput,
+  remoteEnvListOptionsFromInput,
+  remoteListOptionsFromInput,
+  remoteRemoveOptionsFromInput,
+  remoteSetupOptionsFromInput,
+  remoteSyncOptionsFromInput,
+  remoteTestOptionsFromInput,
+} from "./oclif/commands/app/remote/common.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
@@ -589,6 +613,82 @@ const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
     logsApp(logsOptionsFromInput(input)),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderLogsAppResult,
+  );
+};
+
+const appRuntimeLayer = () =>
+  makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
+
+const compiledFormat = (input: CompiledCommandInput): "text" | "json" =>
+  input.flags.format === "json" || input.rendererMode === "json" ? "json" : "text";
+
+const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:pull", argv);
+  return runCompiledCommand(appPull(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
+    renderSyncResult(value, compiledFormat(input), ctx),
+  );
+};
+
+const runPush = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:push", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:push", argv);
+  return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
+    renderSyncResult(value, compiledFormat(input), ctx),
+  );
+};
+
+const runRemoteList = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:list", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:list", argv);
+  const options = remoteListOptionsFromInput(input);
+  return runCompiledCommand(appRemoteList(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteListResult(value, options.format, ctx),
+  );
+};
+
+const runRemoteAdd = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:add", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:add", argv);
+  const options = remoteAddOptionsFromInput(input);
+  return runCompiledCommand(appRemoteAdd(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteMutationResult(value, "added", options.format, ctx),
+  );
+};
+
+const runRemoteRemove = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:remove", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:remove", argv);
+  const options = remoteRemoveOptionsFromInput(input);
+  return runCompiledCommand(appRemoteRemove(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteMutationResult(value, "removed", options.format, ctx),
+  );
+};
+
+const runRemoteTest = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:test", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:test", argv);
+  const options = remoteTestOptionsFromInput(input);
+  return runCompiledCommand(appRemoteTest(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteTestResult(value, options.format, ctx),
+  );
+};
+
+const runRemoteSetup = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:setup", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:setup", argv);
+  const options = remoteSetupOptionsFromInput(input);
+  return runCompiledCommand(appRemoteSetup(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteTestResult(value, options.format, ctx),
+  );
+};
+
+const runRemoteEnvList = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:remote:env:list", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:remote:env:list", argv);
+  const options = remoteEnvListOptionsFromInput(input);
+  return runCompiledCommand(appRemoteEnvList(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteEnvListResult(value, options.format, ctx),
   );
 };
 
@@ -1681,6 +1781,93 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "logs" || argv[0] === "app:logs") {
     await runLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "pull" || argv[0] === "app:pull" || argv[0] === "pull:app") {
+    await runPull(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "push" || argv[0] === "app:push" || argv[0] === "push:app") {
+    await runPush(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:list" ||
+    argv[0] === "remote:app:list" ||
+    argv[0] === "remote:list:app" ||
+    argv[0] === "app:list:remote" ||
+    argv[0] === "list:app:remote" ||
+    argv[0] === "list:remote:app"
+  ) {
+    await runRemoteList(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:add" ||
+    argv[0] === "remote:app:add" ||
+    argv[0] === "remote:add:app" ||
+    argv[0] === "app:add:remote" ||
+    argv[0] === "add:app:remote" ||
+    argv[0] === "add:remote:app"
+  ) {
+    await runRemoteAdd(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:remove" ||
+    argv[0] === "remote:app:remove" ||
+    argv[0] === "remote:remove:app" ||
+    argv[0] === "app:remove:remote" ||
+    argv[0] === "remove:app:remote" ||
+    argv[0] === "remove:remote:app"
+  ) {
+    await runRemoteRemove(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:test" ||
+    argv[0] === "remote:app:test" ||
+    argv[0] === "remote:test:app" ||
+    argv[0] === "app:test:remote" ||
+    argv[0] === "test:app:remote" ||
+    argv[0] === "test:remote:app"
+  ) {
+    await runRemoteTest(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:setup" ||
+    argv[0] === "remote:app:setup" ||
+    argv[0] === "remote:setup:app" ||
+    argv[0] === "app:setup:remote" ||
+    argv[0] === "setup:app:remote" ||
+    argv[0] === "setup:remote:app"
+  ) {
+    await runRemoteSetup(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:remote:env:list" ||
+    argv[0] === "app:env:remote:list" ||
+    argv[0] === "env:app:remote:list" ||
+    argv[0] === "env:remote:app:list" ||
+    argv[0] === "env:remote:list:app" ||
+    argv[0] === "app:remote:list:env" ||
+    argv[0] === "remote:app:env:list" ||
+    argv[0] === "remote:env:app:list" ||
+    argv[0] === "remote:env:list:app" ||
+    argv[0] === "remote:list:app:env" ||
+    argv[0] === "remote:list:env:app"
+  ) {
+    await runRemoteEnvList(argv.slice(1));
     return;
   }
 
