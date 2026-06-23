@@ -1640,7 +1640,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (argv[0] === "init" || argv[0] === "apps:init") {
     try {
       const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
-      const result = await initApp(initOptionsFromInput(input));
+      const result = await initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine });
       emitResultLine(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
       emitDiagnosticLine(commandErrorMessage(error, "apps:init"));

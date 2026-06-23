@@ -156,7 +156,14 @@ export default class InitCommand extends LandoCommandBase {
 
     let result: InitAppResult;
     try {
-      const options = initOptionsFromInput(parsed);
+      const options = {
+        ...initOptionsFromInput(parsed),
+        onWarn: (message: string) => {
+          Effect.runSync(
+            writeDiagnosticLine(message).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+          );
+        },
+      };
       result = await initApp(options);
     } catch (error) {
       const text = formatBugReport({

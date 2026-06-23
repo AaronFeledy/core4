@@ -417,6 +417,7 @@ describe("initApp tarball source boundary", () => {
   test("tarball recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
     await withTempRoot(async (dir) => {
       const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
+      const warnings: Array<string> = [];
       let caught: unknown;
       try {
         await initApp({
@@ -427,10 +428,14 @@ describe("initApp tarball source boundary", () => {
           userDataRoot: join(dir, "data"),
           tarballRecipeFetcher: fetcherFor(bytes),
           nonInteractive: true,
+          onWarn: (message) => warnings.push(message),
         });
       } catch (error) {
         caught = error;
       }
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("No --checksum supplied");
+      expect(warnings[0]).toContain(sha256(bytes));
       expect(caught).toBeInstanceOf(Error);
       expect((caught as Error).message).toContain("Recipe file rendering");
       expect((caught as Error).message).toContain("https://example.test/recipe.tar.gz");

@@ -117,6 +117,7 @@ export interface InitAppOptions {
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
+  readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
   readonly destination?: string;
@@ -184,12 +185,14 @@ const loadTarballRecipe = async (options: InitAppOptions, interaction: Interacti
           mode: "interactive",
         })
     : undefined;
+  const onWarn = confirmUnverified === undefined ? (options.onWarn ?? options.postInitIO?.err) : undefined;
   const resolved = await resolveTarballRecipeSource({
     url: sourceOptions.url ?? "",
     ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
     ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+    ...(onWarn === undefined ? {} : { onWarn }),
     ...(confirmUnverified === undefined ? {} : { confirmUnverified }),
   });
   return parseResolvedRecipe(resolved);
