@@ -434,6 +434,8 @@
 - `runPluginContract`
 - `runProviderDataPlaneContract`
 - `runProviderContractMatrix`
+- `runRedactionContract`
 - `runRemoteSourceContract`
 - `runServiceContract`
 - `runServiceContractMatrix`
+- `SECRET_SOUP_FIXTURE`

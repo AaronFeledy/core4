@@ -73,6 +73,12 @@ import {
   type VolumeRef,
 } from "../schema/index.ts";
 import type {
+  CreateRedactorOptions,
+  RedactionProfile,
+  Redactor,
+  TranscriptRedactionEnv,
+} from "../secrets/index.ts";
+import type {
   DownloaderShape,
   InteractionError,
   InteractionServiceShape,
@@ -1476,7 +1482,7 @@ const flattenServicePlanArgv = (plan: ServicePlan): string =>
 
 const redactTokens = (value: string, tokens: ReadonlyArray<string>): string =>
   tokens.reduce(
-    (redacted, token) => (token.length === 0 ? redacted : redacted.replaceAll(token, "[REDACTED]")),
+    (redacted, token) => (token.length === 0 ? redacted : redacted.replaceAll(token, "[redacted]")),
     value,
   );
 
@@ -4251,6 +4257,243 @@ export const runInteractionContract = (
         interactionFailureTag(manualExit) === "InteractionRequiredError",
         "a resolvable dynamic-choices prompt with no answer fails fast non-interactively",
         manualExit,
+      );
+    }
+  });
+
+// ----- Redaction contract suite -------------------------------------------
+
+const redactionContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `Redaction contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireRedactionContract = (condition: boolean, assertion: string, details?: unknown) =>
+  condition ? Effect.void : Effect.fail(redactionContractFailure(assertion, details));
+
+/**
+ * A canonical "soup" fixture that exercises every redaction pattern class in a
+ * single string. Use this as the input for golden-output assertions in the
+ * redaction contract suite.
+ *
+ * - `text`: one string containing every pattern class.
+ * - `registeredSecrets`: literal values to register in the value layer,
+ *   including a prefix-pair to prove longest-first ordering and a value that
+ *   also matches a bearer-token pattern to prove value-layer-before-pattern.
+ * - `value`: a structured object for `redactValue` assertions.
+ */
+export const SECRET_SOUP_FIXTURE = Object.freeze({
+  text: [
+    "DB_PASSWORD=hunter2longvalue",
+    "https://user:pass@host.example.com/path",
+    "Authorization: Bearer abc.def.ghijklmnop",
+    "?token=deadbeefsecret&api_key=anotherapikeyvalue",
+    "/home/alice/projects/app",
+    "C:\\Users\\alice\\AppData\\Local\\Temp\\x",
+    "\\\\fileserver\\share\\secret",
+    "~/.config/lando/config.yml",
+    "abc123def456",
+    "123e4567-e89b-12d3-a456-426614174000",
+    "sha256:aabbccddee112233445566778899aabbccddee112233445566778899aabbccdd",
+    "superSecretTokenLongerSuffix",
+    ":54321",
+    "myapp_web_ab12cd34",
+  ].join(" "),
+
+  /**
+   * Literal secret values for the value layer.
+   * - "superSecretToken" / "superSecretTokenLongerSuffix": prefix-pair proving longest-first.
+   * - "abc.def.ghijklmnop": also matches the bearer-token pattern, proving value-layer-before-pattern.
+   */
+  registeredSecrets: Object.freeze([
+    "hunter2longvalue",
+    "superSecretToken",
+    "superSecretTokenLongerSuffix",
+    "abc.def.ghijklmnop",
+  ] as ReadonlyArray<string>),
+
+  /**
+   * A structured value for `redactValue` assertions: nested object with
+   * secret-keyed fields, an array, an Error, a cyclic reference, and a plain
+   * string field containing a soup substring.
+   */
+  get value(): Record<string, unknown> {
+    const obj: Record<string, unknown> = {
+      username: "alice",
+      password: "hunter2longvalue",
+      token: "abc.def.ghijklmnop",
+      tags: ["prod", "hunter2longvalue"],
+      nested: { api_key: "anotherapikeyvalue", host: "host.example.com" },
+      err: new Error("connect failed: hunter2longvalue"),
+      note: "see /home/alice/projects/app for details",
+    };
+    // cyclic reference
+    (obj as Record<string, unknown>).self = obj;
+    return obj;
+  },
+} as const);
+
+/**
+ * Harness for {@link runRedactionContract}.
+ *
+ * - `name`: optional label for error messages.
+ * - `makeRedactor`: factory that builds a {@link Redactor} for the given
+ *   profile and options. Must be the real `createRedactor` or a conforming
+ *   implementation.
+ * - `golden`: per-profile expected output of
+ *   `makeRedactor(profile, { values: SECRET_SOUP_FIXTURE.registeredSecrets, env })
+ *    .redactString(SECRET_SOUP_FIXTURE.text)`.
+ * - `goldenValue`: optional per-profile expected output of `redactValue`.
+ */
+export interface RedactionContractHarness {
+  readonly name?: string;
+  readonly makeRedactor: (profile: RedactionProfile, options?: CreateRedactorOptions) => Redactor;
+  readonly golden: Record<RedactionProfile, { readonly string: string }>;
+  readonly goldenValue?: Record<RedactionProfile, unknown>;
+}
+
+/**
+ * Run the redaction contract assertions against a harness. Asserts (in order):
+ * - byte-identical golden output per profile.
+ * - value-layer-before-pattern: a registered literal that also matches a
+ *   bearer-token pattern is masked to the value sentinel with no raw remnant.
+ * - longest-first: with the prefix-pair registered, redacting a string
+ *   containing the longer value leaves no residue of the shorter value.
+ * - structure-preserving `redactValue`: arrays stay arrays, objects keep keys,
+ *   Error becomes `{name, message}`, cycles become `"[circular]"`, and
+ *   secret-keyed fields are masked.
+ * - idempotence: `redactString(redactString(t)) === redactString(t)` on a
+ *   bearer-token-only text (which is idempotent for all three profiles).
+ */
+export const runRedactionContract = (
+  harness: RedactionContractHarness,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    const label = harness.name ?? "redactor";
+    const env: TranscriptRedactionEnv = {
+      home: "/home/alice",
+      tmp: "/tmp",
+      user: "alice",
+      host: "host.example.com",
+    };
+    const profiles: ReadonlyArray<RedactionProfile> = ["secrets", "telemetry", "transcript"];
+
+    // --- golden output per profile ---
+    for (const profile of profiles) {
+      const r = harness.makeRedactor(profile, {
+        values: SECRET_SOUP_FIXTURE.registeredSecrets,
+        env,
+      });
+      const actual = r.redactString(SECRET_SOUP_FIXTURE.text);
+      const expected = harness.golden[profile].string;
+      yield* requireRedactionContract(
+        actual === expected,
+        `${label} ${profile} profile produces the expected golden output`,
+        { actual, expected },
+      );
+    }
+
+    // --- value-layer-before-pattern ---
+    // "abc.def.ghijklmnop" is both a registered secret AND matches the bearer-token
+    // pattern. The value layer must mask it first so no raw remnant survives.
+    const bearerText = "Authorization: Bearer abc.def.ghijklmnop";
+    const bearerR = harness.makeRedactor("secrets", {
+      values: SECRET_SOUP_FIXTURE.registeredSecrets,
+    });
+    const bearerResult = bearerR.redactString(bearerText);
+    yield* requireRedactionContract(
+      !bearerResult.includes("abc.def.ghijklmnop"),
+      "value-layer-before-pattern: registered bearer value leaves no raw remnant",
+      { input: bearerText, output: bearerResult },
+    );
+
+    // --- longest-first ---
+    // With both "superSecretToken" and "superSecretTokenLongerSuffix" registered,
+    // a string containing the longer value must be fully masked (no shorter residue).
+    const longerText = "superSecretTokenLongerSuffix is the full value";
+    const longestR = harness.makeRedactor("secrets", {
+      values: SECRET_SOUP_FIXTURE.registeredSecrets,
+    });
+    const longestResult = longestR.redactString(longerText);
+    yield* requireRedactionContract(
+      !longestResult.includes("superSecretToken"),
+      "longest-first: longer registered value is masked before shorter prefix",
+      { input: longerText, output: longestResult },
+    );
+
+    // --- structure-preserving redactValue ---
+    const valueR = harness.makeRedactor("secrets", {
+      values: SECRET_SOUP_FIXTURE.registeredSecrets,
+    });
+    const redacted = valueR.redactValue(SECRET_SOUP_FIXTURE.value) as Record<string, unknown>;
+
+    yield* requireRedactionContract(
+      Array.isArray(redacted.tags),
+      "redactValue preserves arrays as arrays",
+      redacted.tags,
+    );
+    yield* requireRedactionContract(
+      typeof redacted.nested === "object" &&
+        redacted.nested !== null &&
+        "api_key" in (redacted.nested as object),
+      "redactValue preserves object keys",
+      redacted.nested,
+    );
+    yield* requireRedactionContract(
+      typeof redacted.err === "object" &&
+        redacted.err !== null &&
+        "name" in (redacted.err as object) &&
+        "message" in (redacted.err as object),
+      "redactValue converts Error to {name, message}",
+      redacted.err,
+    );
+    yield* requireRedactionContract(
+      redacted.self === "[circular]",
+      "redactValue returns [circular] for cyclic references",
+      redacted.self,
+    );
+    yield* requireRedactionContract(
+      redacted.password === "[redacted]",
+      "redactValue masks secret-keyed fields",
+      redacted.password,
+    );
+    yield* requireRedactionContract(
+      redacted.token === "[redacted]",
+      "redactValue masks token-keyed fields",
+      redacted.token,
+    );
+
+    if (harness.goldenValue !== undefined) {
+      for (const profile of profiles) {
+        const gvR = harness.makeRedactor(profile, {
+          values: SECRET_SOUP_FIXTURE.registeredSecrets,
+          env,
+        });
+        const gvActual = gvR.redactValue(SECRET_SOUP_FIXTURE.value);
+        const gvExpected = harness.goldenValue[profile];
+        yield* requireRedactionContract(
+          JSON.stringify(gvActual) === JSON.stringify(gvExpected),
+          `${label} ${profile} profile redactValue matches goldenValue`,
+          { actual: gvActual, expected: gvExpected },
+        );
+      }
+    }
+
+    // --- idempotence (bearer-token-only text, idempotent for all profiles) ---
+    const idempotenceText = "Authorization: Bearer mytoken123 https://user:pass@host.com/path";
+    for (const profile of profiles) {
+      const iR = harness.makeRedactor(profile, {
+        values: [],
+        env: { home: "/home/alice", tmp: "/tmp", user: "alice", host: "host.com" },
+      });
+      const once = iR.redactString(idempotenceText);
+      const twice = iR.redactString(once);
+      yield* requireRedactionContract(
+        once === twice,
+        `${label} ${profile} profile redactString is idempotent on bearer/userinfo text`,
+        { once, twice },
       );
     }
   });
