@@ -12,7 +12,7 @@ const realRedactionLayer = RedactionServiceLive.pipe(
   Layer.provide(makeEnvSecretStoreLive({ env: secretEnv })),
 );
 
-describe("US-299 AC#6 redaction integration", () => {
+describe("redaction integration on emitting surfaces", () => {
   test("resolved SecretStore values are absent from bun-self event payloads", async () => {
     const events: Array<Record<string, unknown>> = [];
     const eventLayer = Layer.succeed(EventService, {
