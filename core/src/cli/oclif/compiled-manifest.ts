@@ -432,7 +432,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: ["pull"],
       args: {
         env: {
-          description: "Remote environment id.",
+          description: "Remote selector, optionally <remote>@<env>.",
           name: "env",
           required: false,
         },
@@ -548,7 +548,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         args: {
           env: {
-            description: "Remote environment id.",
+            description: "Remote selector, optionally <remote>@<env>.",
             required: false,
             input: [],
             type: "option",
@@ -563,7 +563,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: ["push"],
       args: {
         env: {
-          description: "Remote environment id.",
+          description: "Remote selector, optionally <remote>@<env>.",
           name: "env",
           required: false,
         },
@@ -679,7 +679,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         args: {
           env: {
-            description: "Remote environment id.",
+            description: "Remote selector, optionally <remote>@<env>.",
             required: false,
             input: [],
             type: "option",
@@ -1032,7 +1032,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: [],
       args: {
         env: {
-          description: "Remote environment id.",
+          description: "Remote selector, optionally <remote>@<env>.",
           name: "env",
           required: false,
         },
@@ -1099,7 +1099,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         args: {
           env: {
-            description: "Remote environment id.",
+            description: "Remote selector, optionally <remote>@<env>.",
             required: false,
             input: [],
             type: "option",
@@ -1121,7 +1121,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: [],
       args: {
         env: {
-          description: "Remote environment id.",
+          description: "Remote selector, optionally <remote>@<env>.",
           name: "env",
           required: false,
         },
@@ -1177,7 +1177,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         args: {
           env: {
-            description: "Remote environment id.",
+            description: "Remote selector, optionally <remote>@<env>.",
             required: false,
             input: [],
             type: "option",
