@@ -8,9 +8,8 @@
 // they are handed; they do not structurally implement the interface, which keeps
 // future method additions non-breaking inside the 4.x line.
 //
-// Scope note: tunnel (`share*`) and remote-sync (`pull`/`push`/`remote`) methods
-// and their types are intentionally NOT part of this surface yet; they are added
-// non-breakingly in later releases. The brand is what makes that safe.
+// Scope note: tunnel (`share*`) methods are intentionally NOT part of this surface yet;
+// they are added non-breakingly in later releases. The brand is what makes that safe.
 
 import type { Effect, Scope, Stream } from "effect";
 
@@ -37,6 +36,9 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  RemoteError,
+  RemoteProtectedEnvError,
+  RemoteProviderUnavailableError,
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
@@ -45,17 +47,31 @@ import type {
   ToolingCompileError,
   ToolingExecError,
 } from "../errors/index.ts";
-import type { AbsolutePath, AppPlan, AppRef, ConfigLintResult, LandofileShape } from "../schema/index.ts";
+import type {
+  AbsolutePath,
+  AppPlan,
+  AppRef,
+  ConfigLintResult,
+  DatasetKind,
+  LandofileShape,
+  RemoteConfig,
+  RemoteEnvironment,
+  RemoteTestResult,
+  SyncResult,
+} from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
 import type {
   AppPlanner,
   CacheService,
   CommandRegistry,
   ConfigService,
+  DataMoverError,
+  DatasetServiceError,
   Downloader,
   EventService,
   FileSystem,
   GlobalAppService,
+  InteractionError,
   LandofileService,
   Logger,
   ManagedFileService,
@@ -63,6 +79,7 @@ import type {
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
+  RemoteSourceError,
   Renderer,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -381,6 +398,89 @@ export type LogsAppError =
   | ProviderUnavailableError
   | ToolingExecError;
 
+export interface RemoteSyncOptions {
+  readonly remote?: string;
+  readonly env?: string;
+  readonly only?: ReadonlyArray<DatasetKind>;
+  readonly noSnapshot?: boolean;
+  readonly force?: boolean;
+  readonly yes?: boolean;
+  readonly noInteractive?: boolean;
+}
+
+export type PullAppOptions = RemoteSyncOptions;
+export type PushAppOptions = RemoteSyncOptions;
+
+export type RemoteSyncError =
+  | AppIdReservedError
+  | LandofileNotFoundError
+  | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
+  | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
+  | RemoteSourceError
+  | DatasetServiceError
+  | DataMoverError
+  | InteractionError;
+
+export type PullAppError = RemoteSyncError;
+export type PushAppError = RemoteSyncError | RemoteProtectedEnvError | RemoteProviderUnavailableError;
+
+export interface AppRemoteEntry {
+  readonly name: string;
+  readonly config: RemoteConfig;
+}
+
+export interface AppRemoteMutationOptions {
+  readonly name: string;
+  readonly config: RemoteConfig;
+}
+
+export interface AppRemoteRemoveOptions {
+  readonly name: string;
+}
+
+export interface AppRemoteMutationResult {
+  readonly app: string;
+  readonly remote: string;
+  readonly file: string;
+  readonly config: RemoteConfig;
+}
+
+export interface AppRemoteTestOptions {
+  readonly remote?: string;
+  readonly env?: string;
+}
+
+export interface AppRemoteSetupOptions extends AppRemoteTestOptions {
+  readonly force?: boolean;
+}
+
+export interface AppRemoteApi {
+  readonly list: () => Effect.Effect<
+    ReadonlyArray<AppRemoteEntry>,
+    LandofileNotFoundError | LandofileParseError
+  >;
+  readonly add: (
+    options: AppRemoteMutationOptions,
+  ) => Effect.Effect<AppRemoteMutationResult, LandofileNotFoundError | LandofileParseError>;
+  readonly remove: (
+    options: AppRemoteRemoveOptions,
+  ) => Effect.Effect<
+    AppRemoteMutationResult,
+    LandofileNotFoundError | LandofileParseError | RemoteError | RemoteProviderUnavailableError
+  >;
+  readonly test: (options?: AppRemoteTestOptions) => Effect.Effect<RemoteTestResult, RemoteSyncError>;
+  readonly setup: (options?: AppRemoteSetupOptions) => Effect.Effect<RemoteTestResult, RemoteSyncError>;
+  readonly env: {
+    readonly list: (
+      options?: AppRemoteTestOptions,
+    ) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteSyncError>;
+  };
+}
+
 /** Options for `App.config.lint`. */
 export interface AppConfigLintOptions {
   readonly cwd?: string;
@@ -433,6 +533,9 @@ export interface App {
     options?: ToolingOptions,
   ) => Effect.Effect<ToolingResult, ToolingError, Scope.Scope>;
   readonly logs: (options?: LogsAppOptions) => Stream.Stream<LogChunk, LogsAppError, Scope.Scope>;
+  readonly pull: (options?: PullAppOptions) => Effect.Effect<SyncResult, PullAppError>;
+  readonly push: (options?: PushAppOptions) => Effect.Effect<SyncResult, PushAppError>;
+  readonly remote: AppRemoteApi;
   readonly config: AppConfigApi;
   readonly events: AppEventsApi;
 }

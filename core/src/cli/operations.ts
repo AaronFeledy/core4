@@ -67,6 +67,7 @@ export * from "./commands/exec.ts";
 export * from "./commands/shell.ts";
 export * from "./commands/rebuild.ts";
 export * from "./commands/restart.ts";
+export * from "./commands/remote.ts";
 export * from "./commands/poweroff.ts";
 export * from "./commands/config.ts";
 export * from "./commands/meta/global-install.ts";

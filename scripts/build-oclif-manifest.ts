@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { rm } from "node:fs/promises";
 /**
  * Regenerate OCLIF manifest assets from the OCLIF command tree.
  */
@@ -102,6 +103,7 @@ const cacheLoadedFlags = async (
   );
 
 const main = async (): Promise<void> => {
+  await rm(JSON_OUTPUT, { force: true });
   const config = await Config.load({ root: CORE_ROOT, ignoreManifest: true });
   const rootPlugin = config.plugins.get(config.pjson.name);
 

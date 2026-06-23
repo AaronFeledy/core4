@@ -2,11 +2,17 @@ import { Effect, type Runtime, Stream } from "effect";
 
 import type {
   App,
+  AppRemoteMutationOptions,
+  AppRemoteRemoveOptions,
+  AppRemoteSetupOptions,
+  AppRemoteTestOptions,
   DestroyAppOptions,
   ExecAppOptions,
   InfoAppOptions,
   LandoRuntimeServices,
   LogsAppOptions,
+  PullAppOptions,
+  PushAppOptions,
   RebuildAppOptions,
   RestartAppOptions,
   StartAppOptions,
@@ -150,6 +156,23 @@ export const makeAppHandle = (
           Effect.provide(runtime),
         ),
       ),
+    pull: (options?: PullAppOptions) => ops.appPull(options, target).pipe(Effect.provide(runtime)),
+    push: (options?: PushAppOptions) => ops.appPush(options, target).pipe(Effect.provide(runtime)),
+    remote: {
+      list: () => ops.appRemoteList({ cwd: root }).pipe(Effect.provide(runtime)),
+      add: (options: AppRemoteMutationOptions) =>
+        ops.appRemoteAdd({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      remove: (options: AppRemoteRemoveOptions) =>
+        ops.appRemoteRemove({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      test: (options?: AppRemoteTestOptions) =>
+        ops.appRemoteTest({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      setup: (options?: AppRemoteSetupOptions) =>
+        ops.appRemoteSetup({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      env: {
+        list: (options?: AppRemoteTestOptions) =>
+          ops.appRemoteEnvList({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      },
+    },
     config: {
       lint: (options?: { readonly cwd?: string }) =>
         ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }),

@@ -728,6 +728,12 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Merge: merged (squash)
 ---
 
+## 2026-06-23 13:29 CDT - US-347
+- Shipped the provider-aware remote-sync CLI and App-handle skeleton: `app:pull`/`app:push` plus top-level aliases, the `app:remote:*` command family, `App.pull`/`App.push`/`App.remote`, and `@lando/core/cli/operations` exports now dispatch through the frozen `RemoteSource`/`Dataset` contracts while staying connector-free for 4.1.
+- `remote add`/`remote remove`/`remote list` edit/read the raw `remotes:` Landofile block via the canonical serializer without requiring a provider; provider-backed `pull`/`push`/`remote test/setup/env:list` fail with `RemoteProviderUnavailableError` when no matching `RemoteSource` is installed. The orchestration skeleton wires confirmation, safety snapshots before apply, dataset filtering, protected-env force handling, and `TestRemoteSource`/`TestDataset` coverage.
+- Source-mode and compiled dispatch now share the explicit OCLIF command registry; the manifest generator removes the stale manifest before discovery so newly registered commands are emitted into `oclif.manifest.json`/`compiled-manifest.ts`.
+- Verification: typecheck, lint, build, focused remote-sync/App-handle tests, compiled-dispatch parity spot checks, and manual source + compiled CLI smokes passed (`app:remote:add`, `app:remote:list`, and expected no-provider `app:pull` failure with remediation).
+---
 ## 2026-06-23 14:30 CDT - US-301
 - Shipped the redaction contract suite + the merge-blocking redaction-boundary gate, completing the "one redaction implementation" consolidation. `@lando/sdk/test` now exports `runRedactionContract` (pure Effect, core-free) and a canonical `SECRET_SOUP_FIXTURE` covering every redaction class (env assignments, user:pass@ URLs, bearer tokens, signed-query params, POSIX/Windows/UNC paths, home aliases, container ids, UUIDs, high-entropy tokens, a registered literal secret, and a structured value with a cycle); the suite asserts byte-identical golden output per profile (secrets/telemetry/transcript), value-layer-before-pattern, longest-first, structure-preserving redactValue, and idempotence.
 - Added `scripts/check-redaction-boundary.ts`, an AST gate that fails on new `[redacted]`/`[REDACTED]` string literals and ad-hoc secret-matching regexes under `core/src`+`plugins` outside `@lando/sdk/secrets`, wired into the merge-blocking CI static-checks job. Writing the gate forced migration of the last hand-rolled redactors to the primitive: post-init `redactBunOutput`, provider-docker, provider-podman (a fourth ad-hoc redactor the gate caught), and the remote-sync test helper — zero production carve-outs remain.
@@ -737,6 +743,12 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - The boundary-gate lint pattern and the redaction-specific detection heuristic are now in the Codebase Patterns section above. The biggest lesson: an AST boundary gate is the source of truth — it caught a latent ad-hoc redactor (provider-podman) that targeted exploration missed. Migrate offenders to the primitive; never silence with a carve-out.
   - "Cannot weaken" is proved at each service's REAL redaction point. Two of the five named services (HostProxy disabled, FileSync) have no in-service redaction seam by design; the honest proof is the renderer/diagnostic boundary that actually redacts their output (`core/src/cli/redact.ts`), not a fabricated engine seam.
   - Authored gate/test files are not auto-formatted; run `bun run biome check --write <files>` before `bun run lint` or the `biome check .` gate fails on formatting/import-order.
+---
+
+## 2026-06-23 15:15 CDT - US-347 Review
+- Fixed confirmed review blockers in the remote-sync skeleton: remote selectors now support `<remote>[@env]` plus the sole-installed `RemoteSource` fallback, destructive sync fails closed without an `InteractionService`, remote command outputs redact secret-bearing config and transfer details, and `--renderer=json` routes remote result rendering through JSON mode.
+- Review notes (deferred/rejected): rejected a literal static `@lando/core/cli` operation re-export because that entry point is intentionally OCLIF/Effect-free; `appPull`/`appPush` and `appRemote.*` remain on the published `@lando/core/cli/operations` subpath, with import-boundary coverage.
+- Verification: typecheck and lint passed; focused remote skeleton, App-handle, RemoteSource/Dataset contract, remote surface, packed App-handle export, entry-point, and import-boundary spot checks passed.
 ---
 
 ## [2026-06-23 16:55 CDT] - Babysit
