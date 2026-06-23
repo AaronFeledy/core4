@@ -312,45 +312,56 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
 const redactValueWith = (
   profileString: (text: string) => string,
   value: unknown,
-  seen: WeakSet<object>,
+  stack: WeakSet<object>,
+  memo: WeakMap<object, unknown>,
 ): unknown => {
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return profileString(value);
   if (typeof value !== "object") return value;
 
-  if (seen.has(value)) return "[circular]";
-  seen.add(value);
+  const memoHit = memo.get(value);
+  if (memoHit !== undefined) return memoHit;
+  if (stack.has(value)) return "[circular]";
 
+  stack.add(value);
+
+  let result: unknown;
   if (Array.isArray(value)) {
-    return value.map((item) => redactValueWith(profileString, item, seen));
-  }
-  if (value instanceof Error) {
-    return { name: value.name, message: profileString(value.message) };
-  }
-
-  let keys: string[];
-  try {
-    keys = Object.keys(value as Record<string, unknown>);
-  } catch {
-    return REDACTED;
-  }
-
-  const out: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (SECRET_KEY_PATTERN.test(key)) {
-      out[key] = REDACTED;
-      continue;
-    }
-    let raw: unknown;
+    result = value.map((item) => redactValueWith(profileString, item, stack, memo));
+  } else if (value instanceof Error) {
+    result = { name: value.name, message: profileString(value.message) };
+  } else {
+    let keys: string[];
     try {
-      raw = (value as Record<string, unknown>)[key];
+      keys = Object.keys(value as Record<string, unknown>);
     } catch {
-      out[key] = REDACTED;
-      continue;
+      result = REDACTED;
+      stack.delete(value);
+      memo.set(value, result);
+      return result;
     }
-    out[key] = redactValueWith(profileString, raw, seen);
+
+    const out: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (SECRET_KEY_PATTERN.test(key)) {
+        out[key] = REDACTED;
+        continue;
+      }
+      let raw: unknown;
+      try {
+        raw = (value as Record<string, unknown>)[key];
+      } catch {
+        out[key] = REDACTED;
+        continue;
+      }
+      out[key] = redactValueWith(profileString, raw, stack, memo);
+    }
+    result = out;
   }
-  return out;
+
+  stack.delete(value);
+  memo.set(value, result);
+  return result;
 };
 
 /**
@@ -372,6 +383,7 @@ export const createRedactor = (profile: RedactionProfile, options: CreateRedacto
 
   return {
     redactString,
-    redactValue: (value) => redactValueWith(redactString, value, new WeakSet<object>()),
+    redactValue: (value) =>
+      redactValueWith(redactString, value, new WeakSet<object>(), new WeakMap<object, unknown>()),
   };
 };

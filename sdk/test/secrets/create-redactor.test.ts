@@ -113,6 +113,17 @@ describe("redactValue structure preservation", () => {
     expect(() => r.redactValue(cyc)).not.toThrow();
     const out = r.redactValue(cyc) as Record<string, unknown>;
     expect(out.password).toBe("[redacted]");
+    expect(out.self).toBe("[circular]");
+  });
+
+  test("redacts shared acyclic object references as repeated structures, not [circular]", () => {
+    const shared = { ok: "fine", password: "hunter2" };
+    const out = r.redactValue({ a: shared, b: shared, list: [shared, shared] }) as Record<string, unknown>;
+    const expected = { ok: "fine", password: "[redacted]" };
+    expect(out.a).toEqual(expected);
+    expect(out.b).toEqual(expected);
+    expect(out.list).toEqual([expected, expected]);
+    expect(JSON.stringify(out)).not.toContain("[circular]");
   });
 
   test("never throws on exotic objects", () => {
