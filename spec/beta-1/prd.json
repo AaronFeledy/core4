@@ -2669,7 +2669,7 @@
       "title": "Settle the RemoteSource naming and lock cross-surface consistency",
       "description": "As a maintainer, I can rely on one name (`RemoteSource`, with 'hosting' as category language only) across every spec and PRD reference, and a gate that keeps the `RemoteSource`/`Dataset` surfaces consistent across the canonical registries.",
       "acceptanceCriteria": [
-        "Every legacy hosting-provider contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` \u00a710.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet); a grep proves no old contract identifier remains; 'hosting' is retained only as the descriptive feature category.",
+        "Every legacy hosting contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` \u00a710.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet); a grep proves no old contract identifier remains; 'hosting' is retained only as the descriptive feature category.",
         "The `DataMover` hosting-pull matrix row (\u00a710.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.",
         "A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the \u00a74.2 catalog, \u00a79.5 contributions, \u00a713.1 suites, \u00a73.5 `Sync` events, \u00a77.4 Landofile keys, \u00a716.3 `App` methods, and the `@lando/sdk/services` tags.",
         "The repo `AGENTS.md` records the contract freeze, the `Dataset \u00d7 RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the code-is-never-synced scope, and that the feature wave is 4.1.",

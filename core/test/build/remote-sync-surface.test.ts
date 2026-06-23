@@ -26,14 +26,17 @@ const expectContains = (content: string, fragment: string): void => {
 };
 
 describe("RemoteSource/Dataset canonical surface", () => {
-  test("keeps HostingProvider out of spec and PRD identifiers", async () => {
+  test("keeps legacy hosting provider identifiers out of spec and PRD identifiers", async () => {
     const files = await listSpecFiles();
     const offenders: Array<string> = [];
+    const legacyTokens = ["HostingProvider", "hosting-provider"];
 
     for (const file of files) {
       const content = await Bun.file(file).text();
-      if (content.includes("HostingProvider")) {
-        offenders.push(file.slice(repoRoot.length + 1));
+      for (const token of legacyTokens) {
+        if (content.includes(token)) {
+          offenders.push(`${file.slice(repoRoot.length + 1)} (${token})`);
+        }
       }
     }
 

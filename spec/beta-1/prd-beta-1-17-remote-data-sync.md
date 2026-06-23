@@ -101,7 +101,7 @@ Depends on: **PRD-04** (schema publication + SDK surface discipline; the canonic
 
 **Acceptance Criteria:**
 
-- [ ] Every legacy hosting-provider contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` §10.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet), with "hosting" retained only as the descriptive feature category; a grep proves no old contract identifier remains.
+- [ ] Every legacy hosting contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` §10.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet), with "hosting" retained only as the descriptive feature category; a grep proves no old contract identifier remains.
 - [ ] The `DataMover` hosting-pull matrix row (§10.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.
 - [ ] A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the canonical registries: the §4.2 catalog rows, the §9.5 contribution rows, the §13.1 contract-suite rows, the §3.5 `Sync` events, the §7.4 Landofile keys, the §16.3 `App` methods, and the `@lando/sdk/services` tags — the same canonical-surface-governance shape the other Beta-1 primitives use.
 - [ ] The repo `AGENTS.md` carries a note recording the `RemoteSource`/`Dataset` contract freeze, the `Dataset × RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the "code is never synced" scope, and that the feature wave (bundled remotes, hoster plugins, `database`/`files` datasets, real connector wiring) is 4.1.
@@ -147,7 +147,7 @@ Depends on: **PRD-04** (schema publication + SDK surface discipline; the canonic
 - `@lando/sdk` publishes `RemoteSource` + `Dataset` tags, the remote-sync schemas, the tagged errors, the `Sync` events, and the `remoteSources:`/`datasets:` manifest surfaces; the schema snapshot and SDK backward-compat fixtures stay green (additive only).
 - The §13.1 `RemoteSource` + `Dataset` contract suites run against `TestRemoteSource`/`local`/`TestDataset`, cover capability honesty + egress-through-`HttpClient` + landing-through-`DataMover` + redaction + safety, and the layer-coverage gate fails if a suite or its built-in invocation is removed.
 - `lando pull`/`push`/`remote:*` and `App.pull`/`push`/`remote.*` exist, return the universal envelope, parse identically on source/compiled paths, and fail with actionable `RemoteProviderUnavailableError` when no remote is installed; `remote add`/`list` round-trip the Landofile `remotes:` block through the canonical serializer.
-- No legacy hosting-provider contract identifier remains in the spec/PRD tree; the `DataMover` matrix row carries the `Dataset`/`RemoteSource` annotation; `AGENTS.md` records the freeze + the N+M split + the 4.1 feature scope.
+- No legacy hosting contract identifier remains in the spec/PRD tree; the `DataMover` matrix row carries the `Dataset`/`RemoteSource` annotation; `AGENTS.md` records the freeze + the N+M split + the 4.1 feature scope.
 - A 4.1 plugin author can implement a `RemoteSource` (or the `@lando/sql` `database` `Dataset`) against the frozen contract and pass its suite without any new SDK surface.
 
 ## Guide Coverage

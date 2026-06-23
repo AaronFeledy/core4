@@ -528,3 +528,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:**
   - Spec/PRD naming-settle stories should include a repo-reading gate over both docs and live SDK exports so acceptance text, ROADMAP prose, and implementation tags cannot drift independently.
 ---
+
+## 2026-06-22 20:57 CDT - US-348 Review
+- Tightened the naming freeze after review: remaining hyphenated legacy hosting-provider wording was rephrased in spec/PRD text, and the consistency gate now rejects both `HostingProvider` and `hosting-provider` token forms in the spec tree.
+- Review notes (deferred/rejected): no other review findings were confirmed as blockers.
+- Verification: typecheck, lint/deprecation check, and `bun test core/test/build/remote-sync-surface.test.ts` passed; LSP diagnostics clean for the changed test.
+---

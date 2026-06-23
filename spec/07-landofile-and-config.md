@@ -651,7 +651,7 @@ A Landofile that includes `compose:` is rejected at parse time with `LandofileFo
 
 Config translation is the explicit path for turning external configuration formats into v4 Landofile data. Core owns the translation pipeline; plugins own format-specific translators.
 
-Examples of external formats include Terraform outputs, framework metadata, hosting-provider config, cloud-service descriptors, and legacy Lando v3 Landofiles. v3 compatibility remains out of core: an external plugin MAY contribute a `lando-v3` translator, but core treats it the same as any other translator.
+Examples of external formats include Terraform outputs, framework metadata, hosting platform config, cloud-service descriptors, and legacy Lando v3 Landofiles. v3 compatibility remains out of core: an external plugin MAY contribute a `lando-v3` translator, but core treats it the same as any other translator.
 
 Rules:
 
