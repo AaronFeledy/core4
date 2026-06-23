@@ -78,7 +78,10 @@ const remoteSelection = (
   const flaggedRemote = stringValue(remoteFlag);
   const selector = stringValue(selectorArg);
   if (flaggedRemote !== undefined) {
-    return { remote: flaggedRemote, ...(selector === undefined ? {} : { env: selector }) };
+    if (selector === undefined) return { remote: flaggedRemote };
+    const separator = selector.indexOf("@");
+    const env = separator === -1 ? selector : selector.slice(separator + 1);
+    return { remote: flaggedRemote, ...(env.length === 0 ? {} : { env }) };
   }
   if (selector === undefined) return {};
   const separator = selector.indexOf("@");

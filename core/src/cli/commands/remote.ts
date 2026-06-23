@@ -304,15 +304,6 @@ const missingDataset = (kind?: DatasetKind): RemoteDatasetUnsupportedError =>
     remediation: "Install a Dataset plugin for the requested kind, then rerun the command.",
   });
 
-const preflightDatasetKinds = (
-  installedKind: DatasetKind,
-  kinds: ReadonlyArray<DatasetKind>,
-): Effect.Effect<void, RemoteDatasetUnsupportedError> =>
-  Effect.gen(function* () {
-    const missingKind = kinds.find((kind) => kind !== installedKind);
-    if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
-  });
-
 const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof LandofileShape.Type) => ({
   app: plan.id,
   plan,
@@ -448,7 +439,8 @@ export const appPull = (
     const dataset = yield* Effect.serviceOption(Dataset);
     if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
     const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
-    yield* preflightDatasetKinds(dataset.value.kind, kinds);
+    const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
+    if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
     const env = options.env ?? "dev";
     const plan = yield* resolvePlan(options.cwd, target);
     const artifacts: DataEndpoint[] = [];
@@ -498,7 +490,8 @@ export const appPush = (
     const dataset = yield* Effect.serviceOption(Dataset);
     if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
     const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
-    yield* preflightDatasetKinds(dataset.value.kind, kinds);
+    const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
+    if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
     const env = options.env ?? "dev";
     if (source.capabilities.protectedByDefault?.includes(env) === true && options.force !== true) {
       return yield* Effect.fail(

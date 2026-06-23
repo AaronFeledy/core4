@@ -625,16 +625,16 @@ const compiledFormat = (input: CompiledCommandInput): "text" | "json" =>
 const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:pull", argv);
-  return runCompiledCommand(appPull(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value) =>
-    renderSyncResult(value, compiledFormat(input)),
+  return runCompiledCommand(appPull(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
+    renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 
 const runPush = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:push", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:push", argv);
-  return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value) =>
-    renderSyncResult(value, compiledFormat(input)),
+  return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
+    renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 
@@ -642,8 +642,8 @@ const runRemoteList = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:list", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:list", argv);
   const options = remoteListOptionsFromInput(input);
-  return runCompiledCommand(appRemoteList(options), appRuntimeLayer(), (value) =>
-    renderRemoteListResult(value, options.format),
+  return runCompiledCommand(appRemoteList(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteListResult(value, options.format, ctx),
   );
 };
 
@@ -651,8 +651,8 @@ const runRemoteAdd = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:add", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:add", argv);
   const options = remoteAddOptionsFromInput(input);
-  return runCompiledCommand(appRemoteAdd(options), appRuntimeLayer(), (value) =>
-    renderRemoteMutationResult(value, "added", options.format),
+  return runCompiledCommand(appRemoteAdd(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteMutationResult(value, "added", options.format, ctx),
   );
 };
 
@@ -660,8 +660,8 @@ const runRemoteRemove = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:remove", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:remove", argv);
   const options = remoteRemoveOptionsFromInput(input);
-  return runCompiledCommand(appRemoteRemove(options), appRuntimeLayer(), (value) =>
-    renderRemoteMutationResult(value, "removed", options.format),
+  return runCompiledCommand(appRemoteRemove(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteMutationResult(value, "removed", options.format, ctx),
   );
 };
 
@@ -669,8 +669,8 @@ const runRemoteTest = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:test", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:test", argv);
   const options = remoteTestOptionsFromInput(input);
-  return runCompiledCommand(appRemoteTest(options), appRuntimeLayer(), (value) =>
-    renderRemoteTestResult(value, options.format),
+  return runCompiledCommand(appRemoteTest(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteTestResult(value, options.format, ctx),
   );
 };
 
@@ -678,8 +678,8 @@ const runRemoteSetup = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:setup", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:setup", argv);
   const options = remoteSetupOptionsFromInput(input);
-  return runCompiledCommand(appRemoteSetup(options), appRuntimeLayer(), (value) =>
-    renderRemoteTestResult(value, options.format),
+  return runCompiledCommand(appRemoteSetup(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteTestResult(value, options.format, ctx),
   );
 };
 
@@ -687,8 +687,8 @@ const runRemoteEnvList = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:remote:env:list", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:remote:env:list", argv);
   const options = remoteEnvListOptionsFromInput(input);
-  return runCompiledCommand(appRemoteEnvList(options), appRuntimeLayer(), (value) =>
-    renderRemoteEnvListResult(value, options.format),
+  return runCompiledCommand(appRemoteEnvList(options), appRuntimeLayer(), (value, ctx) =>
+    renderRemoteEnvListResult(value, options.format, ctx),
   );
 };
 

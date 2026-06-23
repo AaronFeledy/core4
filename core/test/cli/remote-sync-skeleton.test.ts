@@ -148,6 +148,32 @@ describe("remote sync command skeleton", () => {
     }
   });
 
+  test("remote selector parsing keeps --remote authoritative while honoring @env", async () => {
+    const { remoteSyncOptionsFromInput } = await import("../../src/cli/oclif/commands/app/remote/common.ts");
+
+    expect(remoteSyncOptionsFromInput({ flags: {}, args: { env: "stage@dev" } })).toMatchObject({
+      remote: "stage",
+      env: "dev",
+    });
+    expect(
+      remoteSyncOptionsFromInput({ flags: { remote: "stage" }, args: { env: "other@prod" } }),
+    ).toMatchObject({
+      remote: "stage",
+      env: "prod",
+    });
+  });
+
+  test("compiled remote renderers forward RenderContext", async () => {
+    const source = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+
+    expect(source).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
+    expect(source).toContain("renderRemoteListResult(value, options.format, ctx)");
+    expect(source).toContain('renderRemoteMutationResult(value, "added", options.format, ctx)');
+    expect(source).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
+    expect(source).toContain("renderRemoteTestResult(value, options.format, ctx)");
+    expect(source).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
+  });
+
   test("remote add writes remotes and remote list reads them without a provider", async () => {
     await withTempRemoteApp(async (dir) => {
       const operations = await requireRemoteOperations();
