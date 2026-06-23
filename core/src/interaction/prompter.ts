@@ -46,10 +46,18 @@ export interface InteractionPrompter {
  * service instance — and therefore its single persistent stdin reader.
  */
 export const makePromiseInteractionPrompter = (service: InteractionServiceShape): InteractionPrompter => ({
-  promptAll: (specs, options) => Effect.runPromise(Effect.scoped(service.promptAll(specs, options))),
-  confirm: (spec) => Effect.runPromise(Effect.scoped(service.confirm(spec))),
-  select: (spec) => Effect.runPromise(Effect.scoped(service.select(spec))),
+  promptAll: (specs, options) => runPromiseUnwrapped(Effect.scoped(service.promptAll(specs, options))),
+  confirm: (spec) => runPromiseUnwrapped(Effect.scoped(service.confirm(spec))),
+  select: (spec) => runPromiseUnwrapped(Effect.scoped(service.select(spec))),
 });
+
+const runPromiseUnwrapped = <A>(effect: Effect.Effect<A, InteractionError, never>): Promise<A> =>
+  Effect.runPromiseExit(effect).then((exit) => {
+    if (Exit.isSuccess(exit)) return exit.value;
+    const failure = Cause.failureOption(exit.cause);
+    if (Option.isSome(failure)) return Promise.reject(failure.value);
+    return Promise.reject(new Error(Cause.pretty(exit.cause)));
+  });
 
 /**
  * Capture the resolved {@link InteractionService} and ambient {@link Renderer}
@@ -64,14 +72,8 @@ export const makeInteractionPrompter: Effect.Effect<InteractionPrompter, never, 
     const interaction = yield* InteractionService;
     const rendererOption = yield* Effect.serviceOption(Renderer);
 
-    // Reject with the underlying tagged error, not the FiberFailure wrapper, so callers can instanceof-narrow.
     const run = <A>(effect: Effect.Effect<A, InteractionError, Scope.Scope>): Promise<A> =>
-      Effect.runPromiseExit(Effect.scoped(effect)).then((exit) => {
-        if (Exit.isSuccess(exit)) return exit.value;
-        const failure = Cause.failureOption(exit.cause);
-        if (Option.isSome(failure)) return Promise.reject(failure.value);
-        return Promise.reject(new Error(Cause.pretty(exit.cause)));
-      });
+      runPromiseUnwrapped(Effect.scoped(effect));
 
     const withRenderer = <A, R>(
       effect: Effect.Effect<A, InteractionError, R>,

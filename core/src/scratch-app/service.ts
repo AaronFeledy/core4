@@ -52,7 +52,12 @@ const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
   "NotImplementedError",
 ]);
 
-const RECIPE_PROMPT_ERROR_TAGS = new Set(["RecipeMissingAnswerError", "RecipePromptValidationError"]);
+const RECIPE_PROMPT_ERROR_TAGS = new Set([
+  "RecipeMissingAnswerError",
+  "RecipePromptValidationError",
+  "InteractionRequiredError",
+  "PromptValidationError",
+]);
 
 export { ScratchAppService } from "@lando/sdk/services";
 
