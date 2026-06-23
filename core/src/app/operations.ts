@@ -4,6 +4,16 @@ import { execApp } from "../cli/commands/exec.ts";
 import { infoApp } from "../cli/commands/info.ts";
 import { logsApp } from "../cli/commands/logs.ts";
 import { rebuildApp } from "../cli/commands/rebuild.ts";
+import {
+  appPull,
+  appPush,
+  appRemoteAdd,
+  appRemoteEnvList,
+  appRemoteList,
+  appRemoteRemove,
+  appRemoteSetup,
+  appRemoteTest,
+} from "../cli/commands/remote.ts";
 import { restartApp } from "../cli/commands/restart.ts";
 import { startApp } from "../cli/commands/start.ts";
 import { stopApp } from "../cli/commands/stop.ts";
@@ -20,6 +30,14 @@ export const appOperations = {
   runTooling,
   logsApp,
   appConfigLint,
+  appPull,
+  appPush,
+  appRemoteList,
+  appRemoteAdd,
+  appRemoteRemove,
+  appRemoteTest,
+  appRemoteSetup,
+  appRemoteEnvList,
 } as const;
 
 export type AppOperations = typeof appOperations;
