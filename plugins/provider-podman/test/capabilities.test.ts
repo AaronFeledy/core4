@@ -90,6 +90,13 @@ describe("provider-podman socket discovery", () => {
     ).toBe("tcp://127.0.0.1:2375");
   });
 
+  test("redacts URL userinfo in unsupported socket error details", () => {
+    const error = new UnsupportedPodmanSocketError("tcp://user:pass@127.0.0.1:2375");
+
+    expect(error.details).toEqual({ socketPath: "tcp://[redacted]@127.0.0.1:2375" });
+    expect(JSON.stringify(error.details)).not.toContain("user:pass");
+  });
+
   test("falls back to $XDG_RUNTIME_DIR/podman/podman.sock on Linux", () => {
     expect(resolvePodmanSocket({ platform: "linux", env: { XDG_RUNTIME_DIR: "/run/user/1000" } })).toBe(
       "/run/user/1000/podman/podman.sock",

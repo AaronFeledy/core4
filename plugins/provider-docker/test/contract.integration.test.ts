@@ -955,7 +955,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError.remediation).toMatch(/lando destroy/u);
     const details = startError.details as { status: number; body: string } | undefined;
     expect(details?.status).toBe(500);
-    expect(details?.body).toContain("[REDACTED]");
+    expect(details?.body).toContain("[redacted]");
     expect(details?.body).not.toContain("hunter2");
   });
 
@@ -989,7 +989,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError.message).toContain("Docker container start failed with HTTP 500.");
     expect(startError.message).toContain("bind 0.0.0.0:80: address already in use");
     expect(startError.message).not.toContain("hunter2");
-    expect(startError.message).toContain("APP_TOKEN=[REDACTED]");
+    expect(startError.message).toContain("APP_TOKEN=[redacted]");
   });
 
   test("destroy with volumes:true removes app-scoped volumes; default preserves them", async () => {

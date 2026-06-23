@@ -55,6 +55,8 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
+import { redactDetails, redactString } from "./redact.ts";
+
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"] as { readonly id?: string } | undefined;
@@ -66,33 +68,6 @@ const textDecoder = new TextDecoder();
 
 const APPLY_REMEDIATION =
   "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
-
-const REDACTED = "[REDACTED]" as const;
-const SECRET_KEY_PATTERN =
-  /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
-const SECRET_ENV_PATTERN =
-  /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]\}]+)/gu;
-const redactString = (value: string): string =>
-  value.replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`);
-const redactObject = (value: Record<string, unknown>): Record<string, unknown> => {
-  const out: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (SECRET_KEY_PATTERN.test(key)) {
-      out[key] = REDACTED;
-      continue;
-    }
-    out[key] = redactDetails(raw);
-  }
-  return out;
-};
-const redactDetails = (value: unknown): unknown => {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) return value.map((item) => redactDetails(item));
-  if (value instanceof Error) return { name: value.name, message: redactString(value.message) };
-  if (typeof value === "object") return redactObject(value as Record<string, unknown>);
-  if (typeof value === "string") return redactString(value);
-  return value;
-};
 
 // Docker API error responses are JSON: `{ message: "..." }`.
 const apiReasonFromBody = (details: unknown): string | undefined => {

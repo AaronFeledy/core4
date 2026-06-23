@@ -468,6 +468,13 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makeInteractionContractRenderer).toBeDefined();
   });
 
+  test("test entry point exports the redaction contract suite and fixture", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRedactionContract).toBeDefined();
+    expect(sdkTest.SECRET_SOUP_FIXTURE).toBeDefined();
+  });
+
   test("test entry point documents plugin contract runner arguments", async () => {
     const source = await readFile(new URL("../../src/test/index.ts", import.meta.url), "utf8");
 
