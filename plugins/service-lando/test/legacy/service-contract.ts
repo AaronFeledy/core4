@@ -14,6 +14,7 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
+import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { ContractFailure } from "@lando/sdk/test";
 
@@ -123,10 +124,7 @@ const flattenServicePlanArgv = (plan: ServicePlan): string =>
   `${argvJoin(plan.command)} ${argvJoin(plan.entrypoint)}`;
 
 const redactTokens = (value: string, tokens: ReadonlyArray<string>): string =>
-  tokens.reduce(
-    (redacted, token) => (token.length === 0 ? redacted : redacted.replaceAll(token, "[redacted]")),
-    value,
-  );
+  createSecretRedactor(tokens).redact(value);
 
 const commandContainsHostPort = (cmd: string, port: number): boolean => {
   const expectedPort = String(port);
