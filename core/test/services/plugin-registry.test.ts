@@ -659,6 +659,19 @@ describe("PluginRegistryLive", () => {
                 },
               ],
               datasets: [{ id: "database", module: "./src/dataset.mjs", kind: "database" }],
+              tunnelServices: [
+                {
+                  id: "quick",
+                  module: "./src/tunnel.mjs",
+                  capabilities: {
+                    connectorBinary: true,
+                    ephemeralUrls: true,
+                    stableUrls: false,
+                    basicAuth: true,
+                    detached: true,
+                  },
+                },
+              ],
             },
           },
         },
@@ -669,6 +682,7 @@ describe("PluginRegistryLive", () => {
     await writeFile(join(packageRoot, "index.js"), "export {};\n");
     await writeFile(join(packageRoot, "src", "remote.mjs"), "export {};\n");
     await writeFile(join(packageRoot, "src", "dataset.mjs"), "export {};\n");
+    await writeFile(join(packageRoot, "src", "tunnel.mjs"), "export {};\n");
     await writeInstalledPluginRegistry(userPluginsRoot, [
       { name: "@example/remote-plugin", version: "1.0.0", path: packageRoot },
     ]);
@@ -682,6 +696,9 @@ describe("PluginRegistryLive", () => {
     );
     expect(manifest.contributes?.datasets?.[0]?.module).toBe(
       pathToFileURL(join(packageRoot, "src", "dataset.mjs")).href,
+    );
+    expect(manifest.contributes?.tunnelServices?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "tunnel.mjs")).href,
     );
   });
 
