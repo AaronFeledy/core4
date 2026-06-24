@@ -859,3 +859,8 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - Review notes (deferred/rejected): review-work's suggestion that omitting `base` from `ServiceTypeResolution` was a harmless spec-text nuance was rejected because the US-355 acceptance criteria and §6.11.0 prose explicitly require `{ base, normalizedConfig, features }`.
 - Verification: typecheck, lint, schema-snapshot regen passed; focused spot checks passed (`sdk/test/contract/service.test.ts`, `sdk/test/library/exports.test.ts`, `plugins/service-lando/test/service-contract.test.ts`, `core/test/services/app-planner.test.ts`). LSP diagnostics could not run because the TypeScript LSP is not installed in this harness.
 ---
+
+## 2026-06-24 02:48 CDT - US-355 Build verification
+- Story verified complete on branch us-355-service-type-resolution-contract (no new code). The §6.11 `ServiceType` + `ServiceTypeResolution` contract replacement, the core/plugin-private legacy plan bridge, the SDK composition contract, and the relocated catalog legacy suite were already implemented and review-fixed; `passes: true` already set. Latest branch commit only routes legacy service-contract token redaction through `@lando/sdk/secrets`.
+- Verification: typecheck (`tsc -b`) and lint (biome + deprecations) passed; schema-snapshot regen + bundled-plugin generator both drift-clean; SDK composition contract + exports (36), relocated catalog legacy suite (27), planner end-to-end (39), and SDK backward-compat surface (3) spot checks all green. LSP diagnostics unavailable (TypeScript LSP not installed in this harness).
+---
