@@ -30,6 +30,6 @@ export const makeLegacyServiceTypeFake = (
   base: options.base ?? "lando",
   schema: Schema.Unknown,
   resolve: (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
-    Effect.succeed({ normalizedConfig: input.service, features: [] }),
+    Effect.succeed({ base: options.base ?? "lando", normalizedConfig: input.service, features: [] }),
   __legacyToServicePlan: options.toServicePlan,
 });

@@ -48,8 +48,10 @@ export const DEFAULT_SERVICE_TYPE_SCHEMA: Schema.Schema<unknown> = Schema.Unknow
  * `__legacyToServicePlan` until US-359; this satisfies the §6.11 contract shape
  * (declared base + resolution, never a hand-built plan).
  */
-export const legacyResolve = (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
-  Effect.succeed({ normalizedConfig: input.service, features: [] });
+export const legacyResolve =
+  (base: "l337" | "lando"): ((input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, never>) =>
+  (input) =>
+    Effect.succeed({ base, normalizedConfig: input.service, features: [] });
 
 /** Options for assembling a legacy catalog service type. */
 export interface DefineLegacyServiceTypeOptions {
@@ -69,6 +71,6 @@ export const defineLegacyServiceType = (options: DefineLegacyServiceTypeOptions)
   name: options.name ?? options.id,
   base: options.base ?? "lando",
   schema: DEFAULT_SERVICE_TYPE_SCHEMA,
-  resolve: legacyResolve,
+  resolve: legacyResolve(options.base ?? "lando"),
   __legacyToServicePlan: options.toServicePlan,
 });

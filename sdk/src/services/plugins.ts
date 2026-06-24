@@ -57,6 +57,7 @@ export interface FeatureRef {
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
+  readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;

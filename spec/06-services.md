@@ -634,6 +634,7 @@ export class ServiceType extends Context.Service<ServiceType, {
 }>()("@lando/core/ServiceType") {}
 
 export interface ServiceTypeResolution {
+  readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
   readonly tooling?: ReadonlyRecord<string, ToolingTask>;  // §6.11.3, see §8.5 for the ToolingTask shape

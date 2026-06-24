@@ -1343,7 +1343,11 @@ export const TestServiceType: ServiceType = {
   base: "lando",
   schema: Schema.Unknown,
   resolve: (input: ServiceTypeInput) =>
-    Effect.succeed({ normalizedConfig: input.service, features: [] } satisfies ServiceTypeResolution),
+    Effect.succeed({
+      base: "lando",
+      normalizedConfig: input.service,
+      features: [],
+    } satisfies ServiceTypeResolution),
 };
 
 const serviceCompositionFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -1454,6 +1458,11 @@ export const runServiceCompositionContract = (
       !Schema.is(ServicePlan)(resolution as unknown),
       "resolve returns a resolution, not a hand-built ServicePlan",
       { keys: Object.keys(resolution as unknown as Record<string, unknown>) },
+    );
+    yield* requireServiceComposition(
+      resolution.base === serviceType.base,
+      "resolution base matches the declared service type base",
+      { declared: serviceType.base, resolved: resolution.base },
     );
 
     const normalizedDecodes = Schema.is(ServiceConfig)(resolution.normalizedConfig);

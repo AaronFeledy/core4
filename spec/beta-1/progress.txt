@@ -853,3 +853,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - `@lando/sdk/test`'s additive-test-helper list in `API_COMPATIBILITY.md` is documented-only (not `toEqual`-gated) — relocating/removing a test helper there only needs the doc list + `exports.test.ts` assertion updated, not a schema-snapshot regen.
   - A `ServiceTypeResolution` returned by `resolve()` can only be mistaken for a `ServicePlan` if it is a COMPLETE valid plan; a partial object passes the "not a ServicePlan" guard. To test that guard, build a fully-decoded `ServicePlan` via `Schema.decodeUnknownSync`. And contract error-mapping via `Effect.mapError` only catches `Fail`, not `Die` — test a failing `resolve()` with `Effect.fail(new ServiceTypeError(...))`, not `Effect.die`.
 ---
+
+## 2026-06-24 01:08 CDT - US-355 Review
+- Fixed a confirmed PRD-contract blocker: `ServiceTypeResolution` now carries the resolved `base`, the SDK composition contract asserts it matches the declared service type base, and the temporary legacy resolvers return the declared base while preserving the private bridge.
+- Review notes (deferred/rejected): review-work's suggestion that omitting `base` from `ServiceTypeResolution` was a harmless spec-text nuance was rejected because the US-355 acceptance criteria and §6.11.0 prose explicitly require `{ base, normalizedConfig, features }`.
+- Verification: typecheck, lint, schema-snapshot regen passed; focused spot checks passed (`sdk/test/contract/service.test.ts`, `sdk/test/library/exports.test.ts`, `plugins/service-lando/test/service-contract.test.ts`, `core/test/services/app-planner.test.ts`). LSP diagnostics could not run because the TypeScript LSP is not installed in this harness.
+---

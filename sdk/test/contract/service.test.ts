@@ -73,10 +73,28 @@ describe("runServiceCompositionContract", () => {
   });
 
   test("accepts an l337-base service type", async () => {
-    const l337Type: ServiceType = { ...TestServiceType, base: "l337" };
+    const l337Type: ServiceType = {
+      ...TestServiceType,
+      base: "l337",
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({ base: "l337", normalizedConfig: input.service, features: [] }),
+    };
     await expect(
       Effect.runPromise(runServiceCompositionContract(baseInput({ serviceType: l337Type }))),
     ).resolves.toBeUndefined();
+  });
+
+  test("fails with ContractFailure when the resolved base does not match the service type", async () => {
+    const mismatchedBase: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({
+          base: "l337",
+          normalizedConfig: input.service,
+          features: [],
+        } satisfies ServiceTypeResolution),
+    };
+    await expectCompositionFailure(mismatchedBase, "resolution base matches the declared service type base");
   });
 
   test("fails with ContractFailure when resolve returns a hand-built ServicePlan shape", async () => {
@@ -110,6 +128,7 @@ describe("runServiceCompositionContract", () => {
       ...TestServiceType,
       resolve: (input: ServiceTypeInput) =>
         Effect.succeed({
+          base: "lando",
           normalizedConfig: input.service,
           features: [{ id: "" }],
         } satisfies ServiceTypeResolution),
@@ -132,6 +151,7 @@ describe("runServiceCompositionContract", () => {
       resolve: (input: ServiceTypeInput) => {
         call += 1;
         return Effect.succeed({
+          base: "lando",
           normalizedConfig: input.service,
           features: call === 1 ? [{ id: "first" }] : [{ id: "second" }],
         } satisfies ServiceTypeResolution);
