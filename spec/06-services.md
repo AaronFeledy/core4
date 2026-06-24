@@ -591,16 +591,21 @@ export const ServiceInfo = Schema.Struct({
 
 #### 6.11.0 Planning algorithm (normative)
 
-Core composes every service through exactly this pipeline. The pipeline lives in **core** (the `AppPlanner`), not inside individual service types, because only core can guarantee deterministic ordering, inheritance-depth checks, conflict handling, the app-feature pass, and a single shared finalization stage. For each service in the resolved Landofile, in app order:
+Core composes every service through exactly this pipeline. The pipeline lives in **core** (the `AppPlanner`), not inside individual service types, because only core can guarantee deterministic ordering, inheritance-depth checks, conflict handling, the app-feature pass, and a single shared finalization stage. It runs in two phases: a **per-service phase** (stages 1–3, run for each service) followed by a single **app-wide phase** (stages 4–6, run once for the whole app).
+
+**Per-service phase — for each service in the resolved Landofile, in app order:**
 
 1. **Resolve the service type.** Run `ServiceType.resolve(input)` to obtain a `ServiceTypeResolution` (`{ base, normalizedConfig, features, tooling?, metadata? }`). `extends:` parents resolve first (§6.11.1); `artifacts:` version pins resolve here (§6.11.2). `resolve()` is an `Effect` and MAY be asynchronous; it normalizes config and *chooses* base/features/tooling, but MUST NOT itself build the plan.
 2. **Seed the base context.** Construct a mutable `ServiceFeatureContext` (the plan *draft*) from the named base:
    - `base: "lando"` seeds the default lando feature stack (the built-in feature priority list below) and the `lando.env` env baseline.
    - `base: "l337"` seeds **only** the artifact/build-plumbing fields and the user/Compose-authored environment. It MUST NOT seed the `/etc/lando/*` env layer, app mount, packages, or any `lando.*` feature (§6.9).
 3. **Apply service features in priority order.** Merge the base's default feature list with the resolution's `features` and run each `ServiceFeature.apply(ctx)` in ascending `priority`. Features mutate only the draft; they are idempotent and replay-safe (§6.11, "Feature rules").
-4. **Apply app features.** After stage 3 has run **every** service feature for **every** service in the app, run the activated `AppFeature`s (§6.11.4) as a single distinct phase against an app-level context, in ascending `priority` among themselves, with cycle detection. The app-feature phase always runs after the *entire* service-feature phase — an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features.
-5. **Emit the provider-neutral draft → `ServicePlan`.** Convert each finished draft to a `ServicePlan`.
-6. **Finalize once, in core.** Run the existing planner finalization exactly once over the emitted plans: provider-capability validation, bind realization (`passthrough`/`accelerated`), file-sync session generation, storage shadow expansion, route/networking aggregation, default-exclude merge, and the final `AppPlan` decode (§6.4, §6.5, §6.6).
+
+**App-wide phase — once, after the per-service phase has completed for every service:**
+
+4. **Apply app features.** Run the activated `AppFeature`s (§6.11.4) as a single distinct phase against an app-level context spanning every service draft, in ascending `priority` among themselves, with cycle detection. The app-feature phase always runs after the *entire* service-feature phase — an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features.
+5. **Emit the provider-neutral drafts → `ServicePlan`s.** Convert every finished draft to a `ServicePlan`.
+6. **Finalize once, in core.** Run the existing planner finalization exactly once over all emitted plans: provider-capability validation, bind realization (`passthrough`/`accelerated`), file-sync session generation, storage shadow expansion, route/networking aggregation, default-exclude merge, and the final `AppPlan` decode (§6.4, §6.5, §6.6).
 
 Features emit **provider-neutral plan intent only**. Provider realization (capability checks, bind/volume/file-sync decisions, host-port publishing) is owned by stage 6 and MUST NOT be performed inside a feature. The composition input that feeds the app-plan cache key (§12.1) MUST include the resolved `base`, the ordered `FeatureRef` list, and any `AppFeature` contributions — not just the service-type id — or a feature change yields a stale plan.
 
