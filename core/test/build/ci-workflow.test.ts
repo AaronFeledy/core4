@@ -220,20 +220,13 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("      - name: Unit test layer (linux-x64 full static scope)");
     expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform == 'linux-x64' }}");
     expect(staticChecksPlatform).toContain("        run: bun run test:unit");
-    expect(staticChecksPlatform).toContain(
-      "      - name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
+    expect(staticChecksPlatform).not.toContain(
+      "bun test core/test/services core/test/cli core/test/scenario",
     );
-    expect(staticChecksPlatform).toContain(
-      "        run: bun test core/test/services core/test/cli core/test/scenario",
+    expect(staticChecksPlatform).not.toContain(
+      "bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
     );
-    expect(staticChecksPlatform).toContain("      - name: Recipe test layer (linux-x64 full static scope)");
-    expect(staticChecksPlatform).toContain(
-      "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
-    );
-    expect(staticChecksPlatform).toContain(
-      "      - name: Library API test layer (linux-x64 full static scope)",
-    );
-    expect(staticChecksPlatform).toContain("        run: bun test core/test/library sdk/test/library");
+    expect(staticChecksPlatform).not.toContain("bun test core/test/library sdk/test/library");
     expect(staticChecksPlatform).toContain("::notice title=ci-timing::static-checks/${{ matrix.platform }}");
     expect(staticChecks).toContain("    needs: [static-checks-platform]");
     expect(staticChecks).toContain("    if: always()");

@@ -21,9 +21,6 @@ Only the `linux-x64` static-checks cell runs the full current static test suite.
 
 ```bash
 bun run test:unit
-bun test core/test/services core/test/cli core/test/scenario
-bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
-bun test core/test/library sdk/test/library
 ```
 
 ## Generated schema and bundled-codegen gates

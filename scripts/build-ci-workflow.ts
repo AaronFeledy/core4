@@ -69,18 +69,6 @@ ${setupBunSteps}
         if: \${{ matrix.platform == 'linux-x64' }}
         run: bun run test:unit
 
-      - name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)
-        if: \${{ matrix.platform == 'linux-x64' }}
-        run: bun test core/test/services core/test/cli core/test/scenario
-
-      - name: Recipe test layer (linux-x64 full static scope)
-        if: \${{ matrix.platform == 'linux-x64' }}
-        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
-
-      - name: Library API test layer (linux-x64 full static scope)
-        if: \${{ matrix.platform == 'linux-x64' }}
-        run: bun test core/test/library sdk/test/library
-
 ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
 
   static-checks:

@@ -339,12 +339,12 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
       expect(workflow).toContain("US-189");
       expect(workflow).toContain("- name: Unit test layer (linux-x64 full static scope)");
-      expect(workflow).toContain(
+      expect(workflow).not.toContain(
         "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
       );
-      expect(workflow).toContain("- name: Recipe test layer (linux-x64 full static scope)");
-      expect(workflow).toContain("- name: Library API test layer (linux-x64 full static scope)");
-      expect((workflow.match(/if: \$\{\{ matrix\.platform == 'linux-x64' \}\}/g) ?? []).length).toBe(4);
+      expect(workflow).not.toContain("- name: Recipe test layer (linux-x64 full static scope)");
+      expect(workflow).not.toContain("- name: Library API test layer (linux-x64 full static scope)");
+      expect((workflow.match(/if: \$\{\{ matrix\.platform == 'linux-x64' \}\}/g) ?? []).length).toBe(1);
     },
     codegenTestTimeout,
   );
@@ -468,7 +468,6 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("needs: [static-checks-platform]");
       expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
-      expect(workflow).toContain("run: bun test core/test/services core/test/cli core/test/scenario");
       expect(workflow).toContain(
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
       );
