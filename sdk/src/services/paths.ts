@@ -30,9 +30,9 @@ export interface RootOverrides {
 }
 
 /**
- * Resolved roots, the active platform, and builders for every derived path in
- * the §12 catalog. App-scoped builders sanitize app names and fingerprint the
- * app root so two apps that share a `name:` never collide.
+ * Resolved roots, the active platform, and builders for every Lando-owned
+ * derived path. App-scoped builders sanitize app names and fingerprint the app
+ * root so two apps that share a `name:` never collide.
  */
 export interface LandoPaths {
   readonly roots: LandoRoots;
