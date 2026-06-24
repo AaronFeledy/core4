@@ -31,6 +31,7 @@ import {
   ConfigService,
   PluginRegistry,
   type ServiceTypeHostFacts,
+  type ServiceTypeResolution,
 } from "@lando/sdk/services";
 
 import {
@@ -404,13 +405,14 @@ type PlannedServiceDraft = {
   readonly hostnames: ReadonlyArray<string>;
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly draft: AppFeatureServiceDraft;
+  readonly routes: ServicePlan["routes"];
   readonly extensions: ServicePlan["extensions"];
 };
 
 const toAppFeatureDraft = (
   name: string,
-  service: ServiceConfig,
   servicePlan: ServicePlan,
+  serviceResolution: ServiceTypeResolution,
 ): AppFeatureServiceDraft => ({
   name: servicePlan.name,
   serviceName: name,
@@ -418,10 +420,10 @@ const toAppFeatureDraft = (
   serviceType: servicePlan.type,
   provider: servicePlan.provider,
   primary: servicePlan.primary,
-  base: "lando",
-  framework: service.framework,
-  featureIds: [],
-  normalizedConfig: service,
+  base: serviceResolution.base,
+  framework: serviceResolution.normalizedConfig.framework,
+  featureIds: serviceResolution.features.map((feature) => feature.id),
+  normalizedConfig: serviceResolution.normalizedConfig,
   ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
   ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
   ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
@@ -454,6 +456,7 @@ const toAppFeatureDraft = (
 
 const servicePlanFromDraft = (
   draft: DraftServicePlan,
+  routes: ServicePlan["routes"],
   metadata: ServicePlan["metadata"],
   extensions: ServicePlan["extensions"],
 ): ServicePlan => ({
@@ -471,7 +474,7 @@ const servicePlanFromDraft = (
   mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
   storage: draft.storage.map((storage) => ({ ...storage })),
   endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
-  routes: [],
+  routes: routes.map((route) => ({ ...route })),
   dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
   ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
   ...(draft.certs === undefined ? {} : { certs: draft.certs }),
@@ -585,12 +588,16 @@ const planApp = (
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
-    const appFeatureRefs = manifests.flatMap((manifest) =>
-      (manifest.contributes?.appFeatures ?? []).map((entry) => ({
-        id: contributionId(entry),
-        pluginId: manifest.name,
-      })),
-    );
+    const appFeatureRefs: Array<{ readonly id: string; readonly pluginId: string }> = [];
+    const seenAppFeatureIds = new Set<string>();
+    for (const manifest of manifests) {
+      for (const entry of manifest.contributes?.appFeatures ?? []) {
+        const id = contributionId(entry);
+        if (seenAppFeatureIds.has(id)) continue;
+        seenAppFeatureIds.add(id);
+        appFeatureRefs.push({ id, pluginId: manifest.name });
+      }
+    }
     const appFeatures: ComposeAppFeature[] = [];
     for (const ref of appFeatureRefs) {
       const definition = yield* pluginRegistry.loadAppFeature(ref.id).pipe(
@@ -623,6 +630,19 @@ const planApp = (
           ),
         );
 
+      const serviceResolution = yield* serviceType
+        .resolve({
+          name,
+          service,
+          appRoot,
+          appName,
+          provider,
+          primary: name === "web",
+          metadata: legacyMetadata,
+          host,
+        })
+        .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+
       const rawPlan = yield* Effect.try({
         try: () =>
           legacyServicePlan(serviceType, {
@@ -645,7 +665,8 @@ const planApp = (
         name,
         hostnames: service.hostnames ?? [],
         authored,
-        draft: toAppFeatureDraft(name, service, servicePlan),
+        draft: toAppFeatureDraft(name, servicePlan, serviceResolution),
+        routes: servicePlan.routes,
         extensions: servicePlan.extensions,
       });
     }
@@ -657,8 +678,8 @@ const planApp = (
       features: appFeatures,
     }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
 
-    for (const { name, hostnames, authored, draft, extensions } of plannedServiceDrafts) {
-      const servicePlan = servicePlanFromDraft(draft, metadata, extensions);
+    for (const { name, hostnames, authored, draft, routes, extensions } of plannedServiceDrafts) {
+      const servicePlan = servicePlanFromDraft(draft, routes, metadata, extensions);
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
