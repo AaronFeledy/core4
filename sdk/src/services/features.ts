@@ -3,7 +3,7 @@
  * against, and the mutable draft surface core hands to each feature's `apply`.
  *
  * A service is composed from a `base` (`l337` or `lando`) plus a sequence of
- * priority-ordered features (§6.11). Each feature mutates a provider-neutral
+ * priority-ordered features. Each feature mutates a provider-neutral
  * in-memory draft through {@link ServiceFeatureContext}; core's composition
  * engine seeds the draft, runs features in ascending `priority`, and emits a
  * provider-neutral plan draft. Features emit INTENT ONLY: the context exposes
@@ -46,7 +46,7 @@ export type ServiceAppMountIntent = Omit<AppMountPlan, "realization">;
 
 /**
  * A build step a feature declares. `ServicePlan` carries no build-step slot;
- * the draft retains build-step intent for the §6.13 build-orchestration
+ * the draft retains build-step intent for the build-orchestration
  * consumer. Provider-neutral: a feature never names a provider here.
  */
 export interface ServiceBuildStepIntent {

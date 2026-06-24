@@ -1377,12 +1377,10 @@ export interface ServiceCompositionContractInput {
 }
 
 /**
- * Run the service-composition contract enforceable at this stage: the type
- * exposes a non-empty id/name, declares a `base` of `"l337"` or `"lando"`, and
- * `resolve()` is an Effect that yields a `ServiceTypeResolution` with decoded
- * `normalizedConfig` and a stable (replay-equal) `features` array — and never
- * returns a `ServicePlan`. Later work completes base env layers, `lando.env`
- * reachability, `extends:` depth/cycles, and cache-key participation.
+ * Run the service-composition contract: the type exposes a non-empty id/name,
+ * declares a `base` of `"l337"` or `"lando"`, and `resolve()` is an Effect that
+ * yields a `ServiceTypeResolution` with decoded `normalizedConfig` and a stable
+ * (replay-equal) `features` array — and never returns a `ServicePlan`.
  */
 export const runServiceCompositionContract = (
   input: ServiceCompositionContractInput,
@@ -1621,10 +1619,10 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
 };
 
 /**
- * Run the service-feature contract enforceable at this stage: a feature exposes
- * a stable id/priority/apply hook, its `apply` succeeds against the published
- * provider-neutral context, it does not inspect provider capabilities, and its
- * emitted mount/app-mount intent never includes a realization decision.
+ * Run the service-feature contract: a feature exposes a stable id/priority/apply
+ * hook, its `apply` succeeds against the published provider-neutral context, it
+ * does not inspect provider capabilities, and its emitted mount/app-mount intent
+ * never includes a realization decision.
  */
 export const runServiceFeatureContract = (
   input: ServiceFeatureContractHarness,
