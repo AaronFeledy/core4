@@ -17,6 +17,8 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="api" value="&quot;api&quot;: 4" display="api: 4 selects the v4 manifest schema" />
       <Variable name="requires" value="&quot;requires&quot;: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Scaffolded plugins ship the requires map already set to the supported core range so they pass the SDK contract out of the box" />
       <Variable name="recipePrompts" value="text|select|multiselect|confirm|number|secret|path|editor" display="Plugin and recipe authors should consume the SDK recipe schema so compatibility checks recognize the full prompt-type vocabulary, including editor" />
+      <Variable name="pathsService" value="PathsService" display="Embedding hosts and plugin tests should consume the SDK PathsService tag instead of re-deriving Lando root directories by hand" />
+      <Variable name="rootConfig" value="userConfRoot|userCacheRoot|userDataRoot|systemPluginRoot" display="GlobalConfig now carries the four root overrides that PathsService resolves in the same platform-aware order as core" />
     </Step>
   </Scenario>
 
