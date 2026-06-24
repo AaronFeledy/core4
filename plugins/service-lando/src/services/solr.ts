@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -32,7 +33,7 @@ const defaultCommand = (port: number, cores: readonly string[]): string[] => {
   ];
 };
 
-export const solr9ServiceType: ServiceTypeShape = {
+export const solr9ServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "solr:9",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -87,14 +88,14 @@ export const solr9ServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});
 
 /** Alias: `type: solr` resolves to the solr:9 image. */
-export const solrServiceType: ServiceTypeShape = {
+export const solrServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "solr",
   toServicePlan: (input) =>
-    solr9ServiceType.toServicePlan({
+    solr9ServiceType.__legacyToServicePlan({
       ...input,
       service: { ...input.service },
     }),
-};
+});

@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -81,81 +82,82 @@ const validateVersion = (
 
 const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
 
-const makePythonServiceType = (version: SupportedPythonVersion): ServiceTypeShape => ({
-  id: `python:${version}`,
-  toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-    const resolvedVersion = validateVersion(service.type, version);
-    const framework = validateFramework(service.framework);
-    const preset = FRAMEWORK_PRESETS[framework];
-    const appName = appNameFor(input);
-    const serviceType = `python:${resolvedVersion}`;
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType,
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      host,
-      extraDefaults: frameworkDefaults(framework),
-      userEnv: service.environment ?? {},
-    });
-    const endpointPort = service.port ?? preset.port;
+const makePythonServiceType = (version: SupportedPythonVersion): LegacyServiceType =>
+  defineLegacyServiceType({
+    id: `python:${version}`,
+    toServicePlan: (input) => {
+      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
+      const resolvedVersion = validateVersion(service.type, version);
+      const framework = validateFramework(service.framework);
+      const preset = FRAMEWORK_PRESETS[framework];
+      const appName = appNameFor(input);
+      const serviceType = `python:${resolvedVersion}`;
+      const environment = buildLandoEnv({
+        serviceName: name,
+        serviceType,
+        appName,
+        appPaths: { appRoot: "/app", projectMount: "/app" },
+        host,
+        extraDefaults: frameworkDefaults(framework),
+        userEnv: service.environment ?? {},
+      });
+      const endpointPort = service.port ?? preset.port;
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: serviceType,
-      provider,
-      primary: service.primary ?? primary ?? name === "web",
-      artifact: { kind: "ref", ref: service.image ?? `python:${resolvedVersion}-slim` },
-      command: service.command ?? [...DEFAULT_KEEP_ALIVE],
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: false,
-        excludes: ["__pycache__"],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
-        {
-          type: "bind",
-          source: appRoot,
+      return decodeServicePlan({
+        name: ServiceName.make(name),
+        type: serviceType,
+        provider,
+        primary: service.primary ?? primary ?? name === "web",
+        artifact: { kind: "ref", ref: service.image ?? `python:${resolvedVersion}-slim` },
+        command: service.command ?? [...DEFAULT_KEEP_ALIVE],
+        entrypoint: service.entrypoint,
+        environment,
+        user: service.user,
+        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
+        appMount: {
+          source: AbsolutePath.make(appRoot),
           target: APP_MOUNT_TARGET,
           readOnly: false,
+          excludes: ["__pycache__"],
+          includes: [],
           realization: "passthrough",
         },
-      ],
-      storage: [],
-      endpoints: [{ port: endpointPort, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {
-        "lando-service-python": {
-          framework,
-          version: resolvedVersion,
-          defaultCommand: preset.defaultCommand,
-          port: endpointPort,
+        mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [],
+        endpoints: [{ port: endpointPort, protocol: "http", name }],
+        routes: [],
+        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
+          service: ServiceName.make(dependency),
+          condition: "started",
+        })),
+        healthcheck: {
+          kind: "command",
+          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
+          intervalSeconds: 10,
+          timeoutSeconds: 5,
+          retries: 5,
+          startPeriodSeconds: 10,
         },
-      },
-    });
-  },
-});
+        hostAliases: [],
+        metadata,
+        extensions: {
+          "lando-service-python": {
+            framework,
+            version: resolvedVersion,
+            defaultCommand: preset.defaultCommand,
+            port: endpointPort,
+          },
+        },
+      });
+    },
+  });
 
-export const python312ServiceType: ServiceTypeShape = makePythonServiceType("3.12");
+export const python312ServiceType: LegacyServiceType = makePythonServiceType("3.12");

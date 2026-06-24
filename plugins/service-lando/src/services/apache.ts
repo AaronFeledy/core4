@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -8,7 +9,7 @@ const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
-export const apacheServiceType: ServiceTypeShape = {
+export const apacheServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "apache",
   toServicePlan: (input) => {
     const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
@@ -73,4 +74,4 @@ export const apacheServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

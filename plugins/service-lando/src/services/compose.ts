@@ -2,7 +2,8 @@ import { homedir } from "node:os";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -61,8 +62,9 @@ const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "u
   return { port, protocol };
 };
 
-export const composeServiceType: ServiceTypeShape = {
+export const composeServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "compose",
+  base: "l337",
   toServicePlan: (input) => {
     const {
       name,
@@ -190,4 +192,4 @@ export const composeServiceType: ServiceTypeShape = {
       extensions: service.providers ?? {},
     });
   },
-};
+});

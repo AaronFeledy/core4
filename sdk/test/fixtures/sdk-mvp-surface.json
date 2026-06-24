@@ -65,7 +65,7 @@
     "PluginRegistry": [
       "list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>",
       "load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>",
-      "loadServiceType: (id: string) => Effect.Effect<ServiceTypeShape, PluginLoadError | PluginManifestError>"
+      "loadServiceType: (id: string) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>"
     ],
     "ProcessRunner": [
       "run: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError>",

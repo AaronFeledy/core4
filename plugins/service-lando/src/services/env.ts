@@ -1,7 +1,8 @@
 import { basename } from "node:path";
-import type { ServiceTypeHostFacts, ServiceTypePlanInput } from "@lando/sdk/services";
+import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
+import type { LegacyServicePlanInput } from "./legacy.ts";
 
 const RESERVED_PREFIX = "LANDO" as const;
 const GLOBAL_APP_NAME = "global" as const;
@@ -34,7 +35,7 @@ export const slug = (input: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-export const appNameFor = (input: ServiceTypePlanInput): string => {
+export const appNameFor = (input: LegacyServicePlanInput): string => {
   if (input.appName !== undefined && input.appName.length > 0) return input.appName;
   return basename(input.appRoot) || "app";
 };

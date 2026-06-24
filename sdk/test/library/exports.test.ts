@@ -457,11 +457,10 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 
-  test("test entry point exports service contract helpers", async () => {
+  test("test entry point exports service composition contract helpers", async () => {
     const sdkTest = await import("@lando/sdk/test");
 
-    expect(sdkTest.runServiceContract).toBeDefined();
-    expect(sdkTest.runServiceContractMatrix).toBeDefined();
+    expect(sdkTest.runServiceCompositionContract).toBeDefined();
     expect(sdkTest.TestServiceType).toBeDefined();
   });
 

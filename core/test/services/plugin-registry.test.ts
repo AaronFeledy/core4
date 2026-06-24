@@ -227,7 +227,7 @@ describe("PluginRegistryLive", () => {
           "example:custom",
           {
             id: "example:custom",
-            toServicePlan: () => Effect.die("not needed"),
+            __legacyToServicePlan: () => Effect.die("not needed"),
           },
         ],
       ]),

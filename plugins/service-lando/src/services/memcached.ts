@@ -1,5 +1,6 @@
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -7,7 +8,7 @@ import { appNameFor, buildLandoEnv } from "./env.ts";
 const DEFAULT_IMAGE = "memcached:1.6";
 const DEFAULT_PORT = 11211;
 
-export const memcachedServiceType: ServiceTypeShape = {
+export const memcachedServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "memcached",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -55,4 +56,4 @@ export const memcachedServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

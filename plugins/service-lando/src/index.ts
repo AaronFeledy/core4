@@ -1,7 +1,7 @@
 import { type Effect, Layer, Schema } from "effect";
 
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceType } from "@lando/sdk/services";
 
 import mailpitGlobalService from "./global-services/mailpit.ts";
 import { apacheServiceType } from "./services/apache.ts";
@@ -57,7 +57,7 @@ export { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 export { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
 export { valkeyServiceType } from "./services/valkey.ts";
 
-export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<string, ServiceTypeShape>([
+export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, ServiceType>([
   ["apache", apacheServiceType],
   ["compose", composeServiceType],
   ["elasticsearch", elasticsearchServiceType],

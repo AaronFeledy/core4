@@ -41,7 +41,7 @@ describe("go ServiceType — supported versions and frameworks", () => {
 describe("go:1.22 ServiceType", () => {
   test("plans a default Go 1.22 web service with framework=none defaults", () => {
     const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -98,7 +98,7 @@ describe("go:1.22 ServiceType", () => {
 
   test("derives appName from appRoot basename when no explicit appName is provided", () => {
     const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/anotherapp",
@@ -113,7 +113,7 @@ describe("go:1.22 ServiceType", () => {
       type: "go:1.22",
       environment: { CGO_ENABLED: "1", FOO: "bar" },
     });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -132,7 +132,7 @@ describe("go:1.22 ServiceType", () => {
       image: "registry.example.com/golang:1.22-custom",
       port: 9090,
     });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -148,7 +148,7 @@ describe("go:1.22 ServiceType", () => {
 
   test("plan uses provider-neutral ServicePlan fields", () => {
     const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -166,7 +166,7 @@ describe("go:1.22 ServiceType", () => {
 
   test("default command keeps the container alive so `lando go ...` tooling can exec into it", () => {
     const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.toServicePlan({
+    const plan = go122ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -180,7 +180,7 @@ describe("go:1.22 ServiceType", () => {
   test("rejects framework values outside the supported set with remediation", () => {
     const service = decodeService({ type: "go:1.22", framework: "echo" });
     expect(() =>
-      go122ServiceType.toServicePlan({
+      go122ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -190,7 +190,7 @@ describe("go:1.22 ServiceType", () => {
     ).toThrow(/Unsupported Go framework "echo"\./);
 
     expect(() =>
-      go122ServiceType.toServicePlan({
+      go122ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -203,7 +203,7 @@ describe("go:1.22 ServiceType", () => {
   test("rejects unsupported Go versions with remediation", () => {
     const service = decodeService({ type: "go:1.20" });
     expect(() =>
-      go122ServiceType.toServicePlan({
+      go122ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -213,7 +213,7 @@ describe("go:1.22 ServiceType", () => {
     ).toThrow(/Unsupported Go version "1.20"\./);
 
     expect(() =>
-      go122ServiceType.toServicePlan({
+      go122ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -229,7 +229,7 @@ describe("go:1.22 ServiceType", () => {
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },
     });
     expect(() =>
-      go122ServiceType.toServicePlan({
+      go122ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -243,7 +243,7 @@ describe("go:1.22 ServiceType", () => {
 describe("go:1.23 ServiceType", () => {
   test("plans a default Go 1.23 web service", () => {
     const service = decodeService({ type: "go:1.23" });
-    const plan = go123ServiceType.toServicePlan({
+    const plan = go123ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -259,7 +259,7 @@ describe("go:1.23 ServiceType", () => {
   test("rejects unsupported Go versions through go:1.23 with full Go-family remediation", () => {
     const service = decodeService({ type: "go:1.21" });
     expect(() =>
-      go123ServiceType.toServicePlan({
+      go123ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,

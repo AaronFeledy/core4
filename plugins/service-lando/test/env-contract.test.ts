@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeHostFacts, ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceTypeHostFacts } from "@lando/sdk/services";
+
+import type { LegacyServiceType } from "../src/services/legacy.ts";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
@@ -40,7 +42,7 @@ const host: ServiceTypeHostFacts = {
 
 interface CatalogCase {
   readonly id: string;
-  readonly serviceType: ServiceTypeShape;
+  readonly serviceType: LegacyServiceType;
   readonly landofileService: Record<string, unknown>;
   readonly expectedType: string;
   readonly expectsAppPaths: boolean;
@@ -241,7 +243,7 @@ const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
   });
   const service = landofile.services?.[ServiceName.make(serviceName)];
   if (service === undefined) throw new Error(`${item.id} service missing from landofile fixture`);
-  return item.serviceType.toServicePlan({
+  return item.serviceType.__legacyToServicePlan({
     name: serviceName,
     service,
     appRoot: `/srv/apps/${appName}`,
@@ -310,7 +312,7 @@ describe("LANDO_* environment contract across catalog service families", () => {
       if (service === undefined) throw new Error("service missing");
 
       expect(() =>
-        item.serviceType.toServicePlan({
+        item.serviceType.__legacyToServicePlan({
           name: serviceName,
           service,
           appRoot: "/srv/apps/myapp",
@@ -336,7 +338,7 @@ describe("LANDO_* environment contract across catalog service families", () => {
       });
       const service = landofile.services?.[ServiceName.make(serviceName)];
       if (service === undefined) throw new Error("service missing");
-      const plan = item.serviceType.toServicePlan({
+      const plan = item.serviceType.__legacyToServicePlan({
         name: serviceName,
         service,
         appRoot: "/srv/apps/myapp",

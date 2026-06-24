@@ -19,7 +19,7 @@ const planSolrService = (serviceDefinition: Record<string, unknown>) => {
   const service = landofile.services?.[ServiceName.make("search")];
   if (service === undefined) throw new Error("search service missing");
 
-  return solr9ServiceType.toServicePlan({
+  return solr9ServiceType.__legacyToServicePlan({
     name: "search",
     service,
     appRoot: "/srv/apps/myapp",

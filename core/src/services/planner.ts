@@ -46,6 +46,7 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { legacyServicePlan } from "./legacy-service-plan.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -496,7 +497,7 @@ const planApp = (
 
       const rawPlan = yield* Effect.try({
         try: () =>
-          serviceType.toServicePlan({
+          legacyServicePlan(serviceType, {
             name,
             service,
             appRoot,

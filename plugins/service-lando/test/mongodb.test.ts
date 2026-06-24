@@ -20,7 +20,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -46,7 +46,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/otherapp",
@@ -74,7 +74,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -96,7 +96,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -121,7 +121,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -140,7 +140,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -166,7 +166,7 @@ describe("mongodb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mongodbServiceType.toServicePlan({
+    const plan = mongodbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -191,7 +191,7 @@ describe("mongodb ServiceType", () => {
     if (service === undefined) throw new Error("db service missing");
 
     expect(() =>
-      mongodbServiceType.toServicePlan({
+      mongodbServiceType.__legacyToServicePlan({
         name: "db",
         service,
         appRoot: "/srv/apps/myapp",

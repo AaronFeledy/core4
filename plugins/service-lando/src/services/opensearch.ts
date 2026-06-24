@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -16,7 +17,7 @@ export const OPENSEARCH_SERVICE_DESCRIPTION =
   "configuration is single-node with the security plugin disabled and is not " +
   "production-suitable.";
 
-export const opensearch2ServiceType: ServiceTypeShape = {
+export const opensearch2ServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "opensearch:2",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -77,13 +78,13 @@ export const opensearch2ServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});
 
-export const opensearchServiceType: ServiceTypeShape = {
+export const opensearchServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "opensearch",
   toServicePlan: (input) =>
-    opensearch2ServiceType.toServicePlan({
+    opensearch2ServiceType.__legacyToServicePlan({
       ...input,
       service: { ...input.service },
     }),
-};
+});

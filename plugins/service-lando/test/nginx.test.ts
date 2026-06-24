@@ -20,7 +20,7 @@ describe("nginx ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = nginxServiceType.toServicePlan({
+    const plan = nginxServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -51,7 +51,7 @@ describe("nginx ServiceType", () => {
     if (service === undefined) throw new Error("web service missing");
 
     expect(() =>
-      nginxServiceType.toServicePlan({
+      nginxServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: "/srv/apps/myapp",

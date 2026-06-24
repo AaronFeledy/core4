@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -61,83 +62,84 @@ const validateServer = (
   throw new Error(`Unsupported static server "${server}". ${REMEDIATION_SERVER(server)}`);
 };
 
-const makeStaticServiceType = (server: SupportedStaticServer): ServiceTypeShape => ({
-  id: server === "nginx" ? "static" : `static:${server}`,
-  toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-    const resolvedServer = validateServer(service.type, server);
-    const appName = appNameFor(input);
-    const serviceType = `static:${resolvedServer}`;
-    const rel = service.root != null ? service.root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
-    const docRoot = rel === "" ? "/app" : `/app/${rel}`;
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType,
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      webroot: docRoot,
-      host,
-      userEnv: service.environment ?? {},
-    });
-    const endpointPort = service.port ?? DEFAULT_PORT;
+const makeStaticServiceType = (server: SupportedStaticServer): LegacyServiceType =>
+  defineLegacyServiceType({
+    id: server === "nginx" ? "static" : `static:${server}`,
+    toServicePlan: (input) => {
+      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
+      const resolvedServer = validateServer(service.type, server);
+      const appName = appNameFor(input);
+      const serviceType = `static:${resolvedServer}`;
+      const rel = service.root != null ? service.root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
+      const docRoot = rel === "" ? "/app" : `/app/${rel}`;
+      const environment = buildLandoEnv({
+        serviceName: name,
+        serviceType,
+        appName,
+        appPaths: { appRoot: "/app", projectMount: "/app" },
+        webroot: docRoot,
+        host,
+        userEnv: service.environment ?? {},
+      });
+      const endpointPort = service.port ?? DEFAULT_PORT;
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: serviceType,
-      provider,
-      primary: service.primary ?? primary ?? name === "web",
-      artifact: {
-        kind: "ref",
-        ref: service.image ?? STATIC_SERVER_IMAGES[resolvedServer],
-      },
-      command: service.command ?? defaultStaticCommand(resolvedServer, docRoot, endpointPort),
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: true,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
-        {
-          type: "bind",
-          source: appRoot,
+      return decodeServicePlan({
+        name: ServiceName.make(name),
+        type: serviceType,
+        provider,
+        primary: service.primary ?? primary ?? name === "web",
+        artifact: {
+          kind: "ref",
+          ref: service.image ?? STATIC_SERVER_IMAGES[resolvedServer],
+        },
+        command: service.command ?? defaultStaticCommand(resolvedServer, docRoot, endpointPort),
+        entrypoint: service.entrypoint,
+        environment,
+        user: service.user,
+        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
+        appMount: {
+          source: AbsolutePath.make(appRoot),
           target: APP_MOUNT_TARGET,
           readOnly: true,
+          excludes: [],
+          includes: [],
           realization: "passthrough",
         },
-      ],
-      storage: [],
-      endpoints: [{ port: endpointPort, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["sh", "-c", `nc -z 127.0.0.1 ${endpointPort}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {
-        "lando-service-static": {
-          server: resolvedServer,
-          ...(service.root != null ? { root: service.root } : {}),
+        mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: true,
+            realization: "passthrough",
+          },
+        ],
+        storage: [],
+        endpoints: [{ port: endpointPort, protocol: "http", name }],
+        routes: [],
+        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
+          service: ServiceName.make(dependency),
+          condition: "started",
+        })),
+        healthcheck: {
+          kind: "command",
+          command: ["sh", "-c", `nc -z 127.0.0.1 ${endpointPort}`],
+          intervalSeconds: 10,
+          timeoutSeconds: 5,
+          retries: 5,
+          startPeriodSeconds: 10,
         },
-      },
-    });
-  },
-});
+        hostAliases: [],
+        metadata,
+        extensions: {
+          "lando-service-static": {
+            server: resolvedServer,
+            ...(service.root != null ? { root: service.root } : {}),
+          },
+        },
+      });
+    },
+  });
 
-export const staticNginxServiceType: ServiceTypeShape = makeStaticServiceType("nginx");
-export const staticCaddyServiceType: ServiceTypeShape = makeStaticServiceType("caddy");
+export const staticNginxServiceType: LegacyServiceType = makeStaticServiceType("nginx");
+export const staticCaddyServiceType: LegacyServiceType = makeStaticServiceType("caddy");

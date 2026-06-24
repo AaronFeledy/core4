@@ -23,7 +23,7 @@ const planMeiliService = (serviceDefinition: Record<string, unknown>) => {
   const service = landofile.services?.[ServiceName.make("search")];
   if (service === undefined) throw new Error("search service missing");
 
-  return meilisearch1ServiceType.toServicePlan({
+  return meilisearch1ServiceType.__legacyToServicePlan({
     name: "search",
     service,
     appRoot: "/srv/apps/myapp",

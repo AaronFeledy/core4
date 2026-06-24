@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -8,7 +9,7 @@ const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
 
-export const elasticsearch8ServiceType: ServiceTypeShape = {
+export const elasticsearch8ServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "elasticsearch:8",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -68,13 +69,13 @@ export const elasticsearch8ServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});
 
-export const elasticsearchServiceType: ServiceTypeShape = {
+export const elasticsearchServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "elasticsearch",
   toServicePlan: (input) =>
-    elasticsearch8ServiceType.toServicePlan({
+    elasticsearch8ServiceType.__legacyToServicePlan({
       ...input,
       service: { ...input.service },
     }),
-};
+});

@@ -2,67 +2,32 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
-import { type ProviderCapabilities, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
+import { ServiceTypeError } from "@lando/sdk/errors";
+import { ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import type { ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 import {
   ContractFailure,
+  type ServiceCompositionContractInput,
   TestServiceType,
-  runServiceContract,
-  runServiceContractMatrix,
+  runServiceCompositionContract,
 } from "@lando/sdk/test";
 
-const TEST_PROVIDER_CAPABILITIES: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
-  volumeSnapshot: "none",
-  serviceFileCopy: "none",
-  artifactExport: false,
-  artifactImport: false,
-  ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
-  composeSpec: "portable",
-  providerExtensions: [],
-};
+const baseInput = (
+  overrides?: Partial<ServiceCompositionContractInput>,
+): ServiceCompositionContractInput => ({
+  serviceType: TestServiceType,
+  landofileService: { type: "test" },
+  providerId: ProviderId.make("test"),
+  ...overrides,
+});
 
-const expectServiceContractFailure = async (
-  serviceType: ServiceTypeShape,
+const expectCompositionFailure = async (
+  serviceType: ServiceType,
   assertion: string,
-  overrides?: {
-    readonly landofileService?: Record<string, unknown>;
-    readonly expectations?: Parameters<typeof runServiceContract>[0]["expectations"];
-  },
+  overrides?: Partial<ServiceCompositionContractInput>,
 ): Promise<void> => {
   const result = await Effect.runPromiseExit(
-    runServiceContract({
-      serviceType,
-      landofileService: overrides?.landofileService ?? { type: serviceType.id },
-      providerId: ProviderId.make("test"),
-      providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-      platform: "linux",
-      expectations: overrides?.expectations ?? {
-        type: serviceType.id,
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "tcp", port: 8080 },
-        defaultCredentialEnvKeys: [],
-      },
-    }),
+    runServiceCompositionContract(baseInput({ serviceType, ...overrides })),
   );
 
   expect(result._tag).toBe("Failure");
@@ -74,416 +39,126 @@ const expectServiceContractFailure = async (
   expect(result.cause.error.assertion).toBe(assertion);
 };
 
-describe("runServiceContract", () => {
+describe("runServiceCompositionContract", () => {
   test("is exported as an Effect-returning contract helper", () => {
-    expect(typeof runServiceContract).toBe("function");
+    expect(typeof runServiceCompositionContract).toBe("function");
   });
 
-  test("TestServiceType passes the contract suite", async () => {
-    const contract = runServiceContract({
-      serviceType: TestServiceType,
-      landofileService: { type: "test" },
-      providerId: ProviderId.make("test"),
-      providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-      platform: "linux",
-      expectations: {
-        type: "test",
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "tcp", port: 8080 },
-        defaultCredentialEnvKeys: [],
-      },
-    });
-
+  test("TestServiceType passes the composition contract suite", async () => {
+    const contract = runServiceCompositionContract(baseInput());
     expect(Effect.isEffect(contract)).toBe(true);
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
   });
 
-  test("fails with ContractFailure when service type id is empty", async () => {
-    await expectServiceContractFailure({ ...TestServiceType, id: "" }, "service type exposes a non-empty id");
+  test("fails with ContractFailure when the service type id is empty", async () => {
+    await expectCompositionFailure({ ...TestServiceType, id: "" }, "service type exposes a non-empty id");
   });
 
-  test("fails with ContractFailure when toServicePlan is not callable", async () => {
-    const malformed = {
+  test("fails with ContractFailure when the service type name is empty", async () => {
+    await expectCompositionFailure({ ...TestServiceType, name: "" }, "service type exposes a non-empty name");
+  });
+
+  test("fails with ContractFailure when base is neither l337 nor lando", async () => {
+    await expectCompositionFailure(
+      { ...TestServiceType, base: "unknown" as ServiceType["base"] },
+      "service type declares a base of l337 or lando",
+    );
+  });
+
+  test("fails with ContractFailure when resolve is not callable", async () => {
+    await expectCompositionFailure(
+      { ...TestServiceType, resolve: undefined as unknown as ServiceType["resolve"] },
+      "service type resolve is callable",
+    );
+  });
+
+  test("accepts an l337-base service type", async () => {
+    const l337Type: ServiceType = {
       ...TestServiceType,
-      toServicePlan: undefined as unknown as ServiceTypeShape["toServicePlan"],
+      base: "l337",
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({ base: "l337", normalizedConfig: input.service, features: [] }),
     };
-    await expectServiceContractFailure(malformed, "service type toServicePlan is callable");
+    await expect(
+      Effect.runPromise(runServiceCompositionContract(baseInput({ serviceType: l337Type }))),
+    ).resolves.toBeUndefined();
   });
 
-  test("fails with ContractFailure when plan does not decode through the ServicePlan schema", async () => {
-    const broken: ServiceTypeShape = {
-      id: "test",
-      toServicePlan: (_input) =>
-        ({ name: "web" }) as unknown as ReturnType<ServiceTypeShape["toServicePlan"]>,
+  test("fails with ContractFailure when the resolved base does not match the service type", async () => {
+    const mismatchedBase: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({
+          base: "l337",
+          normalizedConfig: input.service,
+          features: [],
+        } satisfies ServiceTypeResolution),
     };
-    await expectServiceContractFailure(broken, "service plan decodes through the ServicePlan schema");
+    await expectCompositionFailure(mismatchedBase, "resolution base matches the declared service type base");
   });
 
-  test("fails with ContractFailure when plan.type does not match expected", async () => {
-    await expectServiceContractFailure(TestServiceType, "service plan type matches expectations", {
-      expectations: {
-        type: "not-test",
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "tcp", port: 8080 },
-        defaultCredentialEnvKeys: [],
+  test("fails with ContractFailure when resolve returns a hand-built ServicePlan shape", async () => {
+    const planLike: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed(
+          Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(input.name),
+            type: "test",
+            provider: input.provider ?? ProviderId.make("test"),
+            primary: false,
+            artifact: { kind: "ref", ref: "alpine:3.20" },
+            environment: {},
+            mounts: [],
+            storage: [],
+            endpoints: [{ port: 8080, protocol: "tcp", name: input.name }],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata: input.metadata,
+            extensions: {},
+          }) as unknown as ServiceTypeResolution,
+        ),
+    };
+    await expectCompositionFailure(planLike, "resolve returns a resolution, not a hand-built ServicePlan");
+  });
+
+  test("fails with ContractFailure when a resolved feature declares an empty id", async () => {
+    const badFeature: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({
+          base: "lando",
+          normalizedConfig: input.service,
+          features: [{ id: "" }],
+        } satisfies ServiceTypeResolution),
+    };
+    await expectCompositionFailure(badFeature, "resolution feature declares a non-empty id");
+  });
+
+  test("fails with ContractFailure when resolve fails", async () => {
+    const failing: ServiceType = {
+      ...TestServiceType,
+      resolve: () => Effect.fail(new ServiceTypeError({ message: "boom", serviceType: "test" })),
+    };
+    await expectCompositionFailure(failing, "service type resolve succeeds");
+  });
+
+  test("fails with ContractFailure when the resolved feature list is unstable across replays", async () => {
+    let call = 0;
+    const unstable: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) => {
+        call += 1;
+        return Effect.succeed({
+          base: "lando",
+          normalizedConfig: input.service,
+          features: call === 1 ? [{ id: "first" }] : [{ id: "second" }],
+        } satisfies ServiceTypeResolution);
       },
-    });
+    };
+    await expectCompositionFailure(unstable, "resolution feature list is stable across replays");
   });
-
-  test("fails with ContractFailure when plan.provider does not match providerId", async () => {
-    const wrongProvider = makeMutatedServiceType((plan) => ({
-      ...plan,
-      provider: ProviderId.make("different"),
-    }));
-    await expectServiceContractFailure(wrongProvider, "service plan provider matches the requested provider");
-  });
-
-  test("fails with ContractFailure when provider capabilities do not support endpoints", async () => {
-    const result = await Effect.runPromiseExit(
-      runServiceContract({
-        serviceType: TestServiceType,
-        landofileService: { type: "test" },
-        providerId: ProviderId.make("test"),
-        providerCapabilities: { ...TEST_PROVIDER_CAPABILITIES, hostPortPublish: "none" },
-        platform: "linux",
-        expectations: {
-          type: "test",
-          endpoints: [{ port: 8080, protocol: "tcp" }],
-          healthcheck: { kind: "tcp", port: 8080 },
-          defaultCredentialEnvKeys: [],
-        },
-      }),
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag !== "Failure") return;
-    expect(result.cause._tag).toBe("Fail");
-    if (result.cause._tag !== "Fail") return;
-    expect(result.cause.error.assertion).toBe(
-      "service plan endpoint publishing is supported by provider capabilities",
-    );
-  });
-
-  test("fails with ContractFailure when no endpoints are emitted", async () => {
-    const withoutEndpoints = makeMutatedServiceType((plan) => ({ ...plan, endpoints: [] }));
-    await expectServiceContractFailure(withoutEndpoints, "service plan emits at least one endpoint");
-  });
-
-  test("fails with ContractFailure when emitted endpoint port does not match expected", async () => {
-    await expectServiceContractFailure(TestServiceType, "service plan emits expected endpoint ports", {
-      expectations: {
-        type: "test",
-        endpoints: [{ port: 9999, protocol: "tcp" }],
-        healthcheck: { kind: "tcp", port: 8080 },
-        defaultCredentialEnvKeys: [],
-      },
-    });
-  });
-
-  test("fails with ContractFailure when healthcheck is missing", async () => {
-    const withoutHealthcheck = makeMutatedServiceType((plan) => {
-      const { healthcheck: _omitted, ...rest } = plan;
-      return rest as ServicePlan;
-    });
-    await expectServiceContractFailure(withoutHealthcheck, "service plan declares a healthcheck");
-  });
-
-  test("fails with ContractFailure when healthcheck does not contain the expected probe path", async () => {
-    await expectServiceContractFailure(TestServiceType, "service plan healthcheck matches expected probe", {
-      expectations: {
-        type: "test",
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "http", path: "/health" },
-        defaultCredentialEnvKeys: [],
-      },
-    });
-  });
-
-  test("fails with ContractFailure when TCP command healthcheck only contains the expected port as a substring", async () => {
-    await expectServiceContractFailure(TestServiceType, "service plan healthcheck matches expected probe", {
-      expectations: {
-        type: "test",
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "tcp", port: 80 },
-        defaultCredentialEnvKeys: [],
-      },
-    });
-  });
-
-  test("fails with ContractFailure when HTTP command healthcheck only contains the expected port as a substring", async () => {
-    const withHttpCommand = makeMutatedServiceType((plan) => ({
-      ...plan,
-      healthcheck: {
-        kind: "command",
-        command: ["sh", "-c", "curl -sf http://localhost:8080/health"],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-    }));
-    await expectServiceContractFailure(withHttpCommand, "service plan healthcheck matches expected probe", {
-      expectations: {
-        type: "test",
-        endpoints: [{ port: 8080, protocol: "tcp" }],
-        healthcheck: { kind: "http", port: 80, path: "/health" },
-        defaultCredentialEnvKeys: [],
-      },
-    });
-  });
-
-  test("fails with ContractFailure when a required LANDO_* identity key is missing", async () => {
-    const withoutLandoEnv = makeMutatedServiceType((plan) => {
-      const { LANDO_SERVICE_TYPE: _omitted, ...rest } = plan.environment;
-      return { ...plan, environment: rest };
-    });
-    await expectServiceContractFailure(
-      withoutLandoEnv,
-      "service plan environment contains the LANDO_* identity keys",
-    );
-  });
-
-  test("fails with ContractFailure when a declared default-credential env key is missing", async () => {
-    await expectServiceContractFailure(
-      TestServiceType,
-      "service plan environment defines declared default-credential env keys",
-      {
-        expectations: {
-          type: "test",
-          endpoints: [{ port: 8080, protocol: "tcp" }],
-          healthcheck: { kind: "tcp", port: 8080 },
-          defaultCredentialEnvKeys: ["TEST_PASSWORD"],
-        },
-      },
-    );
-  });
-
-  test("fails with ContractFailure when default-credential plaintext leaks into command argv", async () => {
-    const withLeakedCred = makeMutatedServiceType((plan) => ({
-      ...plan,
-      command: ["sh", "-c", "echo lando-secret-leak | tee /dev/null"],
-      environment: { ...plan.environment, TEST_PASSWORD: "lando-secret-leak" },
-    }));
-    const result = await Effect.runPromiseExit(
-      runServiceContract({
-        serviceType: withLeakedCred,
-        landofileService: { type: "test" },
-        providerId: ProviderId.make("test"),
-        providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-        platform: "linux",
-        expectations: {
-          type: "test",
-          endpoints: [{ port: 8080, protocol: "tcp" }],
-          healthcheck: { kind: "tcp", port: 8080 },
-          defaultCredentialEnvKeys: ["TEST_PASSWORD"],
-          defaultCredentialSecretEnvKeys: ["TEST_PASSWORD"],
-        },
-      }),
-    );
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag !== "Failure") return;
-    expect(result.cause._tag).toBe("Fail");
-    if (result.cause._tag !== "Fail") return;
-    expect(result.cause.error.assertion).toBe(
-      "service plan default-credential values are not leaked into argv",
-    );
-    expect(JSON.stringify(result.cause.error.details)).not.toContain("lando-secret-leak");
-    expect(JSON.stringify(result.cause.error.details)).toContain("[redacted]");
-  });
-});
-
-describe("runServiceContractMatrix", () => {
-  test("is exported as an Effect-returning matrix runner", () => {
-    expect(typeof runServiceContractMatrix).toBe("function");
-  });
-
-  test("runs supported cells and reports skipped cells with reason", async () => {
-    const report = await Effect.runPromise(
-      runServiceContractMatrix({
-        serviceTypeId: "test",
-        cells: [
-          {
-            providerId: ProviderId.make("test"),
-            platform: "linux",
-            supported: true,
-            factory: () => ({
-              serviceType: TestServiceType,
-              landofileService: { type: "test" },
-              providerId: ProviderId.make("test"),
-              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-              platform: "linux",
-              expectations: {
-                type: "test",
-                endpoints: [{ port: 8080, protocol: "tcp" }],
-                healthcheck: { kind: "tcp", port: 8080 },
-                defaultCredentialEnvKeys: [],
-              },
-            }),
-          },
-          {
-            providerId: ProviderId.make("test"),
-            platform: "darwin",
-            supported: false,
-            skipReason: "not supported on darwin in this fixture",
-          },
-          {
-            providerId: ProviderId.make("test"),
-            platform: "win32",
-            supported: false,
-            skipReason: "not supported on win32 in this fixture",
-          },
-          {
-            providerId: ProviderId.make("test"),
-            platform: "wsl",
-            supported: false,
-            skipReason: "not supported on wsl in this fixture",
-          },
-        ],
-      }),
-    );
-
-    expect(report.serviceTypeId).toBe("test");
-    expect(report.results).toHaveLength(4);
-    expect(report.results[0]).toMatchObject({ providerId: "test", platform: "linux", outcome: "passed" });
-    expect(report.results[1]).toMatchObject({
-      providerId: "test",
-      platform: "darwin",
-      outcome: "skipped",
-      reason: "not supported on darwin in this fixture",
-    });
-  });
-
-  test("requires every canonical host platform to be declared per provider", async () => {
-    const exit = await Effect.runPromiseExit(
-      runServiceContractMatrix({
-        serviceTypeId: "test",
-        cells: [
-          {
-            providerId: ProviderId.make("test"),
-            platform: "linux",
-            supported: true,
-            factory: () => ({
-              serviceType: TestServiceType,
-              landofileService: { type: "test" },
-              providerId: ProviderId.make("test"),
-              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-              platform: "linux",
-              expectations: {
-                type: "test",
-                endpoints: [{ port: 8080, protocol: "tcp" }],
-                healthcheck: { kind: "tcp", port: 8080 },
-                defaultCredentialEnvKeys: [],
-              },
-            }),
-          },
-          { providerId: ProviderId.make("test"), platform: "darwin", supported: false, skipReason: "n/a" },
-          { providerId: ProviderId.make("test"), platform: "win32", supported: false, skipReason: "n/a" },
-        ],
-      }),
-    );
-
-    expect(exit._tag).toBe("Failure");
-    if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe(
-      "service contract matrix declares every canonical host platform per provider",
-    );
-  });
-
-  test("requires supported factory provider and platform to match the cell", async () => {
-    const exit = await Effect.runPromiseExit(
-      runServiceContractMatrix({
-        serviceTypeId: "test",
-        cells: [
-          {
-            providerId: ProviderId.make("test"),
-            platform: "linux",
-            supported: true,
-            factory: () => ({
-              serviceType: TestServiceType,
-              landofileService: { type: "test" },
-              providerId: ProviderId.make("test"),
-              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-              platform: "darwin",
-              expectations: {
-                type: "test",
-                endpoints: [{ port: 8080, protocol: "tcp" }],
-                healthcheck: { kind: "tcp", port: 8080 },
-                defaultCredentialEnvKeys: [],
-              },
-            }),
-          },
-          { providerId: ProviderId.make("test"), platform: "darwin", supported: false, skipReason: "n/a" },
-          { providerId: ProviderId.make("test"), platform: "win32", supported: false, skipReason: "n/a" },
-          { providerId: ProviderId.make("test"), platform: "wsl", supported: false, skipReason: "n/a" },
-        ],
-      }),
-    );
-
-    expect(exit._tag).toBe("Failure");
-    if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error.assertion).toBe("service contract matrix factory platform matches cell platform");
-  });
-
-  test("requires an unsupported cell to provide a skip reason", async () => {
-    const exit = await Effect.runPromiseExit(
-      runServiceContractMatrix({
-        serviceTypeId: "test",
-        cells: [
-          {
-            providerId: ProviderId.make("test"),
-            platform: "linux",
-            supported: true,
-            factory: () => ({
-              serviceType: TestServiceType,
-              landofileService: { type: "test" },
-              providerId: ProviderId.make("test"),
-              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
-              platform: "linux",
-              expectations: {
-                type: "test",
-                endpoints: [{ port: 8080, protocol: "tcp" }],
-                healthcheck: { kind: "tcp", port: 8080 },
-                defaultCredentialEnvKeys: [],
-              },
-            }),
-          },
-          {
-            providerId: ProviderId.make("test"),
-            platform: "darwin",
-            supported: false,
-          } as unknown as Parameters<typeof runServiceContractMatrix>[0]["cells"][number],
-          { providerId: ProviderId.make("test"), platform: "win32", supported: false, skipReason: "n/a" },
-          { providerId: ProviderId.make("test"), platform: "wsl", supported: false, skipReason: "n/a" },
-        ],
-      }),
-    );
-
-    expect(exit._tag).toBe("Failure");
-    if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe(
-      "unsupported service contract matrix cell declares a skip reason",
-    );
-  });
-});
-
-const makeMutatedServiceType = (
-  mutate: (plan: ServicePlan) => ServicePlan | Record<string, unknown>,
-): ServiceTypeShape => ({
-  id: "test",
-  toServicePlan: (input: ServiceTypePlanInput) => {
-    const original = TestServiceType.toServicePlan(input);
-    return mutate(original) as ServicePlan;
-  },
 });
 
 void Schema;
-void ServiceName;

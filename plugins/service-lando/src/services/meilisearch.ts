@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -22,7 +23,7 @@ export const MEILISEARCH_DEFAULT_MASTER_KEY = "lando" as const;
 
 export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
 
-export const meilisearch1ServiceType: ServiceTypeShape = {
+export const meilisearch1ServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "meilisearch:1",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -82,14 +83,14 @@ export const meilisearch1ServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});
 
 /** Alias: `type: meilisearch` resolves to the meilisearch:1 image line. */
-export const meilisearchServiceType: ServiceTypeShape = {
+export const meilisearchServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "meilisearch",
   toServicePlan: (input) =>
-    meilisearch1ServiceType.toServicePlan({
+    meilisearch1ServiceType.__legacyToServicePlan({
       ...input,
       service: { ...input.service },
     }),
-};
+});

@@ -58,7 +58,7 @@ describe("solr service type — live integration: system info endpoint", () => {
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = solr9ServiceType.toServicePlan({
+        const search = solr9ServiceType.__legacyToServicePlan({
           name: "search",
           service,
           appRoot: appRootStr,

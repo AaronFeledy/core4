@@ -20,7 +20,7 @@ describe("mysql ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mysqlServiceType.toServicePlan({
+    const plan = mysqlServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -56,7 +56,7 @@ describe("mysql ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mysqlServiceType.toServicePlan({
+    const plan = mysqlServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
