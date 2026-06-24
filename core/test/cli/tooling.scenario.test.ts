@@ -207,6 +207,7 @@ const emptyPluginRegistry = Layer.succeed(PluginRegistry, {
   list: Effect.succeed([]),
   load: () => Effect.die("not used"),
   loadServiceType: () => Effect.die("not used"),
+  loadServiceFeature: () => Effect.die("not used"),
 });
 
 const withTempToolingApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
@@ -540,6 +541,7 @@ describe("runTooling — CLI rendering", () => {
           list: Effect.fail(new Error("plugin registry unavailable")),
           load: () => Effect.die("not used"),
           loadServiceType: () => Effect.die("not used"),
+          loadServiceFeature: () => Effect.die("not used"),
         }),
         CacheServiceLive,
       );

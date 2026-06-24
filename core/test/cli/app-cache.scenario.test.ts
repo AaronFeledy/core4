@@ -122,6 +122,7 @@ describe("lando app:cache:refresh", () => {
             list: Effect.succeed([]),
             load: () => Effect.die("plugin load must not run"),
             loadServiceType: () => Effect.die("service type load must not run"),
+            loadServiceFeature: () => Effect.die("service feature load must not run"),
           }),
           Layer.succeed(RuntimeProviderRegistry, {
             list: Effect.succeed([providerId]),
@@ -190,6 +191,7 @@ describe("lando app:cache:refresh", () => {
             list: Effect.succeed([]),
             load: () => Effect.die("plugin load must not run"),
             loadServiceType: () => Effect.die("service type load must not run"),
+            loadServiceFeature: () => Effect.die("service feature load must not run"),
           }),
           Layer.succeed(RuntimeProviderRegistry, {
             list: Effect.succeed([providerId]),

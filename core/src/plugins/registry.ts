@@ -352,6 +352,32 @@ const makePluginRegistry = (
         }),
       );
     },
+    loadServiceFeature: (id) => {
+      if (discovery.bundled === false) {
+        return Effect.fail(
+          new PluginLoadError({
+            message: `Bundled service feature ${id} is not registered.`,
+            pluginName: "@lando/core",
+          }),
+        );
+      }
+
+      for (const bundledPlugin of BUNDLED_PLUGINS) {
+        if (disabled.has(bundledPlugin.manifest.name)) continue;
+        const serviceFeature = bundledPlugin.serviceFeatures?.get(id);
+
+        if (serviceFeature !== undefined) {
+          return Effect.succeed(serviceFeature);
+        }
+      }
+
+      return Effect.fail(
+        new PluginLoadError({
+          message: `Bundled service feature ${id} is not registered.`,
+          pluginName: "@lando/core",
+        }),
+      );
+    },
   };
 };
 

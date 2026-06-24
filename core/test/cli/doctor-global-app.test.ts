@@ -35,6 +35,7 @@ const pluginRegistryLayer = Layer.succeed(PluginRegistry, {
   list: Effect.succeed([]),
   load: () => Effect.die("unused"),
   loadServiceType: () => Effect.die("unused"),
+  loadServiceFeature: () => Effect.die("unused"),
 } satisfies typeof PluginRegistry.Service);
 
 const unreadableFileSystemLayer = Layer.succeed(FileSystem, {
