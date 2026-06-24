@@ -83,7 +83,7 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 
 **Acceptance Criteria:**
 
-- [ ] `core/src/services/base/lando.ts` seeds the default `lando.*` feature stack (the §6.11 priority list) and the `lando.env` env baseline; `core/src/services/base/l337.ts` seeds only artifact/build fields + Compose/user-authored environment and **no** `lando.*` feature, env layer, app mount, or `/etc/lando` scaffolding.
+- [ ] `core/src/services/base/lando.ts` seeds the default `lando.*` feature stack (the §6.11 priority list, including `lando.env`) — the `LANDO_*` / `/etc/lando` env layer itself is materialized by the `lando.env` feature at stage 3, not injected at seed time; `core/src/services/base/l337.ts` seeds only artifact/build fields + the user/Compose-authored `environment:` and **no** `lando.*` feature, env layer, app mount, or `/etc/lando` scaffolding.
 - [ ] `@lando/service-lando` ships the built-in feature modules required by the migrated catalog — at minimum `lando.env`, `lando.app-mount`, `lando.healthcheck`, `lando.storage`, `lando.user-id`, and `lando.user` — each a `ServiceFeatureDefinition` at its §6.11 priority.
 - [ ] `buildLandoEnv` (the env-layer helper) is moved into the `lando.env` feature body and is no longer exported for direct use by service types; the `lando` base obtains `LANDO_*` identity env only via `lando.env`.
 - [ ] A `lando`-base composition carries the §6.9 `LANDO_*` identity env; an `l337`-base composition carries only Compose-level / user-authored env (asserted by a focused unit test for each base).
