@@ -1,7 +1,7 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Either, Schema } from "effect";
 
 import { TunnelTargetUnresolvedError } from "@lando/sdk/errors";
-import type { DownloadRequest, TunnelSession, TunnelTarget } from "@lando/sdk/schema";
+import { type DownloadRequest, type TunnelSession, TunnelTarget } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent, TunnelServiceShape } from "@lando/sdk/services";
 import type {
@@ -33,7 +33,7 @@ const targetSummary = (target: TunnelTarget): string => {
 };
 
 const supportedTarget = (target: TunnelTarget): boolean =>
-  target._tag === "route" || target._tag === "service" || target.url.startsWith("http://127.0.0.1:");
+  Either.isRight(Schema.decodeUnknownEither(TunnelTarget)(target));
 
 export interface TestTunnelServiceHandle {
   readonly service: TunnelServiceShape;

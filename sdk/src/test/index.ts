@@ -70,6 +70,7 @@ import {
   ServiceName,
   ServicePlan,
   type StorageScope,
+  type TunnelSession,
   type TunnelTarget,
   type VolumeInfo,
   type VolumeRef,
@@ -3704,8 +3705,10 @@ export const runTunnelServiceContract = (
 
     yield* requireTunnelContract(service.id.length > 0, "TunnelService declares a non-empty id", service.id);
     yield* requireTunnelContract(
-      service.capabilities.ephemeralUrls === true && service.capabilities.detached === true,
-      "TunnelService declares public URL and detached capabilities honestly",
+      typeof service.capabilities.ephemeralUrls === "boolean" &&
+        typeof service.capabilities.detached === "boolean" &&
+        typeof service.capabilities.connectorBinary === "boolean",
+      "TunnelService declares capability flags honestly",
       service.capabilities,
     );
 
@@ -3746,32 +3749,62 @@ export const runTunnelServiceContract = (
       { egressAfterStart, toolsAfterStart, probesAfterStart, finalizersAfterStart },
     );
 
-    const detached = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target, detached: true })).pipe(
-      Effect.mapError(mapTunnelFailure("detached start resolves")),
-    );
-    yield* requireTunnelContract(
-      detached.detached === true,
-      "detached start returns a detached session",
-      detached,
-    );
     const status = yield* service
-      .status({ sessionId: detached.id })
-      .pipe(Effect.mapError(mapTunnelFailure("status resolves for a detached session")));
+      .status({ sessionId: session.id })
+      .pipe(Effect.mapError(mapTunnelFailure("status resolves for a started session")));
     const listed = yield* service
       .list({ app: TEST_APP_ID })
       .pipe(Effect.mapError(mapTunnelFailure("list resolves for an app filter")));
     yield* requireTunnelContract(
-      status === "ready" && listed.some((entry) => entry.id === detached.id),
-      "status/list reconcile detached session state",
+      status === "ready" && listed.some((entry) => entry.id === session.id),
+      "status/list report a started session",
       { status, listed },
     );
     yield* service
-      .stop({ sessionId: detached.id })
-      .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a detached session")));
+      .stop({ sessionId: session.id })
+      .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a started session")));
     const stopped = yield* service
-      .status({ sessionId: detached.id })
+      .status({ sessionId: session.id })
       .pipe(Effect.mapError(mapTunnelFailure("status resolves after stop")));
     yield* requireTunnelContract(stopped === "stopped", "stop updates session status to stopped", stopped);
+
+    let detached: TunnelSession | undefined;
+    if (service.capabilities.detached) {
+      detached = yield* Effect.scoped(service.start({ app: TEST_APP_ID, target, detached: true })).pipe(
+        Effect.mapError(mapTunnelFailure("detached start resolves when advertised")),
+      );
+    }
+    if (detached !== undefined) {
+      yield* requireTunnelContract(
+        detached.detached === true,
+        "detached start returns a detached session when advertised",
+        detached,
+      );
+    }
+    if (detached !== undefined) {
+      const detachedStatus = yield* service
+        .status({ sessionId: detached.id })
+        .pipe(Effect.mapError(mapTunnelFailure("status resolves for a detached session")));
+      const detachedListed = yield* service
+        .list({ app: TEST_APP_ID })
+        .pipe(Effect.mapError(mapTunnelFailure("list resolves for a detached session")));
+      yield* requireTunnelContract(
+        detachedStatus === "ready" && detachedListed.some((entry) => entry.id === detached.id),
+        "status/list reconcile detached session state when advertised",
+        { status: detachedStatus, listed: detachedListed },
+      );
+      yield* service
+        .stop({ sessionId: detached.id })
+        .pipe(Effect.mapError(mapTunnelFailure("stop resolves for a detached session")));
+      const detachedStopped = yield* service
+        .status({ sessionId: detached.id })
+        .pipe(Effect.mapError(mapTunnelFailure("status resolves after detached stop")));
+      yield* requireTunnelContract(
+        detachedStopped === "stopped",
+        "detached stop updates session status to stopped when advertised",
+        detachedStopped,
+      );
+    }
 
     const finalizersBeforeInterrupt = (yield* harness.observations.finalizers()).length;
     const fiber = yield* Effect.fork(Effect.scoped(service.start({ app: TEST_APP_ID, target })));
@@ -3784,15 +3817,17 @@ export const runTunnelServiceContract = (
     );
 
     const detachedRecords = yield* harness.observations.detachedState();
-    yield* requireTunnelContract(
-      detachedRecords.some((record) => record.operation === "record" && record.sessionId === detached.id) &&
-        detachedRecords.some(
-          (record) => record.operation === "reconcile" && record.sessionId === detached.id,
-        ) &&
-        detachedRecords.some((record) => record.operation === "remove" && record.sessionId === detached.id),
-      "detached sessions record, reconcile, and remove StateStore-backed state",
-      detachedRecords,
-    );
+    if (detached !== undefined) {
+      yield* requireTunnelContract(
+        detachedRecords.some((record) => record.operation === "record" && record.sessionId === detached.id) &&
+          detachedRecords.some(
+            (record) => record.operation === "reconcile" && record.sessionId === detached.id,
+          ) &&
+          detachedRecords.some((record) => record.operation === "remove" && record.sessionId === detached.id),
+        "detached sessions record, reconcile, and remove StateStore-backed state when advertised",
+        detachedRecords,
+      );
+    }
 
     const events = yield* harness.events();
     yield* requireTunnelContract(

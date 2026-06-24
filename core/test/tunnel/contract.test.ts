@@ -35,4 +35,26 @@ describe("TunnelService contract suite", () => {
     const result = await run(runTunnelServiceContract(harness));
     expect(result).toBeUndefined();
   });
+
+  test("the contract does not require optional detached or ephemeral URL capabilities", async () => {
+    const testService = makeTestTunnelService().pipe(Effect.runSync);
+    const harness: TunnelServiceContractHarness = {
+      name: "foreground-only TestTunnelService",
+      service: {
+        ...testService.service,
+        capabilities: {
+          ...testService.service.capabilities,
+          detached: false,
+          ephemeralUrls: false,
+          stableUrls: true,
+        },
+      },
+      unsupportedTarget: testService.unsupportedTarget,
+      observations: testService.observations,
+      events: () => Effect.sync(() => testService.events()),
+    };
+
+    const result = await run(runTunnelServiceContract(harness));
+    expect(result).toBeUndefined();
+  });
 });
