@@ -27,58 +27,15 @@ import { readFileSync } from "node:fs";
 import { join as hostJoin } from "node:path";
 
 import type { HostPlatform } from "@lando/sdk/schema";
+// Type-only: keeps `effect` off the level-`none` cold-start fast path. The
+// canonical shapes live in `@lando/sdk/services`; this module owns only the
+// runtime resolvers and re-exports the types for `@lando/core/paths` consumers.
+import type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
 import { parseMinimalYaml } from "./yaml-min.ts";
 
-/** The four roots Lando resolves. */
-export interface LandoRoots {
-  readonly userConfRoot: string;
-  readonly userCacheRoot: string;
-  readonly userDataRoot: string;
-  readonly systemPluginRoot: string;
-}
-
-/**
- * Per-root overrides plus deterministic `platform`/`env`/`home` injection for
- * testing and host isolation. Every field is optional; omitted fields
- * fall through to env → config.yml → platform default.
- */
-export interface RootOverrides {
-  readonly userConfRoot?: string;
-  readonly userCacheRoot?: string;
-  readonly userDataRoot?: string;
-  readonly systemPluginRoot?: string;
-  readonly platform?: string;
-  readonly env?: Record<string, string | undefined>;
-  readonly home?: string;
-}
-
-/** Resolved roots, the active platform, and builders for every derived path. */
-export interface LandoPaths {
-  readonly roots: LandoRoots;
-  readonly platform: HostPlatform;
-  // userData-scoped
-  readonly pluginsDir: string;
-  readonly appPluginsDir: (appId: string) => string;
-  readonly pluginAuthFile: string;
-  readonly binDir: string;
-  readonly keysDir: string;
-  readonly certsDir: string;
-  readonly runtimeDir: string;
-  readonly globalAppRoot: string;
-  // userCache-scoped
-  readonly logsDir: string;
-  readonly scratchDir: string;
-  readonly scratchRegistryFile: string;
-  readonly appCacheDir: (appName: string, appRoot: string) => string;
-  readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
-  readonly fileSyncSessionsDir: string;
-  // userConf-scoped
-  readonly configFile: string;
-  readonly configDir: string;
-  readonly globalConfigFile: string;
-}
+export type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
 
 // --- platform resolution -----------------------------------------------------
 
