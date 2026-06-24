@@ -370,6 +370,7 @@
 - `ManagedFileService`
 - `RemoteSource`
 - `Dataset`
+- `PathsService`
 - `TunnelService`
 - `PluginSource`
 - `PluginTrustStore`

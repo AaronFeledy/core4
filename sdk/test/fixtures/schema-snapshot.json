@@ -6889,6 +6889,9 @@
         "renderer": {
           "type": "string"
         },
+        "systemPluginRoot": {
+          "type": "string"
+        },
         "telemetry": {
           "additionalProperties": false,
           "properties": {
@@ -6898,6 +6901,9 @@
           },
           "required": [],
           "type": "object"
+        },
+        "userCacheRoot": {
+          "type": "string"
         },
         "userConfRoot": {
           "type": "string"
@@ -23340,6 +23346,9 @@
             "renderer": {
               "type": "string"
             },
+            "systemPluginRoot": {
+              "type": "string"
+            },
             "telemetry": {
               "additionalProperties": false,
               "properties": {
@@ -23349,6 +23358,9 @@
               },
               "required": [],
               "type": "object"
+            },
+            "userCacheRoot": {
+              "type": "string"
             },
             "userConfRoot": {
               "type": "string"
