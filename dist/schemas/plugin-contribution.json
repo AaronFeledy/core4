@@ -641,6 +641,65 @@
         ]
       },
       "type": "array"
+    },
+    "tunnelServices": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "basicAuth": {
+                "type": "boolean"
+              },
+              "connectorBinary": {
+                "type": "boolean"
+              },
+              "detached": {
+                "type": "boolean"
+              },
+              "ephemeralUrls": {
+                "type": "boolean"
+              },
+              "stableUrls": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "connectorBinary",
+              "ephemeralUrls",
+              "stableUrls",
+              "basicAuth",
+              "detached"
+            ],
+            "type": "object"
+          },
+          "enabledByDefault": {
+            "type": "boolean"
+          },
+          "id": {
+            "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+            "type": "string"
+          },
+          "module": {
+            "description": "a string at least 1 character(s) long",
+            "minLength": 1,
+            "title": "minLength(1)",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "module",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     }
   },
   "required": [],

@@ -1213,6 +1213,78 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Capabilities.",
+      "docsPath": "docs/reference/schemas/tunnel-capabilities.mdx",
+      "id": "TunnelCapabilities",
+      "jsonSchemaPath": "dist/schemas/tunnel-capabilities.json",
+      "packageExport": "@lando/sdk/schema#TunnelCapabilities",
+      "title": "Tunnel Capabilities"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Target.",
+      "docsPath": "docs/reference/schemas/tunnel-target.mdx",
+      "id": "TunnelTarget",
+      "jsonSchemaPath": "dist/schemas/tunnel-target.json",
+      "packageExport": "@lando/sdk/schema#TunnelTarget",
+      "title": "Tunnel Target"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Start Request.",
+      "docsPath": "docs/reference/schemas/tunnel-start-request.mdx",
+      "id": "TunnelStartRequest",
+      "jsonSchemaPath": "dist/schemas/tunnel-start-request.json",
+      "packageExport": "@lando/sdk/schema#TunnelStartRequest",
+      "title": "Tunnel Start Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Stop Request.",
+      "docsPath": "docs/reference/schemas/tunnel-stop-request.mdx",
+      "id": "TunnelStopRequest",
+      "jsonSchemaPath": "dist/schemas/tunnel-stop-request.json",
+      "packageExport": "@lando/sdk/schema#TunnelStopRequest",
+      "title": "Tunnel Stop Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Status Request.",
+      "docsPath": "docs/reference/schemas/tunnel-status-request.mdx",
+      "id": "TunnelStatusRequest",
+      "jsonSchemaPath": "dist/schemas/tunnel-status-request.json",
+      "packageExport": "@lando/sdk/schema#TunnelStatusRequest",
+      "title": "Tunnel Status Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Session.",
+      "docsPath": "docs/reference/schemas/tunnel-session.mdx",
+      "id": "TunnelSession",
+      "jsonSchemaPath": "dist/schemas/tunnel-session.json",
+      "packageExport": "@lando/sdk/schema#TunnelSession",
+      "title": "Tunnel Session"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Status.",
+      "docsPath": "docs/reference/schemas/tunnel-status.mdx",
+      "id": "TunnelStatus",
+      "jsonSchemaPath": "dist/schemas/tunnel-status.json",
+      "packageExport": "@lando/sdk/schema#TunnelStatus",
+      "title": "Tunnel Status"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Session Filter.",
+      "docsPath": "docs/reference/schemas/tunnel-session-filter.mdx",
+      "id": "TunnelSessionFilter",
+      "jsonSchemaPath": "dist/schemas/tunnel-session-filter.json",
+      "packageExport": "@lando/sdk/schema#TunnelSessionFilter",
+      "title": "Tunnel Session Filter"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Managed File.",
       "docsPath": "docs/reference/schemas/managed-file.mdx",
       "id": "ManagedFile",
@@ -2014,6 +2086,60 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Pre Tunnel Start Event.",
+      "docsPath": "docs/reference/schemas/pre-tunnel-start-event.mdx",
+      "id": "PreTunnelStartEvent",
+      "jsonSchemaPath": "dist/schemas/pre-tunnel-start-event.json",
+      "packageExport": "@lando/sdk/schema#PreTunnelStartEvent",
+      "title": "Pre Tunnel Start Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Tunnel Start Event.",
+      "docsPath": "docs/reference/schemas/post-tunnel-start-event.mdx",
+      "id": "PostTunnelStartEvent",
+      "jsonSchemaPath": "dist/schemas/post-tunnel-start-event.json",
+      "packageExport": "@lando/sdk/schema#PostTunnelStartEvent",
+      "title": "Post Tunnel Start Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Ready Event.",
+      "docsPath": "docs/reference/schemas/tunnel-ready-event.mdx",
+      "id": "TunnelReadyEvent",
+      "jsonSchemaPath": "dist/schemas/tunnel-ready-event.json",
+      "packageExport": "@lando/sdk/schema#TunnelReadyEvent",
+      "title": "Tunnel Ready Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Tunnel Stop Event.",
+      "docsPath": "docs/reference/schemas/pre-tunnel-stop-event.mdx",
+      "id": "PreTunnelStopEvent",
+      "jsonSchemaPath": "dist/schemas/pre-tunnel-stop-event.json",
+      "packageExport": "@lando/sdk/schema#PreTunnelStopEvent",
+      "title": "Pre Tunnel Stop Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Tunnel Stop Event.",
+      "docsPath": "docs/reference/schemas/post-tunnel-stop-event.mdx",
+      "id": "PostTunnelStopEvent",
+      "jsonSchemaPath": "dist/schemas/post-tunnel-stop-event.json",
+      "packageExport": "@lando/sdk/schema#PostTunnelStopEvent",
+      "title": "Post Tunnel Stop Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Tunnel Status Event.",
+      "docsPath": "docs/reference/schemas/tunnel-status-event.mdx",
+      "id": "TunnelStatusEvent",
+      "jsonSchemaPath": "dist/schemas/tunnel-status-event.json",
+      "packageExport": "@lando/sdk/schema#TunnelStatusEvent",
+      "title": "Tunnel Status Event"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Pre Provider Apply Event.",
       "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
       "id": "PreProviderApplyEvent",
@@ -2334,6 +2460,14 @@
       "DatasetApplyOptions",
       "DatasetApplyResult",
       "SyncResult",
+      "TunnelCapabilities",
+      "TunnelTarget",
+      "TunnelStartRequest",
+      "TunnelStopRequest",
+      "TunnelStatusRequest",
+      "TunnelSession",
+      "TunnelStatus",
+      "TunnelSessionFilter",
       "ManagedFile",
       "ManagedFileInfo",
       "ManagedFilePlan",
@@ -2423,6 +2557,12 @@
       "PostDatasetCaptureEvent",
       "PreDatasetSendEvent",
       "PostDatasetSendEvent",
+      "PreTunnelStartEvent",
+      "PostTunnelStartEvent",
+      "TunnelReadyEvent",
+      "PreTunnelStopEvent",
+      "PostTunnelStopEvent",
+      "TunnelStatusEvent",
       "PreProviderApplyEvent",
       "PostProviderApplyEvent",
       "PreProviderExecEvent",
@@ -11463,6 +11603,286 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-tunnel-start"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "eventName": {
+              "enum": ["pre-tunnel-start"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "app", "provider", "targetSummary", "detached", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-tunnel-start"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["post-tunnel-start"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "app",
+            "provider",
+            "targetSummary",
+            "detached",
+            "timestamp",
+            "outcome"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["tunnel-ready"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "eventName": {
+              "enum": ["tunnel-ready"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "status": {
+              "enum": ["ready"],
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "app",
+            "provider",
+            "targetSummary",
+            "detached",
+            "timestamp",
+            "status"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-tunnel-stop"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "eventName": {
+              "enum": ["pre-tunnel-stop"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "eventName", "app", "provider", "targetSummary", "detached", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-tunnel-stop"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["post-tunnel-stop"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "app",
+            "provider",
+            "targetSummary",
+            "detached",
+            "timestamp",
+            "outcome"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["tunnel-status"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "eventName": {
+              "enum": ["tunnel-status"],
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "publicUrlSummary": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "status": {
+              "enum": ["starting", "ready", "stopped", "failed", "unknown"],
+              "type": "string"
+            },
+            "targetSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "app",
+            "provider",
+            "targetSummary",
+            "detached",
+            "timestamp",
+            "status"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-provider-apply"],
               "type": "string"
             },
@@ -14146,6 +14566,55 @@
             ]
           },
           "type": "array"
+        },
+        "tunnelServices": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "basicAuth": {
+                    "type": "boolean"
+                  },
+                  "connectorBinary": {
+                    "type": "boolean"
+                  },
+                  "detached": {
+                    "type": "boolean"
+                  },
+                  "ephemeralUrls": {
+                    "type": "boolean"
+                  },
+                  "stableUrls": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["connectorBinary", "ephemeralUrls", "stableUrls", "basicAuth", "detached"],
+                "type": "object"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                "type": "string"
+              },
+              "module": {
+                "description": "a string at least 1 character(s) long",
+                "minLength": 1,
+                "title": "minLength(1)",
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "module", "capabilities"],
+            "type": "object"
+          },
+          "type": "array"
         }
       },
       "required": [],
@@ -14719,6 +15188,55 @@
                     "type": "object"
                   }
                 ]
+              },
+              "type": "array"
+            },
+            "tunnelServices": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "basicAuth": {
+                        "type": "boolean"
+                      },
+                      "connectorBinary": {
+                        "type": "boolean"
+                      },
+                      "detached": {
+                        "type": "boolean"
+                      },
+                      "ephemeralUrls": {
+                        "type": "boolean"
+                      },
+                      "stableUrls": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["connectorBinary", "ephemeralUrls", "stableUrls", "basicAuth", "detached"],
+                    "type": "object"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                    "type": "string"
+                  },
+                  "module": {
+                    "description": "a string at least 1 character(s) long",
+                    "minLength": 1,
+                    "title": "minLength(1)",
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "module", "capabilities"],
+                "type": "object"
               },
               "type": "array"
             }
@@ -17258,6 +17776,130 @@
       "required": ["_tag", "scope", "app", "timestamp"],
       "type": "object"
     },
+    "PostTunnelStartEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-tunnel-start"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": ["post-tunnel-start"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "app",
+        "provider",
+        "targetSummary",
+        "detached",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "PostTunnelStopEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-tunnel-stop"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": ["post-tunnel-stop"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "app",
+        "provider",
+        "targetSummary",
+        "detached",
+        "timestamp",
+        "outcome"
+      ],
+      "type": "object"
+    },
     "PreAppStartEvent": {
       "$defs": {
         "DateTimeUtc": {
@@ -19525,6 +20167,92 @@
         }
       },
       "required": ["_tag", "scope", "app", "timestamp"],
+      "type": "object"
+    },
+    "PreTunnelStartEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-tunnel-start"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": ["pre-tunnel-start"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "app", "provider", "targetSummary", "detached", "timestamp"],
+      "type": "object"
+    },
+    "PreTunnelStopEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-tunnel-stop"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": ["pre-tunnel-stop"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "eventName", "app", "provider", "targetSummary", "detached", "timestamp"],
       "type": "object"
     },
     "PromptSpec": {
@@ -24105,6 +24833,1237 @@
       },
       "$ref": "#/$defs/Transcript",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "TunnelCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "basicAuth": {
+          "type": "boolean"
+        },
+        "connectorBinary": {
+          "type": "boolean"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "ephemeralUrls": {
+          "type": "boolean"
+        },
+        "stableUrls": {
+          "type": "boolean"
+        }
+      },
+      "required": ["connectorBinary", "ephemeralUrls", "stableUrls", "basicAuth", "detached"],
+      "type": "object"
+    },
+    "TunnelReadyEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["tunnel-ready"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": ["tunnel-ready"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["ready"],
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "app",
+        "provider",
+        "targetSummary",
+        "detached",
+        "timestamp",
+        "status"
+      ],
+      "type": "object"
+    },
+    "TunnelSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "id": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "provider": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "publicUrl": {
+          "format": "uri",
+          "pattern": "^https?:\\/\\/[^\\s/?#@]+(?:\\/[^\\s?#]*)?$",
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["starting", "ready", "stopped", "failed", "unknown"],
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["route"],
+                  "type": "string"
+                },
+                "hostname": {
+                  "description": "a string matching the pattern ^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "pattern": "^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "type": "string"
+                },
+                "routeId": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "routeId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["service"],
+                  "type": "string"
+                },
+                "port": {
+                  "description": "a number between 1 and 65535",
+                  "maximum": 65535,
+                  "minimum": 1,
+                  "title": "between(1, 65535)",
+                  "type": "integer"
+                },
+                "protocol": {
+                  "enum": ["http", "https", "tcp"],
+                  "type": "string"
+                },
+                "service": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "service", "port"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["loopback"],
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "pattern": "^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\/[^\\s?#]*)?$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "url"],
+              "type": "object"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "app", "provider", "target", "status", "detached", "startedAt"],
+      "type": "object"
+    },
+    "TunnelSessionFilter": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "status": {
+          "enum": ["starting", "ready", "stopped", "failed", "unknown"],
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["route"],
+                  "type": "string"
+                },
+                "hostname": {
+                  "description": "a string matching the pattern ^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "pattern": "^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "type": "string"
+                },
+                "routeId": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "routeId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["service"],
+                  "type": "string"
+                },
+                "port": {
+                  "description": "a number between 1 and 65535",
+                  "maximum": 65535,
+                  "minimum": 1,
+                  "title": "between(1, 65535)",
+                  "type": "integer"
+                },
+                "protocol": {
+                  "enum": ["http", "https", "tcp"],
+                  "type": "string"
+                },
+                "service": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "service", "port"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["loopback"],
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "pattern": "^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\/[^\\s?#]*)?$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "url"],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "TunnelStartRequest": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        },
+        "FileSyncSessionSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "excludes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
+              "type": "string"
+            },
+            "mountKey": {
+              "type": "string"
+            },
+            "permissions": {
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "service": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["volume"],
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "name", "path"],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["service"],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "service", "path"],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "plan": {
+          "additionalProperties": false,
+          "properties": {
+            "extensions": {
+              "additionalProperties": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "fileSync": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "engineId": {
+                    "type": "string"
+                  },
+                  "session": {
+                    "$ref": "#/$defs/FileSyncSessionSpec"
+                  }
+                },
+                "required": ["engineId", "session"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "metadata": {
+              "additionalProperties": false,
+              "properties": {
+                "resolvedAt": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                },
+                "runtime": {
+                  "enum": [4],
+                  "type": "number"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": ["resolvedAt", "source", "runtime"],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "networking": {
+              "additionalProperties": false,
+              "properties": {
+                "perAppBridge": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "driver": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name"],
+                  "type": "object"
+                },
+                "sharedNetworkMembership": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "aliases": {
+                      "additionalProperties": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name", "aliases"],
+                  "type": "object"
+                }
+              },
+              "required": ["perAppBridge"],
+              "type": "object"
+            },
+            "networks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["name", "shared"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "requires": {
+              "additionalProperties": false,
+              "properties": {
+                "globalServices": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": ["globalServices"],
+              "type": "object"
+            },
+            "root": {
+              "type": "string"
+            },
+            "routes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "endpoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "hostname": {
+                    "type": "string"
+                  },
+                  "pathPrefix": {
+                    "type": "string"
+                  },
+                  "scheme": {
+                    "enum": ["http", "https", "both"],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": ["hostname", "scheme", "service"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "services": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "appMount": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "realization": {
+                        "enum": ["passthrough", "accelerated"],
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["source", "target", "readOnly", "excludes", "includes", "realization"],
+                    "type": "object"
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "digest": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["ref"],
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "ref"],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "context"],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "certs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "caId": {
+                        "type": "string"
+                      },
+                      "cn": {
+                        "type": "string"
+                      },
+                      "sans": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": ["cn", "sans", "caId"],
+                    "type": "object"
+                  },
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "dependsOn": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "condition": {
+                          "enum": ["started", "healthy"],
+                          "type": "string"
+                        },
+                        "service": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["service", "condition"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "endpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "number"
+                        },
+                        "protocol": {
+                          "enum": ["http", "https", "tcp", "udp", "unix"],
+                          "type": "string"
+                        },
+                        "socketPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["protocol"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "entrypoint": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "environment": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "extensions": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "healthcheck": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "command": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        ]
+                      },
+                      "intervalSeconds": {
+                        "type": "number"
+                      },
+                      "kind": {
+                        "enum": ["command", "http", "tcp", "none"],
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "number"
+                      },
+                      "retries": {
+                        "type": "number"
+                      },
+                      "startPeriodSeconds": {
+                        "type": "number"
+                      },
+                      "timeoutSeconds": {
+                        "type": "number"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "intervalSeconds", "timeoutSeconds", "retries"],
+                    "type": "object"
+                  },
+                  "hostAliases": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "hostname": {
+                          "type": "string"
+                        },
+                        "ip": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["hostname", "ip"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "metadata": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "resolvedAt": {
+                        "$ref": "#/$defs/DateTimeUtc"
+                      },
+                      "runtime": {
+                        "enum": [4],
+                        "type": "number"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["resolvedAt", "source", "runtime"],
+                    "type": "object"
+                  },
+                  "mounts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "realization": {
+                          "enum": ["passthrough", "accelerated"],
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": ["bind", "tmpfs", "volume"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "target", "readOnly", "realization"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "primary": {
+                    "type": "boolean"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "routes": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["index"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "storage": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["store", "target", "readOnly"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "workingDirectory": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "provider",
+                  "primary",
+                  "environment",
+                  "mounts",
+                  "storage",
+                  "endpoints",
+                  "routes",
+                  "dependsOn",
+                  "hostAliases",
+                  "metadata",
+                  "extensions"
+                ],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "stores": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "driverOpts": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": ["service", "app", "global"],
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "scope"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "slug",
+            "root",
+            "provider",
+            "services",
+            "routes",
+            "networks",
+            "stores",
+            "fileSync",
+            "metadata",
+            "extensions"
+          ],
+          "type": "object"
+        },
+        "provider": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["route"],
+                  "type": "string"
+                },
+                "hostname": {
+                  "description": "a string matching the pattern ^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "pattern": "^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+                  "type": "string"
+                },
+                "routeId": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "routeId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["service"],
+                  "type": "string"
+                },
+                "port": {
+                  "description": "a number between 1 and 65535",
+                  "maximum": 65535,
+                  "minimum": 1,
+                  "title": "between(1, 65535)",
+                  "type": "integer"
+                },
+                "protocol": {
+                  "enum": ["http", "https", "tcp"],
+                  "type": "string"
+                },
+                "service": {
+                  "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "service", "port"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["loopback"],
+                  "type": "string"
+                },
+                "url": {
+                  "format": "uri",
+                  "pattern": "^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\/[^\\s?#]*)?$",
+                  "type": "string"
+                }
+              },
+              "required": ["_tag", "url"],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": ["app", "target"],
+      "type": "object"
+    },
+    "TunnelStatus": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["starting", "ready", "stopped", "failed", "unknown"],
+      "type": "string"
+    },
+    "TunnelStatusEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["tunnel-status"],
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": ["tunnel-status"],
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "publicUrlSummary": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["starting", "ready", "stopped", "failed", "unknown"],
+          "type": "string"
+        },
+        "targetSummary": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "app",
+        "provider",
+        "targetSummary",
+        "detached",
+        "timestamp",
+        "status"
+      ],
+      "type": "object"
+    },
+    "TunnelStatusRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "TunnelStopRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "force": {
+          "type": "boolean"
+        },
+        "provider": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "TunnelTarget": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["route"],
+              "type": "string"
+            },
+            "hostname": {
+              "description": "a string matching the pattern ^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+              "pattern": "^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+              "type": "string"
+            },
+            "routeId": {
+              "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "routeId"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["service"],
+              "type": "string"
+            },
+            "port": {
+              "description": "a number between 1 and 65535",
+              "maximum": 65535,
+              "minimum": 1,
+              "title": "between(1, 65535)",
+              "type": "integer"
+            },
+            "protocol": {
+              "enum": ["http", "https", "tcp"],
+              "type": "string"
+            },
+            "service": {
+              "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "service", "port"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["loopback"],
+              "type": "string"
+            },
+            "url": {
+              "format": "uri",
+              "pattern": "^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\/[^\\s?#]*)?$",
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "url"],
+          "type": "object"
+        }
+      ]
     },
     "UpdateChannel": {
       "$schema": "http://json-schema.org/draft-07/schema#",

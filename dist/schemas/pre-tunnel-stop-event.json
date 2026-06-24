@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "pre-tunnel-stop"
+      ],
+      "type": "string"
+    },
+    "app": {
+      "type": "string"
+    },
+    "detached": {
+      "type": "boolean"
+    },
+    "eventName": {
+      "enum": [
+        "pre-tunnel-stop"
+      ],
+      "type": "string"
+    },
+    "provider": {
+      "type": "string"
+    },
+    "publicUrlSummary": {
+      "type": "string"
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "targetSummary": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "app",
+    "provider",
+    "targetSummary",
+    "detached",
+    "timestamp"
+  ],
+  "type": "object"
+}

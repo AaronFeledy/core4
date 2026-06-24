@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "route"
+          ],
+          "type": "string"
+        },
+        "hostname": {
+          "description": "a string matching the pattern ^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+          "pattern": "^(?:\\*\\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
+          "type": "string"
+        },
+        "routeId": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "routeId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "service"
+          ],
+          "type": "string"
+        },
+        "port": {
+          "description": "a number between 1 and 65535",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "between(1, 65535)",
+          "type": "integer"
+        },
+        "protocol": {
+          "enum": [
+            "http",
+            "https",
+            "tcp"
+          ],
+          "type": "string"
+        },
+        "service": {
+          "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "service",
+        "port"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "loopback"
+          ],
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "pattern": "^https?:\\/\\/(?:localhost|127\\.0\\.0\\.1|\\[::1\\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\\/[^\\s?#]*)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "url"
+      ],
+      "type": "object"
+    }
+  ]
+}

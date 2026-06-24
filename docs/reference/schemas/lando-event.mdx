@@ -11,17 +11,17 @@ Public Lando schema contract for Lando Event.
 
 | Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `_tag` | Yes | `string` | — | — | `pre-bootstrap`, `post-bootstrap`, `ready`, `before-exit`, `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`, `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped`, `pre-download`, `download-progress`, `post-download`, `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `cli-command-init`, `cli-command-run`, `cli-command-error`, `deprecation-used`, `task.tree.start`, `task.start`, `task.detail`, `task.detail.expand`, `task.detail.collapse`, `task.complete`, `task.fail`, `task.tree.complete`, `message.info`, `message.warn`, `message.error`, `paint.banner` | — | — |
+| `_tag` | Yes | `string` | — | — | `pre-bootstrap`, `post-bootstrap`, `ready`, `before-exit`, `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`, `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped`, `pre-download`, `download-progress`, `post-download`, `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-start`, `post-tunnel-start`, `tunnel-ready`, `pre-tunnel-stop`, `post-tunnel-stop`, `tunnel-status`, `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `cli-command-init`, `cli-command-run`, `cli-command-error`, `deprecation-used`, `task.tree.start`, `task.start`, `task.detail`, `task.detail.expand`, `task.detail.collapse`, `task.complete`, `task.fail`, `task.tree.complete`, `message.info`, `message.warn`, `message.error`, `paint.banner` | — | — |
 | `level` | No | `string` | — | — | `minimal`, `plugins`, `commands`, `provider`, `app`, `tooling` | — | — |
 | `timestamp` | No | `string` | — | — | — | — | — |
 | `exitCode` | No | `number` | a number | — | — | — | — |
-| `app` | No | `object` | — | — | — | — | — |
+| `app` | No | `object`, `string` | — | — | — | — | — |
 | `scope` | No | `string` | — | — | `app`, `global` | — | — |
 | `plan` | No | `object` | — | — | — | — | — |
 | `triggeredBy` | No | `string` | a string | — | `meta:global:start`, `apps:poweroff`, `ensure-running`, `meta:setup`, `meta:global:stop` | — | — |
 | `ensuringServices` | No | `array` | — | — | — | — | — |
 | `cached` | No | `boolean` | a boolean | — | — | — | — |
-| `eventName` | No | `string` | — | — | `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped`, `pre-download`, `download-progress`, `post-download`, `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send` | — | — |
+| `eventName` | No | `string` | — | — | `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped`, `pre-download`, `download-progress`, `post-download`, `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-start`, `post-tunnel-start`, `tunnel-ready`, `pre-tunnel-stop`, `post-tunnel-stop`, `tunnel-status` | — | — |
 | `appRef` | No | `object` | — | — | — | — | — |
 | `providerId` | No | `string` | a string | — | — | — | — |
 | `serviceName` | No | `string` | a string | — | — | — | — |
@@ -43,6 +43,12 @@ Public Lando schema contract for Lando Event.
 | `env` | No | `string` | a string | — | — | — | — |
 | `datasets` | No | `array` | — | — | — | — | — |
 | `dataset` | No | `string` | — | — | `database`, `files`, `config`, `blob` | — | — |
+| `provider` | No | `string` | a string | — | — | — | — |
+| `sessionId` | No | `string` | — | — | — | — | — |
+| `targetSummary` | No | `string` | a string | — | — | — | — |
+| `detached` | No | `boolean` | a boolean | — | — | — | — |
+| `publicUrlSummary` | No | `string` | — | — | — | — | — |
+| `status` | No | `string` | — | — | `ready`, `starting`, `stopped`, `failed`, `unknown` | — | — |
 | `service` | No | `string` | a string | — | — | — | — |
 | `commandId` | No | `string` | a string | — | — | — | — |
 | `message` | No | `string` | a string | — | — | — | — |

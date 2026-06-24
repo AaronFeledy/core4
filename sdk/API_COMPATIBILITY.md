@@ -231,6 +231,15 @@
 - `DatasetApplyOptions`
 - `DatasetApplyResult`
 - `SyncResult`
+- `TunnelCapabilities`
+- `TunnelTarget`
+- `TunnelStartRequest`
+- `TunnelStopRequest`
+- `TunnelStatusRequest`
+- `TunnelSession`
+- `TunnelStatus`
+- `TunnelSessionFilter`
+- `TunnelServiceContribution`
 - `LabelMap`
 - `PrunePolicy`
 - `ServiceCopyInSpec`
@@ -282,6 +291,7 @@
 - `PluginContribution.interactionServices` is a new additive optional field.
 - `PluginContribution.remoteSources` is a new additive optional field.
 - `PluginContribution.datasets` is a new additive optional field.
+- `PluginContribution.tunnelServices` is a new additive optional field.
 
 ## Additive Alpha errors
 
@@ -336,6 +346,13 @@
 - `InteractionCancelledError`
 - `ChoicesUnavailableError`
 - `InteractionUnavailableError`
+- `TunnelProviderUnavailableError`
+- `TunnelTargetUnresolvedError`
+- `TunnelAuthRequiredError`
+- `TunnelStartError`
+- `TunnelReadyTimeoutError`
+- `TunnelDetachedStateError`
+- `TunnelStopError`
 
 ## Additive Alpha service tags
 
@@ -354,6 +371,7 @@
 - `RemoteSource`
 - `Dataset`
 - `PathsService`
+- `TunnelService`
 - `PluginSource`
 - `PluginTrustStore`
 - `PrivilegeService`
@@ -418,6 +436,13 @@
 - `SupportedContractCell`
 - `SupportedFileSyncContractCell`
 - `SupportedServiceContractCell`
+- `TunnelServiceContractHarness`
+- `TunnelServiceContractObservations`
+- `TunnelServiceDetachedStateRecord`
+- `TunnelServiceEgressRecord`
+- `TunnelServiceFinalizerRecord`
+- `TunnelServiceProbeRecord`
+- `TunnelServiceToolProvisionRecord`
 - `TestFileSyncEngine`
 - `TestPluginManifest`
 - `TestServiceType`
@@ -426,6 +451,7 @@
 - `UnsupportedServiceContractCell`
 - `makeDatasetContractSuite`
 - `makeRemoteSourceContractSuite`
+- `makeTunnelServiceContractSuite`
 - `runDatasetContract`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
@@ -439,4 +465,5 @@
 - `runRemoteSourceContract`
 - `runServiceContract`
 - `runServiceContractMatrix`
+- `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`

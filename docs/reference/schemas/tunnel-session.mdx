@@ -1,0 +1,23 @@
+---
+title: Tunnel Session
+description: Public Lando schema contract for Tunnel Session.
+---
+
+# Tunnel Session
+
+Public Lando schema contract for Tunnel Session.
+
+[JSON Schema artifact](../../../dist/schemas/tunnel-session.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]&#123;0,127&#125;$ | — | — | — | — |
+| `app` | Yes | `string` | a string | — | — | — | — |
+| `provider` | Yes | `string` | a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]&#123;0,127&#125;$ | — | — | — | — |
+| `target` | Yes | `object` | — | — | — | — | — |
+| `publicUrl` | No | `string` | — | — | — | — | — |
+| `status` | Yes | `string` | — | — | `starting`, `ready`, `stopped`, `failed`, `unknown` | — | — |
+| `detached` | Yes | `boolean` | a boolean | — | — | — | — |
+| `startedAt` | Yes | `string` | a string | — | — | — | — |
+| `updatedAt` | No | `string` | — | — | — | — | — |
+| `metadata` | No | `object` | — | — | — | — | — |

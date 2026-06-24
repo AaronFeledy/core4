@@ -43,6 +43,13 @@ import type {
   ServiceConfig,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
+  TunnelCapabilities,
+  TunnelSession,
+  TunnelSessionFilter,
+  TunnelStartRequest,
+  TunnelStatus,
+  TunnelStatusRequest,
+  TunnelStopRequest,
   VolumeFilter,
   VolumeInfo,
   VolumeRef,
@@ -150,6 +157,7 @@ import type {
   ScratchStartOptions,
   ScratchSummary,
 } from "./scratch.ts";
+import type { TunnelError } from "./tunnel.ts";
 
 export * from "./cache.ts";
 export * from "./cli.ts";
@@ -175,6 +183,7 @@ export * from "./provider.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
+export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 
 export interface RuntimeProviderShape {
@@ -737,6 +746,18 @@ export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
       opts?: DatasetApplyOptions,
     ) => Effect.Effect<DatasetApplyResult, DatasetServiceError, Scope.Scope>;
     readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
+  }
+>() {}
+
+export declare class TunnelService extends Context.Tag("@lando/core/TunnelService")<
+  TunnelService,
+  {
+    readonly id: string;
+    readonly capabilities: TunnelCapabilities;
+    readonly start: (request: TunnelStartRequest) => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
+    readonly stop: (request: TunnelStopRequest) => Effect.Effect<void, TunnelError>;
+    readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
+    readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
   }
 >() {}
 

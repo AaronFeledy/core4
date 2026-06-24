@@ -36,4 +36,5 @@ export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./service-info.ts";
 export * from "./template.ts";
+export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
