@@ -757,3 +757,8 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
 - **Learnings for future iterations:**
   - When an Effect `Schema.filter` encodes an externally consumed constraint, include matching `jsonSchema` metadata (`pattern`, `format`, bounds, etc.) and assert the generated JSON Schema artifact, not just Effect decode behavior.
 ---
+## 2026-06-23 19:29 CDT - US-342 Review
+- Fixed confirmed review blockers in the tunnel contract surface: tunnel identifiers/loopback/public URLs now reject credential, query, noncanonical, control-character, and path-injection shapes; `TestTunnelService` supports every schema-valid loopback target; the contract suite no longer requires optional detached/ephemeral capabilities; external `tunnelServices:` module paths normalize at plugin load like neighboring contribution surfaces.
+- Review notes (deferred/rejected): none.
+- Verification: typecheck, lint passed; focused tunnel schema, tunnel contract, plugin registry, schema snapshot, SDK export, and core testing export spot checks passed.
+---
