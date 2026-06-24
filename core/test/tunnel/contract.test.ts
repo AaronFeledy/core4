@@ -4,6 +4,7 @@ import { Effect } from "effect";
 
 import { type TunnelServiceContractHarness, runTunnelServiceContract } from "@lando/sdk/test";
 
+import { AppId, ServiceName } from "@lando/core/schema";
 import { TestTunnelService, makeTestTunnelService } from "@lando/core/testing";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
@@ -56,5 +57,33 @@ describe("TunnelService contract suite", () => {
 
     const result = await run(runTunnelServiceContract(harness));
     expect(result).toBeUndefined();
+  });
+
+  test("TestTunnelService.list filters sessions by target", async () => {
+    const testService = makeTestTunnelService().pipe(Effect.runSync);
+    const app = AppId.make("target-filter");
+    const routeTarget = { _tag: "route" as const, routeId: "web" };
+    const serviceTarget = {
+      _tag: "service" as const,
+      service: ServiceName.make("api"),
+      port: 8080,
+      protocol: "http" as const,
+    };
+
+    const result = await run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const routeSession = yield* testService.service.start({ app, target: routeTarget });
+          yield* testService.service.start({ app, target: serviceTarget });
+          const sessions = yield* testService.service.list({ app, target: routeTarget });
+          return { routeSession, sessions };
+        }),
+      ),
+    );
+
+    expect(result.sessions.map((session) => session.id)).toEqual([result.routeSession.id]);
+    expect(
+      result.sessions.every((session) => session.target._tag === "route" && session.target.routeId === "web"),
+    ).toBe(true);
   });
 });

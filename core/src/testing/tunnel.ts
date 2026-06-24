@@ -32,6 +32,19 @@ const targetSummary = (target: TunnelTarget): string => {
   }
 };
 
+const targetKey = (target: TunnelTarget): string => {
+  switch (target._tag) {
+    case "route":
+      return `route:${target.routeId}:${target.hostname ?? ""}`;
+    case "service":
+      return `service:${target.service}:${target.port}:${target.protocol ?? ""}`;
+    case "loopback":
+      return `loopback:${target.url}`;
+  }
+};
+
+const sameTarget = (left: TunnelTarget, right: TunnelTarget): boolean => targetKey(left) === targetKey(right);
+
 const supportedTarget = (target: TunnelTarget): boolean =>
   Either.isRight(Schema.decodeUnknownEither(TunnelTarget)(target));
 
@@ -215,6 +228,7 @@ export const makeTestTunnelService = () =>
               (filter?.app === undefined || filter.app === session.app) &&
               (filter?.provider === undefined || filter.provider === session.provider) &&
               (filter?.sessionId === undefined || filter.sessionId === session.id) &&
+              (filter?.target === undefined || sameTarget(filter.target, session.target)) &&
               (filter?.detached === undefined || filter.detached === session.detached) &&
               (filter?.status === undefined || filter.status === session.status),
           ),
