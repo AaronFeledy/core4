@@ -12,9 +12,9 @@ Public Lando schema contract for Tunnel Target.
 | Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `_tag` | Yes | `string` | — | — | `route`, `service`, `loopback` | — | — |
-| `routeId` | No | `string` | a string at least 1 character(s) long | — | — | — | — |
+| `routeId` | No | `string` | a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]&#123;0,127&#125;$ | — | — | — | — |
 | `hostname` | No | `string` | — | — | — | — | — |
-| `service` | No | `string` | a string | — | — | — | — |
+| `service` | No | `string` | a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._-]&#123;0,127&#125;$ | — | — | — | — |
 | `port` | No | `integer` | a number between 1 and 65535 | — | — | — | — |
 | `protocol` | No | `string` | — | — | `http`, `https`, `tcp` | — | — |
 | `url` | No | `string` | — | — | — | — | — |

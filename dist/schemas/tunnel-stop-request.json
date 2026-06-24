@@ -6,9 +6,13 @@
       "type": "boolean"
     },
     "provider": {
+      "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "type": "string"
     },
     "sessionId": {
+      "description": "a string matching the pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "type": "string"
     }
   },
