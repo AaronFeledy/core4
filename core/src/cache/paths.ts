@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { resolveLandoRoots } from "../config/paths.ts";
 
 // Thin delegation over the single Paths primitive; name/signature preserved.
-// Do not re-inline an XDG fallback here (§7.5.1 single-resolver invariant).
+// Do not re-inline an XDG fallback here — keep one resolver for all roots.
 export const resolveUserCacheRoot = (): string => resolveLandoRoots().userCacheRoot;
 
 const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/u, "");

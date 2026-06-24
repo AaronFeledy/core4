@@ -4,8 +4,8 @@ import { resolveLandoRoots } from "./paths.ts";
 
 // Thin delegations over the single Paths primitive; names/signatures preserved
 // so the cold-start fast path and existing call sites keep resolving through one
-// resolver. Do not re-inline a `$HOME`/XDG fallback here (forbidden by the §7.5.1
-// single-resolver invariant).
+// resolver. Do not re-inline a `$HOME`/XDG fallback here — keep one resolver
+// for all roots.
 export const resolveUserDataRoot = (): string => resolveLandoRoots().userDataRoot;
 
 export const resolveUserConfRoot = (): string => resolveLandoRoots().userConfRoot;
