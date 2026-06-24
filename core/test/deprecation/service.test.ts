@@ -294,6 +294,7 @@ describe("DeprecationServiceLive", () => {
       load: () => Effect.die("not used"),
       loadServiceType: () => Effect.die("not used"),
       loadServiceFeature: () => Effect.die("not used"),
+      loadAppFeature: () => Effect.die("not used"),
     };
     const deps = Layer.mergeAll(DeprecationServiceLive, Layer.succeed(PluginRegistry, pluginRegistry));
 

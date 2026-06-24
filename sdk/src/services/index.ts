@@ -94,6 +94,7 @@ import type {
 
 import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../errors/index.ts";
 
+import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
 import type { DataMoverShape } from "./data-transfer.ts";
@@ -160,6 +161,7 @@ import type {
 } from "./scratch.ts";
 import type { TunnelError } from "./tunnel.ts";
 
+export * from "./app-features.ts";
 export * from "./cache.ts";
 export * from "./cli.ts";
 export * from "./config-translator.ts";
@@ -380,6 +382,9 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
     readonly loadServiceFeature: (
       id: string,
     ) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>;
+    readonly loadAppFeature: (
+      id: string,
+    ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
   }
 >() {}
 

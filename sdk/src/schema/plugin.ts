@@ -148,6 +148,8 @@ export const PluginContribution = Schema.Struct({
   serviceTypes: Schema.optional(Schema.Array(ContributionRef)),
   /** Service features this plugin registers. */
   serviceFeatures: Schema.optional(Schema.Array(ContributionRef)),
+  /** App-scoped features this plugin registers. */
+  appFeatures: Schema.optional(Schema.Array(ContributionRef)),
   /** Provider ids registered. */
   providers: Schema.optional(Schema.Array(ContributionRef)),
   /** Proxy ids registered. */

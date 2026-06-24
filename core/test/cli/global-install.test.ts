@@ -62,6 +62,7 @@ const layerWithFakeGlobalService = (modulePath: string) => {
       load: () => Effect.succeed(fakeManifest),
       loadServiceType: () => Effect.die("not needed"),
       loadServiceFeature: () => Effect.die("not needed"),
+      loadAppFeature: () => Effect.die("not needed"),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([ProviderId.make(provider.id)]),

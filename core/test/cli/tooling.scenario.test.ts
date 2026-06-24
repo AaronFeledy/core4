@@ -208,6 +208,7 @@ const emptyPluginRegistry = Layer.succeed(PluginRegistry, {
   load: () => Effect.die("not used"),
   loadServiceType: () => Effect.die("not used"),
   loadServiceFeature: () => Effect.die("not used"),
+  loadAppFeature: () => Effect.die("not used"),
 });
 
 const withTempToolingApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
@@ -542,6 +543,7 @@ describe("runTooling — CLI rendering", () => {
           load: () => Effect.die("not used"),
           loadServiceType: () => Effect.die("not used"),
           loadServiceFeature: () => Effect.die("not used"),
+          loadAppFeature: () => Effect.die("not used"),
         }),
         CacheServiceLive,
       );

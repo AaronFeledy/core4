@@ -14047,6 +14047,29 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "appFeatures": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "deprecated": {
+                    "$ref": "#/$defs/DeprecationNotice"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
         "cas": {
           "items": {
             "anyOf": [
@@ -14671,6 +14694,29 @@
         "contributes": {
           "additionalProperties": false,
           "properties": {
+            "appFeatures": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
+              },
+              "type": "array"
+            },
             "cas": {
               "items": {
                 "anyOf": [

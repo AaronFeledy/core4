@@ -27,6 +27,7 @@ const globalAppLayer = Layer.mergeAll(
     load: () => Effect.die("not needed"),
     loadServiceType: () => Effect.die("not needed"),
     loadServiceFeature: () => Effect.die("not needed"),
+    loadAppFeature: () => Effect.die("not needed"),
   }),
   Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([ProviderId.make(provider.id)]),

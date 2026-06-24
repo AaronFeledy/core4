@@ -196,6 +196,8 @@ const customPluginRegistry = {
   },
   loadServiceFeature: (id: string) =>
     Effect.fail(new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id })),
+  loadAppFeature: (id: string) =>
+    Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
 };
 
 const planWithCustomRegistry = (
@@ -367,6 +369,7 @@ describe("AppPlannerLive", () => {
               load: () => Effect.die("not needed"),
               loadServiceType: () => Effect.succeed(cachedType),
               loadServiceFeature: () => Effect.die("not used"),
+              loadAppFeature: () => Effect.die("not used"),
             }),
           ),
         ),
@@ -603,6 +606,7 @@ describe("AppPlannerLive", () => {
         load: () => Effect.die("not needed"),
         loadServiceType: () => Effect.succeed(serviceType),
         loadServiceFeature: () => Effect.die("not used"),
+        loadAppFeature: () => Effect.die("not used"),
       };
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (appPlanner) =>

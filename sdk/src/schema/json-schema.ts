@@ -1320,6 +1320,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PluginContribution.datasets",
   "PluginContribution.remoteSources",
   "PluginContribution.renderers",
+  "PluginContribution.appFeatures",
   "PluginContribution.serviceFeatures",
   "PluginContribution.serviceTypes",
   "PluginContribution.setup",

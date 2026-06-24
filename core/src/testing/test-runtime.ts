@@ -665,6 +665,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     load: (name) => Effect.fail(serviceNotRegistered(name)),
     loadServiceType: (id) => Effect.fail(serviceNotRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(serviceNotRegistered(id)),
+    loadAppFeature: (id) => Effect.fail(serviceNotRegistered(id)),
   };
 
   const commandRegistryService: Context.Tag.Service<typeof CommandRegistry> = {

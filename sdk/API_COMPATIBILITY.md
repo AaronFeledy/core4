@@ -293,6 +293,7 @@
 - `PluginContribution.remoteSources` is a new additive optional field.
 - `PluginContribution.datasets` is a new additive optional field.
 - `PluginContribution.tunnelServices` is a new additive optional field.
+- `PluginContribution.appFeatures` is a new additive optional field.
 
 ## Additive Alpha errors
 
@@ -354,6 +355,9 @@
 - `TunnelReadyTimeoutError`
 - `TunnelDetachedStateError`
 - `TunnelStopError`
+- `AppFeatureSelectorMatchedNothingError`
+- `AppFeatureMutationConflictError`
+- `AppFeatureCycleError`
 
 ## Additive Alpha service tags
 
@@ -458,5 +462,8 @@
 - `runRemoteSourceContract`
 - `runServiceCompositionContract`
 - `runServiceFeatureContract`
+- `runAppFeatureContract`
+- `AppFeatureContractHarness`
+- `AppFeatureContractService`
 - `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`

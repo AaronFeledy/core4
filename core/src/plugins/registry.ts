@@ -378,6 +378,32 @@ const makePluginRegistry = (
         }),
       );
     },
+    loadAppFeature: (id) => {
+      if (discovery.bundled === false) {
+        return Effect.fail(
+          new PluginLoadError({
+            message: `Bundled app feature ${id} is not registered.`,
+            pluginName: "@lando/core",
+          }),
+        );
+      }
+
+      for (const bundledPlugin of BUNDLED_PLUGINS) {
+        if (disabled.has(bundledPlugin.manifest.name)) continue;
+        const appFeature = bundledPlugin.appFeatures?.get(id);
+
+        if (appFeature !== undefined) {
+          return Effect.succeed(appFeature);
+        }
+      }
+
+      return Effect.fail(
+        new PluginLoadError({
+          message: `Bundled app feature ${id} is not registered.`,
+          pluginName: "@lando/core",
+        }),
+      );
+    },
   };
 };
 
