@@ -23,6 +23,7 @@ import {
   ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, ConfigService, PluginRegistry } from "@lando/core/services";
+import type { AppFeatureDefinition } from "@lando/core/services";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -434,6 +435,106 @@ describe("AppPlannerLive", () => {
       });
 
       expect(appPlan.routes).toEqual([]);
+      expect(appPlan.requires).toBeUndefined();
+    });
+  });
+
+  test("loads manifest app-features, mutates selected drafts, and aggregates required global services", async () => {
+    await withTempCwd(async () => {
+      const featureDefinition: AppFeatureDefinition = {
+        id: "test.smtp",
+        priority: 100,
+        activatedBy: { services: { type: "appmount-only" } },
+        selectors: { types: ["appmount-only"] },
+        requires: { globalServices: ["mailpit"] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("MAIL_HOST", "mailpit.global.internal"));
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/app-feature"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { appFeatures: ["test.smtp"] },
+          }),
+        ]),
+        loadAppFeature: (id: string) =>
+          id === "test.smtp"
+            ? Effect.succeed(featureDefinition)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      expect(appPlan.services[ServiceName.make("web")]?.environment.MAIL_HOST).toBe(
+        "mailpit.global.internal",
+      );
+      expect(appPlan.requires?.globalServices).toEqual(["mailpit"]);
+    });
+  });
+
+  test("inactive manifest app-features do not mutate services or add global requirements", async () => {
+    await withTempCwd(async () => {
+      const featureDefinition: AppFeatureDefinition = {
+        id: "test.php-only",
+        priority: 100,
+        activatedBy: { services: { type: "php" } },
+        selectors: { types: ["appmount-only"] },
+        requires: { globalServices: ["mailpit"] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("MAIL_HOST", "mailpit.global.internal"));
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/app-feature"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { appFeatures: ["test.php-only"] },
+          }),
+        ]),
+        loadAppFeature: (id: string) =>
+          id === "test.php-only"
+            ? Effect.succeed(featureDefinition)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      expect(appPlan.services[ServiceName.make("web")]?.environment.MAIL_HOST).toBeUndefined();
       expect(appPlan.requires).toBeUndefined();
     });
   });
