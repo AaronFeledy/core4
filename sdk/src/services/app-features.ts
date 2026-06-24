@@ -1,7 +1,7 @@
 /**
  * `AppFeature` contract — the published surface a plugin programs against to
  * mutate selected sibling services across an app plan when a triggering
- * service is present (§6.11.4). Where {@link ServiceFeatureDefinition} mutates a
+ * service is present. Where {@link ServiceFeatureDefinition} mutates a
  * single service draft, an `AppFeature` runs once per app after the entire
  * per-service phase, selects a set of resolved service drafts, and applies the
  * same intent mutators to each selected draft.
@@ -102,7 +102,7 @@ export interface AppFeatureContext {
  * `selectors` chooses which resolved service drafts it mutates; `apply` emits
  * provider-neutral intent to each selected draft. `requires.globalServices`
  * declares global Lando-app services the planner ensures are running in the
- * user app's `pre-start` phase (§20.6.3).
+ * user app's `pre-start` phase.
  */
 export interface AppFeatureDefinition {
   readonly id: string;

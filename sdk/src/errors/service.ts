@@ -14,7 +14,7 @@ export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>
 
 /**
  * An app-feature's selectors resolved to zero services. Raised by the
- * app-feature pass (§6.11.4) when a feature activated but its `selectors`
+ * app-feature pass when a feature activated but its `selectors`
  * matched no service draft, so its `apply` would be a silent no-op.
  */
 export class AppFeatureSelectorMatchedNothingError extends Schema.TaggedError<AppFeatureSelectorMatchedNothingError>()(
@@ -56,7 +56,7 @@ export class AppFeatureCycleError extends Schema.TaggedError<AppFeatureCycleErro
 }) {}
 
 /**
- * The tagged union an `AppFeature.apply` may fail with (§6.11.4):
+ * The tagged union an `AppFeature.apply` may fail with:
  * `SelectorMatchedNothing` | `MutationConflict` | `CycleDetected`.
  */
 export type AppFeatureError =

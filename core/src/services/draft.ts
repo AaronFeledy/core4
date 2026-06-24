@@ -1,6 +1,6 @@
 /**
  * Core-private mutable plan-draft shape shared by the service-feature and
- * app-feature composition engines (§6.11.0). A draft is the provider-neutral
+ * app-feature composition engines. A draft is the provider-neutral
  * in-memory representation a feature's `apply` mutates: it carries plan-intent
  * fields (env, mounts, build steps, endpoints, …) WITHOUT any provider
  * realization decision (that is finalization's job). The service-feature engine

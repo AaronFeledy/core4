@@ -1,6 +1,6 @@
 /**
- * App-scoped feature composition engine (§6.11.0 stage 4 / §6.11.4). Where the
- * service-feature engine (`feature.ts`) mutates a single service draft, an
+ * App-scoped feature composition engine (stage 4 of the composition pipeline).
+ * Where the service-feature engine (`feature.ts`) mutates a single service draft, an
  * `AppFeature` runs once per app AFTER the entire per-service phase, selects a
  * set of resolved service drafts, and applies the same provider-neutral intent
  * mutators to each selected draft. The engine: evaluates `activatedBy` (no
