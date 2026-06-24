@@ -43,7 +43,7 @@ export interface ServiceTypeInput {
 
 /**
  * A reference to a composable feature the planner applies to the seeded base
- * draft in priority order (§6.11). `config` carries the feature's resolved
+ * draft in priority order. `config` carries the feature's resolved
  * options; the planner reads the feature's priority from its definition.
  */
 export interface FeatureRef {
@@ -53,7 +53,7 @@ export interface FeatureRef {
 
 /**
  * The output of {@link ServiceType.resolve}: normalized config plus the
- * priority-ordered features core composes onto the named base (§6.11.0).
+ * priority-ordered features core composes onto the named base.
  * A service type MUST NOT hand-build a `ServicePlan`.
  */
 export interface ServiceTypeResolution {
@@ -65,7 +65,7 @@ export interface ServiceTypeResolution {
 }
 
 /**
- * The normative service-type contract (§6.11): a resolver that turns
+ * Normative service-type contract: a resolver that turns
  * `type: <name>` into a {@link ServiceTypeResolution} of normalized config plus
  * the features to compose onto a declared `base`. It chooses base/features/
  * tooling; it does NOT build the plan (that is core's composition pipeline).

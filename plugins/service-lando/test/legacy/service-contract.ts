@@ -1,8 +1,7 @@
-// Catalog-private legacy service-plan contract regression suite. Relocated out
-// of `@lando/sdk/test` when the SDK adopted the §6.11 `ServiceType` (resolve)
-// contract: these assertions drive the catalog's pre-composition plan body via
-// the private `__legacyToServicePlan` bridge, so they belong to the catalog
-// until US-359/US-361 migrate it onto base + features. Delete with the bridge.
+// Catalog-private legacy service-plan contract regression suite. Relocated from
+// `@lando/sdk/test` when the SDK adopted the `ServiceType` resolve contract:
+// these assertions drive pre-composition plan bodies via `__legacyToServicePlan`
+// until the catalog migrates onto base + features.
 import { Effect, Either, Schema } from "effect";
 
 import {

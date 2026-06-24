@@ -1,6 +1,5 @@
-// Temporary legacy service-plan bridge. The §6.11 composition engine (US-359)
-// + catalog migration (US-361) replace `__legacyToServicePlan` with a real
-// base + feature `resolve()`. Delete this module in US-359/US-361.
+// Temporary legacy service-plan bridge until the composition engine and catalog
+// migration replace `__legacyToServicePlan` with base + feature `resolve()`.
 import { Effect, Schema } from "effect";
 
 import type { PlanMetadata, ProviderId, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
@@ -30,7 +29,7 @@ export interface LegacyServicePlanInput {
 /**
  * A `ServiceType` that still carries its pre-composition plan body under the
  * core/plugin-private `__legacyToServicePlan` key. Core's planner consumes this
- * via the core-private legacy bridge until US-359 wires the §6.11 pipeline.
+ * via the core-private legacy bridge until the composition pipeline lands.
  */
 export interface LegacyServiceType extends ServiceType {
   readonly __legacyToServicePlan: (input: LegacyServicePlanInput) => ServicePlan;
@@ -38,15 +37,15 @@ export interface LegacyServiceType extends ServiceType {
 
 /**
  * Permissive placeholder schema for every legacy catalog type. Real per-type
- * schemas land with the base/feature migration (US-356/US-361).
+ * schemas land with the base/feature catalog migration.
  */
 export const DEFAULT_SERVICE_TYPE_SCHEMA: Schema.Schema<unknown> = Schema.Unknown;
 
 /**
  * Minimal `resolve()` for a legacy catalog type: it normalizes to the authored
  * service config and declares no features. The real plan is still produced by
- * `__legacyToServicePlan` until US-359; this satisfies the §6.11 contract shape
- * (declared base + resolution, never a hand-built plan).
+ * `__legacyToServicePlan` until composition owns plans; this satisfies the
+ * contract shape (declared base + resolution, never a hand-built plan).
  */
 export const legacyResolve =
   (base: "l337" | "lando"): ((input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, never>) =>
@@ -63,8 +62,7 @@ export interface DefineLegacyServiceTypeOptions {
 
 /**
  * Assemble a `LegacyServiceType` from an existing plan body. `base` defaults to
- * `"lando"` (the composition engine and §6.9 split land in US-358/US-361);
- * `name` defaults to the id.
+ * `"lando"` until per-type base metadata is authored; `name` defaults to the id.
  */
 export const defineLegacyServiceType = (options: DefineLegacyServiceTypeOptions): LegacyServiceType => ({
   id: options.id,

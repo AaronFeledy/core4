@@ -1335,7 +1335,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
 /**
  * Reference `ServiceType` the SDK ships for in-suite composition contract
  * tests. It declares a base and resolves to a normalized config + feature list
- * (§6.11); it never hand-builds a `ServicePlan`.
+ * composition contract; it never hand-builds a `ServicePlan`.
  */
 export const TestServiceType: ServiceType = {
   id: "test",
@@ -1372,13 +1372,12 @@ export interface ServiceCompositionContractInput {
 }
 
 /**
- * Run the §6.11 service-composition contract enforceable at this stage: the
- * type exposes a non-empty id/name, declares a `base` of `"l337"` or `"lando"`,
- * and `resolve()` is an Effect that yields a `ServiceTypeResolution` with a
- * decoded `normalizedConfig` and a stable (replay-equal) `features` array —
- * and never returns a `ServicePlan`. US-362 completes the full assertion set
- * (base-specific env layers, `lando.env` reachability, `extends:` depth/cycles,
- * cache-key participation).
+ * Run the service-composition contract enforceable at this stage: the type
+ * exposes a non-empty id/name, declares a `base` of `"l337"` or `"lando"`, and
+ * `resolve()` is an Effect that yields a `ServiceTypeResolution` with decoded
+ * `normalizedConfig` and a stable (replay-equal) `features` array — and never
+ * returns a `ServicePlan`. Later work completes base env layers, `lando.env`
+ * reachability, `extends:` depth/cycles, and cache-key participation.
  */
 export const runServiceCompositionContract = (
   input: ServiceCompositionContractInput,

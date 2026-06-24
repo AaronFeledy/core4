@@ -1,8 +1,7 @@
-// Test helper assembling a §6.11 `ServiceType` whose plan body still lives
-// under the core-private `__legacyToServicePlan` bridge. Mirrors the catalog's
+// Test helper assembling a `ServiceType` whose plan body still lives under the
+// core-private `__legacyToServicePlan` bridge. Mirrors the catalog's
 // `defineLegacyServiceType`; the planner consumes the bridge via
-// `core/src/services/legacy-service-plan.ts` until the composition pipeline
-// (US-359) lands. Delete with the bridge.
+// `legacy-service-plan.ts` until the composition pipeline lands.
 import { Effect, Schema } from "effect";
 
 import type { ServicePlan } from "@lando/sdk/schema";

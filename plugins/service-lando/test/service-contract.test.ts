@@ -229,7 +229,7 @@ describe("service catalog × contract suite", () => {
     });
   }
 
-  test("catalog covers every new service type from US-083..US-090", () => {
+  test("catalog covers elasticsearch through solr service type ids", () => {
     const ids = CATALOG_CONTRACT_ENTRIES.map((entry) => entry.serviceType.id).sort();
     expect(ids).toEqual([
       "elasticsearch",
