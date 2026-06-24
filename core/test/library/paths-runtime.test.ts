@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,16 +77,27 @@ describe("library makeLandoRuntime paths surface", () => {
     }
   });
 
-  test("ConfigService base derives userCacheRoot and systemPluginRoot from the resolver", async () => {
+  test("ConfigService preserves direct root env precedence over config.yml", async () => {
+    const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-cfg-conf-")));
     const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-cfg-data-")));
     const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-cfg-cache-")));
     const systemRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-cfg-sys-")));
+    await writeFile(
+      join(confRoot, "config.yml"),
+      [
+        "userDataRoot: /from/config/data",
+        "userCacheRoot: /from/config/cache",
+        "systemPluginRoot: /from/config/system",
+      ].join("\n"),
+    );
 
     const previous = {
+      conf: process.env.LANDO_USER_CONF_ROOT,
       data: process.env.LANDO_USER_DATA_ROOT,
       cache: process.env.LANDO_USER_CACHE_ROOT,
       system: process.env.LANDO_SYSTEM_PLUGIN_ROOT,
     };
+    process.env.LANDO_USER_CONF_ROOT = confRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_SYSTEM_PLUGIN_ROOT = systemRoot;
@@ -102,7 +113,6 @@ describe("library makeLandoRuntime paths surface", () => {
         }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
       );
 
-      // Base derives all four roots from resolveLandoRoots(); cache/system were undefined before.
       expect(result.userCacheRoot).toBe(cacheRoot);
       expect(result.systemPluginRoot).toBe(systemRoot);
       expect(result.userDataRoot).toBe(dataRoot);
@@ -116,9 +126,11 @@ describe("library makeLandoRuntime paths surface", () => {
           process.env[envKey] = value;
         }
       };
+      restore("conf", "LANDO_USER_CONF_ROOT");
       restore("data", "LANDO_USER_DATA_ROOT");
       restore("cache", "LANDO_USER_CACHE_ROOT");
       restore("system", "LANDO_SYSTEM_PLUGIN_ROOT");
+      await rm(confRoot, { recursive: true, force: true });
       await rm(dataRoot, { recursive: true, force: true });
       await rm(cacheRoot, { recursive: true, force: true });
       await rm(systemRoot, { recursive: true, force: true });

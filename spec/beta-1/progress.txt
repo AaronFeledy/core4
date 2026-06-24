@@ -821,3 +821,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - Adding an eager value-only minimal service is exactly three edits: add the tag + value builder to the generator's `renderMinimal` (`Layer.succeed(Tag, builder(inputs.<field>))`), add a field to `BootstrapLayerInputs` + thread it through `runtimeLayerFor`'s call in `layer.ts`, and add the tag to the `MinimalRuntimeServices` union. Regenerate and confirm only `minimal.ts` drifts.
   - The runtime `config:` root override deliberately feeds PathsService ONLY (via `BootstrapLayerInputs.rootOverrides`), NOT `ConfigService` — `ConfigService`'s roots still resolve from env/`config.yml` through `resolveLandoRoots()` with no overrides. A test for the ConfigService base must isolate roots via `LANDO_USER_*` env vars, not the runtime `config:` option.
 ---
+
+## 2026-06-23 21:51 CDT - US-304 Review
+- Fixed a confirmed review blocker in ConfigService root precedence: direct `LANDO_USER_CACHE_ROOT` and `LANDO_SYSTEM_PLUGIN_ROOT` env vars now retain priority over conflicting `config.yml` values, matching the Paths primitive's per-root resolver order.
+- Review notes (deferred/rejected): runtime `config:` root overrides remain scoped to `PathsService` rather than `ConfigService`; this preserves the config-load self-reference split already recorded for US-304.
+- Verification: typecheck, lint passed; focused path/config/runtime spot checks passed (`core/test/library/paths-runtime.test.ts`, `core/test/unit/config-paths.test.ts`, `core/test/config/paths.test.ts`). LSP diagnostics were unavailable because the TypeScript LSP is not installed in this harness.
+---
