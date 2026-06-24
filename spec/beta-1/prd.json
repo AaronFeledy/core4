@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the \u00a714.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (\u00a718), publish schemas plus the canonical Landofile serializer (\u00a77.8/\u00a77.8.1), ship the plugin authoring toolkit (\u00a79.10), wire telemetry plus canonical redaction (\u00a73.7), complete the executable-guides pipeline (\u00a719) with public transcripts + library-mode guides + e2e @smoke, build the \u00a717 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six \u00a74.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the \u00a713.1 conformance + \u00a713.4 boundary gates) \u2014 then enter feature freeze. Stories follow the 18-PRD breakdown in `spec/beta-1/prd-beta-1-{01..18}-*.md` (US-200..US-354); each story has a corresponding US-XXX section with full TDD acceptance criteria. (PRD-16 adds the `DataMover` local/volume byte-movement primitive + the `RuntimeProvider` data plane; PRD-17 freezes the `RemoteSource` + `Dataset` remote-data-sync contract \u2014 the egress-side peer of `DataMover`, composing `HttpClient` for the remote half and `DataMover` for the local landing half \u2014 contract-only, mirroring the `TunnelService` freeze, with the `lando pull`/`push` feature shipping in 4.1; PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with its user-facing consumers shipping in 4.x.) Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: \u00a717 release = spec/15, \u00a718 deprecation = spec/16, \u00a719 guides = spec/17), and PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with the user-facing consumers \u2014 CMS settings management, `lando add`, devcontainer generation, and the `files:` Landofile key \u2014 shipping in 4.x.",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the \u00a714.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (\u00a718), publish schemas plus the canonical Landofile serializer (\u00a77.8/\u00a77.8.1), ship the plugin authoring toolkit (\u00a79.10), wire telemetry plus canonical redaction (\u00a73.7), complete the executable-guides pipeline (\u00a719) with public transcripts + library-mode guides + e2e @smoke, build the \u00a717 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six \u00a74.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the \u00a713.1 conformance + \u00a713.4 boundary gates) \u2014 then enter feature freeze. Stories follow the 19-PRD breakdown in `spec/beta-1/prd-beta-1-{01..19}-*.md` (US-200..US-362); each story has a corresponding US-XXX section with full TDD acceptance criteria. (PRD-19 is a top-priority mid-Beta-1 remediation: it makes the \u00a76.11 service base+feature composition model real \u2014 replacing the monolithic per-type `ServicePlan` emitters with the normative `ServiceType`/`resolve()` + in-core base+feature pipeline, the `l337`/`lando` bases, the `ServiceFeature`/`AppFeature` contracts, and the \u00a713.1 contract suites \u2014 and carries the lowest priority indices, US-355..US-362.) (PRD-16 adds the `DataMover` local/volume byte-movement primitive + the `RuntimeProvider` data plane; PRD-17 freezes the `RemoteSource` + `Dataset` remote-data-sync contract \u2014 the egress-side peer of `DataMover`, composing `HttpClient` for the remote half and `DataMover` for the local landing half \u2014 contract-only, mirroring the `TunnelService` freeze, with the `lando pull`/`push` feature shipping in 4.1; PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with its user-facing consumers shipping in 4.x.) Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: \u00a717 release = spec/15, \u00a718 deprecation = spec/16, \u00a719 guides = spec/17), and PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with the user-facing consumers \u2014 CMS settings management, `lando add`, devcontainer generation, and the `files:` Landofile key \u2014 shipping in 4.x.",
   "userStories": [
     {
       "id": "US-200",
@@ -2626,7 +2626,7 @@
       ],
       "priority": 146,
       "passes": true,
-      "notes": "LandofileShape now accepts raw remotes:/sync: blocks: remotes.<name> uses RemoteConfig ({source, ...sourceConfig}) and sync.<dataset> uses the frozen DatasetBinding shape (service/path). LandofileService.discover preserves both blocks raw/unresolved like includes, without widening its error union; source-specific validation, binding inference, and pull/push resolution remain 4.1. The §4.2/§9.5 RemoteSource/Dataset surfaces were already present from US-344 and are covered by schema/manifest tests."
+      "notes": "LandofileShape now accepts raw remotes:/sync: blocks: remotes.<name> uses RemoteConfig ({source, ...sourceConfig}) and sync.<dataset> uses the frozen DatasetBinding shape (service/path). LandofileService.discover preserves both blocks raw/unresolved like includes, without widening its error union; source-specific validation, binding inference, and pull/push resolution remain 4.1. The \u00a74.2/\u00a79.5 RemoteSource/Dataset surfaces were already present from US-344 and are covered by schema/manifest tests."
     },
     {
       "id": "US-346",
@@ -2754,7 +2754,7 @@
       ],
       "priority": 4,
       "passes": true,
-      "notes": "ManagedFileService.apply now publishes the four content-free redacted ManagedFile lifecycle event schemas (published as snapshot-gated @lando/sdk/events surface) through a ManagedFileEvents seam baked into the Live layer closure (frozen tag unwidened); EventService resolved via Effect.serviceOption with the bootstrap generator Layer.provide(EventServiceLive). Payloads carry path/owner/action + a byte-count-only summary, never file content; every string field routed through the canonical @lando/sdk/secrets redactor before publish. Conflict-detected fires on fail + overwrite-with-backup; skipped on skip/adopt-detected; overwrite backups written 0600 (chmod-before-rename). A secret in a settings.php block is proven absent from every emitted event (test double + real EventServiceLive integration + waitFor-capable bus). Canonical-surface deferrals per the established stand-in convention (US-351 used resolveUserDataRoot vs PathsService): the canonical RedactionService Context.Tag + the §13.4 redaction lint gate/consumer-list are BETA1-06 (US-300/301, unshipped) and the bounded redacted history + EventService.query are BETA1-14 (US-318, unshipped); the §3.7 spec consumer list already names ManagedFileService and waitFor is satisfied today."
+      "notes": "ManagedFileService.apply now publishes the four content-free redacted ManagedFile lifecycle event schemas (published as snapshot-gated @lando/sdk/events surface) through a ManagedFileEvents seam baked into the Live layer closure (frozen tag unwidened); EventService resolved via Effect.serviceOption with the bootstrap generator Layer.provide(EventServiceLive). Payloads carry path/owner/action + a byte-count-only summary, never file content; every string field routed through the canonical @lando/sdk/secrets redactor before publish. Conflict-detected fires on fail + overwrite-with-backup; skipped on skip/adopt-detected; overwrite backups written 0600 (chmod-before-rename). A secret in a settings.php block is proven absent from every emitted event (test double + real EventServiceLive integration + waitFor-capable bus). Canonical-surface deferrals per the established stand-in convention (US-351 used resolveUserDataRoot vs PathsService): the canonical RedactionService Context.Tag + the \u00a713.4 redaction lint gate/consumer-list are BETA1-06 (US-300/301, unshipped) and the bounded redacted history + EventService.query are BETA1-14 (US-318, unshipped); the \u00a73.7 spec consumer list already names ManagedFileService and waitFor is satisfied today."
     },
     {
       "id": "US-353",
@@ -2790,6 +2790,131 @@
       ],
       "priority": 6,
       "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-355",
+      "title": "Replace `ServiceTypeShape` with the normative `ServiceType` + `ServiceTypeResolution` contract",
+      "description": "As a service-type author, I declare a `base` and return a resolved `{ normalizedConfig, features }` instead of hand-building a `ServicePlan`.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` replaces `ServiceTypeShape` with the \u00a76.11 `ServiceType` shape (`id`/`name`, `base: \"l337\" | \"lando\"`, optional `versions`/`extends`/`artifacts`, `schema`, `resolve: (input) => Effect<ServiceTypeResolution, ServiceTypeError>`) and publishes `ServiceTypeResolution`, `FeatureRef`, and `ServiceTypeInput`.",
+        "The old `toServicePlan` member and `ServiceTypePlanInput` are removed from the SDK surface (private repo \u2014 no adapter, no deprecation shim).",
+        "`PluginRegistry.loadServiceType` returns the new `ServiceType`; its error union is unchanged.",
+        "`sdk/test/contract/service.test.ts` and `TestServiceType` are rewritten against the new contract; legacy `toServicePlan` assertions are deleted.",
+        "`@lando/sdk/test` introduces `runServiceCompositionContract` (the base-declared + `resolve()`-not-hand-building-a-plan + base-specific env assertions enforceable at this stage); `TestServiceType` passes it. US-362 completes its full assertion set and the catalog-wide coverage mandate.",
+        "`sdk/API_COMPATIBILITY.md`, SDK export/compat fixtures, and the \u00a713.2 schema snapshot are updated in the same change; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-356",
+      "title": "Publish the `ServiceFeature` contract and the in-core priority-ordered composition engine",
+      "description": "As the planner, I compose a service by seeding a base draft and applying service features in priority order, each mutating only the draft.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` publishes `ServiceFeatureDefinition` (`id`, `schema?`, `priority`, `requires?`, `apply`) and the mutable `ServiceFeatureContext` draft surface (`addEnv`/`addMount`/`addBuildStep`/`addStorage`/`addEndpoint`/`addHealthcheck`/`setEntrypoint`/`setUser`/`setWorkingDirectory`/\u2026) backed by a draft, not a finished `ServicePlan`.",
+        "A core composition engine (replacing the `core/src/services/feature.ts` stub) seeds a draft from a base, merges the base default feature list with the resolution's `features`, runs each `apply` in ascending `priority`, and emits a provider-neutral `ServicePlan` draft.",
+        "Features are proven idempotent and replay-safe: composing twice yields a byte-identical draft.",
+        "The plugin manifest `serviceFeatures:` slot is consumed by the loader (a `loadServiceFeature(id)` registry path), replacing the dead-slot state.",
+        "`@lando/sdk/test` introduces `runServiceFeatureContract`; a feature that performs a provider-capability check or bind/realization decision fails it (features emit intent only). US-362 completes its full assertion set and wires it across the bundled `lando.*` features.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-357",
+      "title": "Publish the `AppFeature` contract, `appFeatures:` manifest slot, and selector/cycle engine",
+      "description": "As a plugin, I mutate selected sibling services across the app plan when a triggering service is present (e.g. inject SMTP env into PHP services).",
+      "acceptanceCriteria": [
+        "`@lando/sdk/services` publishes `AppFeatureDefinition`, `AppFeatureActivation`, `AppFeatureSelectors`, `AppFeatureContext`, `AppFeatureError` (the `SelectorMatchedNothing`/`MutationConflict`/`CycleDetected` union), and `AppFeatureCycleError` per \u00a76.11.4.",
+        "`PluginContribution` gains an `appFeatures:` slot (additive to the manifest schema) consumed by the loader; the \u00a713.2 snapshot + `sdk/API_COMPATIBILITY.md` are updated in lockstep.",
+        "The app-feature pass runs as a single distinct phase after the entire service-feature phase has completed for every service (\u00a76.11.0 stage 4), evaluates `activatedBy` (no match \u2192 no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved service drafts (stages 1\u20133, never the not-yet-emitted finalized `AppPlan`), and applies mutators idempotently to each selected service.",
+        "A cyclic A\u2194B mutation is rejected with `AppFeatureCycleError`; `requires.globalServices` aggregates into the user app's `pre-start` ensure-running pass (\u00a720.6.3) and a missing global service fails with `GlobalServiceMissingError` + remediation.",
+        "A negative test proves a no-match `AppFeature` is a true no-op (no mutation, no cache entry).",
+        "`@lando/sdk/test` introduces `runAppFeatureContract` (activation gating, selector-against-drafts, idempotent mutation, cycle rejection, `requires.globalServices` aggregation); the representative test feature passes it. US-362 completes its full assertion set.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-358",
+      "title": "Implement the `l337` and `lando` bases and the built-in `lando.*` feature modules",
+      "description": "As a service author, a `lando`-base service gets the full opinionated stack and an `l337`-base service gets only artifact/build plumbing.",
+      "acceptanceCriteria": [
+        "`core/src/services/base/lando.ts` seeds the default `lando.*` feature stack (the \u00a76.11 priority list, including `lando.env`) \u2014 the `LANDO_*` / `/etc/lando` env layer itself is materialized by the `lando.env` feature at stage 3, not injected at seed time; `core/src/services/base/l337.ts` seeds only artifact/build fields + the user/Compose-authored `environment:` and no `lando.*` feature, env layer, app mount, or `/etc/lando` scaffolding.",
+        "`@lando/service-lando` ships the built-in feature modules the migrated catalog needs \u2014 at minimum `lando.env`, `lando.app-mount`, `lando.healthcheck`, `lando.storage`, `lando.user-id`, `lando.user` \u2014 each a `ServiceFeatureDefinition` at its \u00a76.11 priority.",
+        "`buildLandoEnv` is moved into the `lando.env` feature body and is no longer exported for direct use by service types; the `lando` base obtains `LANDO_*` identity env only via `lando.env`.",
+        "A `lando`-base composition carries the \u00a76.9 `LANDO_*` identity env; an `l337`-base composition carries only Compose-level/user-authored env (asserted by a focused unit test per base).",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-359",
+      "title": "Wire the composition pipeline into `planApp` and fold base/features into the cache key",
+      "description": "As the runtime, every service plan is produced by the one \u00a76.11.0 pipeline, and feature changes invalidate cached plans.",
+      "acceptanceCriteria": [
+        "`core/src/services/planner.ts` `planApp` replaces the direct `serviceType.toServicePlan(...)` call with: `resolve()` \u2192 seed base draft \u2192 apply service features by priority \u2192 run the app-feature pass over all drafts \u2192 emit `ServicePlan` drafts \u2192 the existing finalization runs exactly once, unchanged in ownership.",
+        "No provider realization happens inside a feature; finalization remains the single owner of capability/realization decisions (asserted by the feature contract + a planner test).",
+        "The app-plan cache key (\u00a712.1) incorporates the resolved `base`, the ordered `FeatureRef` list, and the activated `AppFeature` contributions; a feature/base change rolls the key (test: same Landofile, different feature set \u2192 cache miss).",
+        "`core/src/services/feature.ts` and the base stubs no longer contain TODO-only bodies; orphaned monolithic-path code is deleted.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-360",
+      "title": "Service-type inheritance (`extends:`) and declarative `artifacts:` version pinning",
+      "description": "As a service-type author, I extend a parent type and pin versions to image tags declaratively.",
+      "acceptanceCriteria": [
+        "`resolve()` honors `extends: <parent-id>`: parent resolves first, then the child resolves against the parent's `ServiceTypeResolution` and may overlay/replace per \u00a77.2 merge rules; inheritance is single, depth \u2264 4, cycles rejected at load with `ServiceTypeCollisionError`.",
+        "`artifacts:` (`{ \"<version>\": \"<image-tag>\" }`) resolves `type: <name>:<version>` to a concrete tag at plan-compile time; exact match wins, a `versions:` entry without an `artifacts:` entry resolves to `<name>:<version>` by convention, and the resolved tag is recorded in the app-plan cache key.",
+        "A representative inheritance case and a representative pin case are covered by tests, including a depth-limit and a cycle-rejection test.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-361",
+      "title": "Migrate the canonical catalog onto `base + features` and prove the `l337`/`lando` split",
+      "description": "As a maintainer, every bundled service type composes from a base and a feature list, and `compose` is a true `l337` service.",
+      "acceptanceCriteria": [
+        "Every `plugins/service-lando/src/services/*.ts` type is rewritten to declare a `base` and return a `ServiceTypeResolution`; no `toServicePlan` and no direct `buildLandoEnv` import remains.",
+        "`compose` declares `base: \"l337\"` and a negative test asserts its composed environment contains no injected `LANDO_*` keys unless the user authored them (fixing the current \u00a76.9 violation).",
+        "The `lando`-base catalog types (php, node, postgres, mariadb, mysql, mongodb, redis, nginx, apache, \u2026) declare `base: \"lando\"` and pass `runServiceCompositionContract`, including the `lando.env`/`LANDO_*` assertions and their `tooling:`/`creds:`/`framework:` presets flowing through the resolution.",
+        "Per-family parity tests confirm the composed `ServicePlan` (pre-finalization) matches the previously-asserted plan shape for each migrated type, or the diff is intentional and documented in the test.",
+        "Whole-workspace `bun test` is green with no service test skipped or deleted to pass.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-362",
+      "title": "Complete the \u00a713.1 contract suites and add the \u00a713.4 env-helper boundary gate",
+      "description": "As a reviewer, the base/feature model is enforced by contract suites and a lint gate so a future service type cannot silently skip it.",
+      "acceptanceCriteria": [
+        "The three `@lando/sdk/test` suites introduced earlier \u2014 `runServiceCompositionContract` (US-355), `runServiceFeatureContract` (US-356), `runAppFeatureContract` (US-357) \u2014 are completed to the full assertion set enumerated in the \u00a713 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`\u2192`lando.env`/`LANDO_*`; `l337`\u2192no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`). This story completes the assertions; it does not introduce a suite a prior story already depended on.",
+        "The bundled catalog tests run `runServiceCompositionContract` per type (and `runAppFeatureContract` for the mailpit-style feature), wired as the \u00a713.1 layer-coverage mandate.",
+        "A \u00a713.4 boundary gate (wired into CI static checks via a `bun run check:*` script) fails on any direct import of the env-layer helper from `plugins/service-lando/src/services/**` (only the `lando.env` feature may import it); a negative fixture proves the gate fires.",
+        "`sdk/API_COMPATIBILITY.md` records the additive `@lando/sdk/test` exports; the \u00a76.12.1 per-type checklist is referenced by the catalog tests.",
+        "Tests pass. Typecheck passes. Lint passes."
+      ],
+      "priority": 8,
+      "passes": false,
       "notes": ""
     }
   ]

@@ -6,6 +6,13 @@ Keep repo-specific quirks here. **This file is authoritative** for agents and co
 
 - Lando Core v4 is a Bun workspace for `@lando/core`, `@lando/sdk`, and bundled reference plugins under `plugins/*`.
 
+## Compatibility and refactoring (pre-release)
+
+- **The spec (`spec/`) is the only compatibility contract.** Lando v4 has not shipped: nothing is published, there are no external consumers, and no released behavior exists to preserve. Conform to the spec, not to whatever the current code happens to do. When the code and the spec disagree, the code is wrong.
+- **Gut-and-replace is fully allowed.** When existing implementation diverges from the spec (or just needs restructuring), refactor it out directly. Do NOT add backward-compat shims, legacy adapters, dual code paths, deprecation stubs, or migration code to "support" prior unreleased internals — there is nothing to support. Delete the old path, update its callers and tests, and move on. A monolithic/incorrect implementation has no standing against the spec; "it currently works this way" is not a reason to keep it.
+- **This includes the `@lando/sdk` surface.** The "compatibility-locked on first ship" rule (see the SDK note below and `sdk/AGENTS.md`) has not triggered yet — nothing has shipped. You may change, rename, or remove `@lando/sdk` exports when the spec requires it. The lockstep discipline (`sdk/API_COMPATIBILITY.md`, fixtures, schema snapshot, test doubles) still applies, but it is an internal-consistency requirement, not a backward-compat one: update those artifacts to match the new surface rather than preserving the old.
+- **The bar is correctness against the spec plus the standard gates** (`bun run typecheck`, `bun test`, `bun run lint`, relevant `bun run check:*`), not source-level continuity with the pre-refactor code.
+
 ## Commands
 
 - Use Bun, not Node/npm/yarn/pnpm: `bun install`, `bun run typecheck`, `bun run lint`, `bun test`, `bun run build`.

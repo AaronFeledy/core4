@@ -22,6 +22,8 @@ A v4 service is a planned runtime component built from a **base** plus a sequenc
 | `l337` | Low-level artifact-oriented service. Provides artifact-build plumbing and nothing else. No `/etc/lando/*` scaffolding, no opinionated env, no packages. The escape hatch. |
 | `lando` | Opinionated dev service. Adds boot scaffolding, an env layer, packages, container-time build steps, app mounts, healthcheck integration, certs, SSH agent, and run hooks. Default when `type:` is omitted. |
 
+**Composition is normative, not advisory (§6.11.0).** A `ServiceType` does **not** emit a finished `ServicePlan`. It resolves `type: <name>` into a `ServiceTypeResolution` (`{ base, normalizedConfig, features }`); core's planner then *composes* the named base with the priority-ordered feature list to produce the plan. The base is the lower half of that composition (which default feature stack a service seeds — and therefore whether the `lando.env` env layer ends up present), and the features are the upper half. An implementation that hand-builds a `ServicePlan` per service type instead of going through `base + features` is **non-conforming**, even if its output happens to look right — it silently loses the `l337`/`lando` distinction (§6.9), `AppFeature` injection (§6.11.4), `extends:` inheritance (§6.11.1), and the per-feature conformance surface. The exact pipeline is specified in §6.11.0 and is gated by the §13.1 `runServiceCompositionContract` suite.
+
 `api: 4` is the only service API in this spec. Core defaults `api` to `4` when omitted, *after* the Landofile has confirmed it targets v4. There is no `api: 3` compatibility path.
 
 **Provider selection.** A service inherits the app's provider. Per-service provider selection is non-portable; plugins may consume it via `services.<name>.providers.<id>` extensions. `ServicePlan.provider` is the resolved app provider, copied onto each planned service for adapter convenience.
@@ -587,6 +589,37 @@ export const ServiceInfo = Schema.Struct({
 
 ### 6.11 Service type and feature contracts
 
+#### 6.11.0 Planning algorithm (normative)
+
+Core composes every service through exactly this pipeline. The pipeline lives in **core** (the `AppPlanner`), not inside individual service types, because only core can guarantee deterministic ordering, inheritance-depth checks, conflict handling, the app-feature pass, and a single shared finalization stage. It runs in two phases: a **per-service phase** (stages 1–3, run for each service) followed by a single **app-wide phase** (stages 4–6, run once for the whole app).
+
+**Per-service phase — for each service in the resolved Landofile, in app order:**
+
+1. **Resolve the service type.** Run `ServiceType.resolve(input)` to obtain a `ServiceTypeResolution` (`{ base, normalizedConfig, features, tooling?, metadata? }`). `extends:` parents resolve first (§6.11.1); `artifacts:` version pins resolve here (§6.11.2). `resolve()` is an `Effect` and MAY be asynchronous; it normalizes config and *chooses* base/features/tooling, but MUST NOT itself build the plan.
+2. **Seed the base context.** Construct a mutable `ServiceFeatureContext` (the plan *draft*) from the named base. Seeding establishes the base's **default feature list** and carries the user-authored `environment:` from `normalizedConfig`; it does **not** itself inject the `LANDO_*` / `/etc/lando` env layer (that is materialized only when the `lando.env` feature runs in stage 3, per §6.9 / §6.11.0.1):
+   - `base: "lando"` seeds the default lando feature stack (the built-in feature priority list below, which **includes** `lando.env` at priority 700). The env layer is not present on the draft yet — it appears when `lando.env` runs in stage 3.
+   - `base: "l337"` seeds **only** the artifact/build-plumbing fields and carries the user/Compose-authored `environment:`. It seeds no `lando.*` feature, no `/etc/lando/*` env layer, no app mount, and no packages (§6.9); because it lists no `lando.env`, no `LANDO_*` env layer is ever materialized for it.
+3. **Apply service features in priority order.** Merge the base's default feature list with the resolution's `features` and run each `ServiceFeature.apply(ctx)` in ascending `priority`. Features mutate only the draft; they are idempotent and replay-safe (§6.11, "Feature rules").
+
+**App-wide phase — once, after the per-service phase has completed for every service:**
+
+4. **Apply app features.** Run the activated `AppFeature`s (§6.11.4) as a single distinct phase against an app-level context spanning every service draft, in ascending `priority` among themselves, with cycle detection. The app-feature phase always runs after the *entire* service-feature phase — an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features.
+5. **Emit the provider-neutral drafts → `ServicePlan`s.** Convert every finished draft to a `ServicePlan`.
+6. **Finalize once, in core.** Run the existing planner finalization exactly once over all emitted plans: provider-capability validation, bind realization (`passthrough`/`accelerated`), file-sync session generation, storage shadow expansion, route/networking aggregation, default-exclude merge, and the final `AppPlan` decode (§6.4, §6.5, §6.6).
+
+Features emit **provider-neutral plan intent only**. Provider realization (capability checks, bind/volume/file-sync decisions, host-port publishing) is owned by stage 6 and MUST NOT be performed inside a feature. The composition input that feeds the app-plan cache key (§12.1) MUST include the resolved `base`, the ordered `FeatureRef` list, and any `AppFeature` contributions — not just the service-type id — or a feature change yields a stale plan.
+
+#### 6.11.0.1 Service-type conformance requirements (normative)
+
+Every `ServiceType` (canonical or plugin-contributed) MUST satisfy all of the following, enforced by the §13.1 `runServiceCompositionContract` suite:
+
+- It declares a `base` of `"l337"` or `"lando"`. There is no default-by-omission base on the contract; the *Landofile* default `type: lando` is resolved upstream, but the resolved `ServiceType` always names its base explicitly.
+- It returns a `ServiceTypeResolution` from `resolve()`. It MUST NOT hand-build a `ServicePlan`.
+- A `base: "lando"` service receives the `lando.env` feature (and therefore the `/etc/lando/environment` env layer and the standard `LANDO_*` identity env of §6.9).
+- A `base: "l337"` service receives **no** injected `LANDO_*` env layer and no `/etc/lando` scaffolding; its environment contains only Compose-level / user-authored keys plus any env a feature it explicitly lists contributes.
+- The env-layer helper (`buildLandoEnv` / the `lando.env` feature body) is reachable only through the `lando.env` feature. A service type MUST NOT import or call the env-layer helper directly; the §13.4 boundary gate forbids it.
+- Feature priority order and `extends:` depth (≤ 4, no cycles) are stable across replays.
+
 **Service types** are resolvers that turn `type: <name>` into normalized config + a list of features to apply.
 
 ```ts
@@ -658,12 +691,14 @@ export interface AppFeatureSelectors {
 
 App-feature rules:
 
-- Activation runs at app-plan time after `ServiceType.resolve()` for every service has completed. A feature whose `activatedBy` does not match is a no-op (no `apply()` invocation, no plan-cache entry).
+- Activation runs at app-plan time after the **entire per-service phase** (stages 1–3 of §6.11.0 — service-type resolution *and* service-feature application) has completed for every service. Evaluating activation only after stage 3 is what makes `activatedBy: { hasFeature }` meaningful, since a service's feature set is not final until its service features have run. A feature whose `activatedBy` does not match is a no-op (no `apply()` invocation, no plan-cache entry).
 - `AppFeatureContext` exposes the same mutators as `ServiceFeatureContext` (`addEnv`, `addMount`, `addBuildStep`, `addHealthcheck`, `setEntrypoint`, …) but applies them to **each service yielded by the selector**. Mutators are idempotent and replay-safe.
-- Selectors are evaluated against the resolved app plan, not raw user config. `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
-- Priority bands match `ServiceFeature` priorities (§6.11). App-features run after all service-features at each priority bucket.
+- Selectors are evaluated against the **resolved service drafts** — the post-resolution, post-service-feature draft set produced by stages 1–3 of §6.11.0 — not raw user config and not the finalized `AppPlan` (which does not exist until stage 6). `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
+- App-features run as a single distinct phase **after the entire service-feature phase** (stage 3 of §6.11.0) has completed for every service; an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features. Priority numbers reuse the `ServiceFeature` band scale (§6.11) for readability.
 - Cyclic mutations (feature A mutates B; feature B mutates A) are detected and rejected with `AppFeatureCycleError`.
 - `AppFeatureError` is a tagged union (`SelectorMatchedNothing`, `MutationConflict`, `CycleDetected`); planners surface failures with the contributing plugin id and remediation.
+
+**Manifest contribution slots (normative).** A plugin registers service-scoped features through the `serviceFeatures:` manifest contribution surface and app-scoped features through the `appFeatures:` surface (§4.2, §9.5). Both slots MUST exist in the published `PluginManifest` schema and MUST be consumed by the plugin loader / `AppPlanner`; a spec-defined contribution type with no manifest slot is a silent-omission trap and is non-conforming. Service types are registered through `serviceTypes:` as today.
 
 **`requires.globalServices`** declares that this feature depends on one or more services running in the global Lando app (§20). When the feature activates against a user app's plan, the `AppPlanner` aggregates `requires.globalServices` across every activated feature and the lifecycle orchestrator calls `GlobalAppService.ensureRunning(needed)` inside the user app's `pre-start` phase, after early subscribers and before the user-app build block (§20.6.3). A `requires.globalServices` entry referring to a global service id that is not in the resolved global plan (disabled by the user, capability-blocked, or contributed by a plugin that is not installed) raises `GlobalServiceMissingError` and aborts the user app's start with remediation pointing at `meta:global:install <plugin>`.
 
@@ -755,6 +790,15 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 | `compose` | n/a | `l337` | Raw Compose-spec passthrough; the escape hatch for anything not in the catalog. Validates the `image:` / `build:` block and routes everything else through provider-specific extensions. |
 
 Each type's configuration schema is published from `@lando/sdk` under `@lando/sdk/schema/services/<type>` (§13.2) and surfaces in editor completion and the docs site. Version aliases (`lts`, `latest`) resolve at plan compile time and are recorded in the app-plan cache (§12).
+
+**Per-service-type implementation checklist (normative).** Every catalog entry above — and every plugin-contributed service type — MUST land with all of the following, in the same change. A reviewer who cannot tick every box rejects the service type. This checklist exists because the base/feature machinery is easy to skip while an individual service type still "works" in isolation:
+
+- [ ] Declares its `base` (`l337` or `lando`) per the catalog's "Default base" column; does not hand-build a `ServicePlan`.
+- [ ] Returns a `ServiceTypeResolution` from `resolve()` and wires its feature list (default base stack for `lando`; artifact/build plumbing only for `l337`).
+- [ ] Passes `runServiceCompositionContract` (§13.1), including the base-specific env assertions (`lando` → `lando.env`/`LANDO_*` present; `l337` → no injected env layer).
+- [ ] If it contributes `AppFeature`s, passes `runAppFeatureContract` (selector match, idempotency, cycle rejection).
+- [ ] Does not import the env-layer helper directly (the §13.4 boundary gate forbids it outside the `lando.env` feature).
+- [ ] Ships its `tooling:` (§6.11.3), `creds:` (§6.12.4 where applicable), and `framework:` presets (§6.12.2) through the resolution, not through bespoke plan mutation.
 
 #### 6.12.2 Framework presets
 
