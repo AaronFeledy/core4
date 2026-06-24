@@ -598,7 +598,7 @@ Core composes every service through exactly this pipeline. The pipeline lives in
    - `base: "lando"` seeds the default lando feature stack (the built-in feature priority list below) and the `lando.env` env baseline.
    - `base: "l337"` seeds **only** the artifact/build-plumbing fields and the user/Compose-authored environment. It MUST NOT seed the `/etc/lando/*` env layer, app mount, packages, or any `lando.*` feature (§6.9).
 3. **Apply service features in priority order.** Merge the base's default feature list with the resolution's `features` and run each `ServiceFeature.apply(ctx)` in ascending `priority`. Features mutate only the draft; they are idempotent and replay-safe (§6.11, "Feature rules").
-4. **Apply app features.** After every service draft in the app exists, run the activated `AppFeature`s (§6.11.4) against an app-level context, ascending `priority`, with cycle detection. App-features run after all service-features at each priority bucket.
+4. **Apply app features.** After stage 3 has run **every** service feature for **every** service in the app, run the activated `AppFeature`s (§6.11.4) as a single distinct phase against an app-level context, in ascending `priority` among themselves, with cycle detection. The app-feature phase always runs after the *entire* service-feature phase — an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features.
 5. **Emit the provider-neutral draft → `ServicePlan`.** Convert each finished draft to a `ServicePlan`.
 6. **Finalize once, in core.** Run the existing planner finalization exactly once over the emitted plans: provider-capability validation, bind realization (`passthrough`/`accelerated`), file-sync session generation, storage shadow expansion, route/networking aggregation, default-exclude merge, and the final `AppPlan` decode (§6.4, §6.5, §6.6).
 
@@ -688,8 +688,8 @@ App-feature rules:
 
 - Activation runs at app-plan time after `ServiceType.resolve()` for every service has completed. A feature whose `activatedBy` does not match is a no-op (no `apply()` invocation, no plan-cache entry).
 - `AppFeatureContext` exposes the same mutators as `ServiceFeatureContext` (`addEnv`, `addMount`, `addBuildStep`, `addHealthcheck`, `setEntrypoint`, …) but applies them to **each service yielded by the selector**. Mutators are idempotent and replay-safe.
-- Selectors are evaluated against the resolved app plan, not raw user config. `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
-- Priority bands match `ServiceFeature` priorities (§6.11). App-features run after all service-features at each priority bucket.
+- Selectors are evaluated against the **resolved service drafts** — the post-resolution, post-service-feature draft set produced by stages 1–3 of §6.11.0 — not raw user config and not the finalized `AppPlan` (which does not exist until stage 6). `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
+- App-features run as a single distinct phase **after the entire service-feature phase** (stage 3 of §6.11.0) has completed for every service; an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features. Priority numbers reuse the `ServiceFeature` band scale (§6.11) for readability.
 - Cyclic mutations (feature A mutates B; feature B mutates A) are detected and rejected with `AppFeatureCycleError`.
 - `AppFeatureError` is a tagged union (`SelectorMatchedNothing`, `MutationConflict`, `CycleDetected`); planners surface failures with the contributing plugin id and remediation.
 

@@ -2801,6 +2801,7 @@
         "The old `toServicePlan` member and `ServiceTypePlanInput` are removed from the SDK surface (private repo \u2014 no adapter, no deprecation shim).",
         "`PluginRegistry.loadServiceType` returns the new `ServiceType`; its error union is unchanged.",
         "`sdk/test/contract/service.test.ts` and `TestServiceType` are rewritten against the new contract; legacy `toServicePlan` assertions are deleted.",
+        "`@lando/sdk/test` introduces `runServiceCompositionContract` (the base-declared + `resolve()`-not-hand-building-a-plan + base-specific env assertions enforceable at this stage); `TestServiceType` passes it. US-362 completes its full assertion set and the catalog-wide coverage mandate.",
         "`sdk/API_COMPATIBILITY.md`, SDK export/compat fixtures, and the \u00a713.2 schema snapshot are updated in the same change; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
@@ -2817,7 +2818,7 @@
         "A core composition engine (replacing the `core/src/services/feature.ts` stub) seeds a draft from a base, merges the base default feature list with the resolution's `features`, runs each `apply` in ascending `priority`, and emits a provider-neutral `ServicePlan` draft.",
         "Features are proven idempotent and replay-safe: composing twice yields a byte-identical draft.",
         "The plugin manifest `serviceFeatures:` slot is consumed by the loader (a `loadServiceFeature(id)` registry path), replacing the dead-slot state.",
-        "A feature that performs a provider-capability check or bind/realization decision fails `runServiceFeatureContract` (features emit intent only).",
+        "`@lando/sdk/test` introduces `runServiceFeatureContract`; a feature that performs a provider-capability check or bind/realization decision fails it (features emit intent only). US-362 completes its full assertion set and wires it across the bundled `lando.*` features.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 2,
@@ -2831,9 +2832,10 @@
       "acceptanceCriteria": [
         "`@lando/sdk/services` publishes `AppFeatureDefinition`, `AppFeatureActivation`, `AppFeatureSelectors`, `AppFeatureContext`, `AppFeatureError` (the `SelectorMatchedNothing`/`MutationConflict`/`CycleDetected` union), and `AppFeatureCycleError` per \u00a76.11.4.",
         "`PluginContribution` gains an `appFeatures:` slot (additive to the manifest schema) consumed by the loader; the \u00a713.2 snapshot + `sdk/API_COMPATIBILITY.md` are updated in lockstep.",
-        "The app-feature pass runs after every service draft exists, evaluates `activatedBy` (no match \u2192 no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against resolved drafts, and applies mutators idempotently to each selected service.",
+        "The app-feature pass runs as a single distinct phase after the entire service-feature phase has completed for every service (\u00a76.11.0 stage 4), evaluates `activatedBy` (no match \u2192 no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved service drafts (stages 1\u20133, never the not-yet-emitted finalized `AppPlan`), and applies mutators idempotently to each selected service.",
         "A cyclic A\u2194B mutation is rejected with `AppFeatureCycleError`; `requires.globalServices` aggregates into the user app's `pre-start` ensure-running pass (\u00a720.6.3) and a missing global service fails with `GlobalServiceMissingError` + remediation.",
         "A negative test proves a no-match `AppFeature` is a true no-op (no mutation, no cache entry).",
+        "`@lando/sdk/test` introduces `runAppFeatureContract` (activation gating, selector-against-drafts, idempotent mutation, cycle rejection, `requires.globalServices` aggregation); the representative test feature passes it. US-362 completes its full assertion set.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 3,
@@ -2902,10 +2904,10 @@
     },
     {
       "id": "US-362",
-      "title": "Ship the \u00a713.1 contract suites and the \u00a713.4 env-helper boundary gate",
+      "title": "Complete the \u00a713.1 contract suites and add the \u00a713.4 env-helper boundary gate",
       "description": "As a reviewer, the base/feature model is enforced by contract suites and a lint gate so a future service type cannot silently skip it.",
       "acceptanceCriteria": [
-        "`@lando/sdk/test` exports `runServiceCompositionContract`, `runServiceFeatureContract`, and `runAppFeatureContract` with the assertions enumerated in the \u00a713 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`\u2192`lando.env`/`LANDO_*`; `l337`\u2192no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`).",
+        "The three `@lando/sdk/test` suites introduced earlier \u2014 `runServiceCompositionContract` (US-355), `runServiceFeatureContract` (US-356), `runAppFeatureContract` (US-357) \u2014 are completed to the full assertion set enumerated in the \u00a713 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`\u2192`lando.env`/`LANDO_*`; `l337`\u2192no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`). This story completes the assertions; it does not introduce a suite a prior story already depended on.",
         "The bundled catalog tests run `runServiceCompositionContract` per type (and `runAppFeatureContract` for the mailpit-style feature), wired as the \u00a713.1 layer-coverage mandate.",
         "A \u00a713.4 boundary gate (wired into CI static checks via a `bun run check:*` script) fails on any direct import of the env-layer helper from `plugins/service-lando/src/services/**` (only the `lando.env` feature may import it); a negative fixture proves the gate fires.",
         "`sdk/API_COMPATIBILITY.md` records the additive `@lando/sdk/test` exports; the \u00a76.12.1 per-type checklist is referenced by the catalog tests.",

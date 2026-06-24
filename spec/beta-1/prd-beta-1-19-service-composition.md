@@ -46,6 +46,7 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 - [ ] The old `toServicePlan` member and `ServiceTypePlanInput` are removed from the SDK surface (private repo — no adapter, no deprecation shim).
 - [ ] `PluginRegistry.loadServiceType` returns the new `ServiceType`; its error union is unchanged.
 - [ ] `sdk/test/contract/service.test.ts` and `TestServiceType` are rewritten against the new contract; the legacy `toServicePlan` assertions are deleted.
+- [ ] `@lando/sdk/test` introduces `runServiceCompositionContract` (the base-declared + `resolve()`-not-hand-building-a-plan + base-specific env assertions it can enforce at this stage); `TestServiceType` passes it. US-362 later completes its full assertion set and the catalog-wide coverage mandate.
 - [ ] `sdk/API_COMPATIBILITY.md`, the SDK export/compat fixtures, and the §13.2 schema snapshot are updated in the same change; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.
 - [ ] Tests pass. Typecheck passes. Lint passes.
 
@@ -59,7 +60,7 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 - [ ] A core composition engine (`core/src/services/compose.ts` or equivalent, replacing the `feature.ts` stub) seeds a draft from a base, merges the base default feature list with the resolution's `features`, runs each `apply` in ascending `priority`, and emits a provider-neutral `ServicePlan` draft.
 - [ ] Features are proven idempotent and replay-safe: composing twice yields a byte-identical draft.
 - [ ] The plugin manifest `serviceFeatures:` slot is consumed by the loader (a `loadServiceFeature(id)` registry path), replacing the dead-slot state.
-- [ ] A feature that performs a provider-capability check or bind/realization decision fails `runServiceFeatureContract` (features emit intent only).
+- [ ] `@lando/sdk/test` introduces `runServiceFeatureContract`; a feature that performs a provider-capability check or bind/realization decision fails it (features emit intent only). US-362 later completes its full assertion set and wires it across the bundled `lando.*` features.
 - [ ] Tests pass. Typecheck passes. Lint passes.
 
 ### US-357: Publish the `AppFeature` contract, `appFeatures:` manifest slot, and selector/cycle engine
@@ -70,9 +71,10 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 
 - [ ] `@lando/sdk/services` publishes `AppFeatureDefinition`, `AppFeatureActivation`, `AppFeatureSelectors`, `AppFeatureContext`, and `AppFeatureError` (the `SelectorMatchedNothing` / `MutationConflict` / `CycleDetected` tagged union) per §6.11.4, plus `AppFeatureCycleError`.
 - [ ] `PluginContribution` gains an `appFeatures:` slot (additive to the manifest schema) consumed by the loader; the §13.2 snapshot + `sdk/API_COMPATIBILITY.md` are updated in lockstep.
-- [ ] The app-feature pass runs after every service draft exists, evaluates `activatedBy` (no match → no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved drafts, and applies mutators idempotently to each selected service.
+- [ ] The app-feature pass runs as a single distinct phase after the entire service-feature phase has completed for every service (§6.11.0 stage 4), evaluates `activatedBy` (no match → no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved service drafts (stages 1–3, never the not-yet-emitted finalized `AppPlan`), and applies mutators idempotently to each selected service.
 - [ ] A cyclic A↔B mutation is rejected with `AppFeatureCycleError`; `requires.globalServices` aggregates into the user app's `pre-start` ensure-running pass (§20.6.3) and a missing global service fails with `GlobalServiceMissingError` + remediation.
 - [ ] A negative test proves a no-match `AppFeature` is a true no-op (no mutation, no cache entry).
+- [ ] `@lando/sdk/test` introduces `runAppFeatureContract` (activation gating, selector-against-drafts, idempotent mutation, cycle rejection, `requires.globalServices` aggregation); the representative test feature passes it. US-362 later completes its full assertion set and the catalog-wide coverage mandate.
 - [ ] Tests pass. Typecheck passes. Lint passes.
 
 ### US-358: Implement the `l337` and `lando` bases and the built-in `lando.*` feature modules
@@ -123,13 +125,13 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 - [ ] The whole-workspace `bun test` is green with no service test skipped or deleted to pass.
 - [ ] Tests pass. Typecheck passes. Lint passes.
 
-### US-362: Ship the §13.1 contract suites and the §13.4 env-helper boundary gate
+### US-362: Complete the §13.1 contract suites and add the §13.4 env-helper boundary gate
 
 **Description:** As a reviewer, the base/feature model is enforced by contract suites and a lint gate so a future service type cannot silently skip it.
 
 **Acceptance Criteria:**
 
-- [ ] `@lando/sdk/test` exports `runServiceCompositionContract`, `runServiceFeatureContract`, and `runAppFeatureContract` with the assertions enumerated in the §13 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`→`lando.env`/`LANDO_*`; `l337`→no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`).
+- [ ] The three `@lando/sdk/test` suites introduced earlier — `runServiceCompositionContract` (US-355), `runServiceFeatureContract` (US-356), and `runAppFeatureContract` (US-357) — are completed to the full assertion set enumerated in the §13 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`→`lando.env`/`LANDO_*`; `l337`→no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`). This story owns the final assertions; it does not introduce a suite a prior story already depended on.
 - [ ] The bundled catalog tests run `runServiceCompositionContract` per type (and `runAppFeatureContract` for the mailpit-style feature), wired as the §13.1 layer-coverage mandate.
 - [ ] A §13.4 boundary gate (`scripts/check-*.ts`, wired into CI static checks via a `bun run check:*` script) fails on any direct import of the env-layer helper from `plugins/service-lando/src/services/**` (only the `lando.env` feature may import it); a negative fixture proves the gate fires.
 - [ ] `sdk/API_COMPATIBILITY.md` records the additive `@lando/sdk/test` exports; the §6.12.1 per-type checklist is referenced by the catalog tests.
@@ -155,6 +157,7 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 ## Technical Considerations
 
 - This is a gut-and-replace, not an additive migration: the repo is private and unpublished, so `toServicePlan` is deleted rather than adapted. Land US-355..US-359 (contracts + engine + bases + wiring) before US-361 (catalog migration) so the catalog migrates onto a working engine.
+- Each `@lando/sdk/test` contract suite is **introduced by the story that first depends on it** — `runServiceCompositionContract` in US-355, `runServiceFeatureContract` in US-356, `runAppFeatureContract` in US-357 — so no earlier story (US-356, US-361) asserts against a suite that does not exist yet. US-362 does not *define* the suites; it completes their full assertion set, wires them as the §13.1 catalog-wide layer-coverage mandate, and adds the §13.4 boundary gate. This is why US-362 sits last in priority despite earlier stories consuming the suites.
 - The `ServiceFeatureContext` must be a draft surface, not a raw mutable `ServicePlan`, so features cannot bypass finalization or bake provider-specific realization early. Model it as the pre-finalization intent shape the engine emits.
 - `resolve()` becoming an `Effect` widens the planner's service path from sync (`Effect.try` around `toServicePlan`) to a proper effectful resolve; keep the surrounding `planApp` capability/realization stages exactly as they are to avoid collateral churn.
 - The app-plan cache key change is load-bearing: omitting the `FeatureRef` list or `AppFeature` contributions produces stale plans when a feature changes. Add the cache-miss test in US-359 as the regression guard.
