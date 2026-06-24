@@ -30,7 +30,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("worker")];
     if (service === undefined) throw new Error("worker service missing");
 
-    const plan = composeServiceType.toServicePlan({
+    const plan = composeServiceType.__legacyToServicePlan({
       name: "worker",
       service,
       appRoot: "/srv/apps/myapp",
@@ -74,7 +74,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("worker")];
     if (service === undefined) throw new Error("worker service missing");
 
-    const plan = composeServiceType.toServicePlan({
+    const plan = composeServiceType.__legacyToServicePlan({
       name: "worker",
       service,
       appRoot: "/srv/apps/myapp",
@@ -109,7 +109,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("api")];
     if (service === undefined) throw new Error("api service missing");
 
-    const plan = composeServiceType.toServicePlan({
+    const plan = composeServiceType.__legacyToServicePlan({
       name: "api",
       service,
       appRoot: "/srv/apps/myapp",
@@ -142,7 +142,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("api")];
     if (service === undefined) throw new Error("api service missing");
 
-    const plan = composeServiceType.toServicePlan({
+    const plan = composeServiceType.__legacyToServicePlan({
       name: "api",
       service,
       appRoot: "/srv/apps/myapp",
@@ -164,7 +164,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     if (service === undefined) throw new Error("api service missing");
 
     expect(() =>
-      composeServiceType.toServicePlan({
+      composeServiceType.__legacyToServicePlan({
         name: "api",
         service,
         appRoot: "/srv/apps/myapp",
@@ -188,7 +188,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     if (service === undefined) throw new Error("api service missing");
 
     expect(() =>
-      composeServiceType.toServicePlan({
+      composeServiceType.__legacyToServicePlan({
         name: "api",
         service,
         appRoot: "/srv/apps/myapp",
@@ -212,7 +212,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     if (service === undefined) throw new Error("api service missing");
 
     expect(() =>
-      composeServiceType.toServicePlan({
+      composeServiceType.__legacyToServicePlan({
         name: "api",
         service,
         appRoot: "/srv/apps/myapp",
@@ -237,7 +237,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("db")];
       if (service === undefined) throw new Error("db service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "db",
         service,
         appRoot: "/srv/apps/myapp",
@@ -268,7 +268,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("app")];
       if (service === undefined) throw new Error("app service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "app",
         service,
         appRoot: "/srv/apps/myapp",
@@ -299,7 +299,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("web")];
       if (service === undefined) throw new Error("web service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: "/srv/apps/myapp",
@@ -325,7 +325,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("worker")];
       if (service === undefined) throw new Error("worker service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "worker",
         service,
         appRoot: "/srv/apps/myapp",
@@ -356,7 +356,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("worker")];
       if (service === undefined) throw new Error("worker service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "worker",
         service,
         appRoot: "/srv/apps/myapp",
@@ -383,7 +383,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       const service = landofile.services?.[ServiceName.make("worker")];
       if (service === undefined) throw new Error("worker service missing");
 
-      const plan = composeServiceType.toServicePlan({
+      const plan = composeServiceType.__legacyToServicePlan({
         name: "worker",
         service,
         appRoot: "/srv/apps/myapp",

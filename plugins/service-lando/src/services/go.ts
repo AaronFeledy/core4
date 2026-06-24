@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -59,82 +60,83 @@ const validateVersion = (
   throw new Error(`Unsupported Go version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const makeGoServiceType = (version: SupportedGoVersion): ServiceTypeShape => ({
-  id: `go:${version}`,
-  toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-    const resolvedVersion = validateVersion(service.type, version);
-    const framework = validateFramework(service.framework);
-    const preset = FRAMEWORK_PRESETS[framework];
-    const appName = appNameFor(input);
-    const serviceType = `go:${resolvedVersion}`;
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType,
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      host,
-      extraDefaults: frameworkDefaults(),
-      userEnv: service.environment ?? {},
-    });
-    const endpointPort = service.port ?? preset.port;
+const makeGoServiceType = (version: SupportedGoVersion): LegacyServiceType =>
+  defineLegacyServiceType({
+    id: `go:${version}`,
+    toServicePlan: (input) => {
+      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
+      const resolvedVersion = validateVersion(service.type, version);
+      const framework = validateFramework(service.framework);
+      const preset = FRAMEWORK_PRESETS[framework];
+      const appName = appNameFor(input);
+      const serviceType = `go:${resolvedVersion}`;
+      const environment = buildLandoEnv({
+        serviceName: name,
+        serviceType,
+        appName,
+        appPaths: { appRoot: "/app", projectMount: "/app" },
+        host,
+        extraDefaults: frameworkDefaults(),
+        userEnv: service.environment ?? {},
+      });
+      const endpointPort = service.port ?? preset.port;
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: serviceType,
-      provider,
-      primary: service.primary ?? primary ?? name === "web",
-      artifact: { kind: "ref", ref: service.image ?? `golang:${resolvedVersion}` },
-      command: service.command ?? [...DEFAULT_KEEP_ALIVE],
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
-        {
-          type: "bind",
-          source: appRoot,
+      return decodeServicePlan({
+        name: ServiceName.make(name),
+        type: serviceType,
+        provider,
+        primary: service.primary ?? primary ?? name === "web",
+        artifact: { kind: "ref", ref: service.image ?? `golang:${resolvedVersion}` },
+        command: service.command ?? [...DEFAULT_KEEP_ALIVE],
+        entrypoint: service.entrypoint,
+        environment,
+        user: service.user,
+        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
+        appMount: {
+          source: AbsolutePath.make(appRoot),
           target: APP_MOUNT_TARGET,
           readOnly: false,
+          excludes: [],
+          includes: [],
           realization: "passthrough",
         },
-      ],
-      storage: [],
-      endpoints: [{ port: endpointPort, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {
-        "lando-service-go": {
-          framework,
-          version: resolvedVersion,
-          defaultCommand: preset.defaultCommand,
-          port: endpointPort,
+        mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [],
+        endpoints: [{ port: endpointPort, protocol: "http", name }],
+        routes: [],
+        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
+          service: ServiceName.make(dependency),
+          condition: "started",
+        })),
+        healthcheck: {
+          kind: "command",
+          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
+          intervalSeconds: 10,
+          timeoutSeconds: 5,
+          retries: 5,
+          startPeriodSeconds: 10,
         },
-      },
-    });
-  },
-});
+        hostAliases: [],
+        metadata,
+        extensions: {
+          "lando-service-go": {
+            framework,
+            version: resolvedVersion,
+            defaultCommand: preset.defaultCommand,
+            port: endpointPort,
+          },
+        },
+      });
+    },
+  });
 
-export const go122ServiceType: ServiceTypeShape = makeGoServiceType("1.22");
-export const go123ServiceType: ServiceTypeShape = makeGoServiceType("1.23");
+export const go122ServiceType: LegacyServiceType = makeGoServiceType("1.22");
+export const go123ServiceType: LegacyServiceType = makeGoServiceType("1.23");

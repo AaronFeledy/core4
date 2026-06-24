@@ -19,7 +19,7 @@ const planValkeyService = (serviceDefinition: Record<string, unknown>) => {
   const service = landofile.services?.[ServiceName.make("cache")];
   if (service === undefined) throw new Error("cache service missing");
 
-  return valkeyServiceType.toServicePlan({
+  return valkeyServiceType.__legacyToServicePlan({
     name: "cache",
     service,
     appRoot: "/srv/apps/myapp",

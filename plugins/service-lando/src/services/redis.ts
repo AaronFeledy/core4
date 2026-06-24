@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -8,7 +9,7 @@ const DEFAULT_IMAGE = "redis:7";
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 
-export const redisServiceType: ServiceTypeShape = {
+export const redisServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "redis",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -52,4 +53,4 @@ export const redisServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

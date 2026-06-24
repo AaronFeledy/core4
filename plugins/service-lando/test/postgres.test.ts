@@ -20,7 +20,7 @@ describe("postgres ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = postgresServiceType.toServicePlan({
+    const plan = postgresServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",
@@ -58,7 +58,7 @@ describe("postgres ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = postgresServiceType.toServicePlan({
+    const plan = postgresServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",

@@ -34,12 +34,10 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type {
-  FileSyncEngineShape,
-  RuntimeProviderShape,
-  ServiceTypePlanInput,
-  ServiceTypeShape,
-} from "@lando/sdk/services";
+import type { FileSyncEngineShape, RuntimeProviderShape } from "@lando/sdk/services";
+
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -260,14 +258,9 @@ const makeStartLayer = (
   return { layer, events, applyPlans, taskEvents };
 };
 
-const globalServiceType: ServiceTypeShape = {
+const globalServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({
-    name,
-    provider = ProviderId.make("lando"),
-    primary = false,
-    metadata,
-  }: ServiceTypePlanInput) => ({
+  toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) => ({
     ...servicePlan("web"),
     name: ServiceName.make(name),
     type: "lando",
@@ -276,7 +269,7 @@ const globalServiceType: ServiceTypeShape = {
     endpoints: [{ protocol: "http", port: 8080, name: "http" }],
     metadata,
   }),
-};
+});
 
 const withGlobalRoots = async <T>(run: (dataRoot: string, confRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-start-global-data-")));
@@ -309,7 +302,7 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
 const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
   const services = Object.fromEntries(
     serviceIds.map((id) => {
-      const service = globalServiceType.toServicePlan({
+      const service = globalServiceType.__legacyToServicePlan({
         name: id,
         service: { type: "lando" },
         appRoot: "/tmp/global",

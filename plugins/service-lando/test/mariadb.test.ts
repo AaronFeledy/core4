@@ -20,7 +20,7 @@ describe("mariadb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mariadbServiceType.toServicePlan({
+    const plan = mariadbServiceType.__legacyToServicePlan({
       name: "db",
       service,
       appRoot: "/srv/apps/myapp",

@@ -93,7 +93,7 @@ describe("memcached service type — live integration: text protocol set/get", (
         if (service === undefined) throw new Error("cache service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const cache = memcachedServiceType.toServicePlan({
+        const cache = memcachedServiceType.__legacyToServicePlan({
           name: "cache",
           service,
           appRoot: appRootStr,

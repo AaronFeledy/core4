@@ -60,7 +60,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = elasticsearch8ServiceType.toServicePlan({
+        const search = elasticsearch8ServiceType.__legacyToServicePlan({
           name: "search",
           service,
           appRoot: appRootStr,

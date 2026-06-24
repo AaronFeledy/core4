@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -27,74 +28,75 @@ const validateVersion = (
   throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const makeNodeServiceType = (version: SupportedNodeVersion): ServiceTypeShape => ({
-  id: `node:${version}`,
-  toServicePlan: (input) => {
-    const {
-      name,
-      service,
-      appRoot,
-      provider = ProviderId.make("lando"),
-      primary = name === "web",
-      metadata,
-      host,
-    } = input;
-    const resolvedVersion = validateVersion(service.type, version);
-    const serviceType = `node:${resolvedVersion}`;
-    const appName = appNameFor(input);
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType,
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      host,
-      userEnv: service.environment ?? {},
-    });
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: serviceType,
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? serviceType },
-      command: service.command ?? [...DEFAULT_COMMAND],
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
-        {
-          type: "bind",
-          source: appRoot,
+const makeNodeServiceType = (version: SupportedNodeVersion): LegacyServiceType =>
+  defineLegacyServiceType({
+    id: `node:${version}`,
+    toServicePlan: (input) => {
+      const {
+        name,
+        service,
+        appRoot,
+        provider = ProviderId.make("lando"),
+        primary = name === "web",
+        metadata,
+        host,
+      } = input;
+      const resolvedVersion = validateVersion(service.type, version);
+      const serviceType = `node:${resolvedVersion}`;
+      const appName = appNameFor(input);
+      const environment = buildLandoEnv({
+        serviceName: name,
+        serviceType,
+        appName,
+        appPaths: { appRoot: "/app", projectMount: "/app" },
+        host,
+        userEnv: service.environment ?? {},
+      });
+      return decodeServicePlan({
+        name: ServiceName.make(name),
+        type: serviceType,
+        provider,
+        primary: service.primary ?? primary,
+        artifact: { kind: "ref", ref: service.image ?? serviceType },
+        command: service.command ?? [...DEFAULT_COMMAND],
+        entrypoint: service.entrypoint,
+        environment,
+        user: service.user,
+        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
+        appMount: {
+          source: AbsolutePath.make(appRoot),
           target: APP_MOUNT_TARGET,
           readOnly: false,
+          excludes: [],
+          includes: [],
           realization: "passthrough",
         },
-      ],
-      storage: [],
-      endpoints: (service.ports ?? [DEFAULT_PORT]).map((port) => ({
-        port: Number(port.split(":").at(-1)?.split("/")[0] ?? 3000),
-        protocol: "http",
-        name,
-      })),
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+        mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [],
+        endpoints: (service.ports ?? [DEFAULT_PORT]).map((port) => ({
+          port: Number(port.split(":").at(-1)?.split("/")[0] ?? 3000),
+          protocol: "http",
+          name,
+        })),
+        routes: [],
+        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
+          service: ServiceName.make(dependency),
+          condition: "started",
+        })),
+        hostAliases: [],
+        metadata,
+        extensions: {},
+      });
+    },
+  });
 
-export const nodeLtsServiceType: ServiceTypeShape = makeNodeServiceType("lts");
-export const node22ServiceType: ServiceTypeShape = makeNodeServiceType("22");
+export const nodeLtsServiceType: LegacyServiceType = makeNodeServiceType("lts");
+export const node22ServiceType: LegacyServiceType = makeNodeServiceType("22");

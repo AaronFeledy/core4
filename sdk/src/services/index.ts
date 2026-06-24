@@ -114,7 +114,7 @@ import type {
   UrlScannerShape,
 } from "./platform.ts";
 import type { PluginTrustState } from "./plugin-trust.ts";
-import type { RegisteredCommand, ServiceTypeShape } from "./plugins.ts";
+import type { RegisteredCommand, ServiceType } from "./plugins.ts";
 import type {
   ProcessResult,
   ProcessSpawnOptions,
@@ -374,7 +374,7 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,
-    ) => Effect.Effect<ServiceTypeShape, PluginLoadError | PluginManifestError>;
+    ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>;
   }
 >() {}
 

@@ -40,7 +40,7 @@ describe("python ServiceType — supported versions and frameworks", () => {
 describe("python:3.12 ServiceType", () => {
   test("plans a default Python 3.12 web service with framework=none defaults", () => {
     const service = decodeService({ type: "python:3.12" });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -96,7 +96,7 @@ describe("python:3.12 ServiceType", () => {
 
   test("framework=django sets port 8000, uvicorn default command preset, and django env", () => {
     const service = decodeService({ type: "python:3.12", framework: "django" });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -116,7 +116,7 @@ describe("python:3.12 ServiceType", () => {
 
   test("framework=fastapi sets port 8000 and uvicorn default command preset", () => {
     const service = decodeService({ type: "python:3.12", framework: "fastapi" });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -135,7 +135,7 @@ describe("python:3.12 ServiceType", () => {
 
   test("framework=flask sets port 5000 and gunicorn default command preset", () => {
     const service = decodeService({ type: "python:3.12", framework: "flask" });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -155,7 +155,7 @@ describe("python:3.12 ServiceType", () => {
 
   test("derives appName from appRoot basename when no explicit appName is provided", () => {
     const service = decodeService({ type: "python:3.12" });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/anotherapp",
@@ -171,7 +171,7 @@ describe("python:3.12 ServiceType", () => {
       framework: "django",
       environment: { DJANGO_SETTINGS_MODULE: "myproject.settings.dev", FOO: "bar" },
     });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -190,7 +190,7 @@ describe("python:3.12 ServiceType", () => {
       image: "registry.example.com/python:3.12-custom",
       port: 9000,
     });
-    const plan = python312ServiceType.toServicePlan({
+    const plan = python312ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -207,7 +207,7 @@ describe("python:3.12 ServiceType", () => {
   test("rejects unsupported framework values with remediation", () => {
     const service = decodeService({ type: "python:3.12", framework: "rails" });
     expect(() =>
-      python312ServiceType.toServicePlan({
+      python312ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -217,7 +217,7 @@ describe("python:3.12 ServiceType", () => {
     ).toThrow(/Unsupported Python framework "rails"\./);
 
     expect(() =>
-      python312ServiceType.toServicePlan({
+      python312ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -230,7 +230,7 @@ describe("python:3.12 ServiceType", () => {
   test("rejects unsupported Python versions with remediation", () => {
     const service = decodeService({ type: "python:3.11" });
     expect(() =>
-      python312ServiceType.toServicePlan({
+      python312ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -240,7 +240,7 @@ describe("python:3.12 ServiceType", () => {
     ).toThrow(/Unsupported Python version "3.11"\./);
 
     expect(() =>
-      python312ServiceType.toServicePlan({
+      python312ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -256,7 +256,7 @@ describe("python:3.12 ServiceType", () => {
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },
     });
     expect(() =>
-      python312ServiceType.toServicePlan({
+      python312ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,

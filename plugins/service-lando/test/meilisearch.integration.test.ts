@@ -69,7 +69,7 @@ describe("meilisearch service type — live integration: index create + document
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = meilisearch1ServiceType.toServicePlan({
+        const search = meilisearch1ServiceType.__legacyToServicePlan({
           name: "search",
           service,
           appRoot: appRootStr,

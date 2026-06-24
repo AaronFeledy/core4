@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { type HostPlatform, type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import type { LegacyServiceType } from "../src/services/legacy.ts";
 import {
   type EndpointExpectation,
   type HealthcheckExpectation,
@@ -11,7 +11,7 @@ import {
   type ServiceContractMatrixCell,
   runServiceContract,
   runServiceContractMatrix,
-} from "@lando/sdk/test";
+} from "./legacy/service-contract.ts";
 
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
@@ -56,7 +56,7 @@ const LANDO_PROVIDER_CAPABILITIES: ProviderCapabilities = {
 const CONTRACT_PLATFORMS: ReadonlyArray<HostPlatform> = ["linux", "darwin", "win32", "wsl"];
 
 interface CatalogContractEntry {
-  readonly serviceType: ServiceTypeShape;
+  readonly serviceType: LegacyServiceType;
   readonly landofileServiceType: string;
   readonly expectedPlanType: string;
   readonly endpoint: EndpointExpectation;

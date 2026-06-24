@@ -40,7 +40,7 @@ describe("ruby ServiceType — supported versions and frameworks", () => {
 describe("ruby:3.3 ServiceType", () => {
   test("plans a default Ruby 3.3 web service with framework=none defaults", () => {
     const service = decodeService({ type: "ruby:3.3" });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -96,7 +96,7 @@ describe("ruby:3.3 ServiceType", () => {
 
   test("framework=rails sets port 3000, rails server default command preset, public/ webroot, and rails env", () => {
     const service = decodeService({ type: "ruby:3.3", framework: "rails" });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -122,7 +122,7 @@ describe("ruby:3.3 ServiceType", () => {
 
   test("derives appName from appRoot basename when no explicit appName is provided", () => {
     const service = decodeService({ type: "ruby:3.3" });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/anotherapp",
@@ -138,7 +138,7 @@ describe("ruby:3.3 ServiceType", () => {
       framework: "rails",
       environment: { RAILS_ENV: "production", FOO: "bar" },
     });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -157,7 +157,7 @@ describe("ruby:3.3 ServiceType", () => {
       image: "registry.example.com/ruby:3.3-custom",
       port: 4000,
     });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -173,7 +173,7 @@ describe("ruby:3.3 ServiceType", () => {
 
   test("plan uses provider-neutral ServicePlan fields", () => {
     const service = decodeService({ type: "ruby:3.3", framework: "rails" });
-    const plan = ruby33ServiceType.toServicePlan({
+    const plan = ruby33ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -192,7 +192,7 @@ describe("ruby:3.3 ServiceType", () => {
   test("rejects unsupported framework values with remediation", () => {
     const service = decodeService({ type: "ruby:3.3", framework: "sinatra" });
     expect(() =>
-      ruby33ServiceType.toServicePlan({
+      ruby33ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -202,7 +202,7 @@ describe("ruby:3.3 ServiceType", () => {
     ).toThrow(/Unsupported Ruby framework "sinatra"\./);
 
     expect(() =>
-      ruby33ServiceType.toServicePlan({
+      ruby33ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -215,7 +215,7 @@ describe("ruby:3.3 ServiceType", () => {
   test("rejects unsupported Ruby versions with remediation", () => {
     const service = decodeService({ type: "ruby:3.2" });
     expect(() =>
-      ruby33ServiceType.toServicePlan({
+      ruby33ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -225,7 +225,7 @@ describe("ruby:3.3 ServiceType", () => {
     ).toThrow(/Unsupported Ruby version "3.2"\./);
 
     expect(() =>
-      ruby33ServiceType.toServicePlan({
+      ruby33ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -241,7 +241,7 @@ describe("ruby:3.3 ServiceType", () => {
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },
     });
     expect(() =>
-      ruby33ServiceType.toServicePlan({
+      ruby33ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,

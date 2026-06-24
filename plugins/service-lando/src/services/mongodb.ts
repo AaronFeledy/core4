@@ -1,5 +1,6 @@
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -8,7 +9,7 @@ const DEFAULT_IMAGE = "mongo:7";
 const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
 
-export const mongodbServiceType: ServiceTypeShape = {
+export const mongodbServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "mongodb",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -70,4 +71,4 @@ export const mongodbServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

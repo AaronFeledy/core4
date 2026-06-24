@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -13,7 +14,7 @@ const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 const defaultPassword = (appId: string): string =>
   `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
 
-export const postgresServiceType: ServiceTypeShape = {
+export const postgresServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "postgres",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -62,4 +63,4 @@ export const postgresServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

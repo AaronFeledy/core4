@@ -15,7 +15,7 @@
 import { Effect, type Layer } from "effect";
 
 import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceType } from "@lando/sdk/services";
 import type { TemplateEngine } from "@lando/sdk/template";
 
 import * as plugin6 from "@lando/file-sync-mutagen";
@@ -34,20 +34,20 @@ interface BundledPluginModule {
 
 type BundledLayer = Layer.Layer<never, unknown, unknown>;
 
-const isServiceTypeShape = (value: unknown): value is ServiceTypeShape =>
+const isServiceType = (value: unknown): value is ServiceType =>
   typeof value === "object" &&
   value !== null &&
   "id" in value &&
   typeof value.id === "string" &&
-  "toServicePlan" in value &&
-  typeof value.toServicePlan === "function";
+  "resolve" in value &&
+  typeof value.resolve === "function";
 
-const isServiceTypeMap = (value: unknown): value is ReadonlyMap<string, ServiceTypeShape> =>
-  value instanceof Map && [...value.values()].every(isServiceTypeShape);
+const isServiceTypeMap = (value: unknown): value is ReadonlyMap<string, ServiceType> =>
+  value instanceof Map && [...value.values()].every(isServiceType);
 
 const serviceTypesFrom = (
   module: BundledPluginModule,
-): { readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape> } =>
+): { readonly serviceTypes?: ReadonlyMap<string, ServiceType> } =>
   isServiceTypeMap(module.serviceTypes) ? { serviceTypes: module.serviceTypes } : {};
 
 type GlobalServiceEffect = Effect.Effect<ServiceConfig, unknown, never>;
@@ -82,7 +82,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly name: string;
   readonly layer: BundledLayer;
   readonly manifest: PluginManifest;
-  readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape>;
+  readonly serviceTypes?: ReadonlyMap<string, ServiceType>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
 }> = [

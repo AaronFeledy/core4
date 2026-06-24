@@ -26,10 +26,10 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ServiceSelector,
-  type ServiceTypePlanInput,
-  type ServiceTypeShape,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import {
@@ -88,15 +88,9 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
   }
 };
 
-const fakeServiceType: ServiceTypeShape = {
+const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({
-    name,
-    appRoot,
-    provider = ProviderId.make("lando"),
-    primary = false,
-    metadata,
-  }: ServiceTypePlanInput) =>
+  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
@@ -122,7 +116,7 @@ const fakeServiceType: ServiceTypeShape = {
       metadata,
       extensions: {},
     }),
-};
+});
 
 const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => {
   const modulePath = join(moduleRoot, "fake-global-service.mjs");

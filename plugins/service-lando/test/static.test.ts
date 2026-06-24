@@ -20,7 +20,7 @@ describe("static ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = staticNginxServiceType.toServicePlan({
+    const plan = staticNginxServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -62,7 +62,7 @@ describe("static ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = staticCaddyServiceType.toServicePlan({
+    const plan = staticCaddyServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -85,7 +85,7 @@ describe("static ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = staticNginxServiceType.toServicePlan({
+    const plan = staticNginxServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -108,7 +108,7 @@ describe("static ServiceType", () => {
       const service = landofile.services?.[ServiceName.make("web")];
       if (service === undefined) throw new Error("web service missing");
 
-      const plan = staticNginxServiceType.toServicePlan({
+      const plan = staticNginxServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: "/srv/apps/myapp",
@@ -130,7 +130,7 @@ describe("static ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = staticNginxServiceType.toServicePlan({
+    const plan = staticNginxServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -150,7 +150,7 @@ describe("static ServiceType", () => {
     if (service === undefined) throw new Error("web service missing");
 
     expect(() =>
-      staticNginxServiceType.toServicePlan({
+      staticNginxServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: "/srv/apps/myapp",

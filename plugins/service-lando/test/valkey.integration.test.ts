@@ -115,7 +115,7 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
         if (service === undefined) throw new Error("cache service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const cache = valkeyServiceType.toServicePlan({
+        const cache = valkeyServiceType.__legacyToServicePlan({
           name: "cache",
           service,
           appRoot: appRootStr,

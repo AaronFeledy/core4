@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -13,7 +14,7 @@ const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 const defaultRootPassword = (appId: string, serviceName: string): string =>
   `lando-${createHash("sha256").update(`${appId}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
 
-export const mariadbServiceType: ServiceTypeShape = {
+export const mariadbServiceType: LegacyServiceType = defineLegacyServiceType({
   id: "mariadb",
   toServicePlan: (input) => {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
@@ -71,4 +72,4 @@ export const mariadbServiceType: ServiceTypeShape = {
       extensions: {},
     });
   },
-};
+});

@@ -43,7 +43,7 @@ describe("php ServiceType — supported versions and frameworks", () => {
 describe("php:8.2 ServiceType", () => {
   test("plans a default PHP 8.2 web service with framework=none defaults", () => {
     const service = decodeService({ type: "php:8.2" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -98,7 +98,7 @@ describe("php:8.2 ServiceType", () => {
 
   test("derives appName from appRoot basename when no explicit appName is provided", () => {
     const service = decodeService({ type: "php:8.2" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/anotherapp",
@@ -110,7 +110,7 @@ describe("php:8.2 ServiceType", () => {
 
   test("framework=drupal sets webroot to /app/web and matching APACHE_DOCUMENT_ROOT", () => {
     const service = decodeService({ type: "php:8.2", framework: "drupal" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -126,7 +126,7 @@ describe("php:8.2 ServiceType", () => {
 
   test("framework=wordpress keeps the app root as webroot", () => {
     const service = decodeService({ type: "php:8.2", framework: "wordpress" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -142,7 +142,7 @@ describe("php:8.2 ServiceType", () => {
 
   test("framework=laravel sets webroot to /app/public", () => {
     const service = decodeService({ type: "php:8.2", framework: "laravel" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -156,7 +156,7 @@ describe("php:8.2 ServiceType", () => {
 
   test("framework=symfony sets webroot to /app/public", () => {
     const service = decodeService({ type: "php:8.2", framework: "symfony" });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -174,7 +174,7 @@ describe("php:8.2 ServiceType", () => {
       framework: "drupal",
       environment: { APACHE_DOCUMENT_ROOT: "/app/custom", FOO: "bar" },
     });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -193,7 +193,7 @@ describe("php:8.2 ServiceType", () => {
       image: "registry.example.com/php:8.2-custom",
       port: 8080,
     });
-    const plan = php82ServiceType.toServicePlan({
+    const plan = php82ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -210,7 +210,7 @@ describe("php:8.2 ServiceType", () => {
   test("rejects unsupported framework values with a remediation in the error", () => {
     const service = decodeService({ type: "php:8.2", framework: "magento" });
     expect(() =>
-      php82ServiceType.toServicePlan({
+      php82ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -220,7 +220,7 @@ describe("php:8.2 ServiceType", () => {
     ).toThrow(/Unsupported PHP framework "magento"\./);
 
     expect(() =>
-      php82ServiceType.toServicePlan({
+      php82ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -234,7 +234,7 @@ describe("php:8.2 ServiceType", () => {
 describe("php:8.3 ServiceType", () => {
   test("plans a default PHP 8.3 service", () => {
     const service = decodeService({ type: "php:8.3" });
-    const plan = php83ServiceType.toServicePlan({
+    const plan = php83ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: APP_ROOT,
@@ -251,7 +251,7 @@ describe("php:8.3 ServiceType", () => {
   test("rejects unsupported PHP versions with remediation", () => {
     const service = decodeService({ type: "php:8.1" });
     expect(() =>
-      php83ServiceType.toServicePlan({
+      php83ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -261,7 +261,7 @@ describe("php:8.3 ServiceType", () => {
     ).toThrow(/Unsupported PHP version "8.1"\./);
 
     expect(() =>
-      php83ServiceType.toServicePlan({
+      php83ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -274,7 +274,7 @@ describe("php:8.3 ServiceType", () => {
   test("rejects php:8.4 and other unsupported versions on the 8.2 service type too", () => {
     const service = decodeService({ type: "php:8.4" });
     expect(() =>
-      php82ServiceType.toServicePlan({
+      php82ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -290,7 +290,7 @@ describe("php:8.3 ServiceType", () => {
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },
     });
     expect(() =>
-      php82ServiceType.toServicePlan({
+      php82ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,
@@ -306,7 +306,7 @@ describe("php:8.3 ServiceType", () => {
       environment: { LANDO: "OFF" },
     });
     expect(() =>
-      php82ServiceType.toServicePlan({
+      php82ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: APP_ROOT,

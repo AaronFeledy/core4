@@ -63,7 +63,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = opensearch2ServiceType.toServicePlan({
+        const search = opensearch2ServiceType.__legacyToServicePlan({
           name: "search",
           service,
           appRoot: appRootStr,

@@ -1,5 +1,6 @@
 import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeShape } from "@lando/sdk/services";
+import { defineLegacyServiceType } from "./legacy.ts";
+import type { LegacyServiceType } from "./legacy.ts";
 
 import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
@@ -53,83 +54,84 @@ const validateVersion = (
   throw new Error(`Unsupported PHP version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => ({
-  id: `php:${version}`,
-  toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-    const resolvedVersion = validateVersion(service.type, version);
-    const framework = validateFramework(service.framework);
-    const appName = appNameFor(input);
-    const serviceType = `php:${resolvedVersion}`;
-    const webroot = frameworkWebrootPath(framework);
-    const workingDirectory = service.workingDirectory ?? PortablePath.make(webroot);
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType,
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      webroot,
-      host,
-      extraDefaults: { APACHE_DOCUMENT_ROOT: webroot },
-      userEnv: service.environment ?? {},
-    });
-    const endpointPort = service.port ?? HEALTHCHECK_PORT;
+const makePhpServiceType = (version: SupportedPhpVersion): LegacyServiceType =>
+  defineLegacyServiceType({
+    id: `php:${version}`,
+    toServicePlan: (input) => {
+      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
+      const resolvedVersion = validateVersion(service.type, version);
+      const framework = validateFramework(service.framework);
+      const appName = appNameFor(input);
+      const serviceType = `php:${resolvedVersion}`;
+      const webroot = frameworkWebrootPath(framework);
+      const workingDirectory = service.workingDirectory ?? PortablePath.make(webroot);
+      const environment = buildLandoEnv({
+        serviceName: name,
+        serviceType,
+        appName,
+        appPaths: { appRoot: "/app", projectMount: "/app" },
+        webroot,
+        host,
+        extraDefaults: { APACHE_DOCUMENT_ROOT: webroot },
+        userEnv: service.environment ?? {},
+      });
+      const endpointPort = service.port ?? HEALTHCHECK_PORT;
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: serviceType,
-      provider,
-      primary: service.primary ?? primary ?? name === "web",
-      artifact: { kind: "ref", ref: service.image ?? `php:${resolvedVersion}-apache` },
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
-        {
-          type: "bind",
-          source: appRoot,
+      return decodeServicePlan({
+        name: ServiceName.make(name),
+        type: serviceType,
+        provider,
+        primary: service.primary ?? primary ?? name === "web",
+        artifact: { kind: "ref", ref: service.image ?? `php:${resolvedVersion}-apache` },
+        command: service.command,
+        entrypoint: service.entrypoint,
+        environment,
+        user: service.user,
+        workingDirectory,
+        appMount: {
+          source: AbsolutePath.make(appRoot),
           target: APP_MOUNT_TARGET,
           readOnly: false,
+          excludes: [],
+          includes: [],
           realization: "passthrough",
         },
-      ],
-      storage: [],
-      endpoints: [{ port: endpointPort, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {
-        "lando-service-php": {
-          framework,
-          webroot: frameworkWebrootPath(framework),
-          version: resolvedVersion,
+        mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [],
+        endpoints: [{ port: endpointPort, protocol: "http", name }],
+        routes: [],
+        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
+          service: ServiceName.make(dependency),
+          condition: "started",
+        })),
+        healthcheck: {
+          kind: "command",
+          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
+          intervalSeconds: 10,
+          timeoutSeconds: 5,
+          retries: 5,
+          startPeriodSeconds: 10,
         },
-      },
-    });
-  },
-});
+        hostAliases: [],
+        metadata,
+        extensions: {
+          "lando-service-php": {
+            framework,
+            webroot: frameworkWebrootPath(framework),
+            version: resolvedVersion,
+          },
+        },
+      });
+    },
+  });
 
-export const php82ServiceType: ServiceTypeShape = makePhpServiceType("8.2");
-export const php83ServiceType: ServiceTypeShape = makePhpServiceType("8.3");
+export const php82ServiceType: LegacyServiceType = makePhpServiceType("8.2");
+export const php83ServiceType: LegacyServiceType = makePhpServiceType("8.3");

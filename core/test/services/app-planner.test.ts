@@ -22,13 +22,10 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/core/schema";
-import {
-  AppPlanner,
-  ConfigService,
-  PluginRegistry,
-  type ServiceTypePlanInput,
-  type ServiceTypeShape,
-} from "@lando/core/services";
+import { AppPlanner, ConfigService, PluginRegistry } from "@lando/core/services";
+
+import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
@@ -136,15 +133,9 @@ const planWithConfig = (
     ),
   );
 
-const appMountOnlyServiceType: ServiceTypeShape = {
+const appMountOnlyServiceType = makeLegacyServiceTypeFake({
   id: "appmount-only",
-  toServicePlan: ({
-    name,
-    appRoot,
-    provider = ProviderId.make("lando"),
-    primary = false,
-    metadata,
-  }: ServiceTypePlanInput) =>
+  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "appmount-only",
@@ -170,16 +161,11 @@ const appMountOnlyServiceType: ServiceTypeShape = {
       metadata,
       extensions: {},
     }),
-};
+});
 
-const socketOnlyServiceType: ServiceTypeShape = {
+const socketOnlyServiceType = makeLegacyServiceTypeFake({
   id: "socket-only",
-  toServicePlan: ({
-    name,
-    provider = ProviderId.make("lando"),
-    primary = false,
-    metadata,
-  }: ServiceTypePlanInput) =>
+  toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "socket-only",
@@ -195,7 +181,7 @@ const socketOnlyServiceType: ServiceTypeShape = {
       metadata,
       extensions: {},
     }),
-};
+});
 
 const customPluginRegistry = {
   list: Effect.succeed([]),
@@ -326,7 +312,7 @@ describe("AppPlannerLive", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       let servicePlanCalls = 0;
-      const cachedType: ServiceTypeShape = {
+      const cachedType = makeLegacyServiceTypeFake({
         id: "cached-type",
         toServicePlan: ({
           name,
@@ -362,7 +348,7 @@ describe("AppPlannerLive", () => {
             extensions: {},
           });
         },
-      };
+      });
       const layer = AppPlannerLive.pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -567,15 +553,9 @@ describe("AppPlannerLive", () => {
   test("resolves the file-sync engine id once per plan for all slow bind-mount services", async () => {
     await withTempCwd(async () => {
       let fileSyncEngineIdReads = 0;
-      const serviceType: ServiceTypeShape = {
+      const serviceType = makeLegacyServiceTypeFake({
         id: "accelerated-appmount",
-        toServicePlan: ({
-          name,
-          appRoot,
-          provider = ProviderId.make("lando"),
-          primary = false,
-          metadata,
-        }: ServiceTypePlanInput) =>
+        toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
           Schema.decodeUnknownSync(ServicePlan)({
             name: ServiceName.make(name),
             type: "accelerated-appmount",
@@ -601,7 +581,7 @@ describe("AppPlannerLive", () => {
             metadata,
             extensions: {},
           }),
-      };
+      });
       const registry = {
         list: Effect.succeed([
           {

@@ -36,7 +36,7 @@ const planNodeService = (): ServicePlan => {
   });
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
-  return nodeLtsServiceType.toServicePlan({
+  return nodeLtsServiceType.__legacyToServicePlan({
     name: "web",
     service,
     appRoot: "/srv/apps/envapp",

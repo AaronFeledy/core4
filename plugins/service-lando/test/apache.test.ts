@@ -20,7 +20,7 @@ describe("apache ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = apacheServiceType.toServicePlan({
+    const plan = apacheServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",

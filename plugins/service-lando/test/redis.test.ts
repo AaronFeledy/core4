@@ -20,7 +20,7 @@ describe("redis ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("cache")];
     if (service === undefined) throw new Error("cache service missing");
 
-    const plan = redisServiceType.toServicePlan({
+    const plan = redisServiceType.__legacyToServicePlan({
       name: "cache",
       service,
       appRoot: "/srv/apps/myapp",
@@ -51,7 +51,7 @@ describe("redis ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("cache")];
     if (service === undefined) throw new Error("cache service missing");
 
-    const plan = redisServiceType.toServicePlan({
+    const plan = redisServiceType.__legacyToServicePlan({
       name: "cache",
       service,
       appRoot: "/srv/apps/myapp",

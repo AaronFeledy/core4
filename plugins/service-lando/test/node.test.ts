@@ -47,7 +47,7 @@ describe("node:lts ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = nodeLtsServiceType.toServicePlan({
+    const plan = nodeLtsServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -78,7 +78,7 @@ describe("node:lts ServiceType", () => {
       ports: ["3001:3000"],
     });
 
-    const plan = nodeLtsServiceType.toServicePlan({
+    const plan = nodeLtsServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -125,7 +125,7 @@ describe("node:lts ServiceType", () => {
       framework: "drupal",
     });
 
-    const plan = nodeLtsServiceType.toServicePlan({
+    const plan = nodeLtsServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -151,7 +151,7 @@ describe("node:lts ServiceType", () => {
 
   test("plan is a valid providerExec target: long-running command + app workdir", () => {
     const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:lts" });
-    const plan = nodeLtsServiceType.toServicePlan({
+    const plan = nodeLtsServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -174,7 +174,7 @@ describe("node:22 ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");
 
-    const plan = node22ServiceType.toServicePlan({
+    const plan = node22ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -204,7 +204,7 @@ describe("node:22 ServiceType", () => {
       ports: ["3001:3000"],
     });
 
-    const plan = node22ServiceType.toServicePlan({
+    const plan = node22ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
@@ -221,7 +221,7 @@ describe("node:22 ServiceType", () => {
   test("rejects unsupported node versions with remediation", () => {
     const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:18" });
     expect(() =>
-      node22ServiceType.toServicePlan({
+      node22ServiceType.__legacyToServicePlan({
         name: "web",
         service,
         appRoot: "/srv/apps/myapp",
@@ -232,7 +232,7 @@ describe("node:22 ServiceType", () => {
 
   test("plan is a valid providerExec target: long-running command + app workdir", () => {
     const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:22" });
-    const plan = node22ServiceType.toServicePlan({
+    const plan = node22ServiceType.__legacyToServicePlan({
       name: "web",
       service,
       appRoot: "/srv/apps/myapp",
