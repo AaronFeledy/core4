@@ -461,6 +461,7 @@ describe("@lando/sdk package exports", () => {
     const sdkTest = await import("@lando/sdk/test");
 
     expect(sdkTest.runServiceCompositionContract).toBeDefined();
+    expect(sdkTest.runServiceFeatureContract).toBeDefined();
     expect(sdkTest.TestServiceType).toBeDefined();
   });
 

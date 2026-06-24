@@ -427,6 +427,7 @@
 - `RemoteSourceProbeRecord`
 - `RemoteSourceToolProvisionRecord`
 - `ServiceCompositionContractInput`
+- `ServiceFeatureContractHarness`
 - `SupportedContractCell`
 - `SupportedFileSyncContractCell`
 - `TunnelServiceContractHarness`
@@ -456,5 +457,6 @@
 - `runRedactionContract`
 - `runRemoteSourceContract`
 - `runServiceCompositionContract`
+- `runServiceFeatureContract`
 - `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`

@@ -245,6 +245,7 @@ describe("ci workflow", () => {
     const permissions = findIndentedBlock(workflow, "permissions");
 
     expect(permissions).toContain("  contents: read");
+    expect(permissions).toContain("  pull-requests: read");
     expect(workflow).not.toContain("pull_request_target");
     expect(workflow).not.toContain("secrets.");
     expect(workflow).not.toContain("contents: write");
@@ -461,8 +462,10 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain(
       "          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
     );
-    expect(guideScenarios).toContain("          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}");
-    expect(guideScenarios).toContain("        run: bun run check:guide-drift");
+    expect(guideScenarios).toContain("          GH_TOKEN: ${{ github.token }}");
+    expect(guideScenarios).toContain(
+      '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift',
+    );
     expect(guideScenarios).toContain(guideScenarioRunLine);
     expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
     expect(guideScenarios).toContain("          name: lando-linux-x64");

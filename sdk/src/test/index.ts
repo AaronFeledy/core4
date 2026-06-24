@@ -95,6 +95,11 @@ import type {
   LogChunk,
   RemoteSourceShape,
   RuntimeProviderShape,
+  ServiceAppMountIntent,
+  ServiceBuildStepIntent,
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceMountIntent,
   ServiceType,
   ServiceTypeInput,
   ServiceTypeResolution,
@@ -1372,12 +1377,10 @@ export interface ServiceCompositionContractInput {
 }
 
 /**
- * Run the service-composition contract enforceable at this stage: the type
- * exposes a non-empty id/name, declares a `base` of `"l337"` or `"lando"`, and
- * `resolve()` is an Effect that yields a `ServiceTypeResolution` with decoded
- * `normalizedConfig` and a stable (replay-equal) `features` array — and never
- * returns a `ServicePlan`. Later work completes base env layers, `lando.env`
- * reachability, `extends:` depth/cycles, and cache-key participation.
+ * Run the service-composition contract: the type exposes a non-empty id/name,
+ * declares a `base` of `"l337"` or `"lando"`, and `resolve()` is an Effect that
+ * yields a `ServiceTypeResolution` with decoded `normalizedConfig` and a stable
+ * (replay-equal) `features` array — and never returns a `ServicePlan`.
  */
 export const runServiceCompositionContract = (
   input: ServiceCompositionContractInput,
@@ -1496,6 +1499,182 @@ export const runServiceCompositionContract = (
         second.features.every((feature, index) => feature.id === resolution.features[index]?.id),
       "resolution feature list is stable across replays",
       { first: resolution.features, second: second.features },
+    );
+  });
+
+const serviceFeatureFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `ServiceFeature contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireServiceFeature = (condition: boolean, assertion: string, details?: unknown) =>
+  condition ? Effect.void : Effect.fail(serviceFeatureFailure(assertion, details));
+
+const providerCapabilityReads = new Set(["capabilities", "provider", "providerId"]);
+
+const hasRealizationDecision = (intent: unknown): boolean =>
+  typeof intent === "object" && intent !== null && "realization" in intent;
+
+/** Input the feature contract uses to execute a single service feature. */
+export interface ServiceFeatureContractHarness {
+  readonly feature: ServiceFeatureDefinition;
+  readonly serviceName?: string;
+  readonly serviceType?: string;
+  readonly base?: "l337" | "lando";
+  readonly primary?: boolean;
+  readonly appName?: string;
+  readonly appRoot?: string;
+  readonly normalizedConfig?: ServiceConfig;
+  readonly config?: Readonly<Record<string, unknown>>;
+}
+
+const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness) => {
+  const recorded = {
+    env: new Map<string, string>(),
+    mounts: [] as ServiceMountIntent[],
+    appMounts: [] as ServiceAppMountIntent[],
+    buildSteps: [] as ServiceBuildStepIntent[],
+    storage: [] as unknown[],
+    endpoints: [] as unknown[],
+    dependencies: [] as unknown[],
+    hostAliases: [] as unknown[],
+    settings: {} as Record<string, unknown>,
+    forbiddenReads: new Set<string>(),
+  };
+
+  const context: ServiceFeatureContext = {
+    serviceName: input.serviceName ?? "web",
+    serviceType: input.serviceType ?? "test",
+    base: input.base ?? "lando",
+    primary: input.primary ?? false,
+    ...(input.appName === undefined ? {} : { appName: input.appName }),
+    appRoot: input.appRoot ?? "/srv/apps/myapp",
+    normalizedConfig: input.normalizedConfig ?? { type: "test" },
+    config: input.config ?? {},
+    addEnv(name, value) {
+      recorded.env.set(name, value);
+    },
+    addMount(mount) {
+      recorded.mounts.push(mount);
+    },
+    setAppMount(mount) {
+      recorded.appMounts.push(mount);
+    },
+    addBuildStep(step) {
+      recorded.buildSteps.push(step);
+    },
+    addStorage(storage) {
+      recorded.storage.push(storage);
+    },
+    addEndpoint(endpoint) {
+      recorded.endpoints.push(endpoint);
+    },
+    addDependency(dependency) {
+      recorded.dependencies.push(dependency);
+    },
+    addHostAlias(alias) {
+      recorded.hostAliases.push(alias);
+    },
+    setHealthcheck(healthcheck) {
+      recorded.settings.healthcheck = healthcheck;
+    },
+    setCerts(certs) {
+      recorded.settings.certs = certs;
+    },
+    setEntrypoint(entrypoint) {
+      recorded.settings.entrypoint = entrypoint;
+    },
+    setCommand(command) {
+      recorded.settings.command = command;
+    },
+    setArtifact(artifact) {
+      recorded.settings.artifact = artifact;
+    },
+    setUser(user) {
+      recorded.settings.user = user;
+    },
+    setWorkingDirectory(path) {
+      recorded.settings.workingDirectory = path;
+    },
+  };
+
+  const proxiedContext = new Proxy(context, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && providerCapabilityReads.has(property)) {
+        recorded.forbiddenReads.add(property);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+    has(target, property) {
+      if (typeof property === "string" && providerCapabilityReads.has(property)) {
+        recorded.forbiddenReads.add(property);
+      }
+      return Reflect.has(target, property);
+    },
+  });
+
+  return { context: proxiedContext, recorded };
+};
+
+/**
+ * Run the service-feature contract: a feature exposes a stable id/priority/apply
+ * hook, its `apply` succeeds against the published provider-neutral context, it
+ * does not inspect provider capabilities, and its emitted mount/app-mount intent
+ * never includes a realization decision.
+ */
+export const runServiceFeatureContract = (
+  input: ServiceFeatureContractHarness,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    const feature = input.feature;
+
+    yield* requireServiceFeature(
+      isNonEmptyString(feature.id),
+      "service feature exposes a non-empty id",
+      feature.id,
+    );
+    yield* requireServiceFeature(
+      Number.isFinite(feature.priority),
+      "service feature exposes a finite priority",
+      feature.priority,
+    );
+    yield* requireServiceFeature(
+      typeof feature.apply === "function",
+      "service feature apply is callable",
+      typeof feature.apply,
+    );
+
+    const { context, recorded } = makeRecordingServiceFeatureContext(input);
+    const applyEffect = yield* Effect.try({
+      try: () => feature.apply(context),
+      catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
+    });
+    const applyExit = yield* Effect.exit(applyEffect);
+    if (Exit.isFailure(applyExit)) {
+      yield* Effect.fail(serviceFeatureFailure("feature apply succeeds", Cause.pretty(applyExit.cause)));
+      return;
+    }
+
+    yield* requireServiceFeature(
+      recorded.forbiddenReads.size === 0,
+      "feature does not inspect provider capabilities",
+      Array.from(recorded.forbiddenReads),
+    );
+
+    const mountWithRealization = recorded.mounts.find(hasRealizationDecision);
+    yield* requireServiceFeature(
+      mountWithRealization === undefined,
+      "feature emits mount intent without realization decisions",
+      mountWithRealization,
+    );
+
+    const appMountWithRealization = recorded.appMounts.find(hasRealizationDecision);
+    yield* requireServiceFeature(
+      appMountWithRealization === undefined,
+      "feature emits app mount intent without realization decisions",
+      appMountWithRealization,
     );
   });
 

@@ -99,6 +99,7 @@ import type { ConfigTranslatorShape } from "./config-translator.ts";
 import type { DataMoverShape } from "./data-transfer.ts";
 import type { DownloaderShape } from "./downloader.ts";
 import type { LandoEvent } from "./events.ts";
+import type { ServiceFeatureDefinition } from "./features.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
@@ -167,6 +168,7 @@ export * from "./data-transfer.ts";
 export * from "./deprecation.ts";
 export * from "./downloader.ts";
 export * from "./events.ts";
+export * from "./features.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
@@ -375,6 +377,9 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
     readonly loadServiceType: (
       id: string,
     ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>;
+    readonly loadServiceFeature: (
+      id: string,
+    ) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>;
   }
 >() {}
 
