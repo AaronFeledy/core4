@@ -1,13 +1,10 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 
-const DEFAULT_CACHE_HOME = `${process.env.HOME ?? "."}/.cache`;
+import { resolveLandoRoots } from "../config/paths.ts";
 
-export const resolveUserCacheRoot = (): string => {
-  if (process.env.LANDO_USER_CACHE_ROOT !== undefined) return process.env.LANDO_USER_CACHE_ROOT;
-  const xdg = process.env.XDG_CACHE_HOME;
-  return join(xdg ?? DEFAULT_CACHE_HOME, "lando");
-};
+// Thin delegation over the single Paths primitive; name/signature preserved.
+// Do not re-inline an XDG fallback here — keep one resolver for all roots.
+export const resolveUserCacheRoot = (): string => resolveLandoRoots().userCacheRoot;
 
 const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/u, "");
 

@@ -92,6 +92,8 @@ export const rootEnvOverlay = (
   const overlay: Record<string, unknown> = {};
   if (env.LANDO_USER_DATA_ROOT !== undefined) overlay.userDataRoot = env.LANDO_USER_DATA_ROOT;
   if (env.LANDO_USER_CONF_ROOT !== undefined) overlay.userConfRoot = env.LANDO_USER_CONF_ROOT;
+  if (env.LANDO_USER_CACHE_ROOT !== undefined) overlay.userCacheRoot = env.LANDO_USER_CACHE_ROOT;
+  if (env.LANDO_SYSTEM_PLUGIN_ROOT !== undefined) overlay.systemPluginRoot = env.LANDO_SYSTEM_PLUGIN_ROOT;
   return overlay;
 };
 

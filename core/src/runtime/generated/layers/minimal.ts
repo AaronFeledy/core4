@@ -13,8 +13,9 @@
 
 import { Layer } from "effect";
 
-import { Renderer } from "@lando/sdk/services";
+import { PathsService, Renderer } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
+import { makeLandoPaths } from "../../../config/paths.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { DownloaderLive } from "../../../downloader/service.ts";
@@ -39,6 +40,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
+    Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),
     telemetryLive,
     ConfigServiceLive,
     EventServiceLive,

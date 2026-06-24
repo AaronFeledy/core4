@@ -67,17 +67,23 @@ describe("config root resolution", () => {
     expect(resolveUserConfRoot()).toBe("/lando/conf");
   });
 
-  test("XDG_CONFIG_HOME is ignored by the current user config root precedence", () => {
+  test("XDG_CONFIG_HOME feeds the user config root default", () => {
     setEnv({ HOME: "/home/test", XDG_CONFIG_HOME: "/xdg/config" });
 
-    expect(resolveUserConfRoot()).toBe("/home/test/.lando");
+    expect(resolveUserConfRoot()).toBe("/xdg/config/lando");
+  });
+
+  test("HOME feeds the platform-conventional config root default", () => {
+    setEnv({ HOME: "/home/test" });
+
+    expect(resolveUserConfRoot()).toBe("/home/test/.config/lando");
   });
 
   test("missing HOME falls back to dot-relative roots", () => {
     setEnv({});
 
-    expect(resolveUserDataRoot()).toBe(".local/share/lando");
-    expect(resolveUserConfRoot()).toBe("./.lando");
+    expect(resolveUserDataRoot()).toBe("./.local/share/lando");
+    expect(resolveUserConfRoot()).toBe("./.config/lando");
   });
 });
 

@@ -8,7 +8,8 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "../config/overlay.ts";
-import { resolveUserConfRoot, resolveUserDataRoot } from "../config/roots.ts";
+import { resolveLandoRoots } from "../config/paths.ts";
+import { resolveUserConfRoot } from "../config/roots.ts";
 import { MinimalYamlError, parseMinimalYaml } from "../config/yaml-min.ts";
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
@@ -26,9 +27,12 @@ const parseConfigYaml = (text: string, path: string): Record<string, unknown> =>
 };
 
 const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => {
+  const roots = resolveLandoRoots();
   const base: Record<string, unknown> = {
-    userDataRoot: resolveUserDataRoot(),
-    userConfRoot: resolveUserConfRoot(),
+    userDataRoot: roots.userDataRoot,
+    userConfRoot: roots.userConfRoot,
+    userCacheRoot: roots.userCacheRoot,
+    systemPluginRoot: roots.systemPluginRoot,
     defaultProviderId: "lando",
   };
   return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);

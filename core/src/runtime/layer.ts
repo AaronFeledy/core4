@@ -32,11 +32,13 @@ import type {
   LandofileService,
   Logger,
   ManagedFileService,
+  PathsService,
   PluginRegistry,
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
   Renderer,
+  RootOverrides,
   RuntimeProvider,
   RuntimeProviderRegistry,
   ScratchAppService,
@@ -83,6 +85,8 @@ type RuntimePluginOptions = typeof RuntimePluginOptions.Type;
 const GlobalConfigOverrides = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
   userConfRoot: Schema.optional(AbsolutePath),
+  userCacheRoot: Schema.optional(AbsolutePath),
+  systemPluginRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
   telemetry: Schema.optional(
     Schema.Struct({
@@ -130,6 +134,7 @@ type MinimalRuntimeServices =
   | Renderer
   | Telemetry
   | ConfigService
+  | PathsService
   | FileSystem
   | CacheService
   | ManagedFileService
@@ -220,18 +225,32 @@ const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): Norma
   };
 };
 
+type GlobalConfigOverrides = typeof GlobalConfigOverrides.Type;
+
+const rootOverridesFromConfig = (config: GlobalConfigOverrides | undefined): RootOverrides => {
+  if (config === undefined) return {};
+  return {
+    ...(config.userConfRoot === undefined ? {} : { userConfRoot: config.userConfRoot }),
+    ...(config.userCacheRoot === undefined ? {} : { userCacheRoot: config.userCacheRoot }),
+    ...(config.userDataRoot === undefined ? {} : { userDataRoot: config.userDataRoot }),
+    ...(config.systemPluginRoot === undefined ? {} : { systemPluginRoot: config.systemPluginRoot }),
+  };
+};
+
 const runtimeLayerFor = (
   bootstrap: BootstrapLevel,
   loggerMode: LoggerMode,
   rendererMode: LibraryRendererMode,
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
+  rootOverrides: RootOverrides,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
     loggerMode,
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
+    rootOverrides,
   }) as RuntimeLayer;
 
 const signalHandlersLayer = Layer.scopedDiscard(
@@ -295,6 +314,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     normalizeLibraryRendererMode(decoded.right.renderer ?? decoded.right.config?.renderer),
     decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
     pluginPolicy,
+    rootOverridesFromConfig(decoded.right.config),
   );
   const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
 
