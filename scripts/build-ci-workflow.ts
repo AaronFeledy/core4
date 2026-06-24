@@ -368,8 +368,9 @@ ${setupBunSteps}
         env:
           GUIDE_DRIFT_BASE_SHA: \${{ github.event.pull_request.base.sha }}
           GUIDE_DRIFT_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
-          GUIDE_DRIFT_PR_BODY: \${{ github.event.pull_request.body }}
-        run: bun run check:guide-drift
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          GUIDE_DRIFT_PR_BODY="$(gh pr view \${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift
 
       - name: Run generated guide scenarios
         run: ${guideScenarioRunCommand}${
@@ -405,6 +406,7 @@ defaults:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
 ${renderStaticChecks()}
