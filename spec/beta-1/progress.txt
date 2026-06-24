@@ -792,3 +792,9 @@ Condensed record of the Beta-1 work from the provider-setup arc through the defa
   - A new additive SDK service tag whose service value is a plain resolved object (not Effects) can set the tag's shape to a single type reference (`Context.Tag(...)<Tag, LandoPaths>`), mirroring `DataMover`/`DataMoverShape`. The backward-compat test extracts `[]` members for a type-reference shape that arrives via `export *` (not a local interface in index.ts), which is fine because additive tags are name-only set-equality, not signature-frozen.
   - `@lando/core/paths` is NOT a package export until US-305; in US-303 the re-export is consumed only via the relative `core/src/config/paths.ts` module path. Don't QA it through the package subpath yet.
 ---
+
+## 2026-06-23 19:12 CDT - US-303 Review
+- Fixed a confirmed review blocker in the published `PathsService` contract docs: the SDK tag no longer promises minimal-bootstrap Live availability before US-304 wires the service.
+- Review notes (deferred/rejected): rejected the missing `snapshotsDir`/`appSnapshotsDir`/`toolDownloadsDir`/`managedFileLedger` finding as out of scope for US-303 because later PRDs/stories explicitly add those derived builders.
+- Verification: typecheck, lint passed; focused SDK/schema/path/cold-start spot checks passed.
+---

@@ -61,10 +61,8 @@ export interface LandoPaths {
 
 /**
  * `PathsService` — the runtime DI tag that exposes the resolved {@link LandoPaths}
- * (the four roots, the active platform, and every derived-path builder). It is
- * available eagerly from bootstrap level `minimal` and never depends on
- * `ConfigService` for root resolution. `PathsService` is host/test-overridable
- * but is NOT a plugin contribution surface (there is no `provides.paths`
- * manifest key).
+ * (the four roots, the active platform, and every derived-path builder).
+ * `PathsService` is host/test-overridable but is NOT a plugin contribution
+ * surface (there is no `provides.paths` manifest key).
  */
 export class PathsService extends Context.Tag("@lando/core/PathsService")<PathsService, LandoPaths>() {}
