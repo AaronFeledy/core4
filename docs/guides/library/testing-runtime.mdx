@@ -38,6 +38,14 @@ tags: [beta, docs, library, testing]
     </Step>
   </Scenario>
 
+  <Scenario id="composition-contracts" render={false} reason="Composition helpers run as pure SDK contract tests without provisioning provider backed apps">
+    <Step name="service-and-app-features">
+      <Variable name="composition" value="runServiceCompositionContract" display="runServiceCompositionContract replays service type resolution and requires stable base and normalizedConfig output" />
+      <Variable name="serviceFeature" value="runServiceFeatureContract" display="runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions" />
+      <Variable name="appFeature" value="runAppFeatureContract" display="runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set" />
+    </Step>
+  </Scenario>
+
   <Scenario id="runtime-overrides" render={false} reason="Override behavior is covered by testing runtime tests without requiring a provider backed app">
     <Step name="host-customization">
       <Variable name="withService" value="tag override" display="withService(tag, impl) lets hosts replace one service tag" />
