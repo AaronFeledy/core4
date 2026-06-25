@@ -2914,8 +2914,8 @@
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed the three shared composition contract suites to their harness-provable assertion set (service-feature determinism/idempotency + storage/endpoint realization-leak + requires-shape; app-feature no-activation no-op via expectNoActivation; composition replay-stability of base+normalizedConfig). Wired catalog runAppFeatureContract for the mailpit-style feature and per-type lando.env env-split assertions (lando->lando.env, compose/l337->no lando.env). Added scripts/check-env-helper-boundary.ts (AST gate over plugins/service-lando/src/services/** forbidding imports of features/env.ts or named landoEnvFeature/applyEnv), wired into CI static checks + runbook with a negative mkdtemp fixture. API_COMPATIBILITY needed no new entry: the only additive change is an optional field on the already-listed type-only AppFeatureContractHarness."
     }
   ]
 }
