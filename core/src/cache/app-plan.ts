@@ -19,7 +19,7 @@ import { appPlanCachePath } from "./paths.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 1n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 2n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;

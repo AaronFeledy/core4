@@ -15,7 +15,7 @@
 import { Effect, type Layer } from "effect";
 
 import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import type { TemplateEngine } from "@lando/sdk/template";
 
 import * as plugin6 from "@lando/file-sync-mutagen";
@@ -68,6 +68,24 @@ const serviceFeaturesFrom = (
 ): { readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition> } =>
   isServiceFeatureMap(module.serviceFeatures) ? { serviceFeatures: module.serviceFeatures } : {};
 
+const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
+  typeof value === "object" &&
+  value !== null &&
+  "id" in value &&
+  typeof value.id === "string" &&
+  "priority" in value &&
+  typeof value.priority === "number" &&
+  "apply" in value &&
+  typeof value.apply === "function";
+
+const isAppFeatureMap = (value: unknown): value is ReadonlyMap<string, AppFeatureDefinition> =>
+  value instanceof Map && [...value.values()].every(isAppFeature);
+
+const appFeaturesFrom = (
+  module: BundledPluginModule,
+): { readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition> } =>
+  isAppFeatureMap(module.appFeatures) ? { appFeatures: module.appFeatures } : {};
+
 type GlobalServiceEffect = Effect.Effect<ServiceConfig, unknown, never>;
 
 const isGlobalServiceMap = (value: unknown): value is ReadonlyMap<string, GlobalServiceEffect> =>
@@ -102,6 +120,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly manifest: PluginManifest;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;
   readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;
+  readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
 }> = [
@@ -111,6 +130,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin0.manifest,
     ...serviceTypesFrom({ ...plugin0 }),
     ...serviceFeaturesFrom({ ...plugin0 }),
+    ...appFeaturesFrom({ ...plugin0 }),
     ...globalServicesFrom({ ...plugin0 }),
     ...templateEnginesFrom({ ...plugin0 }),
   },
@@ -120,6 +140,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin1.manifest,
     ...serviceTypesFrom({ ...plugin1 }),
     ...serviceFeaturesFrom({ ...plugin1 }),
+    ...appFeaturesFrom({ ...plugin1 }),
     ...globalServicesFrom({ ...plugin1 }),
     ...templateEnginesFrom({ ...plugin1 }),
   },
@@ -129,6 +150,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin2.manifest,
     ...serviceTypesFrom({ ...plugin2 }),
     ...serviceFeaturesFrom({ ...plugin2 }),
+    ...appFeaturesFrom({ ...plugin2 }),
     ...globalServicesFrom({ ...plugin2 }),
     ...templateEnginesFrom({ ...plugin2 }),
   },
@@ -138,6 +160,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin3.manifest,
     ...serviceTypesFrom({ ...plugin3 }),
     ...serviceFeaturesFrom({ ...plugin3 }),
+    ...appFeaturesFrom({ ...plugin3 }),
     ...globalServicesFrom({ ...plugin3 }),
     ...templateEnginesFrom({ ...plugin3 }),
   },
@@ -147,6 +170,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin4.manifest,
     ...serviceTypesFrom({ ...plugin4 }),
     ...serviceFeaturesFrom({ ...plugin4 }),
+    ...appFeaturesFrom({ ...plugin4 }),
     ...globalServicesFrom({ ...plugin4 }),
     ...templateEnginesFrom({ ...plugin4 }),
   },
@@ -156,6 +180,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin5.manifest,
     ...serviceTypesFrom({ ...plugin5 }),
     ...serviceFeaturesFrom({ ...plugin5 }),
+    ...appFeaturesFrom({ ...plugin5 }),
     ...globalServicesFrom({ ...plugin5 }),
     ...templateEnginesFrom({ ...plugin5 }),
   },
@@ -165,6 +190,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin6.manifest,
     ...serviceTypesFrom({ ...plugin6 }),
     ...serviceFeaturesFrom({ ...plugin6 }),
+    ...appFeaturesFrom({ ...plugin6 }),
     ...globalServicesFrom({ ...plugin6 }),
     ...templateEnginesFrom({ ...plugin6 }),
   },
@@ -174,6 +200,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin7.manifest,
     ...serviceTypesFrom({ ...plugin7 }),
     ...serviceFeaturesFrom({ ...plugin7 }),
+    ...appFeaturesFrom({ ...plugin7 }),
     ...globalServicesFrom({ ...plugin7 }),
     ...templateEnginesFrom({ ...plugin7 }),
   },
@@ -183,6 +210,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin8.manifest,
     ...serviceTypesFrom({ ...plugin8 }),
     ...serviceFeaturesFrom({ ...plugin8 }),
+    ...appFeaturesFrom({ ...plugin8 }),
     ...globalServicesFrom({ ...plugin8 }),
     ...templateEnginesFrom({ ...plugin8 }),
   },
@@ -192,6 +220,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin9.manifest,
     ...serviceTypesFrom({ ...plugin9 }),
     ...serviceFeaturesFrom({ ...plugin9 }),
+    ...appFeaturesFrom({ ...plugin9 }),
     ...globalServicesFrom({ ...plugin9 }),
     ...templateEnginesFrom({ ...plugin9 }),
   },

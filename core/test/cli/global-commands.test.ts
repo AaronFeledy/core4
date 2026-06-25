@@ -208,6 +208,7 @@ const makeHarness = async (
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
     loadServiceFeature: () => Effect.die("not used"),
+    loadAppFeature: () => Effect.die("not used"),
   };
   const layer = Layer.mergeAll(
     ConfigServiceLive,

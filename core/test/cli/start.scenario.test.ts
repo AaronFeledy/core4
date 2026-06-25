@@ -157,6 +157,7 @@ const emptyPluginRegistry = {
   load: () => Effect.die("not used"),
   loadServiceType: () => Effect.die("not used"),
   loadServiceFeature: () => Effect.die("not used"),
+  loadAppFeature: () => Effect.die("not used"),
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
@@ -411,6 +412,7 @@ const makeAutoStartLayer = async (options: {
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(globalServiceType),
     loadServiceFeature: () => Effect.die("not used"),
+    loadAppFeature: () => Effect.die("not used"),
   };
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(

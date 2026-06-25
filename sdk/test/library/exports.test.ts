@@ -462,6 +462,7 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runServiceCompositionContract).toBeDefined();
     expect(sdkTest.runServiceFeatureContract).toBeDefined();
+    expect(sdkTest.runAppFeatureContract).toBeDefined();
     expect(sdkTest.TestServiceType).toBeDefined();
   });
 

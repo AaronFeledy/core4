@@ -89,6 +89,10 @@ import type {
 } from "../services/index.ts";
 import { Renderer } from "../services/index.ts";
 import type {
+  AppFeatureContext,
+  AppFeatureDefinition,
+  AppFeatureServiceMutators,
+  AppFeatureServiceView,
   DatasetShape,
   ExecChunk,
   LandoEvent,
@@ -1675,6 +1679,233 @@ export const runServiceFeatureContract = (
       appMountWithRealization === undefined,
       "feature emits app mount intent without realization decisions",
       appMountWithRealization,
+    );
+  });
+
+const appFeatureFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `AppFeature contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireAppFeature = (condition: boolean, assertion: string, details?: unknown) =>
+  condition ? Effect.void : Effect.fail(appFeatureFailure(assertion, details));
+
+/** A resolved service draft the app-feature contract evaluates selectors against. */
+export interface AppFeatureContractService {
+  readonly serviceName: string;
+  readonly serviceType: string;
+  readonly base?: "l337" | "lando";
+  readonly framework?: string;
+  readonly primary?: boolean;
+  readonly featureIds?: ReadonlyArray<string>;
+  readonly environment?: Readonly<Record<string, string>>;
+}
+
+/** Input the app-feature contract uses to execute a single app feature. */
+export interface AppFeatureContractHarness {
+  readonly feature: AppFeatureDefinition;
+  readonly services: ReadonlyArray<AppFeatureContractService>;
+  readonly appName?: string;
+  readonly appRoot?: string;
+  readonly config?: Readonly<Record<string, unknown>>;
+}
+
+interface RecordedAppFeatureService {
+  readonly view: AppFeatureServiceView;
+  readonly env: Map<string, string>;
+  mutated: boolean;
+}
+
+const matchesActivation = (feature: AppFeatureDefinition, service: AppFeatureContractService): boolean => {
+  const match = feature.activatedBy?.services;
+  if (match === undefined) return true;
+  const typeOk = match.type === undefined || service.serviceType === match.type;
+  const featureOk = match.hasFeature === undefined || (service.featureIds ?? []).includes(match.hasFeature);
+  return typeOk && featureOk;
+};
+
+const matchesSelectors = (feature: AppFeatureDefinition, service: AppFeatureContractService): boolean => {
+  const selectors = feature.selectors;
+  if (selectors === undefined) return true;
+  if (selectors.types?.includes(service.serviceType)) return true;
+  if (service.framework !== undefined && selectors.framework?.includes(service.framework)) return true;
+  if (selectors.hasFeature?.some((id) => (service.featureIds ?? []).includes(id))) return true;
+  if (selectors.names?.includes(service.serviceName)) return true;
+  return false;
+};
+
+const makeRecordingAppFeatureContext = (input: AppFeatureContractHarness) => {
+  const selectedNames = input.services
+    .filter((service) => matchesSelectors(input.feature, service))
+    .map((service) => service.serviceName);
+  const selectedSet = new Set(selectedNames);
+
+  const records = new Map<string, RecordedAppFeatureService>();
+  const forbiddenReads = new Set<string>();
+  for (const service of input.services) {
+    const view: AppFeatureServiceView = {
+      serviceName: service.serviceName,
+      serviceType: service.serviceType,
+      base: service.base ?? "lando",
+      framework: service.framework,
+      primary: service.primary ?? false,
+      featureIds: service.featureIds ?? [],
+      normalizedConfig: { type: service.serviceType },
+    };
+    records.set(service.serviceName, {
+      view,
+      env: new Map(Object.entries(service.environment ?? {})),
+      mutated: false,
+    });
+  }
+
+  const ledger = new Map<string, string>();
+  const conflicts: Array<{ readonly service: string; readonly key: string }> = [];
+
+  const mutatorsFor = (serviceName: string): AppFeatureServiceMutators => {
+    const record = records.get(serviceName);
+    const recordMutation = () => {
+      if (record !== undefined) record.mutated = true;
+    };
+    const view = record?.view ?? {
+      serviceName,
+      serviceType: "unknown",
+      base: "lando",
+      primary: false,
+      featureIds: [],
+      normalizedConfig: { type: "unknown" },
+    };
+    return {
+      service: view,
+      addEnv: (name, value) => {
+        const ledgerKey = `${serviceName}\u0000${name}`;
+        const existing = ledger.get(ledgerKey);
+        if (existing !== undefined && existing !== value) conflicts.push({ service: serviceName, key: name });
+        ledger.set(ledgerKey, value);
+        record?.env.set(name, value);
+        recordMutation();
+      },
+      addMount: recordMutation,
+      setAppMount: recordMutation,
+      addBuildStep: recordMutation,
+      addStorage: recordMutation,
+      addEndpoint: recordMutation,
+      addDependency: recordMutation,
+      addHostAlias: recordMutation,
+      setHealthcheck: recordMutation,
+      setCerts: recordMutation,
+      setEntrypoint: recordMutation,
+      setCommand: recordMutation,
+      setArtifact: recordMutation,
+      setUser: recordMutation,
+      setWorkingDirectory: recordMutation,
+    };
+  };
+
+  const context: AppFeatureContext = {
+    featureId: input.feature.id,
+    ...(input.appName === undefined ? {} : { appName: input.appName }),
+    appRoot: input.appRoot ?? "/srv/apps/myapp",
+    config: input.config ?? {},
+    selected: selectedNames
+      .map((name) => records.get(name)?.view)
+      .filter((view): view is AppFeatureServiceView => view !== undefined),
+    forEachSelected: (mutate) => {
+      for (const name of selectedNames) mutate(mutatorsFor(name));
+    },
+    select: (name) => (selectedSet.has(name) ? mutatorsFor(name) : undefined),
+  };
+
+  const proxiedContext = new Proxy(context, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && providerCapabilityReads.has(property)) forbiddenReads.add(property);
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  return { context: proxiedContext, records, selectedNames, conflicts, forbiddenReads };
+};
+
+/**
+ * Run the app-feature contract: a feature exposes a stable id/priority/apply
+ * hook; its `apply` selects service drafts through the published selector
+ * surface, mutates each selected draft idempotently (a divergent write is a
+ * conflict), never inspects provider capabilities, and surfaces its
+ * `requires.globalServices` declarations.
+ */
+export const runAppFeatureContract = (
+  input: AppFeatureContractHarness,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    const feature = input.feature;
+
+    yield* requireAppFeature(isNonEmptyString(feature.id), "app feature exposes a non-empty id", feature.id);
+    yield* requireAppFeature(
+      Number.isFinite(feature.priority),
+      "app feature exposes a finite priority",
+      feature.priority,
+    );
+    yield* requireAppFeature(
+      typeof feature.apply === "function",
+      "app feature apply is callable",
+      typeof feature.apply,
+    );
+
+    const activatedServices = input.services.filter((service) => matchesActivation(feature, service));
+    yield* requireAppFeature(
+      feature.activatedBy === undefined || activatedServices.length > 0,
+      "app feature activation matches at least one seeded service",
+      { activatedBy: feature.activatedBy },
+    );
+
+    const { context, records, selectedNames, conflicts, forbiddenReads } =
+      makeRecordingAppFeatureContext(input);
+
+    yield* requireAppFeature(
+      selectedNames.length > 0,
+      "app feature selectors match at least one service draft",
+      { selectors: feature.selectors },
+    );
+
+    const applyExit = yield* Effect.exit(feature.apply(context));
+    if (Exit.isFailure(applyExit)) {
+      yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
+      return;
+    }
+
+    yield* requireAppFeature(
+      forbiddenReads.size === 0,
+      "app feature does not inspect provider capabilities",
+      Array.from(forbiddenReads),
+    );
+
+    yield* requireAppFeature(
+      conflicts.length === 0,
+      "app feature mutations are idempotent (no divergent writes)",
+      conflicts,
+    );
+
+    const requiresEffect = yield* Effect.exit(feature.apply(makeRecordingAppFeatureContext(input).context));
+    yield* requireAppFeature(
+      Exit.isSuccess(requiresEffect),
+      "app feature apply is replay-safe",
+      Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
+    );
+
+    const globalServices = feature.requires?.globalServices ?? [];
+    yield* requireAppFeature(
+      globalServices.every(isNonEmptyString),
+      "app feature requires.globalServices entries are non-empty ids",
+      globalServices,
+    );
+
+    const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
+    yield* requireAppFeature(
+      selectedNames.length === 0 || mutatedSelected,
+      "app feature mutates at least one selected service draft",
+      { selectedNames },
     );
   });
 

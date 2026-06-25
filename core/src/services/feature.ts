@@ -1,14 +1,10 @@
-import { DateTime, Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
-import type {
-  ServiceAppMountIntent,
-  ServiceBuildStepIntent,
-  ServiceFeatureContext,
-  ServiceFeatureDefinition,
-  ServiceMountIntent,
-} from "@lando/sdk/services";
+import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
+
+import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
 
 export interface BaseSeed {
   readonly name: ServicePlan["name"];
@@ -34,49 +30,12 @@ export interface ComposeServiceInput {
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
-interface DraftServicePlan {
-  name: ServicePlan["name"];
-  type: string;
-  provider: ServicePlan["provider"];
-  primary: boolean;
-  artifact?: ServicePlan["artifact"];
-  command?: ServicePlan["command"];
-  entrypoint?: ServicePlan["entrypoint"];
-  environment: Record<string, string>;
-  user?: string;
-  workingDirectory?: ServicePlan["workingDirectory"];
-  appMount?: ServiceAppMountIntent;
-  mounts: ServiceMountIntent[];
-  buildSteps: ServiceBuildStepIntent[];
-  storage: Array<ServicePlan["storage"][number]>;
-  endpoints: Array<ServicePlan["endpoints"][number]>;
-  dependsOn: Array<ServicePlan["dependsOn"][number]>;
-  healthcheck?: ServicePlan["healthcheck"];
-  certs?: ServicePlan["certs"];
-  hostAliases: Array<ServicePlan["hostAliases"][number]>;
-}
-
 interface OrderedFeature {
   readonly index: number;
   readonly id: string;
   readonly config?: Readonly<Record<string, unknown>>;
   readonly definition: ServiceFeatureDefinition;
 }
-
-const deterministicMetadata: ServicePlan["metadata"] = {
-  resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00Z"),
-  source: "service-feature-composition",
-  runtime: 4,
-};
-
-const sortRecord = <V>(input: Readonly<Record<string, V>>): Record<string, V> => {
-  const output: Record<string, V> = {};
-  for (const key of Object.keys(input).sort()) {
-    const value = input[key];
-    if (value !== undefined) output[key] = value;
-  }
-  return output;
-};
 
 const recordConfig = (
   input: unknown,

@@ -8,6 +8,7 @@ import type {
   ServiceConfig,
   ToolingTaskShape,
 } from "../schema/index.ts";
+import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 
 export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
@@ -21,6 +22,9 @@ export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
     readonly loadServiceFeature: (
       id: string,
     ) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>;
+    readonly loadAppFeature: (
+      id: string,
+    ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
   }
 >() {}
 

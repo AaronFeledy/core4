@@ -7,6 +7,7 @@ import { type Context, Effect, Either, Layer, Schema } from "effect";
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
+import type { AppFeatureDefinition } from "@lando/sdk/services";
 
 import { findAppRoot } from "../landofile/discovery.ts";
 import { BUNDLED_PLUGINS } from "./bundled.ts";
@@ -24,6 +25,11 @@ interface PluginRegistryDiscoveryOptions {
 interface DiscoveredPlugin {
   readonly source: PluginSourceKind;
   readonly manifest: PluginManifest;
+  readonly module?: ExternalPluginModule;
+}
+
+interface ExternalPluginModule {
+  readonly [key: string]: unknown;
 }
 
 const pluginManifestError = (message: string, cause: unknown): PluginManifestError =>
@@ -73,11 +79,14 @@ const resolvePluginModulePath = async (
   return resolved;
 };
 
-const loadExternalPluginEntry = async (packageRoot: string, manifest: PluginManifest): Promise<void> => {
-  if (manifest.entry === undefined) return;
+const loadExternalPluginEntry = async (
+  packageRoot: string,
+  manifest: PluginManifest,
+): Promise<ExternalPluginModule | undefined> => {
+  if (manifest.entry === undefined) return undefined;
   const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
   try {
-    await import(pathToFileURL(entryPath).href);
+    return (await import(pathToFileURL(entryPath).href)) as ExternalPluginModule;
   } catch (cause) {
     throw pluginLoadError(String(manifest.name), `Failed to import plugin entry ${manifest.entry}`, cause);
   }
@@ -180,7 +189,9 @@ const normalizeExternalContributionModules = async (
   };
 };
 
-const loadInstalledPluginManifest = async (packageRootInput: string): Promise<PluginManifest> => {
+const loadInstalledPlugin = async (
+  packageRootInput: string,
+): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
   const packageRoot = packageRootPath(packageRootInput);
   const packageJsonPath = join(packageRoot, "package.json");
   let parsed: unknown;
@@ -195,8 +206,45 @@ const loadInstalledPluginManifest = async (packageRootInput: string): Promise<Pl
     throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.left);
   }
   const manifest = await normalizeExternalContributionModules(packageRoot, decoded.right);
-  await loadExternalPluginEntry(packageRoot, manifest);
-  return manifest;
+  const module = await loadExternalPluginEntry(packageRoot, manifest);
+  return { manifest, ...(module === undefined ? {} : { module }) };
+};
+
+const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
+  typeof value === "object" &&
+  value !== null &&
+  "id" in value &&
+  typeof value.id === "string" &&
+  "priority" in value &&
+  typeof value.priority === "number" &&
+  "apply" in value &&
+  typeof value.apply === "function";
+
+/**
+ * §10 / §6.11.4: an app feature MUST declare at least one of `activatedBy` or
+ * `selectors`. An entry with neither is unscoped (it would run on every service
+ * draft) and is rejected at load.
+ */
+const isScopedAppFeature = (feature: AppFeatureDefinition): boolean =>
+  feature.activatedBy !== undefined || feature.selectors !== undefined;
+
+const ensureScopedAppFeature = (
+  feature: AppFeatureDefinition,
+): Effect.Effect<AppFeatureDefinition, PluginLoadError> =>
+  isScopedAppFeature(feature)
+    ? Effect.succeed(feature)
+    : Effect.fail(
+        new PluginLoadError({
+          message: `App feature ${feature.id} declares neither activatedBy nor selectors; it must declare at least one.`,
+          pluginName: "@lando/core",
+        }),
+      );
+
+const externalAppFeature = (plugin: DiscoveredPlugin, id: string): AppFeatureDefinition | undefined => {
+  const appFeatures = plugin.module?.appFeatures;
+  if (!(appFeatures instanceof Map)) return undefined;
+  const feature = appFeatures.get(id);
+  return isAppFeature(feature) ? feature : undefined;
 };
 
 const warnPluginDiscoveryFailure = (
@@ -225,7 +273,7 @@ const discoverInstalledPlugins = (
     Effect.flatMap((registry) =>
       Effect.forEach(Object.values(registry), (entry) =>
         Effect.tryPromise({
-          try: async () => ({ source, manifest: await loadInstalledPluginManifest(entry.path) }),
+          try: async () => ({ source, ...(await loadInstalledPlugin(entry.path)) }),
           catch: (cause) =>
             cause instanceof PluginManifestError || cause instanceof PluginLoadError
               ? cause
@@ -256,7 +304,7 @@ const discoverInstalledPlugins = (
 const mergeDiscoveredPlugins = (
   sources: ReadonlyArray<ReadonlyArray<DiscoveredPlugin>>,
   logger: Context.Tag.Service<typeof Logger> | undefined,
-): Effect.Effect<ReadonlyArray<PluginManifest>> =>
+): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
   Effect.gen(function* () {
     const merged = new Map<string, DiscoveredPlugin>();
     for (const source of sources) {
@@ -272,7 +320,7 @@ const mergeDiscoveredPlugins = (
         merged.set(plugin.manifest.name, plugin);
       }
     }
-    return [...merged.values()].map((plugin) => plugin.manifest);
+    return [...merged.values()];
   });
 
 const systemPlugins: ReadonlyArray<DiscoveredPlugin> = BUNDLED_PLUGINS.map((plugin) => ({
@@ -286,11 +334,11 @@ const makePluginRegistry = (
   discovery: PluginRegistryDiscoveryOptions,
 ): Context.Tag.Service<typeof PluginRegistry> => {
   const disabled = new Set(discovery.disable ?? []);
-  const discover = Effect.gen(function* () {
+  const discoverPlugins = Effect.gen(function* () {
     const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
       (plugin) => !disabled.has(plugin.manifest.name),
     );
-    if (configService === undefined) return bundledPlugins.map((plugin) => plugin.manifest);
+    if (configService === undefined) return bundledPlugins;
     const userDataRoot = yield* configService
       .get("userDataRoot")
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
@@ -305,8 +353,9 @@ const makePluginRegistry = (
         ? []
         : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"), logger);
     const manifests = yield* mergeDiscoveredPlugins([bundledPlugins, userPlugins, appPlugins], logger);
-    return manifests.filter((manifest) => !disabled.has(manifest.name));
+    return manifests.filter((plugin) => !disabled.has(plugin.manifest.name));
   });
+  const discover = discoverPlugins.pipe(Effect.map((plugins) => plugins.map((plugin) => plugin.manifest)));
 
   return {
     list: discover,
@@ -378,6 +427,31 @@ const makePluginRegistry = (
         }),
       );
     },
+    loadAppFeature: (id) =>
+      Effect.gen(function* () {
+        if (discovery.bundled !== false) {
+          for (const bundledPlugin of BUNDLED_PLUGINS) {
+            if (disabled.has(bundledPlugin.manifest.name)) continue;
+            const appFeature = bundledPlugin.appFeatures?.get(id);
+
+            if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
+          }
+        }
+
+        const plugins = yield* discoverPlugins;
+        for (const plugin of plugins) {
+          if (plugin.source === "system") continue;
+          const appFeature = externalAppFeature(plugin, id);
+          if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
+        }
+
+        return yield* Effect.fail(
+          new PluginLoadError({
+            message: `App feature ${id} is not registered.`,
+            pluginName: "@lando/core",
+          }),
+        );
+      }),
   };
 };
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as os from "node:os";
 
-import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
+import { type Context, DateTime, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
 import { CapabilityError, LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
@@ -30,7 +30,9 @@ import {
   CacheService,
   ConfigService,
   PluginRegistry,
+  type ServiceBuildStepIntent,
   type ServiceTypeHostFacts,
+  type ServiceTypeResolution,
 } from "@lando/sdk/services";
 
 import {
@@ -46,6 +48,10 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
+import type { DraftServicePlan } from "./draft.ts";
+import { sortRecord } from "./draft.ts";
+import { composeService } from "./feature.ts";
 import { legacyServicePlan } from "./legacy-service-plan.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -138,6 +144,37 @@ const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) 
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     file: `${appRoot}/.lando.yml`,
     issues: [`services.${serviceName}`],
+  });
+
+const appFeatureError = (appRoot: string, cause: unknown) =>
+  new LandofileValidationError({
+    message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
+    file: `${appRoot}/.lando.yml`,
+    issues: ["appFeatures"],
+  });
+
+// Boolean capability => true; enum capability => not the "none" (unsupported) literal.
+const providerSatisfiesCapability = (
+  providerCapabilities: ProviderCapabilities,
+  capability: keyof ProviderCapabilities,
+): boolean => {
+  const value = providerCapabilities[capability];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value !== "none";
+  return value !== undefined;
+};
+
+const appFeatureCapabilityError = (
+  providerId: ProviderId,
+  feature: string,
+  capability: keyof ProviderCapabilities,
+) =>
+  new CapabilityError({
+    message: `App feature ${feature} requires provider capability ${String(capability)}.`,
+    feature,
+    capability: String(capability),
+    providerId: String(providerId),
+    remediation: `Choose a provider that supports ${String(capability)} or remove the app feature requiring it.`,
   });
 
 const bindRealization = (providerCapabilities: ProviderCapabilities) =>
@@ -389,6 +426,116 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
   return { ...servicePlan, healthcheck: merged };
 };
 
+type PlannedServiceDraft = {
+  readonly name: string;
+  readonly hostnames: ReadonlyArray<string>;
+  readonly authored: ReturnType<typeof authoredStorageScopes>;
+  readonly draft: AppFeatureServiceDraft;
+  readonly routes: ServicePlan["routes"];
+  readonly extensions: ServicePlan["extensions"];
+};
+
+const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const serviceFeatureExtension = (
+  extensions: ServicePlan["extensions"],
+): Record<string, unknown> | undefined => {
+  const extension = extensions[SERVICE_FEATURES_EXTENSION_KEY];
+  return isRecord(extension) ? extension : undefined;
+};
+
+const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]): ServiceBuildStepIntent[] => {
+  const buildSteps = serviceFeatureExtension(extensions)?.buildSteps;
+  return Array.isArray(buildSteps) ? buildSteps.map((step) => ({ ...(step as ServiceBuildStepIntent) })) : [];
+};
+
+const toAppFeatureDraft = (
+  name: string,
+  servicePlan: ServicePlan,
+  serviceResolution: ServiceTypeResolution,
+): AppFeatureServiceDraft => ({
+  name: servicePlan.name,
+  serviceName: name,
+  type: servicePlan.type,
+  serviceType: servicePlan.type,
+  provider: servicePlan.provider,
+  primary: servicePlan.primary,
+  base: serviceResolution.base,
+  framework: serviceResolution.normalizedConfig.framework,
+  featureIds: serviceResolution.features.map((feature) => feature.id),
+  normalizedConfig: serviceResolution.normalizedConfig,
+  ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
+  ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
+  ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
+  environment: { ...servicePlan.environment },
+  ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
+  ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
+  ...(servicePlan.appMount === undefined
+    ? {}
+    : {
+        appMount: {
+          source: servicePlan.appMount.source,
+          target: servicePlan.appMount.target,
+          readOnly: servicePlan.appMount.readOnly,
+          excludes: servicePlan.appMount.excludes,
+          includes: servicePlan.appMount.includes,
+        },
+      }),
+  mounts: servicePlan.mounts.map((mount) => {
+    const { realization: _realization, ...intent } = mount;
+    return intent;
+  }),
+  buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
+  storage: servicePlan.storage.map((storage) => ({ ...storage })),
+  endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
+  dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
+  ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
+  ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
+  hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
+});
+
+const servicePlanFromDraft = (
+  draft: DraftServicePlan,
+  routes: ServicePlan["routes"],
+  metadata: ServicePlan["metadata"],
+  extensions: ServicePlan["extensions"],
+): ServicePlan => ({
+  name: draft.name,
+  type: draft.type,
+  provider: draft.provider,
+  primary: draft.primary,
+  ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
+  ...(draft.command === undefined ? {} : { command: draft.command }),
+  ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
+  environment: sortRecord(draft.environment),
+  ...(draft.user === undefined ? {} : { user: draft.user }),
+  ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
+  ...(draft.appMount === undefined ? {} : { appMount: { ...draft.appMount, realization: "passthrough" } }),
+  mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
+  storage: draft.storage.map((storage) => ({ ...storage })),
+  endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
+  routes: routes.map((route) => ({ ...route })),
+  dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
+  ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
+  ...(draft.certs === undefined ? {} : { certs: draft.certs }),
+  hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
+  metadata,
+  extensions: {
+    ...extensions,
+    ...(draft.buildSteps.length === 0
+      ? {}
+      : {
+          [SERVICE_FEATURES_EXTENSION_KEY]: {
+            ...serviceFeatureExtension(extensions),
+            buildSteps: draft.buildSteps.map((step) => ({ ...step })),
+          },
+        }),
+  },
+});
+
 const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
   try {
     const userInfo = os.userInfo();
@@ -415,8 +562,14 @@ const planApp = (
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
   const host = resolveHostFacts();
-  const metadata = {
-    resolvedAt: new Date().toISOString(),
+  const resolvedAt = new Date().toISOString();
+  const legacyMetadata = {
+    resolvedAt,
+    source: `${appRoot}/.lando.yml`,
+    runtime: 4 as const,
+  };
+  const metadata: ServicePlan["metadata"] = {
+    resolvedAt: DateTime.unsafeMake(resolvedAt),
     source: `${appRoot}/.lando.yml`,
     runtime: 4 as const,
   };
@@ -479,6 +632,32 @@ const planApp = (
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
+    const appFeatureRefs: Array<{ readonly id: string; readonly pluginId: string }> = [];
+    const seenAppFeatureIds = new Set<string>();
+    for (const manifest of manifests) {
+      for (const entry of manifest.contributes?.appFeatures ?? []) {
+        const id = contributionId(entry);
+        if (seenAppFeatureIds.has(id)) continue;
+        seenAppFeatureIds.add(id);
+        appFeatureRefs.push({ id, pluginId: manifest.name });
+      }
+    }
+    const appFeatures: ComposeAppFeature[] = [];
+    for (const ref of appFeatureRefs) {
+      const definition = yield* pluginRegistry.loadAppFeature(ref.id).pipe(
+        Effect.mapError(
+          (error) =>
+            new LandofileValidationError({
+              message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
+              file: `${appRoot}/.lando.yml`,
+              issues: [`plugins.${ref.pluginId}.appFeatures.${ref.id}`],
+            }),
+        ),
+      );
+      appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
+    }
+
+    const plannedServiceDrafts: PlannedServiceDraft[] = [];
 
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
       const authored = authoredStorageScopes(service);
@@ -495,24 +674,98 @@ const planApp = (
           ),
         );
 
-      const rawPlan = yield* Effect.try({
-        try: () =>
-          legacyServicePlan(serviceType, {
-            name,
-            service,
-            appRoot,
-            appName,
-            provider,
-            primary: name === "web",
-            metadata,
-            host,
-          }),
-        catch: (cause) => servicePlanError(appRoot, name, cause),
-      });
+      const serviceResolution = yield* serviceType
+        .resolve({
+          name,
+          service,
+          appRoot,
+          appName,
+          provider,
+          primary: name === "web",
+          metadata: legacyMetadata,
+          host,
+        })
+        .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+
+      const rawPlan =
+        serviceResolution.features.length === 0
+          ? yield* Effect.try({
+              try: () =>
+                legacyServicePlan(serviceType, {
+                  name,
+                  service,
+                  appRoot,
+                  appName,
+                  provider,
+                  primary: name === "web",
+                  metadata: legacyMetadata,
+                  host,
+                }),
+              catch: (cause) => servicePlanError(appRoot, name, cause),
+            })
+          : yield* Effect.gen(function* () {
+              const features = yield* Effect.forEach(serviceResolution.features, (featureRef) =>
+                pluginRegistry.loadServiceFeature(featureRef.id).pipe(
+                  Effect.map((definition) => ({
+                    id: featureRef.id,
+                    ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+                    definition,
+                  })),
+                  Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+                ),
+              );
+              return yield* composeService({
+                base: {
+                  name: ServiceName.make(name),
+                  type: serviceType.id,
+                  provider,
+                  primary: name === "web",
+                  ...(serviceResolution.normalizedConfig.environment === undefined
+                    ? {}
+                    : { environment: serviceResolution.normalizedConfig.environment }),
+                  defaultFeatures: [],
+                },
+                baseKind: serviceResolution.base,
+                appName,
+                appRoot,
+                normalizedConfig: serviceResolution.normalizedConfig,
+                features,
+              }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+            });
       const servicePlan = applyAuthoredHealthcheck(
         applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service),
         service,
       );
+      plannedServiceDrafts.push({
+        name,
+        hostnames: service.hostnames ?? [],
+        authored,
+        draft: toAppFeatureDraft(name, servicePlan, serviceResolution),
+        routes: servicePlan.routes,
+        extensions: servicePlan.extensions,
+      });
+    }
+
+    const appFeatureResult = yield* composeAppFeatures({
+      appName,
+      appRoot,
+      services: plannedServiceDrafts.map((entry) => entry.draft),
+      features: appFeatures,
+    }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
+
+    const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
+    for (const capability of appFeatureResult.requires.providerCapabilities) {
+      if (providerSatisfiesCapability(providerCapabilities, capability)) continue;
+      const offending = appFeatures.find(
+        (entry) =>
+          activatedFeatureIds.has(entry.id) &&
+          (entry.definition.requires?.providerCapabilities ?? []).includes(capability),
+      );
+      yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
+    }
+
+    for (const { name, hostnames, authored, draft, routes, extensions } of plannedServiceDrafts) {
+      const servicePlan = servicePlanFromDraft(draft, routes, metadata, extensions);
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
@@ -591,7 +844,7 @@ const planApp = (
         );
       }
 
-      serviceHostnames[name] = service.hostnames ?? [];
+      serviceHostnames[name] = hostnames;
       services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
 
       for (const shadow of shadowResult.shadowStores) {
@@ -660,9 +913,17 @@ const planApp = (
       ...(networking !== undefined ? { networking } : {}),
       stores: aggregatedStores,
       fileSync: fileSyncEntries,
-      metadata,
+      metadata: legacyMetadata,
       extensions: {},
-      ...(aggregatedRoutes.length > 0 ? { requires: { globalServices: ["traefik"] } } : {}),
+      ...(() => {
+        const requiredGlobalServices = [
+          ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
+          ...appFeatureResult.requires.globalServices,
+        ];
+        return requiredGlobalServices.length === 0
+          ? {}
+          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
+      })(),
     });
     if (cacheService !== undefined) {
       yield* writeCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey, plan }).pipe(
