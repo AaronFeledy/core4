@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import type { AppFeatureContext, AppFeatureDefinition } from "@lando/sdk/services";
+import type { AppFeatureContext, AppFeatureDefinition, ServiceAppMountIntent } from "@lando/sdk/services";
 
 import {
   type AppFeatureServiceDraft,
@@ -21,12 +21,20 @@ const draft = (over: Partial<AppFeatureServiceDraft> & { serviceName: string }):
   type: over.serviceType ?? "node",
   provider: (over.provider ?? "test") as AppFeatureServiceDraft["provider"],
   primary: over.primary ?? false,
+  artifact: over.artifact,
+  command: over.command,
+  entrypoint: over.entrypoint,
   environment: over.environment ?? {},
+  user: over.user,
+  workingDirectory: over.workingDirectory,
+  appMount: over.appMount,
   mounts: over.mounts ?? [],
   buildSteps: over.buildSteps ?? [],
   storage: over.storage ?? [],
   endpoints: over.endpoints ?? [],
   dependsOn: over.dependsOn ?? [],
+  healthcheck: over.healthcheck,
+  certs: over.certs,
   hostAliases: over.hostAliases ?? [],
 });
 
@@ -267,6 +275,98 @@ describe("composeAppFeatures idempotency and conflicts", () => {
 
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(services[0]?.environment.K).toBe("feature");
+  });
+
+  test("divergent setCommand writes across features raise MutationConflict", async () => {
+    const services = [draft({ serviceName: "php", serviceType: "php" })];
+    const a: AppFeatureDefinition = {
+      id: "a",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setCommand(["one"]))),
+    };
+    const b: AppFeatureDefinition = {
+      id: "b",
+      priority: 200,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setCommand(["two"]))),
+    };
+
+    const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      expect(exit.cause.error._tag).toBe("MutationConflict");
+      if (exit.cause.error._tag === "MutationConflict") {
+        expect(exit.cause.error.field).toBe("command");
+      }
+    }
+  });
+
+  test("divergent setAppMount writes across features raise MutationConflict", async () => {
+    const services = [draft({ serviceName: "php", serviceType: "php" })];
+    const appMount = (source: string): ServiceAppMountIntent => ({
+      source: source as ServiceAppMountIntent["source"],
+      target: "/app" as ServiceAppMountIntent["target"],
+      readOnly: false,
+      excludes: [],
+      includes: [],
+    });
+    const a: AppFeatureDefinition = {
+      id: "a",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setAppMount(appMount("/a")))),
+    };
+    const b: AppFeatureDefinition = {
+      id: "b",
+      priority: 200,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setAppMount(appMount("/b")))),
+    };
+
+    const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      expect(exit.cause.error._tag).toBe("MutationConflict");
+    }
+  });
+
+  test("two features setting structurally-equal whole fields stay idempotent", async () => {
+    const services = [draft({ serviceName: "php", serviceType: "php" })];
+    const a: AppFeatureDefinition = {
+      id: "a",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setCommand(["serve"]))),
+    };
+    const b: AppFeatureDefinition = {
+      id: "b",
+      priority: 200,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setCommand(["serve"]))),
+    };
+
+    const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(services[0]?.command).toEqual(["serve"]);
+  });
+
+  test("a single feature overwriting a pre-existing stage-3 whole field is not a conflict", async () => {
+    const services = [draft({ serviceName: "php", serviceType: "php", command: ["stage3"] })];
+    const f: AppFeatureDefinition = {
+      id: "overwrite",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setCommand(["feature"]))),
+    };
+
+    const exit = await runExit(inputFor(services, [feature(f)]));
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(services[0]?.command).toEqual(["feature"]);
   });
 });
 

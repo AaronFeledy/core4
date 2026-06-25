@@ -244,6 +244,21 @@ const conflictFromCause = (
 
 type WriteLedger = Map<string, unknown>;
 
+const stableMutationValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableMutationValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, stableMutationValue(child)]),
+    );
+  }
+  return value;
+};
+
+const sameMutationValue = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(stableMutationValue(a)) === JSON.stringify(stableMutationValue(b));
+
 const recordWrite = (
   ledger: WriteLedger,
   feature: string,
@@ -270,6 +285,35 @@ const recordWrite = (
   ledger.set(ledgerKey, value);
 };
 
+// Whole-field setter guard: structural equality (not reference) so two features
+// setting equal object/array literals stay idempotent while divergent values
+// raise MutationConflict. Pre-existing stage-3 draft values are never in the
+// ledger, so a single feature overwriting them is not a conflict.
+const recordFieldWrite = (
+  ledger: WriteLedger,
+  feature: string,
+  serviceName: string,
+  field: string,
+  value: unknown,
+): void => {
+  const ledgerKey = `${serviceName}\u0000${field}`;
+  if (ledger.has(ledgerKey)) {
+    const existing = ledger.get(ledgerKey);
+    if (!sameMutationValue(existing, value)) {
+      throw new AppFeatureMutationConflictError({
+        message: `App feature ${feature} wrote a conflicting ${field} value for service ${serviceName}`,
+        feature,
+        service: serviceName,
+        field,
+        existing,
+        incoming: value,
+        remediation: "Resolve the conflicting app-feature mutations so they agree on the value.",
+      });
+    }
+  }
+  ledger.set(ledgerKey, value);
+};
+
 const makeMutators = (
   draft: AppFeatureServiceDraft,
   feature: string,
@@ -284,6 +328,7 @@ const makeMutators = (
     draft.mounts.push({ ...mount });
   },
   setAppMount: (mount) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "appMount", mount);
     draft.appMount = { ...mount };
   },
   addBuildStep: (step) => {
@@ -302,24 +347,31 @@ const makeMutators = (
     draft.hostAliases.push({ ...alias });
   },
   setHealthcheck: (healthcheck) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "healthcheck", healthcheck);
     draft.healthcheck = { ...healthcheck };
   },
   setCerts: (certs) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "certs", certs);
     draft.certs = { ...certs };
   },
   setEntrypoint: (entrypoint) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "entrypoint", entrypoint);
     draft.entrypoint = Array.isArray(entrypoint) ? [...entrypoint] : entrypoint;
   },
   setCommand: (command) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "command", command);
     draft.command = Array.isArray(command) ? [...command] : command;
   },
   setArtifact: (artifact) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "artifact", artifact);
     draft.artifact = { ...artifact };
   },
   setUser: (user) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "user", user);
     draft.user = user;
   },
   setWorkingDirectory: (path) => {
+    recordFieldWrite(ledger, feature, draft.serviceName, "workingDirectory", path);
     draft.workingDirectory = path;
   },
 });
