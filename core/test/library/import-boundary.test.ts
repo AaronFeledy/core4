@@ -39,6 +39,9 @@ const isOclifNpmSpecifier = (specifier: string): boolean =>
 const isTuiNpmSpecifier = (specifier: string): boolean =>
   specifier === "opentui" || specifier === "@opentui/core" || specifier.startsWith("@opentui/");
 
+const isEffectNpmSpecifier = (specifier: string): boolean =>
+  specifier === "effect" || specifier.startsWith("effect/");
+
 /** Follow only first-party static edges: relative paths and `@lando/*` packages. */
 const isFollowableSpecifier = (specifier: string): boolean =>
   specifier.startsWith(".") || specifier.startsWith("@lando/");
@@ -85,6 +88,13 @@ const classifyTuiImport = (edge: {
   return undefined;
 };
 
+// Flags a direct static import of `effect` (or any `effect/*` submodule). The
+// runtime is external-only, so a single specifier check suffices. `import type`
+// edges are erased by `Bun.Transpiler().scan()` first, so type-only Effect
+// references never count as a runtime dependency.
+const classifyEffectImport = (edge: { readonly specifier: string }): string | undefined =>
+  isEffectNpmSpecifier(edge.specifier) ? `imports the Effect runtime package "${edge.specifier}"` : undefined;
+
 interface OclifViolation {
   /** Import chain from the walked entry to the offending module/specifier. */
   readonly chain: ReadonlyArray<string>;
@@ -92,6 +102,11 @@ interface OclifViolation {
 }
 
 interface TuiViolation {
+  readonly chain: ReadonlyArray<string>;
+  readonly reason: string;
+}
+
+interface EffectViolation {
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -133,10 +148,12 @@ const walkStaticImportGraph = (
   readonly visited: ReadonlySet<string>;
   readonly violations: ReadonlyArray<OclifViolation>;
   readonly tuiViolations: ReadonlyArray<TuiViolation>;
+  readonly effectViolations: ReadonlyArray<EffectViolation>;
 } => {
   const visited = new Set<string>();
   const violations: OclifViolation[] = [];
   const tuiViolations: TuiViolation[] = [];
+  const effectViolations: EffectViolation[] = [];
 
   const visit = (absPath: string, chain: ReadonlyArray<string>): void => {
     if (visited.has(absPath)) return;
@@ -171,6 +188,11 @@ const walkStaticImportGraph = (
         tuiViolations.push({ chain: [...chain, absPath, offender], reason: tuiReason });
       }
 
+      const effectReason = classifyEffectImport({ specifier });
+      if (effectReason !== undefined) {
+        effectViolations.push({ chain: [...chain, absPath, specifier], reason: effectReason });
+      }
+
       if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) {
         visit(resolvedAbs, [...chain, absPath]);
       }
@@ -178,7 +200,7 @@ const walkStaticImportGraph = (
   };
 
   visit(realpathSync(entryAbs), []);
-  return { visited, violations, tuiViolations };
+  return { visited, violations, tuiViolations, effectViolations };
 };
 
 const formatViolation = (entrySpecifier: string, violation: OclifViolation): string => {
@@ -187,6 +209,11 @@ const formatViolation = (entrySpecifier: string, violation: OclifViolation): str
 };
 
 const formatTuiViolation = (entrySpecifier: string, violation: TuiViolation): string => {
+  const chain = violation.chain.map(repoRelative).join("\n      → ");
+  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
+};
+
+const formatEffectViolation = (entrySpecifier: string, violation: EffectViolation): string => {
   const chain = violation.chain.map(repoRelative).join("\n      → ");
   return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
 };
@@ -202,6 +229,7 @@ const CRITICAL_ENTRY_POINTS: CriticalEntryPoint[] = [
   { specifier: "@lando/core", expectsOclif: false },
   { specifier: "@lando/core/cli", expectsOclif: false },
   { specifier: "@lando/core/testing", expectsOclif: false },
+  { specifier: "@lando/core/paths", expectsOclif: false },
   { specifier: "@lando/core/oclif", expectsOclif: true },
 ];
 
@@ -217,6 +245,18 @@ describe("import boundaries (basic importability)", () => {
     expect(mod.ConfigService).toBeDefined();
     expect(mod.RuntimeProvider).toBeDefined();
     expect(mod.EventService).toBeDefined();
+  });
+
+  test("@lando/core/services re-exports PathsService", async () => {
+    const mod = (await import("@lando/core/services")) as Record<string, unknown>;
+    expect(mod.PathsService).toBeDefined();
+  });
+
+  test("@lando/core/paths resolves from the package subpath export", async () => {
+    const mod = (await import("@lando/core/paths")) as Record<string, unknown>;
+    expect(mod.resolveLandoRoots).toBeDefined();
+    expect(mod.makeLandoPaths).toBeDefined();
+    expect(mod.normalizeHostPlatform).toBeDefined();
   });
 
   test("can import @lando/core/schema standalone", async () => {
@@ -344,6 +384,21 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
   });
 });
 
+describe("Effect import-boundary classifier (detection self-check)", () => {
+  test("flags a direct effect npm import", () => {
+    expect(classifyEffectImport({ specifier: "effect" })).toContain("Effect runtime");
+  });
+
+  test("flags an effect submodule import", () => {
+    expect(classifyEffectImport({ specifier: "effect/Layer" })).toContain("effect/Layer");
+  });
+
+  test("does NOT flag ordinary first-party edges", () => {
+    expect(classifyEffectImport({ specifier: "./overlay.ts" })).toBeUndefined();
+    expect(classifyEffectImport({ specifier: "@lando/sdk/services" })).toBeUndefined();
+  });
+});
+
 describe("OCLIF-free default entry", () => {
   test("the walker detects OCLIF when present (positive control on @lando/core/oclif)", () => {
     const entryAbs = resolveEntrySource("@lando/core/oclif");
@@ -418,6 +473,40 @@ describe("OCLIF-free default entry", () => {
     expect(message).toContain("→");
     expect(message).toContain("cli/oclif/index.ts");
     expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/oclif/);
+  });
+});
+
+describe("Effect-free @lando/core/paths", () => {
+  test("the walker detects Effect when present (positive control on @lando/core)", () => {
+    const entryAbs = resolveEntrySource("@lando/core");
+    const { effectViolations } = walkStaticImportGraph(entryAbs);
+    expect(effectViolations.length).toBeGreaterThan(0);
+  });
+
+  test("@lando/core/paths has an Effect-free and OCLIF-free transitive static import graph", () => {
+    const entryAbs = resolveEntrySource("@lando/core/paths");
+    const { visited, violations, effectViolations } = walkStaticImportGraph(entryAbs);
+
+    expect(visited.size).toBeGreaterThan(1);
+
+    if (effectViolations.length > 0) {
+      const report = effectViolations
+        .map((violation) => formatEffectViolation("@lando/core/paths", violation))
+        .join("\n\n");
+      throw new Error(
+        `@lando/core/paths must not load the Effect runtime; offending import chains:\n\n${report}`,
+      );
+    }
+    if (violations.length > 0) {
+      const report = violations
+        .map((violation) => formatViolation("@lando/core/paths", violation))
+        .join("\n\n");
+      throw new Error(
+        `@lando/core/paths must not load any OCLIF code path; offending import chains:\n\n${report}`,
+      );
+    }
+    expect(effectViolations.length).toBe(0);
+    expect(violations.length).toBe(0);
   });
 });
 
