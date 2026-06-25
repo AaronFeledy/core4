@@ -118,10 +118,15 @@ const triggeredBy = (
     .map((service) => service.serviceName);
 };
 
+const expressionEnv = (): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+
 const selectFromConfig = (
   expression: string,
   input: ComposeAppFeaturesInput,
-  feature: AppFeatureDefinition,
+  feature: ComposeAppFeature,
 ): Effect.Effect<ReadonlyArray<string>, AppFeatureError> => {
   if (input.resolveFromConfig !== undefined) {
     return input.resolveFromConfig(expression, {
@@ -146,7 +151,12 @@ const selectFromConfig = (
   for (const service of input.services) {
     servicesScope[service.serviceName] = { config: service.normalizedConfig };
   }
-  const context: ExpressionContext = { services: servicesScope };
+  const context: ExpressionContext = {
+    app: { name: input.appName, root: input.appRoot },
+    env: expressionEnv(),
+    services: servicesScope,
+    vars: feature.config ?? {},
+  };
 
   const evaluated = evaluateTemplateEither(parsed.right, context);
   if (Either.isLeft(evaluated)) {
@@ -174,11 +184,11 @@ const selectFromConfig = (
 };
 
 const selectServices = (
-  feature: AppFeatureDefinition,
+  feature: ComposeAppFeature,
   input: ComposeAppFeaturesInput,
 ): Effect.Effect<ReadonlyArray<string>, AppFeatureError> =>
   Effect.gen(function* () {
-    const selectors = feature.selectors;
+    const selectors = feature.definition.selectors;
     if (selectors === undefined) return input.services.map((service) => service.serviceName);
 
     const matched = new Set<string>();
@@ -501,7 +511,7 @@ export const composeAppFeatures = (
     for (const feature of ordered) {
       const triggeredByServices = triggeredBy(feature.definition, input.services);
       if (triggeredByServices.length === 0) continue;
-      const selectedServices = yield* selectServices(feature.definition, input);
+      const selectedServices = yield* selectServices(feature, input);
       if (selectedServices.length === 0) {
         return yield* Effect.fail(
           new AppFeatureSelectorMatchedNothingError({

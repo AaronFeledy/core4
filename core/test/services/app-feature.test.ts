@@ -215,6 +215,35 @@ describe("composeAppFeatures selectors", () => {
     expect(result.activatedFeatures[0]?.selectedServices).toEqual(["php"]);
     expect(services[0]?.environment.FC).toBe("1");
   });
+
+  test("default fromConfig exposes app-level expression scopes", async () => {
+    const previousTarget = process.env.LANDO_TEST_SELECTOR_TARGET;
+    process.env.LANDO_TEST_SELECTOR_TARGET = "php";
+    try {
+      const services = [
+        draft({ serviceName: "php", normalizedConfig: { type: "php" } }),
+        draft({ serviceName: "node", normalizedConfig: { type: "node" } }),
+      ];
+      const f: AppFeatureDefinition = {
+        id: "from-config-context",
+        priority: 100,
+        selectors: {
+          fromConfig:
+            '{{ app.name == "myapp" && env.LANDO_TEST_SELECTOR_TARGET == "php" ? vars.targets : [] }}',
+        },
+        apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.addEnv("FC_CONTEXT", "1"))),
+      };
+
+      const result = await run(inputFor(services, [feature(f, { targets: ["php"] })]));
+
+      expect(result.activatedFeatures[0]?.selectedServices).toEqual(["php"]);
+      expect(services[0]?.environment.FC_CONTEXT).toBe("1");
+      expect(services[1]?.environment.FC_CONTEXT).toBeUndefined();
+    } finally {
+      if (previousTarget === undefined) process.env.LANDO_TEST_SELECTOR_TARGET = undefined;
+      else process.env.LANDO_TEST_SELECTOR_TARGET = previousTarget;
+    }
+  });
 });
 
 describe("composeAppFeatures idempotency and conflicts", () => {
