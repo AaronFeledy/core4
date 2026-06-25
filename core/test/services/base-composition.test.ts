@@ -93,6 +93,17 @@ describe("lando base composition", () => {
     expect(plan.environment.LANDO_MAIL_PORT).toBeUndefined();
   });
 
+  test("derives LANDO_APP_NAME from app root when app name is blank", async () => {
+    const plan = await compose({
+      ...inputFor("lando"),
+      appName: "",
+      appRoot: "/srv/apps/my-cool-app",
+    });
+
+    expect(plan.environment.LANDO_APP_NAME).toBe("my-cool-app");
+    expect(plan.environment.LANDO_PROJECT).toBe("my-cool-app");
+  });
+
   test("rejects user env that collides with reserved LANDO_* keys", async () => {
     const exit = await Effect.runPromiseExit(
       composeService(inputFor("lando", { userEnv: { LANDO_PROJECT: "fake" } })),
