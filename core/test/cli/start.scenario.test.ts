@@ -304,13 +304,15 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
 const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
   const services = Object.fromEntries(
     serviceIds.map((id) => {
-      const service = globalServiceType.__legacyToServicePlan({
-        name: id,
-        service: { type: "lando" },
-        appRoot: "/tmp/global",
-        appName: "global",
+      const service = {
+        ...servicePlan("web"),
+        name: ServiceName.make(id),
+        type: "lando",
+        provider: ProviderId.make("lando"),
+        primary: false,
+        endpoints: [{ protocol: "http" as const, port: 8080, name: "http" }],
         metadata,
-      });
+      };
       return [service.name, service];
     }),
   );

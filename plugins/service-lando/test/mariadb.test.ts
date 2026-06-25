@@ -3,7 +3,8 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { MARIADB_FEATURE_ID, mariadbServiceFeature, mariadbServiceType } from "../src/services/mariadb.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -12,7 +13,7 @@ const metadata = {
 };
 
 describe("mariadb ServiceType", () => {
-  test("plans a default MariaDB service with both MARIADB_* and MYSQL_* env aliases", () => {
+  test("plans a default MariaDB service with both MARIADB_* and MYSQL_* env aliases", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { db: { type: "mariadb" } },
@@ -20,11 +21,14 @@ describe("mariadb ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = mariadbServiceType.__legacyToServicePlan({
-      name: "db",
+    const plan = await composeServicePlan({
+      serviceType: mariadbServiceType,
       service,
       appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      serviceName: "db",
       metadata,
+      featureOverrides: new Map([[MARIADB_FEATURE_ID, mariadbServiceFeature]]),
     });
 
     expect(plan.type).toBe("mariadb");

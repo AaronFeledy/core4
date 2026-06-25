@@ -6,16 +6,16 @@ import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution }
 
 import { mergeValues } from "../landofile/merge.ts";
 
-/** §6.11.1: single inheritance, depth-limited to at most four `extends` hops. */
+/** Single inheritance chain, depth-limited to at most four `extends` hops. */
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;
 
 const mergeServiceConfig = (parent: ServiceConfig, child: ServiceConfig): ServiceConfig =>
   mergeValues(parent, child) as ServiceConfig;
 
 /**
- * §7.2: arrays of objects merge by identity key. Parent features come first;
- * a child `FeatureRef` with the same `id` overrides the parent's (its `config`
- * §7.2-merges onto the parent's). New child features append in declared order.
+ * Feature lists merge by id: parent features come first; a child `FeatureRef`
+ * with the same `id` overrides the parent (configs deep-merge). New child
+ * features append in declared order.
  */
 const mergeFeatures = (
   parent: ReadonlyArray<FeatureRef>,
@@ -56,9 +56,9 @@ const mergeOptionalRecord = <T>(
 };
 
 /**
- * Overlay a child resolution onto its parent per §7.2: deep-merge normalized
- * config, merge features by id, child-wins for tooling/metadata. The child's
- * declared `base` is authoritative.
+ * Overlay a child resolution onto its parent: deep-merge normalized config,
+ * merge features by id, child-wins for tooling/metadata. The child's declared
+ * `base` is authoritative.
  */
 export const mergeResolutionOverParent = (
   parent: ServiceTypeResolution,
@@ -165,13 +165,6 @@ const mergeVersions = (chain: ReadonlyArray<ServiceType>): ReadonlyArray<string>
   return ordered.length === 0 ? undefined : ordered;
 };
 
-/**
- * Synthesize a `ServiceType` that resolves its `extends:` chain parent-first
- * per §6.11.1. The leaf type's identity, schema, and any private bridge keys
- * (e.g. the catalog's `__legacyToServicePlan`) are preserved by spreading it;
- * only `resolve`, `artifacts`, and `versions` are replaced with the merged
- * inheritance result. A type without `extends:` is returned unchanged.
- */
 export const composeExtendedServiceType = (
   leaf: ServiceType,
   lookup: (id: string) => ServiceType | undefined,

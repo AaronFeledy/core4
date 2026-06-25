@@ -1,24 +1,26 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
 
-const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
+export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
   nginx: "nginx:1.26-alpine",
   caddy: "caddy:2-alpine",
 };
 
+export const STATIC_FEATURE_ID = "service-lando.static" as const;
+export const STATIC_FEATURE_PRIORITY = 600;
+
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
-const nginxRootLiteral = (path: string): string => JSON.stringify(path);
+export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
-const defaultStaticCommand = (
+export const defaultStaticCommand = (
   server: SupportedStaticServer,
   docRoot: string,
   port: number,
@@ -45,10 +47,17 @@ const defaultStaticCommand = (
   ];
 };
 
+const StaticFeatureConfigSchema = Schema.Struct({
+  server: Schema.Literal(...SUPPORTED_STATIC_SERVERS),
+  docRoot: Schema.String,
+  root: Schema.optional(Schema.String),
+});
+type StaticFeatureConfig = typeof StaticFeatureConfigSchema.Type;
+
 const REMEDIATION_SERVER = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_STATIC_SERVERS.map((s) => `static:${s}`).join(", ")} (got static:${requested}).`;
 
-const validateServer = (
+export const validateServer = (
   declaredType: string | undefined,
   fallback: SupportedStaticServer,
 ): SupportedStaticServer => {
@@ -62,84 +71,125 @@ const validateServer = (
   throw new Error(`Unsupported static server "${server}". ${REMEDIATION_SERVER(server)}`);
 };
 
-const makeStaticServiceType = (server: SupportedStaticServer): LegacyServiceType =>
-  defineLegacyServiceType({
-    id: server === "nginx" ? "static" : `static:${server}`,
-    toServicePlan: (input) => {
-      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-      const resolvedServer = validateServer(service.type, server);
-      const appName = appNameFor(input);
-      const serviceType = `static:${resolvedServer}`;
-      const rel = service.root != null ? service.root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
-      const docRoot = rel === "" ? "/app" : `/app/${rel}`;
-      const environment = buildLandoEnv({
-        serviceName: name,
-        serviceType,
-        appName,
-        appPaths: { appRoot: "/app", projectMount: "/app" },
-        webroot: docRoot,
-        host,
-        userEnv: service.environment ?? {},
-      });
-      const endpointPort = service.port ?? DEFAULT_PORT;
+const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.config as StaticFeatureConfig;
 
-      return decodeServicePlan({
-        name: ServiceName.make(name),
-        type: serviceType,
-        provider,
-        primary: service.primary ?? primary ?? name === "web",
-        artifact: {
-          kind: "ref",
-          ref: service.image ?? STATIC_SERVER_IMAGES[resolvedServer],
-        },
-        command: service.command ?? defaultStaticCommand(resolvedServer, docRoot, endpointPort),
-        entrypoint: service.entrypoint,
-        environment,
-        user: service.user,
-        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-        appMount: {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: true,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-        mounts: [
-          {
-            type: "bind",
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: true,
-            realization: "passthrough",
-          },
-        ],
-        storage: [],
-        endpoints: [{ port: endpointPort, protocol: "http", name }],
-        routes: [],
-        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-          service: ServiceName.make(dependency),
-          condition: "started",
-        })),
-        healthcheck: {
-          kind: "command",
-          command: ["sh", "-c", `nc -z 127.0.0.1 ${endpointPort}`],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 10,
-        },
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "lando-service-static": {
-            server: resolvedServer,
-            ...(service.root != null ? { root: service.root } : {}),
-          },
-        },
-      });
-    },
+const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const { docRoot, server } = configFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
+  ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port));
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  const passthrough = { realization: "passthrough" as const };
+  const appMount = {
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: true,
+    excludes: [],
+    includes: [],
+    ...passthrough,
+  };
+  const bindMount = {
+    type: "bind" as const,
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: true,
+    ...passthrough,
+  };
+  ctx.setAppMount(appMount);
+  ctx.addMount(bindMount);
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 10,
   });
 
-export const staticNginxServiceType: LegacyServiceType = makeStaticServiceType("nginx");
-export const staticCaddyServiceType: LegacyServiceType = makeStaticServiceType("caddy");
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  ctx.addExtension("lando-service-static", {
+    server,
+    ...(service.root != null ? { root: service.root } : {}),
+  });
+};
+
+export const staticServiceFeature: ServiceFeatureDefinition = {
+  id: STATIC_FEATURE_ID,
+  schema: StaticFeatureConfigSchema as Schema.Schema<unknown>,
+  priority: STATIC_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyStaticFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.static failed to apply",
+          feature: STATIC_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const docRootFor = (root: string | undefined): string => {
+  const rel = root != null ? root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
+  return rel === "" ? "/app" : `/app/${rel}`;
+};
+
+const normalizedService = (service: ServiceConfig, serviceType: string): ServiceConfig => ({
+  ...service,
+  type: serviceType,
+});
+
+export const makeStaticServiceType = (server: SupportedStaticServer): ServiceType => {
+  const id = server === "nginx" ? "static" : `static:${server}`;
+
+  return {
+    id,
+    name: id,
+    base: "lando",
+    schema: Schema.Unknown,
+    resolve: (input) =>
+      Effect.try({
+        try: () => {
+          const resolvedServer = validateServer(input.service.type, server);
+          const serviceType = `static:${resolvedServer}`;
+          const docRoot = docRootFor(input.service.root);
+
+          return {
+            base: "lando" as const,
+            normalizedConfig: normalizedService(input.service, serviceType),
+            features: [
+              {
+                id: STATIC_FEATURE_ID,
+                config: {
+                  server: resolvedServer,
+                  docRoot,
+                  ...(input.service.root != null ? { root: input.service.root } : {}),
+                },
+              },
+              {
+                id: "lando.env",
+                config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: docRoot },
+              },
+            ],
+          };
+        },
+        catch: (cause) =>
+          new ServiceTypeError({
+            message: cause instanceof Error ? cause.message : `Failed to resolve ${id}`,
+            serviceType: id,
+            cause,
+          }),
+      }),
+  };
+};
+
+export const staticNginxServiceType: ServiceType = makeStaticServiceType("nginx");
+export const staticCaddyServiceType: ServiceType = makeStaticServiceType("caddy");

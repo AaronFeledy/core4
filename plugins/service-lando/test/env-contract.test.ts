@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeHostFacts } from "@lando/sdk/services";
-
-import type { LegacyServiceType } from "../src/services/legacy.ts";
+import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
@@ -25,6 +23,7 @@ import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { solrServiceType } from "../src/services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -42,7 +41,7 @@ const host: ServiceTypeHostFacts = {
 
 interface CatalogCase {
   readonly id: string;
-  readonly serviceType: LegacyServiceType;
+  readonly serviceType: ServiceType;
   readonly landofileService: Record<string, unknown>;
   readonly expectedType: string;
   readonly expectsAppPaths: boolean;
@@ -231,23 +230,27 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: composeServiceType,
     landofileService: { type: "compose", image: "busybox" },
     expectedType: "compose",
-    expectsAppPaths: true,
+    expectsAppPaths: false,
     expectsWebroot: null,
   },
 ];
 
-const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
+const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+  Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
+
+const planFor = async (item: CatalogCase, serviceName: string, appName: string) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: appName,
     services: { [serviceName]: item.landofileService },
   });
   const service = landofile.services?.[ServiceName.make(serviceName)];
   if (service === undefined) throw new Error(`${item.id} service missing from landofile fixture`);
-  return item.serviceType.__legacyToServicePlan({
-    name: serviceName,
+  return composeServicePlan({
+    serviceType: item.serviceType,
     service,
-    appRoot: `/srv/apps/${appName}`,
+    appRoot: "/srv/apps/myapp",
     appName,
+    serviceName,
     metadata,
     host,
   });
@@ -255,9 +258,15 @@ const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
 
 describe("LANDO_* environment contract across catalog service families", () => {
   for (const item of cases) {
-    test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, () => {
+    test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, async () => {
       const serviceName = item.id === "compose" ? "worker" : "web";
-      const plan = planFor(item, serviceName, "myapp");
+      const plan = await planFor(item, serviceName, "myapp");
+
+      if (item.id === "compose") {
+        expect(landoEnvKeys(plan.environment)).toEqual([]);
+        expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
+        return;
+      }
 
       expect(plan.environment.LANDO).toBe("ON");
       expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
@@ -288,16 +297,21 @@ describe("LANDO_* environment contract across catalog service families", () => {
       }
     });
 
-    test(`${item.id} marks global-app services and does not project global Mailpit env`, () => {
+    test(`${item.id} marks global-app services and does not project global Mailpit env`, async () => {
       const serviceName = item.id === "compose" ? "mailpit" : "web";
-      const plan = planFor(item, serviceName, "global");
+      const plan = await planFor(item, serviceName, "global");
+
+      if (item.id === "compose") {
+        expect(landoEnvKeys(plan.environment)).toEqual([]);
+        return;
+      }
 
       expect(plan.environment.LANDO_APP_KIND).toBe("global");
       expect(plan.environment.LANDO_MAIL_HOST).toBeUndefined();
       expect(plan.environment.LANDO_MAIL_PORT).toBeUndefined();
     });
 
-    test(`${item.id} rejects user environment that collides with reserved LANDO_* keys`, () => {
+    test(`${item.id} rejects user environment that collides with reserved LANDO_* keys`, async () => {
       const serviceName = item.id === "compose" ? "worker" : "web";
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
@@ -311,26 +325,37 @@ describe("LANDO_* environment contract across catalog service families", () => {
       const service = landofile.services?.[ServiceName.make(serviceName)];
       if (service === undefined) throw new Error("service missing");
 
-      expect(() =>
-        item.serviceType.__legacyToServicePlan({
-          name: serviceName,
-          service,
-          appRoot: "/srv/apps/myapp",
-          appName: "myapp",
-          metadata,
-          host,
-        }),
-      ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+      const planPromise = composeServicePlan({
+        serviceType: item.serviceType,
+        service,
+        appRoot: "/srv/apps/myapp",
+        appName: "myapp",
+        serviceName,
+        metadata,
+        host,
+      });
+
+      if (item.id === "compose") {
+        return expect(planPromise).resolves.toMatchObject({ environment: { LANDO_PROJECT: "fake" } });
+      }
+
+      return expect(planPromise).rejects.toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
     });
 
-    test(`${item.id} slugifies app names with whitespace into LANDO_PROJECT`, () => {
+    test(`${item.id} slugifies app names with whitespace into LANDO_PROJECT`, async () => {
       const serviceName = item.id === "compose" ? "worker" : "web";
-      const plan = planFor(item, serviceName, "My App");
+      const plan = await planFor(item, serviceName, "My App");
+
+      if (item.id === "compose") {
+        expect(landoEnvKeys(plan.environment)).toEqual([]);
+        return;
+      }
+
       expect(plan.environment.LANDO_APP_NAME).toBe("My App");
       expect(plan.environment.LANDO_PROJECT).toBe("my-app");
     });
 
-    test(`${item.id} omits LANDO_HOST_* when planner did not supply host facts`, () => {
+    test(`${item.id} omits LANDO_HOST_* when planner did not supply host facts`, async () => {
       const serviceName = item.id === "compose" ? "worker" : "web";
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
@@ -338,11 +363,12 @@ describe("LANDO_* environment contract across catalog service families", () => {
       });
       const service = landofile.services?.[ServiceName.make(serviceName)];
       if (service === undefined) throw new Error("service missing");
-      const plan = item.serviceType.__legacyToServicePlan({
-        name: serviceName,
+      const plan = await composeServicePlan({
+        serviceType: item.serviceType,
         service,
         appRoot: "/srv/apps/myapp",
         appName: "myapp",
+        serviceName,
         metadata,
       });
       expect(plan.environment.LANDO_HOST_OS).toBeUndefined();

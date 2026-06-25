@@ -1,81 +1,91 @@
-import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { basename } from "node:path";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { Effect, Schema } from "effect";
+
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
+export const ELASTICSEARCH_FEATURE_ID = "service-lando.elasticsearch";
 
-export const elasticsearch8ServiceType: LegacyServiceType = defineLegacyServiceType({
-  id: "elasticsearch:8",
-  toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
-    const appName = appNameFor(input);
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
 
-    const port = service.port ?? DEFAULT_PORT;
+const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const appName = appNameFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
 
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "elasticsearch",
-      appName,
-      host,
-      extraDefaults: {
-        "discovery.type": "single-node",
-        "xpack.security.enabled": "false",
-        "http.port": String(port),
-        ES_JAVA_OPTS: "-Xms512m -Xmx512m",
-      },
-      userEnv: service.environment ?? {},
-    });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.addEnv("discovery.type", "single-node");
+  ctx.addEnv("xpack.security.enabled", "false");
+  ctx.addEnv("http.port", String(port));
+  ctx.addEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m");
+  ctx.addStorage({
+    store: `${appName}-elasticsearch-data`,
+    target: DATA_TARGET,
+    readOnly: false,
+  });
+  ctx.addEndpoint({ port, protocol: "tcp", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`],
+    intervalSeconds: 15,
+    timeoutSeconds: 10,
+    retries: 5,
+    startPeriodSeconds: 90,
+  });
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "elasticsearch",
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: [],
-      storage: [
-        {
-          store: `${appName}-elasticsearch-data`,
-          target: DATA_TARGET,
-          readOnly: false,
-        },
-      ],
-      endpoints: [{ port, protocol: "tcp", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`],
-        intervalSeconds: 15,
-        timeoutSeconds: 10,
-        retries: 5,
-        startPeriodSeconds: 90,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
 
-export const elasticsearchServiceType: LegacyServiceType = defineLegacyServiceType({
-  id: "elasticsearch",
-  toServicePlan: (input) =>
-    elasticsearch8ServiceType.__legacyToServicePlan({
-      ...input,
-      service: { ...input.service },
+  if (service.command !== undefined) ctx.setCommand(service.command);
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  if (service.user !== undefined) ctx.setUser(service.user);
+};
+
+export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
+  id: ELASTICSEARCH_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: 600,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyElasticsearchFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "elasticsearch service feature failed to apply",
+          feature: ELASTICSEARCH_FEATURE_ID,
+          cause,
+        }),
     }),
-});
+};
+
+const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
+  Effect.succeed({
+    base: "lando",
+    normalizedConfig: { ...input.service, type: "elasticsearch" },
+    features: [{ id: ELASTICSEARCH_FEATURE_ID }],
+  });
+
+export const elasticsearch8ServiceType: ServiceType = {
+  id: "elasticsearch:8",
+  name: "elasticsearch",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: resolveElasticsearchServiceType,
+};
+
+export const elasticsearchServiceType: ServiceType = {
+  id: "elasticsearch",
+  name: "elasticsearch",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: resolveElasticsearchServiceType,
+};

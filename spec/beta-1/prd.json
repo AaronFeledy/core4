@@ -2899,8 +2899,8 @@
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Every bundled service type now declares a base and returns a ServiceTypeResolution via resolve(); no toServicePlan and no direct buildLandoEnv import remain (services/legacy.ts + services/env.ts deleted, the legacy planner branch and core legacy-service-plan.ts removed). compose is base l337 with a negative test asserting no injected LANDO_* env unless user-authored. lando-base types carry the lando.env/LANDO_* identity layer and pass runServiceCompositionContract. All 20 per-service ServiceFeatureDefinitions are registered in features/index.ts + the plugin.yaml manifest so the real AppPlanner resolves them (fixed the runtime regression where redis/node/etc. failed with feature not registered). env-contract + service-contract test suites and the catalog integration tests were rewritten onto the composeServicePlan harness; the dead legacy/service-contract.ts harness was removed."
     },
     {
       "id": "US-362",

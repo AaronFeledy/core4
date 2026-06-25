@@ -1,16 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import type { ServiceType } from "@lando/sdk/services";
 
 import {
   FRAMEWORK_WEBROOTS,
+  PHP_FEATURE_ID,
   SUPPORTED_PHP_FRAMEWORKS,
   SUPPORTED_PHP_VERSIONS,
   frameworkWebrootPath,
   php82ServiceType,
   php83ServiceType,
+  phpServiceFeature,
 } from "../src/services/php.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-17T22:00:00Z",
@@ -19,6 +23,7 @@ const metadata = {
 };
 
 const APP_ROOT = "/srv/apps/myapp";
+const featureOverrides = new Map([[PHP_FEATURE_ID, phpServiceFeature]]);
 
 const decodeService = (raw: unknown): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -28,6 +33,30 @@ const decodeService = (raw: unknown): ServiceConfig => {
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
+};
+
+const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_ROOT): Promise<ServicePlan> =>
+  composeServicePlan({
+    serviceType,
+    service: decodeService(raw),
+    appRoot,
+    appName: "myapp",
+    serviceName: "web",
+    metadata,
+    featureOverrides,
+  });
+
+const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
+  let rejected = false;
+  await promise.then(
+    () => undefined,
+    (error: unknown) => {
+      rejected = true;
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(pattern);
+    },
+  );
+  expect(rejected).toBe(true);
 };
 
 describe("php ServiceType — supported versions and frameworks", () => {
@@ -41,15 +70,8 @@ describe("php ServiceType — supported versions and frameworks", () => {
 });
 
 describe("php:8.2 ServiceType", () => {
-  test("plans a default PHP 8.2 web service with framework=none defaults", () => {
-    const service = decodeService({ type: "php:8.2" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plans a default PHP 8.2 web service with framework=none defaults", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2" });
 
     expect(plan.type).toBe("php:8.2");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
@@ -76,18 +98,19 @@ describe("php:8.2 ServiceType", () => {
       startPeriodSeconds: 10,
     });
 
-    expect(plan.environment.LANDO).toBe("ON");
-    expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.environment.LANDO_APP_KIND).toBe("user");
-    expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
-    expect(plan.environment.LANDO_PROJECT).toBe("myapp");
-    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
-    expect(plan.environment.LANDO_SERVICE_API).toBe("4");
-    expect(plan.environment.LANDO_SERVICE_NAME).toBe("web");
-    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.2");
-
-    expect(plan.environment.LANDO_WEBROOT).toBe("/app");
-    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
+    expect(plan.environment).toMatchObject({
+      LANDO: "ON",
+      LANDO_APP_NAME: "myapp",
+      LANDO_APP_KIND: "user",
+      LANDO_APP_ROOT: "/app",
+      LANDO_PROJECT: "myapp",
+      LANDO_PROJECT_MOUNT: "/app",
+      LANDO_SERVICE_API: "4",
+      LANDO_SERVICE_NAME: "web",
+      LANDO_SERVICE_TYPE: "php:8.2",
+      LANDO_WEBROOT: "/app",
+      APACHE_DOCUMENT_ROOT: "/app",
+    });
 
     expect(plan.extensions["lando-service-php"]).toEqual({
       framework: "none",
@@ -96,27 +119,22 @@ describe("php:8.2 ServiceType", () => {
     });
   });
 
-  test("derives appName from appRoot basename when no explicit appName is provided", () => {
-    const service = decodeService({ type: "php:8.2" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
+  test("derives appName from appRoot basename when no explicit appName is provided", async () => {
+    const plan = await composeServicePlan({
+      serviceType: php82ServiceType,
+      service: decodeService({ type: "php:8.2" }),
       appRoot: "/srv/apps/anotherapp",
+      serviceName: "web",
       metadata,
+      featureOverrides,
     });
+
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
 
-  test("framework=drupal sets webroot to /app/web and matching APACHE_DOCUMENT_ROOT", () => {
-    const service = decodeService({ type: "php:8.2", framework: "drupal" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("framework=drupal sets webroot to /app/web and matching APACHE_DOCUMENT_ROOT", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "drupal" });
 
     expect(String(plan.workingDirectory)).toBe("/app/web");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/web");
@@ -124,15 +142,8 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "drupal", webroot: "/app/web" });
   });
 
-  test("framework=wordpress keeps the app root as webroot", () => {
-    const service = decodeService({ type: "php:8.2", framework: "wordpress" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("framework=wordpress keeps the app root as webroot", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "wordpress" });
 
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
@@ -140,46 +151,25 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "wordpress" });
   });
 
-  test("framework=laravel sets webroot to /app/public", () => {
-    const service = decodeService({ type: "php:8.2", framework: "laravel" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("framework=laravel sets webroot to /app/public", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "laravel" });
 
     expect(String(plan.workingDirectory)).toBe("/app/public");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
   });
 
-  test("framework=symfony sets webroot to /app/public", () => {
-    const service = decodeService({ type: "php:8.2", framework: "symfony" });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("framework=symfony sets webroot to /app/public", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "symfony" });
 
     expect(String(plan.workingDirectory)).toBe("/app/public");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
   });
 
-  test("user environment overrides framework defaults", () => {
-    const service = decodeService({
+  test("user environment overrides framework defaults", async () => {
+    const plan = await composePhpPlan(php82ServiceType, {
       type: "php:8.2",
       framework: "drupal",
       environment: { APACHE_DOCUMENT_ROOT: "/app/custom", FOO: "bar" },
-    });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
     });
 
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/custom");
@@ -187,18 +177,11 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.environment.FOO).toBe("bar");
   });
 
-  test("propagates user image override and custom port", () => {
-    const service = decodeService({
+  test("propagates user image override and custom port", async () => {
+    const plan = await composePhpPlan(php82ServiceType, {
       type: "php:8.2",
       image: "registry.example.com/php:8.2-custom",
       port: 8080,
-    });
-    const plan = php82ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
@@ -207,40 +190,22 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
   });
 
-  test("rejects unsupported framework values with a remediation in the error", () => {
-    const service = decodeService({ type: "php:8.2", framework: "magento" });
-    expect(() =>
-      php82ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported PHP framework "magento"\./);
+  test("rejects unsupported framework values with a remediation in the error", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "magento" }),
+      /Unsupported PHP framework "magento"\./,
+    );
 
-    expect(() =>
-      php82ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set framework to one of: drupal, wordpress, laravel, symfony, none/);
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "magento" }),
+      /Set framework to one of: drupal, wordpress, laravel, symfony, none/,
+    );
   });
 });
 
 describe("php:8.3 ServiceType", () => {
-  test("plans a default PHP 8.3 service", () => {
-    const service = decodeService({ type: "php:8.3" });
-    const plan = php83ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plans a default PHP 8.3 service", async () => {
+    const plan = await composePhpPlan(php83ServiceType, { type: "php:8.3" });
 
     expect(plan.type).toBe("php:8.3");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.3-apache" });
@@ -248,72 +213,43 @@ describe("php:8.3 ServiceType", () => {
     expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.3" });
   });
 
-  test("rejects unsupported PHP versions with remediation", () => {
-    const service = decodeService({ type: "php:8.1" });
-    expect(() =>
-      php83ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported PHP version "8.1"\./);
+  test("rejects unsupported PHP versions with remediation", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php83ServiceType, { type: "php:8.1" }),
+      /Unsupported PHP version "8.1"\./,
+    );
 
-    expect(() =>
-      php83ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set type to one of: php:8.2, php:8.3/);
+    await expectRejectsToThrow(
+      composePhpPlan(php83ServiceType, { type: "php:8.1" }),
+      /Set type to one of: php:8.2, php:8.3/,
+    );
   });
 
-  test("rejects php:8.4 and other unsupported versions on the 8.2 service type too", () => {
-    const service = decodeService({ type: "php:8.4" });
-    expect(() =>
-      php82ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported PHP version "8.4"/);
+  test("rejects php:8.4 and other unsupported versions on the 8.2 service type too", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, { type: "php:8.4" }),
+      /Unsupported PHP version "8.4"/,
+    );
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys", () => {
-    const service = decodeService({
-      type: "php:8.2",
-      environment: { LANDO_PROJECT: "evil", FOO: "bar" },
-    });
-    expect(() =>
-      php82ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
+  test("rejects user environment that targets reserved LANDO_* keys", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, {
+        type: "php:8.2",
+        environment: { LANDO_PROJECT: "evil", FOO: "bar" },
       }),
-    ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+      /reserved LANDO_\* keys.*LANDO_PROJECT/,
+    );
   });
 
-  test("rejects bare reserved key 'LANDO' on user environment", () => {
-    const service = decodeService({
-      type: "php:8.2",
-      environment: { LANDO: "OFF" },
-    });
-    expect(() =>
-      php82ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
+  test("rejects bare reserved key 'LANDO' on user environment", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php82ServiceType, {
+        type: "php:8.2",
+        environment: { LANDO: "OFF" },
       }),
-    ).toThrow(/reserved LANDO_\* keys.*LANDO/);
+      /reserved LANDO_\* keys.*LANDO/,
+    );
   });
 });
 

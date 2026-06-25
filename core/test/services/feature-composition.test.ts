@@ -93,6 +93,29 @@ describe("composeService", () => {
     });
   });
 
+  test("emits feature extensions alongside build-step extension intent", async () => {
+    const feature: ServiceFeatureDefinition = {
+      id: "feature.extension-intent",
+      priority: 100,
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.addExtension("lando-service-php", { framework: "drupal" });
+          ctx.addBuildStep({
+            id: "install-php-extension",
+            phase: "build",
+            command: ["install-php-extension"],
+          });
+        }),
+    };
+
+    const plan = await composeOnce([feature]);
+
+    expect(plan.extensions["lando-service-php"]).toEqual({ framework: "drupal" });
+    expect(plan.extensions["@lando/core/service-features"]).toEqual({
+      buildSteps: [{ id: "install-php-extension", phase: "build", command: ["install-php-extension"] }],
+    });
+  });
+
   test("is byte-identical when replayed with identical inputs", async () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.deterministic",

@@ -1,66 +1,77 @@
-import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { basename } from "node:path";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { Effect, Schema } from "effect";
+
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
+export const VALKEY_FEATURE_ID = "service-lando.valkey";
 
-export const valkeyServiceType: LegacyServiceType = defineLegacyServiceType({
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
+
+const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const appName = appNameFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setCommand(service.command ?? ["valkey-server", "--appendonly", "yes", "--port", String(port)]);
+  ctx.addStorage({
+    store: `${appName}-valkey-data`,
+    target: DATA_TARGET,
+    readOnly: false,
+  });
+  ctx.addEndpoint({ port, protocol: "tcp", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 30,
+  });
+
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  if (service.user !== undefined) ctx.setUser(service.user);
+};
+
+export const valkeyServiceFeature: ServiceFeatureDefinition = {
+  id: VALKEY_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: 600,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyValkeyFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "valkey service feature failed to apply",
+          feature: VALKEY_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+export const valkeyServiceType: ServiceType = {
   id: "valkey",
-  toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
-    const appName = appNameFor(input);
-
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "valkey",
-      appName,
-      host,
-      userEnv: service.environment ?? {},
-    });
-
-    const port = service.port ?? DEFAULT_PORT;
-
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "valkey",
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command ?? ["valkey-server", "--appendonly", "yes", "--port", String(port)],
-      entrypoint: service.entrypoint,
-      environment,
-      workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: [],
-      storage: [
-        {
-          store: `${appName}-valkey-data`,
-          target: DATA_TARGET,
-          readOnly: false,
-        },
-      ],
-      endpoints: [{ port, protocol: "tcp", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 30,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+  name: "valkey",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "lando",
+      normalizedConfig: { ...input.service, type: "valkey" },
+      features: [{ id: VALKEY_FEATURE_ID }],
+    }),
+};

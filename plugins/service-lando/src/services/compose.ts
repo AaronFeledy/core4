@@ -1,14 +1,16 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+
+export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
+export const COMPOSE_FEATURE_PRIORITY = 600;
 
 type VolumeMount = {
   readonly type: "bind" | "volume" | "tmpfs";
@@ -34,11 +36,6 @@ const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
   }
   const isPathLike = rawSource.startsWith(".") || rawSource.startsWith("/") || rawSource.startsWith("~");
   if (isPathLike) {
-    // Docker Compose expands `~` to the user's home directory at runtime.
-    // Node's `path.resolve` does NOT expand `~`, so we must do it ourselves
-    // before resolving — otherwise `~/data` becomes `<appRoot>/~/data`.
-    // We only handle `~` alone and `~/...`; `~user/...` is unsupported by
-    // Docker Compose itself and is out of scope.
     const expanded =
       rawSource === "~" ? homedir() : rawSource.startsWith("~/") ? homedir() + rawSource.slice(1) : rawSource;
     const source = isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
@@ -62,134 +59,122 @@ const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "u
   return { port, protocol };
 };
 
-export const composeServiceType: LegacyServiceType = defineLegacyServiceType({
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
+
+const applyCompose = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const hasImage = service.image !== undefined && service.image.length > 0;
+  const hasBuild = service.composeBuild !== undefined;
+  if (!hasImage && !hasBuild) {
+    throw new Error(
+      `compose service "${ctx.serviceName}" requires either "image:" or "composeBuild:" (Compose build block).`,
+    );
+  }
+  if (hasImage && hasBuild) {
+    throw new Error(
+      `compose service "${ctx.serviceName}" must declare exactly one of "image:" or "composeBuild:", not both.`,
+    );
+  }
+  if (service.build !== undefined) {
+    throw new Error(
+      `compose service "${ctx.serviceName}" does not accept Lando "build:" (artifact/app scripts). Use "composeBuild:" with Compose-spec fields, or move provider-specific build to "providers.<id>".`,
+    );
+  }
+
+  const composeBuild = service.composeBuild;
+  if (hasImage) {
+    ctx.setArtifact({ kind: "ref", ref: service.image as string });
+  } else if (composeBuild !== undefined) {
+    ctx.setArtifact({
+      kind: "build",
+      context: AbsolutePath.make(
+        isAbsolute(composeBuild.context)
+          ? composeBuild.context
+          : resolvePath(ctx.appRoot, composeBuild.context),
+      ),
+      ...(composeBuild.dockerfile === undefined ? {} : { spec: PortablePath.make(composeBuild.dockerfile) }),
+      ...(composeBuild.args === undefined ? {} : { args: composeBuild.args }),
+      ...(composeBuild.target === undefined ? {} : { target: composeBuild.target }),
+    });
+  }
+
+  const appName = appNameFor(ctx);
+  const optedOutOfAppMount = service.appMount === false;
+  if (!optedOutOfAppMount) {
+    ctx.setAppMount({
+      source: AbsolutePath.make(ctx.appRoot),
+      target: APP_MOUNT_TARGET,
+      readOnly: false,
+      excludes: [],
+      includes: [],
+    });
+    ctx.addMount({
+      type: "bind",
+      source: ctx.appRoot,
+      target: APP_MOUNT_TARGET,
+      readOnly: false,
+    });
+  }
+
+  for (const volume of (service.volumes ?? []).map((entry) => parseVolumeShortForm(entry, ctx.appRoot))) {
+    if (volume.type === "bind") {
+      ctx.addMount({
+        type: "bind",
+        source: volume.source,
+        target: PortablePath.make(volume.target),
+        readOnly: volume.readOnly,
+      });
+    } else if (volume.type === "volume") {
+      ctx.addStorage({
+        store: `${appName}-${volume.source}`,
+        target: PortablePath.make(volume.target),
+        readOnly: volume.readOnly,
+      });
+    }
+  }
+
+  for (const portEntry of service.ports ?? []) {
+    const parsed = parsePortShortForm(portEntry);
+    ctx.addEndpoint({ port: parsed.port, protocol: parsed.protocol, name: ctx.serviceName });
+  }
+
+  if (service.command !== undefined) ctx.setCommand(service.command);
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+  for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
+};
+
+export const composeServiceFeature: ServiceFeatureDefinition = {
+  id: COMPOSE_FEATURE_ID,
+  priority: COMPOSE_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyCompose(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : `${COMPOSE_FEATURE_ID} failed to apply`,
+          feature: COMPOSE_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+export const composeServiceType: ServiceType = {
   id: "compose",
+  name: "compose",
   base: "l337",
-  toServicePlan: (input) => {
-    const {
-      name,
-      service,
-      appRoot,
-      provider = ProviderId.make("lando"),
-      primary = false,
-      metadata,
-      host,
-    } = input;
-    const hasImage = service.image !== undefined && service.image.length > 0;
-    const hasBuild = service.composeBuild !== undefined;
-    if (!hasImage && !hasBuild) {
-      throw new Error(
-        `compose service "${name}" requires either "image:" or "composeBuild:" (Compose build block).`,
-      );
-    }
-    if (hasImage && hasBuild) {
-      throw new Error(
-        `compose service "${name}" must declare exactly one of "image:" or "composeBuild:", not both.`,
-      );
-    }
-    if (service.build !== undefined) {
-      throw new Error(
-        `compose service "${name}" does not accept Lando "build:" (artifact/app scripts). Use "composeBuild:" with Compose-spec fields, or move provider-specific build to "providers.<id>".`,
-      );
-    }
-
-    const appName = appNameFor(input);
-    const composeBuild = service.composeBuild;
-    const buildContext = composeBuild?.context;
-    const artifact =
-      hasImage || buildContext === undefined
-        ? { kind: "ref" as const, ref: service.image as string }
-        : {
-            kind: "build" as const,
-            context: AbsolutePath.make(
-              isAbsolute(buildContext) ? buildContext : resolvePath(appRoot, buildContext),
-            ),
-            ...(composeBuild?.dockerfile === undefined
-              ? {}
-              : { spec: PortablePath.make(composeBuild.dockerfile) }),
-            ...(composeBuild?.args === undefined ? {} : { args: composeBuild.args }),
-            ...(composeBuild?.target === undefined ? {} : { target: composeBuild.target }),
-          };
-
-    const parsedVolumes = (service.volumes ?? []).map((entry) => parseVolumeShortForm(entry, appRoot));
-    const volumeBindMounts = parsedVolumes
-      .filter((volume) => volume.type === "bind")
-      .map((volume) => ({
-        type: "bind" as const,
-        source: volume.source as string,
-        target: volume.target,
-        readOnly: volume.readOnly,
-        realization: "passthrough" as const,
-      }));
-    const storage = parsedVolumes
-      .filter((volume) => volume.type === "volume")
-      .map((volume) => ({
-        store: `${appName}-${volume.source as string}`,
-        target: volume.target,
-        readOnly: volume.readOnly,
-      }));
-
-    const endpoints = (service.ports ?? []).map((portEntry) => {
-      const parsed = parsePortShortForm(portEntry);
-      return { port: parsed.port, protocol: parsed.protocol, name };
-    });
-
-    const optedOutOfAppMount = service.appMount === false;
-    const appMount = optedOutOfAppMount
-      ? undefined
-      : {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough" as const,
-        };
-    const appRootBindMount = optedOutOfAppMount
-      ? []
-      : [
-          {
-            type: "bind" as const,
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: false,
-            realization: "passthrough" as const,
-          },
-        ];
-    const mounts = [...appRootBindMount, ...volumeBindMounts];
-
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "compose",
-      appName,
-      ...(optedOutOfAppMount ? {} : { appPaths: { appRoot: "/app", projectMount: "/app" } }),
-      host,
-      userEnv: service.environment ?? {},
-    });
-
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "compose",
-      provider,
-      primary: service.primary ?? primary,
-      artifact,
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory,
-      appMount,
-      mounts,
-      storage,
-      endpoints,
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      hostAliases: [],
-      metadata,
-      extensions: service.providers ?? {},
-    });
-  },
-});
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "l337",
+      normalizedConfig: { ...input.service, type: "compose" },
+      features: [{ id: COMPOSE_FEATURE_ID }],
+    }),
+};

@@ -122,6 +122,10 @@ const makeContext = (
   addBuildStep: (step) => {
     draft.buildSteps.push({ ...step });
   },
+  addExtension: (key, value) => {
+    if (draft.extensions === undefined) draft.extensions = {};
+    draft.extensions[key] = value;
+  },
   addStorage: (storage) => {
     draft.storage.push({ ...storage });
   },
@@ -193,7 +197,7 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
     ...(draft.certs === undefined ? {} : { certs: draft.certs }),
     hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
     metadata: deterministicMetadata,
-    extensions: coreExtension,
+    extensions: { ...coreExtension, ...(draft.extensions ?? {}) },
   };
 };
 

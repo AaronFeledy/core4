@@ -115,8 +115,10 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
 
     expect(worker?.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
-    expect(worker?.environment.LANDO_APP_ROOT).toBe("/app");
-    expect(worker?.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+    // compose is an l337 service and must not inject the LANDO_* env layer.
+    expect(
+      Object.keys(worker?.environment ?? {}).filter((k) => k === "LANDO" || k.startsWith("LANDO_")),
+    ).toEqual([]);
 
     expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
   });

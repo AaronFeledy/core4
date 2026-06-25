@@ -3,7 +3,7 @@ import { Effect, Exit, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/core/errors";
 import type { ServiceConfig } from "@lando/core/schema";
-import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/core/services";
+import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 
 import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,
@@ -21,11 +21,11 @@ const makeType = (
     readonly artifacts?: Record<string, string>;
     readonly versions?: ReadonlyArray<string>;
     readonly resolution?: (input: ServiceTypeInput) => ServiceTypeResolution;
-    readonly bridge?: boolean;
+    readonly marker?: boolean;
   } = {},
 ): ServiceType => {
   const base = options.base ?? "lando";
-  const type: ServiceType & { __legacyToServicePlan?: () => unknown } = {
+  const type: ServiceType & { privateMarker?: () => unknown } = {
     id,
     name: id,
     base,
@@ -36,7 +36,7 @@ const makeType = (
     resolve: (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
       Effect.succeed(options.resolution?.(input) ?? { base, normalizedConfig: input.service, features: [] }),
   };
-  if (options.bridge === true) type.__legacyToServicePlan = () => ({ marker: id });
+  if (options.marker === true) type.privateMarker = () => ({ marker: id });
   return type;
 };
 
@@ -86,7 +86,7 @@ describe("composeExtendedServiceType", () => {
     expect(env?.config).toEqual({ from: "child" });
   });
 
-  test("preserves the leaf's private legacy bridge and merges artifacts/versions", async () => {
+  test("preserves the leaf's private fields and merges artifacts/versions", async () => {
     const parent = makeType("mariadb", {
       artifacts: { "10.11": "mariadb:10.11", "10.5": "mariadb:10.5" },
       versions: ["10.11", "10.5"],
@@ -95,15 +95,15 @@ describe("composeExtendedServiceType", () => {
       extends: "mariadb",
       artifacts: { "10.11": "drupal/mariadb:10.11" },
       versions: ["10.11"],
-      bridge: true,
+      marker: true,
     });
     const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
 
     const composed = (await Effect.runPromise(composeExtendedServiceType(child, lookup))) as ServiceType & {
-      __legacyToServicePlan?: () => unknown;
+      privateMarker?: () => unknown;
     };
 
-    expect(typeof composed.__legacyToServicePlan).toBe("function");
+    expect(typeof composed.privateMarker).toBe("function");
     expect(composed.artifacts).toEqual({ "10.11": "drupal/mariadb:10.11", "10.5": "mariadb:10.5" });
     expect(composed.versions).toEqual(["10.11", "10.5"]);
   });
@@ -172,13 +172,13 @@ describe("mergeResolutionOverParent", () => {
       base: "l337",
       normalizedConfig: { database: "a", user: "p" } as ServiceConfig,
       features: [{ id: "x" }, { id: "y", config: { k: 1 } }],
-      tooling: { db: { service: "web", cmd: "parent" } } as ServiceTypeResolution["tooling"],
+      tooling: { db: { service: "web", cmd: "parent" } },
     };
     const child: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: { user: "c" } as ServiceConfig,
       features: [{ id: "y", config: { k: 2 } }, { id: "z" }],
-      tooling: { db: { service: "web", cmd: "child" } } as ServiceTypeResolution["tooling"],
+      tooling: { db: { service: "web", cmd: "child" } },
     };
 
     const merged = mergeResolutionOverParent(parent, child);
@@ -190,7 +190,7 @@ describe("mergeResolutionOverParent", () => {
     expect(merged.tooling?.db?.cmd).toBe("child");
   });
 
-  test("merges normalizedConfig object arrays by §7.2 identity key, not wholesale replace", () => {
+  test("merges normalizedConfig object arrays by identity key, not wholesale replace", () => {
     const parent: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {
@@ -216,7 +216,7 @@ describe("mergeResolutionOverParent", () => {
     expect(endpoints.find((e) => e.name === "metrics")?.port).toBe(9090);
   });
 
-  test("§7.2-merges a same-id feature's config rather than replacing it wholesale", () => {
+  test("deep-merges a same-id feature's config rather than replacing it wholesale", () => {
     const parent: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {} as ServiceConfig,

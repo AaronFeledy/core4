@@ -1,9 +1,8 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
@@ -11,7 +10,11 @@ export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
 export const SUPPORTED_RUBY_FRAMEWORKS = ["rails", "none"] as const;
 export type SupportedRubyFramework = (typeof SUPPORTED_RUBY_FRAMEWORKS)[number];
 
+export const RUBY_FEATURE_ID = "service-lando.ruby" as const;
+export const RUBY_FEATURE_PRIORITY = 600;
+
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
 
 interface FrameworkPreset {
   readonly port: number;
@@ -37,6 +40,15 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, FrameworkPreset> = {
     env: new Map(),
   },
 };
+
+const RubyFeatureConfigSchema = Schema.Struct({
+  framework: Schema.Literal(...SUPPORTED_RUBY_FRAMEWORKS),
+  version: Schema.Literal(...SUPPORTED_RUBY_VERSIONS),
+  port: Schema.Number,
+  webroot: Schema.String,
+  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+});
+type RubyFeatureConfig = typeof RubyFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_RUBY_VERSIONS.map((v) => `ruby:${v}`).join(", ")} (got ruby:${requested}).`;
@@ -73,86 +85,120 @@ const validateVersion = (
   throw new Error(`Unsupported Ruby version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
+const configFor = (ctx: ServiceFeatureContext): RubyFeatureConfig => ctx.config as RubyFeatureConfig;
 
-const makeRubyServiceType = (version: SupportedRubyVersion): LegacyServiceType =>
-  defineLegacyServiceType({
-    id: `ruby:${version}`,
-    toServicePlan: (input) => {
-      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-      const resolvedVersion = validateVersion(service.type, version);
-      const framework = validateFramework(service.framework);
-      const preset = FRAMEWORK_PRESETS[framework];
-      const appName = appNameFor(input);
-      const serviceType = `ruby:${resolvedVersion}`;
-      const environment = buildLandoEnv({
-        serviceName: name,
-        serviceType,
-        appName,
-        appPaths: { appRoot: "/app", projectMount: "/app" },
-        webroot: preset.webroot,
-        host,
-        extraDefaults: frameworkDefaults(framework),
-        userEnv: service.environment ?? {},
-      });
-      const endpointPort = service.port ?? preset.port;
+const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const { framework, version, port, webroot, defaultCommand } = configFor(ctx);
 
-      return decodeServicePlan({
-        name: ServiceName.make(name),
-        type: serviceType,
-        provider,
-        primary: service.primary ?? primary ?? name === "web",
-        artifact: { kind: "ref", ref: service.image ?? `ruby:${resolvedVersion}-slim` },
-        command: service.command ?? [...DEFAULT_KEEP_ALIVE],
-        entrypoint: service.entrypoint,
-        environment,
-        user: service.user,
-        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-        appMount: {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          excludes: [".bundle"],
-          includes: [],
-          realization: "passthrough",
-        },
-        mounts: [
-          {
-            type: "bind",
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: false,
-            realization: "passthrough",
-          },
-        ],
-        storage: [],
-        endpoints: [{ port: endpointPort, protocol: "http", name }],
-        routes: [],
-        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-          service: ServiceName.make(dependency),
-          condition: "started",
-        })),
-        healthcheck: {
-          kind: "command",
-          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 10,
-        },
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "lando-service-ruby": {
-            framework,
-            version: resolvedVersion,
-            defaultCommand: preset.defaultCommand,
-            port: endpointPort,
-            webroot: preset.webroot,
-          },
-        },
-      });
-    },
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? `ruby:${version}-slim` });
+  for (const [key, value] of Object.entries(frameworkDefaults(framework))) {
+    ctx.addEnv(key, value);
+  }
+  ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  ctx.setAppMount({
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    excludes: [".bundle"],
+    includes: [],
+  });
+  ctx.addMount({
+    type: "bind",
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+  });
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 10,
   });
 
-export const ruby33ServiceType: LegacyServiceType = makeRubyServiceType("3.3");
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  ctx.addExtension("lando-service-ruby", {
+    framework,
+    version,
+    defaultCommand: defaultCommand ?? null,
+    port,
+    webroot,
+  });
+};
+
+export const rubyServiceFeature: ServiceFeatureDefinition = {
+  id: RUBY_FEATURE_ID,
+  schema: RubyFeatureConfigSchema as Schema.Schema<unknown>,
+  priority: RUBY_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyRubyFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.ruby failed to apply",
+          feature: RUBY_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedRubyVersion): ServiceConfig => ({
+  ...service,
+  type: `ruby:${resolvedVersion}`,
+});
+
+export const makeRubyServiceType = (version: SupportedRubyVersion): ServiceType => ({
+  id: `ruby:${version}`,
+  name: `ruby:${version}`,
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.try({
+      try: () => {
+        const resolvedVersion = validateVersion(input.service.type, version);
+        const framework = validateFramework(input.service.framework);
+        const preset = FRAMEWORK_PRESETS[framework];
+        const endpointPort = input.service.port ?? preset.port;
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          features: [
+            {
+              id: RUBY_FEATURE_ID,
+              config: {
+                framework,
+                version: resolvedVersion,
+                port: endpointPort,
+                webroot: preset.webroot,
+                defaultCommand: preset.defaultCommand,
+              },
+            },
+            {
+              id: "lando.env",
+              config: {
+                appPaths: { appRoot: "/app", projectMount: "/app" },
+                webroot: preset.webroot,
+              },
+            },
+          ],
+        };
+      },
+      catch: (cause) =>
+        new ServiceTypeError({
+          message: cause instanceof Error ? cause.message : `Failed to resolve ruby:${version}`,
+          serviceType: `ruby:${version}`,
+          cause,
+        }),
+    }),
+});
+
+export const ruby33ServiceType: ServiceType = makeRubyServiceType("3.3");

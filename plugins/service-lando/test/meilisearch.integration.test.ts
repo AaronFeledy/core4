@@ -15,6 +15,7 @@ import {
 import { Effect, Schema } from "effect";
 
 import { meilisearch1ServiceType } from "../src/services/meilisearch.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("meilinttest");
@@ -69,10 +70,11 @@ describe("meilisearch service type — live integration: index create + document
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = meilisearch1ServiceType.__legacyToServicePlan({
-          name: "search",
+        const search = await composeServicePlan({
+          serviceType: meilisearch1ServiceType,
           service,
           appRoot: appRootStr,
+          serviceName: "search",
           metadata,
         });
         const plan: AppPlan = {

@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { nodeLtsServiceType } from "@lando/service-lando";
+import { composeServicePlan } from "../../service-lando/test/support/compose-harness.ts";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
 const metadata = {
@@ -29,18 +30,19 @@ const host: ServiceTypeHostFacts = {
   home: "/home/alpha-tester",
 };
 
-const planNodeService = (): ServicePlan => {
+const planNodeService = (): Promise<ServicePlan> => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "envapp",
     services: { web: { type: "node:lts" } },
   });
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
-  return nodeLtsServiceType.__legacyToServicePlan({
-    name: "web",
+  return composeServicePlan({
+    serviceType: nodeLtsServiceType,
     service,
     appRoot: "/srv/apps/envapp",
     appName: "envapp",
+    serviceName: "web",
     metadata,
     host,
   });
@@ -130,7 +132,7 @@ const makeFakeApi = () => {
 
 describe("provider-lando exec env contract", () => {
   test("plan.environment from service-lando is wired into the container Env at create time so exec inherits it", async () => {
-    const servicePlan = planNodeService();
+    const servicePlan = await planNodeService();
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 
@@ -164,7 +166,7 @@ describe("provider-lando exec env contract", () => {
   });
 
   test("exec propagates command.env so tooling-supplied LANDO_* values reach the executed command", async () => {
-    const servicePlan = planNodeService();
+    const servicePlan = await planNodeService();
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 

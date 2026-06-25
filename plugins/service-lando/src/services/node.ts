@@ -1,16 +1,23 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
 
+export const NODE_FEATURE_ID = "service-lando.node" as const;
+export const NODE_FEATURE_PRIORITY = 600;
+
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const DEFAULT_PORT = "3000:3000";
+
+const NodeFeatureConfigSchema = Schema.Struct({
+  version: Schema.Literal(...SUPPORTED_NODE_VERSIONS),
+});
+type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
@@ -28,75 +35,100 @@ const validateVersion = (
   throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const makeNodeServiceType = (version: SupportedNodeVersion): LegacyServiceType =>
-  defineLegacyServiceType({
-    id: `node:${version}`,
-    toServicePlan: (input) => {
-      const {
-        name,
-        service,
-        appRoot,
-        provider = ProviderId.make("lando"),
-        primary = name === "web",
-        metadata,
-        host,
-      } = input;
-      const resolvedVersion = validateVersion(service.type, version);
-      const serviceType = `node:${resolvedVersion}`;
-      const appName = appNameFor(input);
-      const environment = buildLandoEnv({
-        serviceName: name,
-        serviceType,
-        appName,
-        appPaths: { appRoot: "/app", projectMount: "/app" },
-        host,
-        userEnv: service.environment ?? {},
-      });
-      return decodeServicePlan({
-        name: ServiceName.make(name),
-        type: serviceType,
-        provider,
-        primary: service.primary ?? primary,
-        artifact: { kind: "ref", ref: service.image ?? serviceType },
-        command: service.command ?? [...DEFAULT_COMMAND],
-        entrypoint: service.entrypoint,
-        environment,
-        user: service.user,
-        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-        appMount: {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-        mounts: [
-          {
-            type: "bind",
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: false,
-            realization: "passthrough",
-          },
-        ],
-        storage: [],
-        endpoints: (service.ports ?? [DEFAULT_PORT]).map((port) => ({
-          port: Number(port.split(":").at(-1)?.split("/")[0] ?? 3000),
-          protocol: "http",
-          name,
-        })),
-        routes: [],
-        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-          service: ServiceName.make(dependency),
-          condition: "started",
-        })),
-        hostAliases: [],
-        metadata,
-        extensions: {},
-      });
-    },
-  });
+const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
 
-export const nodeLtsServiceType: LegacyServiceType = makeNodeServiceType("lts");
-export const node22ServiceType: LegacyServiceType = makeNodeServiceType("22");
+const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const { version } = configFor(ctx);
+  const serviceType = `node:${version}`;
+  const appMount = {
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    excludes: [],
+    includes: [],
+    realization: "passthrough" as const,
+  };
+  const bindMount = {
+    type: "bind" as const,
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    realization: "passthrough" as const,
+  };
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
+  ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  ctx.setAppMount(appMount);
+  ctx.addMount(bindMount);
+
+  for (const port of service.ports ?? [DEFAULT_PORT]) {
+    ctx.addEndpoint({
+      port: Number(port.split(":").at(-1)?.split("/")[0] ?? 3000),
+      protocol: "http",
+      name: ctx.serviceName,
+    });
+  }
+
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+};
+
+export const nodeServiceFeature: ServiceFeatureDefinition = {
+  id: NODE_FEATURE_ID,
+  schema: NodeFeatureConfigSchema as Schema.Schema<unknown>,
+  priority: NODE_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyNodeFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.node failed to apply",
+          feature: NODE_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedNodeVersion): ServiceConfig => ({
+  ...service,
+  type: `node:${resolvedVersion}`,
+});
+
+const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
+  id: `node:${version}`,
+  name: `node:${version}`,
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.try({
+      try: () => {
+        const resolvedVersion = validateVersion(input.service.type, version);
+
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          features: [
+            { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+            {
+              id: "lando.env",
+              config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+            },
+          ],
+        };
+      },
+      catch: (cause) =>
+        new ServiceTypeError({
+          message: cause instanceof Error ? cause.message : `Failed to resolve node:${version}`,
+          serviceType: `node:${version}`,
+          cause,
+        }),
+    }),
+});
+
+export const nodeLtsServiceType: ServiceType = makeNodeServiceType("lts");
+export const node22ServiceType: ServiceType = makeNodeServiceType("22");

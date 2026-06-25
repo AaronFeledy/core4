@@ -97,6 +97,8 @@ export interface ServiceFeatureContext {
   setAppMount(mount: ServiceAppMountIntent): void;
   /** Add a build step (retained on the draft for the build orchestrator). */
   addBuildStep(step: ServiceBuildStepIntent): void;
+  /** Add or overwrite a provider-neutral service plan extension. */
+  addExtension(key: string, value: unknown): void;
   /** Add a data-store mount. */
   addStorage(storage: DataStoreMountPlan): void;
   /** Add a service endpoint. */
