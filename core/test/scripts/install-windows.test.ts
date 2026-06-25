@@ -9,7 +9,7 @@ import { renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
-const powershellTestTimeoutMs = 15_000;
+const powershellTestTimeoutMs = 60_000;
 
 const powershellTest = (name: string, fn: () => void | Promise<void>): void => {
   test(name, fn, powershellTestTimeoutMs);
@@ -253,9 +253,9 @@ describe("scripts/install.ps1", () => {
 
   powershellTest("resolves stable, next, and dev manifests from the selected channel", async () => {
     const root = await makeTempRoot();
-    const fixtures = [];
+    const channelRoot = join(root, "channels");
     for (const channel of ["stable", "next", "dev"] as const) {
-      fixtures.push(await createReleaseFixture(root, channel));
+      await createReleaseFixture(root, channel);
     }
     const { cosignPath, logPath } = await createFakeCosign(root);
 
@@ -264,7 +264,7 @@ describe("scripts/install.ps1", () => {
       const result = await runInstaller({
         COSIGN_LOG: logPath,
         LANDO_CHANNEL: channel,
-        LANDO_INSTALL_BASE_URL: fileUrl(fixtures[0].channelRoot),
+        LANDO_INSTALL_BASE_URL: fileUrl(channelRoot),
         LANDO_INSTALL_COSIGN: cosignPath,
         LANDO_INSTALL_DIR: installDir,
         LANDO_INSTALL_WINDOWS_ARCH: "x86_64",

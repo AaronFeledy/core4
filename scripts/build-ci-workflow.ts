@@ -60,6 +60,9 @@ ${setupBunSteps}
       - name: Redaction boundary lint
         run: bun run check:redaction-boundary
 
+      - name: Env helper boundary lint
+        run: bun run check:env-helper-boundary
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |

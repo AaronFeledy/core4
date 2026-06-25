@@ -1499,6 +1499,15 @@ export const runServiceCompositionContract = (
         ),
       );
     yield* requireServiceComposition(
+      second.base === resolution.base &&
+        stableJson(second.normalizedConfig) === stableJson(resolution.normalizedConfig),
+      "resolution base + normalizedConfig stable across replays",
+      {
+        first: { base: resolution.base, normalizedConfig: resolution.normalizedConfig },
+        second: { base: second.base, normalizedConfig: second.normalizedConfig },
+      },
+    );
+    yield* requireServiceComposition(
       second.features.length === resolution.features.length &&
         second.features.every((feature, index) => feature.id === resolution.features[index]?.id),
       "resolution feature list is stable across replays",
@@ -1520,6 +1529,40 @@ const providerCapabilityReads = new Set(["capabilities", "provider", "providerId
 
 const hasRealizationDecision = (intent: unknown): boolean =>
   typeof intent === "object" && intent !== null && "realization" in intent;
+
+const stableUnknown = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stableUnknown);
+  if (value instanceof Map) {
+    return Array.from(value.entries())
+      .sort(([left], [right]) => String(left).localeCompare(String(right)))
+      .map(([key, entry]) => [key, stableUnknown(entry)]);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, stableUnknown(entry)]),
+    );
+  }
+  return value;
+};
+
+const stableJson = (value: unknown): string => JSON.stringify(stableUnknown(value));
+
+const recordingServiceFeatureDraft = (
+  recorded: ReturnType<typeof makeRecordingServiceFeatureContext>["recorded"],
+) => ({
+  env: Array.from(recorded.env.entries()).sort(([left], [right]) => left.localeCompare(right)),
+  mounts: stableUnknown(recorded.mounts),
+  appMounts: stableUnknown(recorded.appMounts),
+  buildSteps: stableUnknown(recorded.buildSteps),
+  extensions: Array.from(recorded.extensions.entries()).sort(([left], [right]) => left.localeCompare(right)),
+  storage: stableUnknown(recorded.storage),
+  endpoints: stableUnknown(recorded.endpoints),
+  dependencies: stableUnknown(recorded.dependencies),
+  hostAliases: stableUnknown(recorded.hostAliases),
+  settings: stableUnknown(recorded.settings),
+});
 
 /** Input the feature contract uses to execute a single service feature. */
 export interface ServiceFeatureContractHarness {
@@ -1653,6 +1696,12 @@ export const runServiceFeatureContract = (
       "service feature apply is callable",
       typeof feature.apply,
     );
+    yield* requireServiceFeature(
+      feature.requires === undefined ||
+        (Array.isArray(feature.requires) && feature.requires.every(isNonEmptyString)),
+      "service feature requires is an array of non-empty capability strings",
+      feature.requires,
+    );
 
     const { context, recorded } = makeRecordingServiceFeatureContext(input);
     const applyEffect = yield* Effect.try({
@@ -1684,6 +1733,41 @@ export const runServiceFeatureContract = (
       "feature emits app mount intent without realization decisions",
       appMountWithRealization,
     );
+
+    const storageWithRealization = recorded.storage.find(hasRealizationDecision);
+    yield* requireServiceFeature(
+      storageWithRealization === undefined,
+      "feature emits storage intent without realization decisions",
+      storageWithRealization,
+    );
+
+    const endpointWithRealization = recorded.endpoints.find(hasRealizationDecision);
+    yield* requireServiceFeature(
+      endpointWithRealization === undefined,
+      "feature emits endpoint intent without realization decisions",
+      endpointWithRealization,
+    );
+
+    const second = makeRecordingServiceFeatureContext(input);
+    const secondApplyEffect = yield* Effect.try({
+      try: () => feature.apply(second.context),
+      catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
+    });
+    const secondApplyExit = yield* Effect.exit(secondApplyEffect);
+    if (Exit.isFailure(secondApplyExit)) {
+      yield* Effect.fail(
+        serviceFeatureFailure("feature apply succeeds", Cause.pretty(secondApplyExit.cause)),
+      );
+      return;
+    }
+
+    const firstDraft = recordingServiceFeatureDraft(recorded);
+    const secondDraft = recordingServiceFeatureDraft(second.recorded);
+    yield* requireServiceFeature(
+      stableJson(firstDraft) === stableJson(secondDraft),
+      "service feature apply is deterministic/idempotent",
+      { first: firstDraft, second: secondDraft },
+    );
   });
 
 const appFeatureFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -1711,6 +1795,7 @@ export interface AppFeatureContractService {
 export interface AppFeatureContractHarness {
   readonly feature: AppFeatureDefinition;
   readonly services: ReadonlyArray<AppFeatureContractService>;
+  readonly expectNoActivation?: boolean;
   readonly appName?: string;
   readonly appRoot?: string;
   readonly config?: Readonly<Record<string, unknown>>;
@@ -1740,10 +1825,16 @@ const matchesSelectors = (feature: AppFeatureDefinition, service: AppFeatureCont
   return false;
 };
 
-const makeRecordingAppFeatureContext = (input: AppFeatureContractHarness) => {
-  const selectedNames = input.services
-    .filter((service) => matchesSelectors(input.feature, service))
-    .map((service) => service.serviceName);
+const makeRecordingAppFeatureContext = (
+  input: AppFeatureContractHarness,
+  options?: { readonly forceNoSelection?: boolean },
+) => {
+  const selectedNames =
+    options?.forceNoSelection === true
+      ? []
+      : input.services
+          .filter((service) => matchesSelectors(input.feature, service))
+          .map((service) => service.serviceName);
   const selectedSet = new Set(selectedNames);
 
   const records = new Map<string, RecordedAppFeatureService>();
@@ -1856,8 +1947,44 @@ export const runAppFeatureContract = (
       "app feature apply is callable",
       typeof feature.apply,
     );
+    const globalServices = feature.requires?.globalServices ?? [];
+    yield* requireAppFeature(
+      globalServices.every(isNonEmptyString),
+      "app feature requires.globalServices entries are non-empty ids",
+      globalServices,
+    );
 
     const activatedServices = input.services.filter((service) => matchesActivation(feature, service));
+    const expectNoActivation =
+      input.expectNoActivation === true ||
+      (feature.activatedBy !== undefined && activatedServices.length === 0);
+
+    if (expectNoActivation) {
+      const { context, records, selectedNames, forbiddenReads } = makeRecordingAppFeatureContext(input, {
+        forceNoSelection: true,
+      });
+      const applyExit = yield* Effect.exit(feature.apply(context));
+      if (Exit.isFailure(applyExit)) {
+        yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
+        return;
+      }
+
+      const mutatedServices = Array.from(records.entries())
+        .filter(([, record]) => record.mutated)
+        .map(([serviceName]) => serviceName);
+      yield* requireAppFeature(
+        selectedNames.length === 0 && mutatedServices.length === 0,
+        "app feature with no activation match is a no-op (no mutation, no selected services)",
+        { selectedNames, mutatedServices },
+      );
+      yield* requireAppFeature(
+        forbiddenReads.size === 0,
+        "app feature does not inspect provider capabilities",
+        Array.from(forbiddenReads),
+      );
+      return;
+    }
+
     yield* requireAppFeature(
       feature.activatedBy === undefined || activatedServices.length > 0,
       "app feature activation matches at least one seeded service",
@@ -1896,13 +2023,6 @@ export const runAppFeatureContract = (
       Exit.isSuccess(requiresEffect),
       "app feature apply is replay-safe",
       Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
-    );
-
-    const globalServices = feature.requires?.globalServices ?? [];
-    yield* requireAppFeature(
-      globalServices.every(isNonEmptyString),
-      "app feature requires.globalServices entries are non-empty ids",
-      globalServices,
     );
 
     const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);

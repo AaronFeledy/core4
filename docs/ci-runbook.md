@@ -15,6 +15,7 @@ bun run check:renderer-boundary
 bun run check:managed-file-boundary
 bun run check:telemetry-inventory
 bun run check:redaction-boundary
+bun run check:env-helper-boundary
 ```
 
 Only the `linux-x64` static-checks cell runs the full current static test suite. The non-linux cells emit a `static-checks-scope` notice instead of pretending those path-sensitive test layers ran there. Full cross-platform static test portability remains separate US-189 work.

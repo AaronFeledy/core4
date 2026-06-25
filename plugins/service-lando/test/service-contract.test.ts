@@ -78,7 +78,7 @@ const decodeService = (entry: CatalogCompositionEntry) => {
   return { service, serviceName };
 };
 
-describe("service catalog × composition contract suite", () => {
+describe("service catalog per-type checklist × composition contract suite", () => {
   for (const entry of catalogEntries) {
     test(`${entry.serviceType.id} satisfies runServiceCompositionContract`, async () => {
       return expect(

@@ -113,4 +113,39 @@ describe("runAppFeatureContract", () => {
       "app feature selectors match at least one service draft",
     );
   });
+
+  test("passes as a verified no-op when activation matches no seeded service", async () => {
+    const inactive: AppFeatureDefinition = {
+      id: "inactive-mailpit",
+      priority: 100,
+      activatedBy: { services: { type: "python" } },
+      selectors: { types: ["php"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.forEachSelected((service) => service.addEnv("SHOULD_NOT_MUTATE", "1"));
+        }),
+    };
+
+    const result = await Effect.runPromiseExit(
+      runAppFeatureContract({ feature: inactive, services, expectNoActivation: true }),
+    );
+
+    expect(result._tag).toBe("Success");
+  });
+
+  test("fails when inactive feature declares malformed global service requirements", async () => {
+    const inactive = {
+      id: "inactive-malformed-requires",
+      priority: 100,
+      activatedBy: { services: { type: "python" } },
+      selectors: { types: ["php"] },
+      requires: { globalServices: [""] },
+      apply: () => Effect.void,
+    } as unknown as AppFeatureDefinition;
+
+    await expectAppFeatureFailure(
+      { feature: inactive, services, expectNoActivation: true },
+      "app feature requires.globalServices entries are non-empty ids",
+    );
+  });
 });

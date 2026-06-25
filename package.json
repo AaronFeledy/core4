@@ -36,6 +36,7 @@
     "check:renderer-boundary": "bun run scripts/check-renderer-boundary.ts",
     "check:managed-file-boundary": "bun run scripts/check-managed-file-boundary.ts",
     "check:redaction-boundary": "bun run scripts/check-redaction-boundary.ts",
+    "check:env-helper-boundary": "bun run scripts/check-env-helper-boundary.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
