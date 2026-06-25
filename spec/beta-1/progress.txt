@@ -180,9 +180,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - Registering the per-service `serviceFeatures` drifts `sdk/test/fixtures/schema-snapshot.json` (the manifest's `serviceFeatures` list is in the snapshot); regenerate with `bun run codegen:schema-snapshot`. `core/src/plugins/bundled.ts` carries the live `serviceFeatures` map by import, so no bundled-plugins codegen diff is needed.
 ---
 
-## 2026-06-25 - US-361 (build finalization)
-- Caught and fixed a stale `sdk/test/fixtures/schema-snapshot.json` committed mid-migration: it listed only 3 of the 20 registered `service-lando.*` features, so the `git diff --exit-code` codegen-drift gate would have failed in CI. Regenerated and committed the snapshot with all 20 ids; full `bun run codegen` shows no other drift.
-- Re-verified end-to-end through the REAL `AppPlanner` (not the harness): a multi-service Landofile (`php:8.2`+drupal, `postgres`, `redis`, `elasticsearch:8`, `compose`) composes correct plans — php carries `LANDO_WEBROOT=/app/web`/`APACHE_DOCUMENT_ROOT=/app/web`/`lando-service-php` extension, `elasticsearch:8` resolves to canonical `type: elasticsearch`, and the `compose` l337 service injects zero `LANDO_*` while preserving user `WORKER_ENV`.
-- Verification: typecheck, lint (incl. deprecation gate), and the schema-snapshot drift gate pass; full service-lando suite green (440 pass, 7 container-gated integration skips), core composition/planner/extends/registry/cache suites green.
-- **Learning for future iterations:** after registering bundled `serviceFeatures`, ALWAYS rerun `bun run codegen:schema-snapshot` and confirm `git diff --exit-code` is clean as the LAST step before committing — the manifest `serviceFeatures` list lives in the snapshot, so a registration that lands without a snapshot regen passes local unit tests but fails the CI drift gate.
+## [2026-06-25 08:41 CDT] - US-361 Review
+- Fixed a confirmed review blocker: `sdk/test/fixtures/schema-snapshot.json` was stale against the live `@lando/service-lando` manifest and omitted 17 registered `service-lando.*` feature ids, which would have failed the schema-snapshot codegen drift gate. Regenerated and committed the snapshot with all 20 per-service feature ids.
+- Review notes (rejected/deferred): none; the only blocking `review-work` finding was the generated snapshot drift and it was fixed in scope.
+- Verification: typecheck, lint, schema-snapshot codegen drift gate, and focused spot checks passed (`core/test/build/schema-snapshot.test.ts`, service-lando contract/compose/env-contract, and core app-planner tests).
+- **Learnings for future iterations:** after registering bundled `serviceFeatures`, rerun `bun run codegen:schema-snapshot` and confirm `git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json` is clean before committing.
 ---
