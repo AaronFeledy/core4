@@ -265,3 +265,8 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The idiomatic core convenience re-export of an SDK subpath is a dedicated `export * from "@lando/sdk/<x>"` module mapped from `core/package.json#exports` (see `@lando/core/secrets`), NOT a barrel over the whole sibling directory — `core/src/landofile/` holds many unrelated modules (`lint.ts`, `service.ts`, `merge.ts`, ...), so a real barrel would massively over-export. A focused `index.ts` re-exporting only the SDK subpath keeps the surface tight and does not collide with the existing per-file `yaml-emit.ts`/`parser.ts` re-export shims (callers import those files directly; nothing imports the bare directory).
   - Call-site migration (the three `../../landofile/yaml-emit.ts` importers) and removal of the private wrappers belong to US-309, and serializer hardening to US-308 — US-307 only publishes the surface, so leave those wrappers and importers untouched.
 ---
+## [2026-06-25 16:22 CDT] - US-307 Review
+- Reviewed the US-307 commit with the review-work lanes and parent verification; no blockers were found, so no code changes were needed.
+- Review notes (deferred/rejected): missing committed `@lando/core/landofile` smoke coverage is non-blocking because US-307 required the SDK exports test and the core re-export was manually verified; broader `entry-points-export`/`import-boundary` coverage for §16.2/§2.7 is deferred outside this story; private `yaml-emit.ts`/`parser.ts` shims and CLI call-site imports remain intentionally owned by US-309/US-310.
+- Verification: typecheck, lint, schema-snapshot drift, SDK exports/backward-compat spot checks, core landofile-yaml emitter spot check, and direct `@lando/core/landofile` import/emit/parse/error smoke passed.
+---
