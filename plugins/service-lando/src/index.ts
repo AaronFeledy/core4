@@ -1,8 +1,9 @@
 import { type Effect, Layer, Schema } from "effect";
 
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceType } from "@lando/sdk/services";
+import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
 import mailpitGlobalService from "./global-services/mailpit.ts";
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
@@ -96,6 +97,19 @@ export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> =
   ["mailpit", mailpitGlobalService],
 ]);
 
+export const serviceFeatures: ReadonlyMap<string, ServiceFeatureDefinition> = bundledServiceFeatures;
+
+export { SERVICE_FEATURE_IDS } from "./features/index.ts";
+
+export {
+  landoAppMountFeature,
+  landoEnvFeature,
+  landoHealthcheckFeature,
+  landoStorageFeature,
+  landoUserFeature,
+  landoUserIdFeature,
+} from "./features/index.ts";
+
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
   version: "0.0.0",
@@ -144,6 +158,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "static:caddy",
       "valkey",
     ],
+    serviceFeatures: SERVICE_FEATURE_IDS,
   },
   entry: "./src/index.ts",
 });

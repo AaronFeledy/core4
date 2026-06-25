@@ -26,6 +26,7 @@ export interface ComposeServiceInput {
   readonly baseKind: ServiceFeatureContext["base"];
   readonly appName?: string | undefined;
   readonly appRoot: ServiceFeatureContext["appRoot"];
+  readonly host?: ServiceFeatureContext["host"];
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
@@ -106,6 +107,7 @@ const makeContext = (
   primary: draft.primary,
   appName: input.appName,
   appRoot: input.appRoot,
+  host: input.host,
   normalizedConfig: input.normalizedConfig,
   config,
   addEnv: (name, value) => {

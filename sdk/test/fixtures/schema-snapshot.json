@@ -159,6 +159,14 @@
               "summary": "Global Mailpit SMTP capture server with web UI"
             }
           ],
+          "serviceFeatures": [
+            "lando.user-id",
+            "lando.storage",
+            "lando.env",
+            "lando.app-mount",
+            "lando.healthcheck",
+            "lando.user"
+          ],
           "serviceTypes": [
             "apache",
             "compose",

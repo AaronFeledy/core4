@@ -1,14 +1,22 @@
 /**
  * `lando` service base contract.
  *
- * Opinionated dev service. Adds boot scaffolding, an env layer, packages,
- * container-time build steps, app mounts, healthcheck integration, certs,
- * SSH agent, and run hooks.
+ * Opinionated dev service. Seeds the default `lando.*` feature stack (the
+ * §6.11 priority list, including `lando.env`); the `LANDO_*` / `/etc/lando`
+ * env layer is materialized when the `lando.env` feature runs, not at seed
+ * time. The default when `type:` is omitted on a v4 service.
  *
- * The default when `type:` is omitted on a v4 service.
- *
- * Status: stub. The base contract resolves to a `ServiceTypeResolution`
- * with `base: "lando"` and the built-in feature priority list from
- * `@lando/service-lando`.
+ * Feature definitions live in `@lando/service-lando`; the base names only the
+ * ordered default feature ids so core stays free of a static plugin import.
+ * The planner resolves these ids to definitions via the plugin registry.
  */
 export const LANDO_BASE_ID = "lando" as const;
+
+export const LANDO_BASE_DEFAULT_FEATURE_IDS: ReadonlyArray<string> = [
+  "lando.user-id",
+  "lando.storage",
+  "lando.env",
+  "lando.app-mount",
+  "lando.healthcheck",
+  "lando.user",
+];
