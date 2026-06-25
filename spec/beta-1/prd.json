@@ -1941,8 +1941,8 @@
         "Lint passes."
       ],
       "priority": 108,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "The @lando/sdk/landofile subpath, its four exports, the subpath-local LandofileEmitError, the API_COMPATIBILITY.md listings, and the exports test already existed; the only missing criterion was the core re-export. Added core/src/landofile/index.ts (export * from @lando/sdk/landofile) and the ./landofile entry in core/package.json#exports, mirroring the ./secrets re-export precedent. Schema-snapshot drift clean (no JSON_SCHEMA_REGISTRY entry). Hardening (US-308), call-site migration (US-309), and the round-trip contract suite (US-310) remain out of scope."
     },
     {
       "id": "US-308",
