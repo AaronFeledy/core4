@@ -68,6 +68,19 @@ describe("runServiceFeatureContract", () => {
     await expectFeatureFailure(feature, "service feature apply is deterministic/idempotent");
   });
 
+  test("fails when a feature emits non-deterministic extensions", async () => {
+    const feature: ServiceFeatureDefinition = {
+      id: "non-deterministic-extension",
+      priority: 35,
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.addExtension("random", Math.random());
+        }),
+    };
+
+    await expectFeatureFailure(feature, "service feature apply is deterministic/idempotent");
+  });
+
   test("fails when a feature leaks storage or endpoint realization decisions", async () => {
     const feature: ServiceFeatureDefinition = {
       id: "realization-leak-storage-endpoint",

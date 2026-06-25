@@ -1556,6 +1556,7 @@ const recordingServiceFeatureDraft = (
   mounts: stableUnknown(recorded.mounts),
   appMounts: stableUnknown(recorded.appMounts),
   buildSteps: stableUnknown(recorded.buildSteps),
+  extensions: Array.from(recorded.extensions.entries()).sort(([left], [right]) => left.localeCompare(right)),
   storage: stableUnknown(recorded.storage),
   endpoints: stableUnknown(recorded.endpoints),
   dependencies: stableUnknown(recorded.dependencies),
