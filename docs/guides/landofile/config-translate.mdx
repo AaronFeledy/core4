@@ -33,6 +33,7 @@ tags: [beta, docs, landofile, config, translate]
       <Variable name="command" value="lando app:config:translate" display="Run from an app directory to translate the discovered .lando.yml into a canonical v4 Landofile via registered translators" />
       <Variable name="output" value=".lando.yml.canonical" display="By default the canonical Landofile is written next to the input as .lando.yml.canonical, leaving the original untouched" />
       <Variable name="format" value="--format text|json" display="--format json prints the structured result (paths + diagnostics); text is the default human-readable summary" />
+      <Variable name="serializer" value="@lando/core/landofile" display="Library and embedding consumers can use the same canonical Landofile parse/emit helpers through @lando/core/landofile when they need this command's serializer behavior without invoking the CLI" />
     </Step>
     <Step name="write">
       <Variable name="write" value="lando app:config:translate --write" display="--write overwrites the input Landofile in place" />

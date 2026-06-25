@@ -20,6 +20,7 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="pathsService" value="PathsService" display="Embedding hosts and plugin tests should consume the SDK PathsService tag instead of re-deriving Lando root directories by hand" />
       <Variable name="rootConfig" value="userConfRoot|userCacheRoot|userDataRoot|systemPluginRoot" display="GlobalConfig now carries the four root overrides that PathsService resolves in the same platform-aware order as core" />
       <Variable name="featureHostFacts" value="host?: ServiceTypeHostFacts" display="Service feature handlers can read planner-supplied host identity facts from ServiceFeatureContext.host when filesystem ownership, home directory, or platform-specific behavior must match the target host" />
+      <Variable name="landofileSerializer" value="@lando/core/landofile" display="Embedding hosts that already depend on @lando/core can import the canonical Landofile parse/emit helpers from @lando/core/landofile instead of reaching into core internals" />
     </Step>
   </Scenario>
 
