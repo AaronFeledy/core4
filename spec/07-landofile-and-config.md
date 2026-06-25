@@ -969,9 +969,11 @@ The pair is governed by one **round-trip law**: for every value in the supported
 
 Supported value domain (inputs outside it fail with `LandofileEmitError`, never silently corrupt):
 
-- **Map keys** matching `^[A-Za-z0-9_.-]+$` — emitted verbatim. Keys carrying other characters are quoted only when required to round-trip through the block-style parser.
+- **Map keys** matching `^[A-Za-z0-9_.-]+$` — emitted verbatim. A key carrying any other character fails with a path-tagged `LandofileEmitError` rather than emitting unparseable YAML; symbol keys fail the same way.
 - **Scalars** — `string`, finite `number`, `boolean`, and `null`. Strings that would otherwise re-parse as a number, boolean, or `null`, or that carry structural YAML characters, are quoted so the round-trip law holds. Non-finite numbers (`NaN`, `Infinity`) fail with `LandofileEmitError`.
-- **Maps** — nested plain objects whose values are themselves in the supported domain. An empty object emits as `{}`.
+- **Maps** — nested plain objects (own-prototype `Object.prototype` or `null`) whose values are themselves in the supported domain. An empty object emits as `{}`.
 - **Arrays** — lists whose items are scalars or maps. An empty array emits as `[]`. Nested arrays-of-arrays are unsupported (a Landofile never contains them) and fail with `LandofileEmitError`.
 
-Values outside this domain — `undefined`, functions, symbols, class instances, or any other non-plain structure — fail with `LandofileEmitError` rather than emitting malformed YAML.
+Values outside this domain — `undefined`, `bigint`, functions, symbols, `Date`/`RegExp`/`Map` and other exotic objects, class instances, a cyclic structure, or any other non-plain structure — fail with `LandofileEmitError` rather than emitting malformed YAML.
+
+The serializer consumes the **encoded (wire) form** of a Landofile — the merged tree of plain records, arrays, strings, finite numbers, booleans, and `null` (`LandofileShape.Encoded`), not a decoded runtime `LandofileShape.Type` whose leaves may be branded or `DateTime` values. `emitLandofileYaml(value, { sortKeys })` accepts an optional `sortKeys` flag: it defaults to insertion order (no behavior change) and, when `true`, emits map keys in ascending lexicographic order for stabler canonical-write diffs without reordering array elements.
