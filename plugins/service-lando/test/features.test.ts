@@ -12,7 +12,7 @@ const EXPECTED_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
 ];
 
 describe("@lando/service-lando built-in feature modules", () => {
-  test("publishes each built-in lando.* feature at its §6.11 priority", () => {
+  test("publishes each built-in lando.* feature at its canonical priority", () => {
     for (const [id, priority] of EXPECTED_PRIORITIES) {
       const definition = serviceFeatures.get(id);
       expect(definition).toBeDefined();

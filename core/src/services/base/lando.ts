@@ -1,8 +1,8 @@
 /**
  * `lando` service base contract.
  *
- * Opinionated dev service. Seeds the default `lando.*` feature stack (the
- * §6.11 priority list, including `lando.env`); the `LANDO_*` / `/etc/lando`
+ * Opinionated dev service. Seeds the default `lando.*` feature stack in
+ * canonical priority order (including `lando.env`); the `LANDO_*` / `/etc/lando`
  * env layer is materialized when the `lando.env` feature runs, not at seed
  * time. The default when `type:` is omitted on a v4 service.
  *
