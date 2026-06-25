@@ -1947,6 +1947,12 @@ export const runAppFeatureContract = (
       "app feature apply is callable",
       typeof feature.apply,
     );
+    const globalServices = feature.requires?.globalServices ?? [];
+    yield* requireAppFeature(
+      globalServices.every(isNonEmptyString),
+      "app feature requires.globalServices entries are non-empty ids",
+      globalServices,
+    );
 
     const activatedServices = input.services.filter((service) => matchesActivation(feature, service));
     const expectNoActivation =
@@ -2017,13 +2023,6 @@ export const runAppFeatureContract = (
       Exit.isSuccess(requiresEffect),
       "app feature apply is replay-safe",
       Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
-    );
-
-    const globalServices = feature.requires?.globalServices ?? [];
-    yield* requireAppFeature(
-      globalServices.every(isNonEmptyString),
-      "app feature requires.globalServices entries are non-empty ids",
-      globalServices,
     );
 
     const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
