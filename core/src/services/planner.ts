@@ -429,13 +429,6 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
   return { ...servicePlan, healthcheck: merged };
 };
 
-interface ServiceCompositionFingerprint {
-  readonly name: string;
-  readonly serviceType: string;
-  readonly base: ServiceTypeResolution["base"];
-  readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
-}
-
 interface ResolvedService {
   readonly name: string;
   readonly service: ServiceConfig;
@@ -453,7 +446,6 @@ type PlannedServiceDraft = {
   readonly draft: AppFeatureServiceDraft;
   readonly routes: ServicePlan["routes"];
   readonly extensions: ServicePlan["extensions"];
-  readonly fingerprint: ServiceCompositionFingerprint;
 };
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
@@ -773,15 +765,7 @@ const planApp = (
     // Phase B (cache miss only): produce the per-service plans from the reused
     // resolutions, then run the app-feature pass and finalization.
     const plannedServiceDrafts: PlannedServiceDraft[] = [];
-    for (const {
-      name,
-      service,
-      authored,
-      serviceType,
-      resolution,
-      baseDefaultIds,
-      featureRefs,
-    } of resolvedServices) {
+    for (const { name, service, authored, serviceType, resolution, baseDefaultIds } of resolvedServices) {
       const rawPlan =
         resolution.features.length === 0
           ? yield* Effect.try({
@@ -845,12 +829,6 @@ const planApp = (
         draft: toAppFeatureDraft(name, servicePlan, resolution),
         routes: servicePlan.routes,
         extensions: servicePlan.extensions,
-        fingerprint: {
-          name,
-          serviceType: serviceType.id,
-          base: resolution.base,
-          featureRefs,
-        },
       });
     }
 
@@ -947,7 +925,7 @@ const planApp = (
             name,
             `healthcheck kind ${healthcheck.kind}`,
             "serviceHealth",
-            `Healthcheck for service ${name} uses kind: ${healthcheck.kind}, but Alpha only supports kind: command (executed via the provider's exec channel). Author healthcheck as kind: command or remove it.`,
+            `Healthcheck for service ${name} uses kind: ${healthcheck.kind}, but only kind: command is supported (executed via the provider's exec channel). Author healthcheck as kind: command or remove it.`,
           ),
         );
       }

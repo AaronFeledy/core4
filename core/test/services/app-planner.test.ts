@@ -1317,7 +1317,7 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("rejects storage scope: global with NotImplementedError until the global app phase", async () => {
+  test("rejects storage scope: global with NotImplementedError until cross-app global storage is supported", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "globalapp",
