@@ -61,6 +61,12 @@ larger Effect application. `makeLandoRuntime()` is scoped, option-validated,
 idempotent, and CLI-bootstrap-equivalent; repeated runtimes stay isolated from each
 other.
 
+Hosts that only need Lando's root and derived-path catalog before constructing a
+runtime can import `resolveLandoRoots()`, `makeLandoPaths()`, and
+`normalizeHostPlatform()` from `@lando/core/paths`. That subpath is the stable,
+Effect-free, OCLIF-free path primitive for pre-bootstrap code such as editor
+integrations, installers, and test harness setup.
+
 ## Running arbitrary effects and command operations
 
 A retained runtime also exposes `runtime.run(effect)`, which provides the retained
