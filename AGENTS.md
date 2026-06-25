@@ -40,6 +40,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh schema snapshots with `bun run codegen:schema-snapshot`.
 - `@lando/core` owns runtime, planner, CLI, library API, generated bootstrap layers, and bundled-plugin wiring. CLI/runtime quirks live in `core/AGENTS.md`.
+- RemoteSource/Dataset contract freeze: keep the `Dataset` x `RemoteSource` split contract-only for Beta 1; it never syncs application code, and implementation belongs to the 4.1 feature wave.
 - Source CLI dispatch uses OCLIF; the compiled Bun `$bunfs` binary uses `runCompiledCli` in `core/src/cli/run.ts`. Keep behavior shared or updated in both paths and run parity tests when command routing changes.
 - The compiled binary target is `core/bin/lando.ts`, not `core/src/cli/index.ts`. Compiled-mode code must avoid top-level `await` and must not rely on `import.meta.url` for package/install metadata.
 - Cold-start files (`core/src/cli/index.ts`, `core/src/cli/oclif/pre-renderer.ts`) must not statically import Effect, OCLIF-heavy modules, `@lando/sdk`, renderers, or plugins; startup regressions are release-blocking performance bugs (spec §1.2).

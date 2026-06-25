@@ -37,6 +37,13 @@ contributes:
     - "static:nginx"
     - "static:caddy"
     - "valkey"
+  serviceFeatures:
+    - "lando.user-id"
+    - "lando.storage"
+    - "lando.env"
+    - "lando.app-mount"
+    - "lando.healthcheck"
+    - "lando.user"
 
 requires:
   "@lando/core": "^4.0.0"

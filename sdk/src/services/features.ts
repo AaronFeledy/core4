@@ -30,6 +30,7 @@ import type {
   ProviderCapabilities,
   ServiceConfig,
 } from "../schema/index.ts";
+import type { ServiceTypeHostFacts } from "./plugins.ts";
 
 /**
  * A mount a feature declares, stripped of the `realization` decision. Features
@@ -81,6 +82,8 @@ export interface ServiceFeatureContext {
   readonly appName?: string | undefined;
   /** Absolute host path of the app root. */
   readonly appRoot: string;
+  /** Host identity facts (os/user/uid/gid/home), when the planner supplied them. */
+  readonly host?: ServiceTypeHostFacts | undefined;
   /** The service type's normalized config for this service. */
   readonly normalizedConfig: ServiceConfig;
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
