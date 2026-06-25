@@ -43,6 +43,16 @@ const publicEntryPoints = [
     assertSymbol: (mod: Record<string, unknown>) => expect(mod.RuntimeProvider).toBeDefined(),
   },
   {
+    specifier: "@lando/core/paths",
+    exportKey: "./paths",
+    target: "./src/config/paths.ts",
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.resolveLandoRoots).toBeFunction();
+      expect(mod.makeLandoPaths).toBeFunction();
+      expect(mod.normalizeHostPlatform).toBeFunction();
+    },
+  },
+  {
     specifier: "@lando/core/testing",
     exportKey: "./testing",
     target: "./src/testing/index.ts",
