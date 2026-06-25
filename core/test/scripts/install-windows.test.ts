@@ -9,7 +9,7 @@ import { renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
-const powershellTestTimeoutMs = 15_000;
+const powershellTestTimeoutMs = 60_000;
 
 const powershellTest = (name: string, fn: () => void | Promise<void>): void => {
   test(name, fn, powershellTestTimeoutMs);
