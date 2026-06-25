@@ -472,6 +472,7 @@ const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
   serviceResolution: ServiceTypeResolution,
+  baseDefaultIds: ReadonlyArray<string>,
 ): AppFeatureServiceDraft => ({
   name: servicePlan.name,
   serviceName: name,
@@ -481,7 +482,7 @@ const toAppFeatureDraft = (
   primary: servicePlan.primary,
   base: serviceResolution.base,
   framework: serviceResolution.normalizedConfig.framework,
-  featureIds: serviceResolution.features.map((feature) => feature.id),
+  featureIds: [...baseDefaultIds, ...serviceResolution.features.map((feature) => feature.id)],
   normalizedConfig: serviceResolution.normalizedConfig,
   ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
   ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
@@ -826,7 +827,7 @@ const planApp = (
         name,
         hostnames: service.hostnames ?? [],
         authored,
-        draft: toAppFeatureDraft(name, servicePlan, resolution),
+        draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         routes: servicePlan.routes,
         extensions: servicePlan.extensions,
       });

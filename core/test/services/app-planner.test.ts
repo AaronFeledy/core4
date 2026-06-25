@@ -1732,6 +1732,104 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("exposes base default feature ids to app-feature hasFeature activation", async () => {
+    await withTempCwd(async () => {
+      const baseOnlyFeatureId = LANDO_BASE_DEFAULT_FEATURE_IDS[1] ?? "lando.storage";
+      const baseDefaultFeatures = new Map<string, ServiceFeatureDefinition>(
+        LANDO_BASE_DEFAULT_FEATURE_IDS.map((id, index) => [
+          id,
+          {
+            id,
+            priority: 100 + index,
+            apply: (ctx) =>
+              Effect.sync(() => {
+                if (id === baseOnlyFeatureId) ctx.addEnv("BASE_ONLY_FEATURE_COMPOSED", "1");
+              }),
+          },
+        ]),
+      );
+      const compositionGateFeature: ServiceFeatureDefinition = {
+        id: "test.composition-gate",
+        priority: 900,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("COMPOSITION_GATE", "1")),
+      };
+      const serviceType: ServiceType = {
+        id: "base-default-ids-only",
+        name: "base-default-ids-only",
+        base: "lando",
+        schema: Schema.Unknown,
+        resolve: (input) =>
+          Effect.succeed({
+            base: "lando" as const,
+            normalizedConfig: input.service,
+            features: [{ id: compositionGateFeature.id }],
+          }),
+      };
+      const appFeature: AppFeatureDefinition = {
+        id: "test.base-default-has-feature",
+        priority: 100,
+        activatedBy: { services: { hasFeature: baseOnlyFeatureId } },
+        selectors: { hasFeature: [baseOnlyFeatureId] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("ACTIVATED_BY_BASE_DEFAULT", "1"));
+          }),
+      };
+      const features = new Map<string, ServiceFeatureDefinition>([
+        ...baseDefaultFeatures,
+        [compositionGateFeature.id, compositionGateFeature],
+      ]);
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/base-default-ids"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [serviceType.id], appFeatures: [appFeature.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) => {
+          const definition = features.get(id);
+          return definition === undefined
+            ? Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              )
+            : Effect.succeed(definition);
+        },
+        loadAppFeature: (id: string) =>
+          id === appFeature.id
+            ? Effect.succeed(appFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      const environment = appPlan.services[ServiceName.make("web")]?.environment;
+      expect(environment?.BASE_ONLY_FEATURE_COMPOSED).toBe("1");
+      expect(environment?.ACTIVATED_BY_BASE_DEFAULT).toBe("1");
+    });
+  });
+
   test("rolls the app-plan cache key when the resolved feature set changes for the same Landofile", async () => {
     await withTempCwd(async () => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
