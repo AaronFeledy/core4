@@ -152,6 +152,30 @@ const appFeatureError = (appRoot: string, cause: unknown) =>
     issues: ["appFeatures"],
   });
 
+// Boolean capability => true; enum capability => not the "none" (unsupported) literal.
+const providerSatisfiesCapability = (
+  providerCapabilities: ProviderCapabilities,
+  capability: keyof ProviderCapabilities,
+): boolean => {
+  const value = providerCapabilities[capability];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value !== "none";
+  return value !== undefined;
+};
+
+const appFeatureCapabilityError = (
+  providerId: ProviderId,
+  feature: string,
+  capability: keyof ProviderCapabilities,
+) =>
+  new CapabilityError({
+    message: `App feature ${feature} requires provider capability ${String(capability)}.`,
+    feature,
+    capability: String(capability),
+    providerId: String(providerId),
+    remediation: `Choose a provider that supports ${String(capability)} or remove the app feature requiring it.`,
+  });
+
 const bindRealization = (providerCapabilities: ProviderCapabilities) =>
   providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";
 
@@ -696,6 +720,17 @@ const planApp = (
       services: plannedServiceDrafts.map((entry) => entry.draft),
       features: appFeatures,
     }).pipe(Effect.mapError((error) => appFeatureError(appRoot, error)));
+
+    const activatedFeatureIds = new Set(appFeatureResult.activatedFeatures.map((entry) => entry.id));
+    for (const capability of appFeatureResult.requires.providerCapabilities) {
+      if (providerSatisfiesCapability(providerCapabilities, capability)) continue;
+      const offending = appFeatures.find(
+        (entry) =>
+          activatedFeatureIds.has(entry.id) &&
+          (entry.definition.requires?.providerCapabilities ?? []).includes(capability),
+      );
+      yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
+    }
 
     for (const { name, hostnames, authored, draft, routes, extensions } of plannedServiceDrafts) {
       const servicePlan = servicePlanFromDraft(draft, routes, metadata, extensions);

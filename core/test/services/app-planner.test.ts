@@ -490,6 +490,64 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("fails with CapabilityError when an activated app feature requires an unsupported provider capability", async () => {
+    await withTempCwd(async () => {
+      const featureDefinition: AppFeatureDefinition = {
+        id: "test.needs-shared-network",
+        priority: 100,
+        activatedBy: { services: { type: "appmount-only" } },
+        selectors: { types: ["appmount-only"] },
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("NEEDS_SHARED", "1"));
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/app-feature-caps"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { appFeatures: [featureDefinition.id] },
+          }),
+        ]),
+        loadAppFeature: (id: string) =>
+          id === featureDefinition.id
+            ? Effect.succeed(featureDefinition)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+            },
+            { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(CapabilityError);
+          const error = failure.value as CapabilityError;
+          expect(error.capability).toBe("sharedCrossAppNetwork");
+          expect(error.feature).toBe("test.needs-shared-network");
+        }
+      }
+    });
+  });
+
   test("passes resolved service feature ids into app-feature activation", async () => {
     await withTempCwd(async () => {
       const serviceType = {
