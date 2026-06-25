@@ -1,6 +1,11 @@
 import { Context, type Effect, type Schema } from "effect";
 
-import type { PluginLoadError, PluginManifestError, ServiceTypeError } from "../errors/index.ts";
+import type {
+  PluginLoadError,
+  PluginManifestError,
+  ServiceTypeCollisionError,
+  ServiceTypeError,
+} from "../errors/index.ts";
 import type {
   PlanMetadata,
   PluginManifest,
@@ -18,7 +23,7 @@ export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,
-    ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>;
+    ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError>;
     readonly loadServiceFeature: (
       id: string,
     ) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>;
@@ -47,6 +52,7 @@ export interface ServiceTypeInput {
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
   readonly host?: ServiceTypeHostFacts | undefined;
+  readonly parentResolution?: ServiceTypeResolution | undefined;
 }
 
 /**

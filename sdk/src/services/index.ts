@@ -88,6 +88,7 @@ import type {
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
   SecretNotFoundError,
+  ServiceTypeCollisionError,
   ShellExecError,
   ToolingExecError,
 } from "../errors/index.ts";
@@ -378,7 +379,7 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,
-    ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>;
+    ) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError>;
     readonly loadServiceFeature: (
       id: string,
     ) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>;

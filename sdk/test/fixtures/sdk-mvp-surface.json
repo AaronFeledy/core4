@@ -67,7 +67,7 @@
       "load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>",
       "loadAppFeature: (id: string) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>",
       "loadServiceFeature: (id: string) => Effect.Effect<ServiceFeatureDefinition, PluginLoadError | PluginManifestError>",
-      "loadServiceType: (id: string) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError>"
+      "loadServiceType: (id: string) => Effect.Effect<ServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError>"
     ],
     "ProcessRunner": [
       "run: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError>",

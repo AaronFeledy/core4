@@ -7,9 +7,11 @@ import { type Context, Effect, Either, Layer, Schema } from "effect";
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
-import type { AppFeatureDefinition } from "@lando/sdk/services";
+import type { AppFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { resolveUserDataRoot } from "../config/roots.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
+import { composeExtendedServiceType } from "../services/extends.ts";
 import { BUNDLED_PLUGINS } from "./bundled.ts";
 import { readInstalledPluginRegistry } from "./installed-registry.ts";
 
@@ -221,9 +223,9 @@ const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
   typeof value.apply === "function";
 
 /**
- * §10 / §6.11.4: an app feature MUST declare at least one of `activatedBy` or
- * `selectors`. An entry with neither is unscoped (it would run on every service
- * draft) and is rejected at load.
+ * An app feature must declare at least one of `activatedBy` or `selectors`.
+ * An entry with neither is unscoped (it would run on every service draft) and
+ * is rejected at load.
  */
 const isScopedAppFeature = (feature: AppFeatureDefinition): boolean =>
   feature.activatedBy !== undefined || feature.selectors !== undefined;
@@ -245,6 +247,33 @@ const externalAppFeature = (plugin: DiscoveredPlugin, id: string): AppFeatureDef
   if (!(appFeatures instanceof Map)) return undefined;
   const feature = appFeatures.get(id);
   return isAppFeature(feature) ? feature : undefined;
+};
+
+const isServiceType = (value: unknown): value is ServiceType =>
+  typeof value === "object" &&
+  value !== null &&
+  "id" in value &&
+  typeof value.id === "string" &&
+  "resolve" in value &&
+  typeof value.resolve === "function";
+
+const externalServiceType = (plugin: DiscoveredPlugin, id: string): ServiceType | undefined => {
+  const serviceTypes = plugin.module?.serviceTypes;
+  if (!(serviceTypes instanceof Map)) return undefined;
+  const serviceType = serviceTypes.get(id);
+  return isServiceType(serviceType) ? serviceType : undefined;
+};
+
+const findExternalServiceType = (
+  plugins: ReadonlyArray<DiscoveredPlugin>,
+  id: string,
+): ServiceType | undefined => {
+  for (const plugin of plugins) {
+    if (plugin.source === "system") continue;
+    const serviceType = externalServiceType(plugin, id);
+    if (serviceType !== undefined) return serviceType;
+  }
+  return undefined;
 };
 
 const warnPluginDiscoveryFailure = (
@@ -328,6 +357,15 @@ const systemPlugins: ReadonlyArray<DiscoveredPlugin> = BUNDLED_PLUGINS.map((plug
   manifest: plugin.manifest,
 }));
 
+const findBundledServiceType = (id: string, disabled: ReadonlySet<string>): ServiceType | undefined => {
+  for (const bundledPlugin of BUNDLED_PLUGINS) {
+    if (disabled.has(bundledPlugin.manifest.name)) continue;
+    const serviceType = bundledPlugin.serviceTypes?.get(id);
+    if (serviceType !== undefined) return serviceType;
+  }
+  return undefined;
+};
+
 const makePluginRegistry = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   logger: Context.Tag.Service<typeof Logger> | undefined,
@@ -338,10 +376,10 @@ const makePluginRegistry = (
     const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
       (plugin) => !disabled.has(plugin.manifest.name),
     );
-    if (configService === undefined) return bundledPlugins;
-    const userDataRoot = yield* configService
-      .get("userDataRoot")
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const userDataRoot =
+      configService === undefined
+        ? resolveUserDataRoot()
+        : yield* configService.get("userDataRoot").pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
@@ -375,32 +413,34 @@ const makePluginRegistry = (
           }),
         );
       }),
-    loadServiceType: (id) => {
-      if (discovery.bundled === false) {
-        return Effect.fail(
+    loadServiceType: (id) =>
+      Effect.gen(function* () {
+        const bundledServiceType =
+          discovery.bundled === false ? undefined : findBundledServiceType(id, disabled);
+        if (bundledServiceType !== undefined) {
+          return yield* composeExtendedServiceType(bundledServiceType, (parentId) =>
+            findBundledServiceType(parentId, disabled),
+          );
+        }
+
+        const plugins = yield* discoverPlugins;
+        const externalType = findExternalServiceType(plugins, id);
+        if (externalType !== undefined) {
+          return yield* composeExtendedServiceType(
+            externalType,
+            (parentId) =>
+              findExternalServiceType(plugins, parentId) ??
+              (discovery.bundled === false ? undefined : findBundledServiceType(parentId, disabled)),
+          );
+        }
+
+        return yield* Effect.fail(
           new PluginLoadError({
-            message: `Bundled service type ${id} is not registered.`,
+            message: `Service type ${id} is not registered.`,
             pluginName: "@lando/core",
           }),
         );
-      }
-
-      for (const bundledPlugin of BUNDLED_PLUGINS) {
-        if (disabled.has(bundledPlugin.manifest.name)) continue;
-        const serviceType = bundledPlugin.serviceTypes?.get(id);
-
-        if (serviceType !== undefined) {
-          return Effect.succeed(serviceType);
-        }
-      }
-
-      return Effect.fail(
-        new PluginLoadError({
-          message: `Bundled service type ${id} is not registered.`,
-          pluginName: "@lando/core",
-        }),
-      );
-    },
+      }),
     loadServiceFeature: (id) => {
       if (discovery.bundled === false) {
         return Effect.fail(

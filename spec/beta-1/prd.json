@@ -2883,8 +2883,8 @@
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "extends: chain resolution (parent-first, §7.2 overlay via shared mergeValues, single inheritance, depth ≤4, cycle/unregistered-parent rejection with ServiceTypeCollisionError) runs at registry load in composeExtendedServiceType; the synthesized type preserves the catalog __legacyToServicePlan bridge. artifacts:/versions: pinning resolves type: name:version at plan-compile (exact-id-first parsing so colon-bearing ids resolve whole, rightmost-colon split fallback; exact artifacts wins, else name:version convention for a declared version, else unsupported-version rejection) and folds the resolved tag into the app-plan cache key. ServiceTypeCollisionError + parentResolution published additively."
     },
     {
       "id": "US-361",

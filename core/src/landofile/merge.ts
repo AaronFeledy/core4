@@ -68,7 +68,13 @@ const mergeArrays = (left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>
   return merged;
 };
 
-const mergeValues = (left: unknown, right: unknown): unknown => {
+/**
+ * The §7.2 overlay primitive: deep-merge maps, replace scalar arrays, merge
+ * object arrays by recognized identity key, right-wins for scalars. Reused for
+ * service-type `extends:` resolution overlay (§6.11.1), which the spec defines
+ * in terms of these same merge rules.
+ */
+export const mergeValues = (left: unknown, right: unknown): unknown => {
   if (Array.isArray(left) && Array.isArray(right)) return mergeArrays(left, right);
   if (!isPlainRecord(left) || !isPlainRecord(right)) return right;
 
