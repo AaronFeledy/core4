@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import { Effect } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
@@ -20,8 +22,13 @@ const slug = (input: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
+
 const applyEnv = (ctx: ServiceFeatureContext): void => {
-  const appName = ctx.appName ?? "app";
+  const appName = appNameFor(ctx);
   const userEnv = ctx.normalizedConfig.environment ?? {};
 
   const reserved = Object.keys(userEnv).filter((key) => isReservedKey(key));
