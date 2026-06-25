@@ -13,6 +13,7 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/errors` | Public tagged errors re-exported from `@lando/sdk/errors`. |
 | `@lando/core/events` | Event service, lifecycle payload schemas, and subscriber priority exports. |
 | `@lando/core/services` | Effect service tags for embedding hosts and plugin authors. |
+| `@lando/core/paths` | Effect-free root/path resolver for hosts that need roots before constructing a runtime. |
 | `@lando/core/testing` | Deterministic test runtime fixtures and executable-guide scenario helpers. |
 | `@lando/core/cli` | Programmatic CLI runner surface. |
 | `@lando/core/cli/operations` | Built-in command operations for hosts that want command logic without argv parsing. |
