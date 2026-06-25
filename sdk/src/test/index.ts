@@ -1715,6 +1715,7 @@ export interface AppFeatureContractHarness {
 interface RecordedAppFeatureService {
   readonly view: AppFeatureServiceView;
   readonly env: Map<string, string>;
+  mutated: boolean;
 }
 
 const matchesActivation = (feature: AppFeatureDefinition, service: AppFeatureContractService): boolean => {
@@ -1753,7 +1754,11 @@ const makeRecordingAppFeatureContext = (input: AppFeatureContractHarness) => {
       featureIds: service.featureIds ?? [],
       normalizedConfig: { type: service.serviceType },
     };
-    records.set(service.serviceName, { view, env: new Map(Object.entries(service.environment ?? {})) });
+    records.set(service.serviceName, {
+      view,
+      env: new Map(Object.entries(service.environment ?? {})),
+      mutated: false,
+    });
   }
 
   const ledger = new Map<string, string>();
@@ -1761,7 +1766,9 @@ const makeRecordingAppFeatureContext = (input: AppFeatureContractHarness) => {
 
   const mutatorsFor = (serviceName: string): AppFeatureServiceMutators => {
     const record = records.get(serviceName);
-    const noop = () => {};
+    const recordMutation = () => {
+      if (record !== undefined) record.mutated = true;
+    };
     const view = record?.view ?? {
       serviceName,
       serviceType: "unknown",
@@ -1778,21 +1785,22 @@ const makeRecordingAppFeatureContext = (input: AppFeatureContractHarness) => {
         if (existing !== undefined && existing !== value) conflicts.push({ service: serviceName, key: name });
         ledger.set(ledgerKey, value);
         record?.env.set(name, value);
+        recordMutation();
       },
-      addMount: noop,
-      setAppMount: noop,
-      addBuildStep: noop,
-      addStorage: noop,
-      addEndpoint: noop,
-      addDependency: noop,
-      addHostAlias: noop,
-      setHealthcheck: noop,
-      setCerts: noop,
-      setEntrypoint: noop,
-      setCommand: noop,
-      setArtifact: noop,
-      setUser: noop,
-      setWorkingDirectory: noop,
+      addMount: recordMutation,
+      setAppMount: recordMutation,
+      addBuildStep: recordMutation,
+      addStorage: recordMutation,
+      addEndpoint: recordMutation,
+      addDependency: recordMutation,
+      addHostAlias: recordMutation,
+      setHealthcheck: recordMutation,
+      setCerts: recordMutation,
+      setEntrypoint: recordMutation,
+      setCommand: recordMutation,
+      setArtifact: recordMutation,
+      setUser: recordMutation,
+      setWorkingDirectory: recordMutation,
     };
   };
 
@@ -1893,7 +1901,7 @@ export const runAppFeatureContract = (
       globalServices,
     );
 
-    const mutatedSelected = selectedNames.some((name) => (records.get(name)?.env.size ?? 0) > 0);
+    const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
     yield* requireAppFeature(
       selectedNames.length === 0 || mutatedSelected,
       "app feature mutates at least one selected service draft",

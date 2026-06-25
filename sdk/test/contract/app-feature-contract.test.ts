@@ -46,6 +46,22 @@ describe("runAppFeatureContract", () => {
     expect(result._tag).toBe("Success");
   });
 
+  test("passes for a feature that mutates only non-env fields", async () => {
+    const commandOnly: AppFeatureDefinition = {
+      id: "command-only",
+      priority: 100,
+      selectors: { types: ["php"] },
+      apply: (ctx) =>
+        Effect.sync(() => {
+          ctx.forEachSelected((service) => service.setCommand(["sleep", "infinity"]));
+        }),
+    };
+
+    const result = await Effect.runPromiseExit(runAppFeatureContract({ feature: commandOnly, services }));
+
+    expect(result._tag).toBe("Success");
+  });
+
   test("fails when a feature inspects provider capabilities", async () => {
     const leaky: AppFeatureDefinition = {
       id: "capability-leak",
