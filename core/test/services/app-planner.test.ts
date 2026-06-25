@@ -609,6 +609,100 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("preserves existing service-feature build steps when app-features add build steps", async () => {
+    await withTempCwd(async () => {
+      const buildStepServiceType = makeLegacyServiceTypeFake({
+        id: "build-step-backed",
+        toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+          Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: "build-step-backed",
+            provider,
+            primary,
+            environment: {},
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {
+              "@lando/core/service-features": {
+                source: "service-feature",
+                buildSteps: [{ id: "base-install", phase: "build", command: ["bun", "install"] }],
+              },
+            },
+          }),
+      });
+      const featureDefinition: AppFeatureDefinition = {
+        id: "test.add-build-step",
+        priority: 100,
+        selectors: { types: [buildStepServiceType.id] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) =>
+              service.addBuildStep({
+                id: "app-feature-build",
+                phase: "postbuild",
+                command: ["bun", "run", "build"],
+                dependsOn: ["base-install"],
+              }),
+            );
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/build-steps"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [buildStepServiceType.id], appFeatures: [featureDefinition.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === buildStepServiceType.id
+            ? Effect.succeed(buildStepServiceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadAppFeature: (id: string) =>
+          id === featureDefinition.id
+            ? Effect.succeed(featureDefinition)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: buildStepServiceType.id } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      expect(appPlan.services[ServiceName.make("web")]?.extensions["@lando/core/service-features"]).toEqual({
+        source: "service-feature",
+        buildSteps: [
+          { id: "base-install", phase: "build", command: ["bun", "install"] },
+          {
+            id: "app-feature-build",
+            phase: "postbuild",
+            command: ["bun", "run", "build"],
+            dependsOn: ["base-install"],
+          },
+        ],
+      });
+    });
+  });
+
   test("deduplicates manifest app-feature ids before applying", async () => {
     await withTempCwd(async () => {
       let applyCalls = 0;

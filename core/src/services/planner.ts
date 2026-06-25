@@ -30,6 +30,7 @@ import {
   CacheService,
   ConfigService,
   PluginRegistry,
+  type ServiceBuildStepIntent,
   type ServiceTypeHostFacts,
   type ServiceTypeResolution,
 } from "@lando/sdk/services";
@@ -409,6 +410,23 @@ type PlannedServiceDraft = {
   readonly extensions: ServicePlan["extensions"];
 };
 
+const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const serviceFeatureExtension = (
+  extensions: ServicePlan["extensions"],
+): Record<string, unknown> | undefined => {
+  const extension = extensions[SERVICE_FEATURES_EXTENSION_KEY];
+  return isRecord(extension) ? extension : undefined;
+};
+
+const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]): ServiceBuildStepIntent[] => {
+  const buildSteps = serviceFeatureExtension(extensions)?.buildSteps;
+  return Array.isArray(buildSteps) ? buildSteps.map((step) => ({ ...(step as ServiceBuildStepIntent) })) : [];
+};
+
 const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
@@ -445,7 +463,7 @@ const toAppFeatureDraft = (
     const { realization: _realization, ...intent } = mount;
     return intent;
   }),
-  buildSteps: [],
+  buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
   storage: servicePlan.storage.map((storage) => ({ ...storage })),
   endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
   dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
@@ -485,7 +503,8 @@ const servicePlanFromDraft = (
     ...(draft.buildSteps.length === 0
       ? {}
       : {
-          "@lando/core/service-features": {
+          [SERVICE_FEATURES_EXTENSION_KEY]: {
+            ...serviceFeatureExtension(extensions),
             buildSteps: draft.buildSteps.map((step) => ({ ...step })),
           },
         }),
