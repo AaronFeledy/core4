@@ -190,7 +190,7 @@ describe("mergeResolutionOverParent", () => {
     expect(merged.tooling?.db?.cmd).toBe("child");
   });
 
-  test("merges normalizedConfig object arrays by §7.2 identity key, not wholesale replace", () => {
+  test("merges normalizedConfig object arrays by identity key, not wholesale replace", () => {
     const parent: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {
@@ -216,7 +216,7 @@ describe("mergeResolutionOverParent", () => {
     expect(endpoints.find((e) => e.name === "metrics")?.port).toBe(9090);
   });
 
-  test("§7.2-merges a same-id feature's config rather than replacing it wholesale", () => {
+  test("deep-merges a same-id feature's config rather than replacing it wholesale", () => {
     const parent: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {} as ServiceConfig,

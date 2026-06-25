@@ -114,7 +114,7 @@ interface LoadedServiceType {
  * id match wins first, so type ids that legitimately contain a colon (e.g.
  * `php:8.2`) load whole. Only when no exact id is registered is the reference
  * split at the RIGHTMOST colon into `<name>:<version>` and the bare name retried
- * for §6.11.2 version pinning. A cycle/depth rejection on the exact id is
+ * for declarative version pinning. A cycle/depth rejection on the exact id is
  * surfaced as-is and never silently retried as a versioned reference.
  */
 const loadServiceTypeWithVersion = (
@@ -137,7 +137,7 @@ const loadServiceTypeWithVersion = (
   );
 
 /**
- * §6.11.2 declarative version pinning. With no version, no pin is computed
+ * Declarative version pinning. With no version, no pin is computed
  * (legacy image defaults stand). With a version: an exact `artifacts:` entry
  * wins; otherwise a version listed in `versions:` resolves to `<id>:<version>`
  * by convention. A version absent from a declared, non-empty `versions:` list
@@ -761,7 +761,7 @@ const planApp = (
       );
 
       const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
-      // §6.11.2: the pinned tag becomes the service image so it flows into both
+      // Pinned artifact tag becomes the service image so it flows into both
       // the cache key (which folds normalizedConfig) and the legacy plan body
       // (which reads service.image). The original authored image wins only when
       // no version pin was requested.

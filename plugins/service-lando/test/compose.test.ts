@@ -82,7 +82,7 @@ describe("compose ServiceType (raw passthrough)", () => {
       readOnly: false,
     });
     expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
-    // AC#2 §6.9: compose is an l337 service and MUST NOT inject LANDO_* env.
+    // Compose uses the l337 base and must not inject LANDO_* env.
     expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
   });
@@ -104,7 +104,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const plan = await planComposeService({ service, serviceName: "worker" });
 
     expect(plan.environment.WORKER_ENV).toBe("prod");
-    // AC#2 §6.9: compose is an l337 service and MUST NOT inject LANDO_* env.
+    // Compose uses the l337 base and must not inject LANDO_* env.
     expect(landoEnvKeys(plan.environment)).toEqual([]);
   });
 
@@ -346,7 +346,7 @@ describe("compose ServiceType (raw passthrough)", () => {
         target: "/app",
         readOnly: false,
       });
-      // AC#2 §6.9: compose is an l337 service and MUST NOT inject LANDO_* env.
+      // Compose uses the l337 base and must not inject LANDO_* env.
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
     });
