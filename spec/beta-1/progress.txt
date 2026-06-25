@@ -186,3 +186,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck, lint, schema-snapshot codegen drift gate, and focused spot checks passed (`core/test/build/schema-snapshot.test.ts`, service-lando contract/compose/env-contract, and core app-planner tests).
 - **Learnings for future iterations:** after registering bundled `serviceFeatures`, rerun `bun run codegen:schema-snapshot` and confirm `git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json` is clean before committing.
 ---
+
+## [2026-06-25 09:34 CDT] - Babysit
+- PR: #457 https://github.com/AaronFeledy/core4/pull/457
+- CI outcome: pass
+- Review feedback: fixed (added the guide-coverage skip rationale to unblock guide-drift reruns; resolved Cursor Bugbot route finding as a false positive after route-flow triage)
+- Merge: merged (squash)
+---
