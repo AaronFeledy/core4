@@ -142,6 +142,56 @@ const writeInstalledPlugin = async (
   await writeInstalledPluginRegistry(pluginsRoot, [{ ...plugin, path: packageRoot }]);
 };
 
+const writeExternalServiceTypePlugin = async (
+  pluginsRoot: string,
+  plugin: {
+    readonly name: string;
+    readonly version: string;
+    readonly serviceTypes: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly extends?: string;
+      readonly artifacts?: Readonly<Record<string, string>>;
+    }>;
+  },
+) => {
+  const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
+  await mkdir(packageRoot, { recursive: true });
+  const effectModuleUrl = pathToFileURL(resolve(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const entries = plugin.serviceTypes
+    .map((serviceType) => {
+      const extendsLine =
+        serviceType.extends === undefined ? "" : `, extends: ${JSON.stringify(serviceType.extends)}`;
+      const artifactsLine =
+        serviceType.artifacts === undefined ? "" : `, artifacts: ${JSON.stringify(serviceType.artifacts)}`;
+      return `  [${JSON.stringify(serviceType.id)}, { id: ${JSON.stringify(serviceType.id)}, name: ${JSON.stringify(serviceType.name)}, base: "lando"${extendsLine}${artifactsLine}, schema: Schema.Unknown, resolve: () => Effect.succeed({ base: "lando", normalizedConfig: {}, features: [] }) }],`;
+    })
+    .join("\n");
+  await writeFile(
+    join(packageRoot, "index.mjs"),
+    `import { Effect, Schema } from ${JSON.stringify(effectModuleUrl)};\nexport const serviceTypes = new Map([\n${entries}\n]);\n`,
+  );
+  await writeFile(
+    join(packageRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name: plugin.name,
+        version: plugin.version,
+        landoPlugin: {
+          name: plugin.name,
+          version: plugin.version,
+          api: 4,
+          entry: "index.mjs",
+          contributes: { serviceTypes: plugin.serviceTypes.map((serviceType) => serviceType.id) },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return packageRoot;
+};
+
 const writeInvalidInstalledPluginPackage = async (
   pluginsRoot: string,
   plugin: { readonly name: string; readonly version: string },
@@ -245,6 +295,74 @@ describe("PluginRegistryLive", () => {
       expect(serviceType.id).toBe("example:custom");
     } finally {
       (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).pop();
+    }
+  });
+
+  test("loads an external (installed/linked) service type by id", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = await writeExternalServiceTypePlugin(userPluginsRoot, {
+      name: "@example/external-service-types",
+      version: "1.0.0",
+      serviceTypes: [
+        { id: "external-parent", name: "external-parent" },
+        { id: "external-child", name: "external-child" },
+      ],
+    });
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/external-service-types", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const serviceType = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.loadServiceType("external-child")),
+    );
+
+    expect(serviceType.id).toBe("external-child");
+    expect(warnings).toEqual([]);
+  });
+
+  test("resolves an external child service type that extends an external parent", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = await writeExternalServiceTypePlugin(userPluginsRoot, {
+      name: "@example/external-extends-service-types",
+      version: "1.0.0",
+      serviceTypes: [
+        { id: "external-parent", name: "external-parent", artifacts: { "from-parent": "parent.txt" } },
+        {
+          id: "external-child",
+          name: "external-child",
+          extends: "external-parent",
+          artifacts: { "from-child": "child.txt" },
+        },
+      ],
+    });
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/external-extends-service-types", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const serviceType = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.loadServiceType("external-child")),
+    );
+
+    expect(serviceType.id).toBe("external-child");
+    expect(serviceType.artifacts).toEqual({ "from-parent": "parent.txt", "from-child": "child.txt" });
+    expect(warnings).toEqual([]);
+  });
+
+  test("fails when an external service type id is not registered", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(PluginRegistry, (registry) => registry.loadServiceType("not-registered")).pipe(
+        Effect.provide(pluginRegistryTestLayer(userDataRoot)),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(PluginLoadError);
+        expect(failure.value.message).toBe("Service type not-registered is not registered.");
+      }
     }
   });
 
