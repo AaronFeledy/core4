@@ -3,7 +3,14 @@ import * as os from "node:os";
 
 import { type Context, DateTime, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
-import { CapabilityError, LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  LandofileValidationError,
+  NotImplementedError,
+  type PluginLoadError,
+  type PluginManifestError,
+  ServiceTypeCollisionError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -98,6 +105,67 @@ const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   return name;
 };
 
+interface LoadedServiceType {
+  readonly serviceType: ServiceType;
+  readonly version: string | undefined;
+}
+
+/**
+ * Resolve an authored `type:` reference to a registered service type. An exact
+ * id match wins first, so type ids that legitimately contain a colon (e.g.
+ * `php:8.2`) load whole. Only when no exact id is registered is the reference
+ * split at the RIGHTMOST colon into `<name>:<version>` and the bare name retried
+ * for §6.11.2 version pinning. A cycle/depth rejection on the exact id is
+ * surfaced as-is and never silently retried as a versioned reference.
+ */
+const loadServiceTypeWithVersion = (
+  pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
+  reference: string,
+): Effect.Effect<LoadedServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError> =>
+  pluginRegistry.loadServiceType(reference).pipe(
+    Effect.map((serviceType) => ({ serviceType, version: undefined as string | undefined })),
+    Effect.catchAll((error) => {
+      if (error instanceof ServiceTypeCollisionError) return Effect.fail(error);
+      const lastColon = reference.lastIndexOf(":");
+      if (lastColon <= 0) return Effect.fail(error);
+      const typeName = reference.slice(0, lastColon);
+      const version = reference.slice(lastColon + 1);
+      if (version.length === 0) return Effect.fail(error);
+      return pluginRegistry
+        .loadServiceType(typeName)
+        .pipe(Effect.map((serviceType) => ({ serviceType, version: version as string | undefined })));
+    }),
+  );
+
+/**
+ * §6.11.2 declarative version pinning. With no version, no pin is computed
+ * (legacy image defaults stand). With a version: an exact `artifacts:` entry
+ * wins; otherwise a version listed in `versions:` resolves to `<id>:<version>`
+ * by convention. A version absent from a declared, non-empty `versions:` list
+ * is rejected so `versions:` cannot be silently bypassed.
+ */
+const resolvePinnedArtifactTag = (
+  appRoot: string,
+  serviceName: string,
+  serviceType: ServiceType,
+  version: string | undefined,
+): Effect.Effect<string | undefined, LandofileValidationError> => {
+  if (version === undefined) return Effect.succeed(undefined);
+  const pinned = serviceType.artifacts?.[version];
+  if (pinned !== undefined) return Effect.succeed(pinned);
+  const declaredVersions = serviceType.versions;
+  if (declaredVersions !== undefined && declaredVersions.length > 0 && !declaredVersions.includes(version)) {
+    return Effect.fail(
+      new LandofileValidationError({
+        message: `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
+        file: `${appRoot}/.lando.yml`,
+        issues: [`services.${serviceName}.type`],
+      }),
+    );
+  }
+  return Effect.succeed(`${serviceType.id}:${version}`);
+};
+
 const unsupportedServiceType = (
   appRoot: string,
   serviceName: string,
@@ -119,6 +187,17 @@ const unsupportedServiceType = (
     issues: [`services.${serviceName}.type`],
   });
 };
+
+const serviceTypeCollision = (
+  appRoot: string,
+  serviceName: string,
+  error: ServiceTypeCollisionError,
+): LandofileValidationError =>
+  new LandofileValidationError({
+    message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
+    file: `${appRoot}/.lando.yml`,
+    issues: [`services.${serviceName}.type`],
+  });
 
 const missingCapability = (
   providerId: ProviderId,
@@ -437,6 +516,7 @@ interface ResolvedService {
   readonly resolution: ServiceTypeResolution;
   readonly baseDefaultIds: ReadonlyArray<string>;
   readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
+  readonly resolvedArtifactTag: string | undefined;
 }
 
 type PlannedServiceDraft = {
@@ -673,18 +753,26 @@ const planApp = (
       }
 
       const serviceTypeId = serviceTypeFor(name, service);
-      const serviceType = yield* pluginRegistry
-        .loadServiceType(serviceTypeId)
-        .pipe(
-          Effect.mapError(() =>
-            unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
-          ),
-        );
+      const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
+        Effect.mapError((error) =>
+          error instanceof ServiceTypeCollisionError
+            ? serviceTypeCollision(appRoot, name, error)
+            : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
+        ),
+      );
+
+      const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
+      // §6.11.2: the pinned tag becomes the service image so it flows into both
+      // the cache key (which folds normalizedConfig) and the legacy plan body
+      // (which reads service.image). The original authored image wins only when
+      // no version pin was requested.
+      const pinnedService: ServiceConfig =
+        resolvedArtifactTag === undefined ? service : { ...service, image: resolvedArtifactTag };
 
       const resolution = yield* serviceType
         .resolve({
           name,
-          service,
+          service: pinnedService,
           appRoot,
           appName,
           provider,
@@ -712,12 +800,13 @@ const planApp = (
 
       resolvedServices.push({
         name,
-        service,
+        service: pinnedService,
         authored,
         serviceType,
         resolution,
         baseDefaultIds,
         featureRefs,
+        resolvedArtifactTag,
       });
     }
 
@@ -741,6 +830,9 @@ const planApp = (
             base: entry.resolution.base,
             normalizedConfig: entry.resolution.normalizedConfig,
             featureRefs: entry.featureRefs,
+            ...(entry.resolvedArtifactTag === undefined
+              ? {}
+              : { resolvedArtifactTag: entry.resolvedArtifactTag }),
           })),
           appFeatures: appFeatures.map((entry) => ({
             id: entry.id,

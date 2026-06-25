@@ -1927,4 +1927,173 @@ describe("AppPlannerLive", () => {
       }
     });
   });
+
+  describe("service-type version pinning", () => {
+    test("resolves type name:version to name:version by convention when no artifacts entry exists", async () => {
+      await withTempCwd(async () => {
+        const appPlan = await plan({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("db")]: { type: "mariadb:10.11" },
+          },
+        });
+        expect(appPlan.services[ServiceName.make("db")]?.artifact).toEqual({
+          kind: "ref",
+          ref: "mariadb:10.11",
+        });
+      });
+    });
+
+    test("resolves a colon-bearing service type id as a whole exact match, not name:version", async () => {
+      await withTempCwd(async () => {
+        const appPlan = await plan({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: { type: "php:8.2" },
+          },
+        });
+        const webPlan = appPlan.services[ServiceName.make("web")];
+        expect(webPlan?.type).toBe("php:8.2");
+        expect(webPlan?.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
+      });
+    });
+
+    test("rolls the app-plan cache when a version pin changes", async () => {
+      await withTempCwd(async () => {
+        const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+        const cacheRoot = await mkdtemp(join(tmpdir(), "lando-pin-cache-"));
+        process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+        try {
+          const runPlan = (version: string) =>
+            Effect.runPromise(
+              Effect.flatMap(AppPlanner, (appPlanner) =>
+                appPlanner.plan(
+                  {
+                    name: "myapp",
+                    runtime: 4,
+                    services: { [ServiceName.make("db")]: { type: `mariadb:${version}` } },
+                  },
+                  providerLandoCapabilities,
+                ),
+              ).pipe(
+                Effect.provide(AppPlannerLive),
+                Effect.provide(PluginRegistryLive),
+                Effect.provide(CacheServiceLive),
+              ),
+            );
+          const first = await runPlan("10.11");
+          const second = await runPlan("11.4");
+          expect(first.services[ServiceName.make("db")]?.artifact).toEqual({
+            kind: "ref",
+            ref: "mariadb:10.11",
+          });
+          expect(second.services[ServiceName.make("db")]?.artifact).toEqual({
+            kind: "ref",
+            ref: "mariadb:11.4",
+          });
+        } finally {
+          if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+          else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+          await rm(cacheRoot, { recursive: true, force: true });
+        }
+      });
+    });
+
+    test("resolves an exact artifacts entry over the name:version convention", async () => {
+      const pinnedType: ServiceType = {
+        ...makeLegacyServiceTypeFake({
+          id: "fake-db",
+          base: "lando",
+          toServicePlan: ({
+            name,
+            service,
+            provider = ProviderId.make("lando"),
+            primary = false,
+            metadata,
+          }) =>
+            Schema.decodeUnknownSync(ServicePlan)({
+              name: ServiceName.make(name),
+              type: "fake-db",
+              provider,
+              primary,
+              artifact: { kind: "ref", ref: service.image ?? "fake-db:latest" },
+              environment: {},
+              mounts: [],
+              storage: [],
+              endpoints: [],
+              routes: [],
+              dependsOn: [],
+              hostAliases: [],
+              metadata,
+              extensions: {},
+            }),
+        }),
+        versions: ["1.0", "2.0"],
+        artifacts: { "1.0": "registry.example.com/fake-db:1.0-hardened" },
+      };
+      const registry = {
+        ...customPluginRegistry,
+        loadServiceType: (id: string) =>
+          id === "fake-db"
+            ? Effect.succeed(pinnedType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      await withTempCwd(async () => {
+        const exactPin = await Effect.runPromise(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(
+              {
+                name: "myapp",
+                runtime: 4,
+                services: { [ServiceName.make("db")]: { type: "fake-db:1.0" } },
+              },
+              providerLandoCapabilities,
+            ),
+          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        );
+        expect(exactPin.services[ServiceName.make("db")]?.artifact).toEqual({
+          kind: "ref",
+          ref: "registry.example.com/fake-db:1.0-hardened",
+        });
+
+        const conventionPin = await Effect.runPromise(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(
+              {
+                name: "myapp",
+                runtime: 4,
+                services: { [ServiceName.make("db")]: { type: "fake-db:2.0" } },
+              },
+              providerLandoCapabilities,
+            ),
+          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        );
+        expect(conventionPin.services[ServiceName.make("db")]?.artifact).toEqual({
+          kind: "ref",
+          ref: "fake-db:2.0",
+        });
+
+        const unsupported = await Effect.runPromiseExit(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(
+              {
+                name: "myapp",
+                runtime: 4,
+                services: { [ServiceName.make("db")]: { type: "fake-db:9.9" } },
+              },
+              providerLandoCapabilities,
+            ),
+          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        );
+        const failure = expectSomeFailure(unsupported);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        expect((failure as LandofileValidationError).message).toContain("unsupported version");
+      });
+    });
+  });
 });

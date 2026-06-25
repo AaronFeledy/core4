@@ -7,9 +7,10 @@ import { type Context, Effect, Either, Layer, Schema } from "effect";
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
-import type { AppFeatureDefinition } from "@lando/sdk/services";
+import type { AppFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { findAppRoot } from "../landofile/discovery.ts";
+import { composeExtendedServiceType } from "../services/extends.ts";
 import { BUNDLED_PLUGINS } from "./bundled.ts";
 import { readInstalledPluginRegistry } from "./installed-registry.ts";
 
@@ -328,6 +329,15 @@ const systemPlugins: ReadonlyArray<DiscoveredPlugin> = BUNDLED_PLUGINS.map((plug
   manifest: plugin.manifest,
 }));
 
+const findBundledServiceType = (id: string, disabled: ReadonlySet<string>): ServiceType | undefined => {
+  for (const bundledPlugin of BUNDLED_PLUGINS) {
+    if (disabled.has(bundledPlugin.manifest.name)) continue;
+    const serviceType = bundledPlugin.serviceTypes?.get(id);
+    if (serviceType !== undefined) return serviceType;
+  }
+  return undefined;
+};
+
 const makePluginRegistry = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   logger: Context.Tag.Service<typeof Logger> | undefined,
@@ -385,20 +395,18 @@ const makePluginRegistry = (
         );
       }
 
-      for (const bundledPlugin of BUNDLED_PLUGINS) {
-        if (disabled.has(bundledPlugin.manifest.name)) continue;
-        const serviceType = bundledPlugin.serviceTypes?.get(id);
-
-        if (serviceType !== undefined) {
-          return Effect.succeed(serviceType);
-        }
+      const serviceType = findBundledServiceType(id, disabled);
+      if (serviceType === undefined) {
+        return Effect.fail(
+          new PluginLoadError({
+            message: `Bundled service type ${id} is not registered.`,
+            pluginName: "@lando/core",
+          }),
+        );
       }
 
-      return Effect.fail(
-        new PluginLoadError({
-          message: `Bundled service type ${id} is not registered.`,
-          pluginName: "@lando/core",
-        }),
+      return composeExtendedServiceType(serviceType, (parentId) =>
+        findBundledServiceType(parentId, disabled),
       );
     },
     loadServiceFeature: (id) => {
