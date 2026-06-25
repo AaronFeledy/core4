@@ -1540,6 +1540,7 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     mounts: [] as ServiceMountIntent[],
     appMounts: [] as ServiceAppMountIntent[],
     buildSteps: [] as ServiceBuildStepIntent[],
+    extensions: new Map<string, unknown>(),
     storage: [] as unknown[],
     endpoints: [] as unknown[],
     dependencies: [] as unknown[],
@@ -1568,6 +1569,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     },
     addBuildStep(step) {
       recorded.buildSteps.push(step);
+    },
+    addExtension(key, value) {
+      recorded.extensions.set(key, value);
     },
     addStorage(storage) {
       recorded.storage.push(storage);

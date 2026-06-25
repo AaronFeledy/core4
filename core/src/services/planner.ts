@@ -62,7 +62,6 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
-import { legacyServicePlan } from "./legacy-service-plan.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -271,7 +270,7 @@ export const FILE_SYNC_DEFAULT_EXCLUDES: ReadonlyArray<string> = ["node_modules"
 
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 
-const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
+export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return servicePlan;
   const seen = new Set<string>();
@@ -465,7 +464,7 @@ const expandExcludesToShadows = (
   return { servicePlan: nextPlan, shadowStores };
 };
 
-const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.appMount;
   if (authored === undefined) return servicePlan;
   if (authored === false) return servicePlan;
@@ -484,7 +483,7 @@ const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig)
   return { ...servicePlan, appMount: merged };
 };
 
-const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.healthcheck;
   if (authored === undefined) return servicePlan;
   const existing = servicePlan.healthcheck;
@@ -660,7 +659,7 @@ const planApp = (
   const appId = AppId.make(appName);
   const host = resolveHostFacts();
   const resolvedAt = new Date().toISOString();
-  const legacyMetadata = {
+  const encodedMetadata = {
     resolvedAt,
     source: `${appRoot}/.lando.yml`,
     runtime: 4 as const,
@@ -777,7 +776,7 @@ const planApp = (
           appName,
           provider,
           primary: name === "web",
-          metadata: legacyMetadata,
+          metadata: encodedMetadata,
           host,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
@@ -859,58 +858,46 @@ const planApp = (
     // resolutions, then run the app-feature pass and finalization.
     const plannedServiceDrafts: PlannedServiceDraft[] = [];
     for (const { name, service, authored, serviceType, resolution, baseDefaultIds } of resolvedServices) {
-      const rawPlan =
-        resolution.features.length === 0
-          ? yield* Effect.try({
-              try: () =>
-                legacyServicePlan(serviceType, {
-                  name,
-                  service,
-                  appRoot,
-                  appName,
-                  provider,
-                  primary: name === "web",
-                  metadata: legacyMetadata,
-                  host,
-                }),
-              catch: (cause) => servicePlanError(appRoot, name, cause),
-            })
-          : yield* Effect.gen(function* () {
-              const features = yield* Effect.forEach(resolution.features, (featureRef) =>
-                pluginRegistry.loadServiceFeature(featureRef.id).pipe(
-                  Effect.map(
-                    (definition): ComposeServiceFeature => ({
-                      id: featureRef.id,
-                      ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-                      definition,
-                    }),
-                  ),
-                  Effect.mapError((error) => servicePlanError(appRoot, name, error)),
-                ),
-              );
-              const defaultFeatures = yield* Effect.forEach(baseDefaultIds, (id) =>
-                pluginRegistry
-                  .loadServiceFeature(id)
-                  .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error))),
-              );
-              return yield* composeService({
-                base: {
-                  name: ServiceName.make(name),
-                  type: serviceType.id,
-                  provider,
-                  primary: name === "web",
-                  ...(resolution.normalizedConfig.environment === undefined
-                    ? {}
-                    : { environment: resolution.normalizedConfig.environment }),
-                  defaultFeatures,
-                },
-                baseKind: resolution.base,
-                appName,
-                appRoot,
-                normalizedConfig: resolution.normalizedConfig,
-                features,
-              }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
-            });
+      const rawPlan = yield* Effect.gen(function* () {
+        const features = yield* Effect.forEach(resolution.features, (featureRef) =>
+          pluginRegistry.loadServiceFeature(featureRef.id).pipe(
+            Effect.map(
+              (definition): ComposeServiceFeature => ({
+                id: featureRef.id,
+                ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+                definition,
+              }),
+            ),
+            Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+          ),
+        );
+        const defaultFeatures = yield* Effect.forEach(baseDefaultIds, (id) =>
+          pluginRegistry
+            .loadServiceFeature(id)
+            .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error))),
+        );
+        return yield* composeService({
+          base: {
+            name: ServiceName.make(name),
+            // Versioned service-type ids (e.g. `elasticsearch:8`) resolve to a
+            // canonical plan type (`elasticsearch`); honor the resolution's
+            // normalized type, falling back to the registered id.
+            type: resolution.normalizedConfig.type ?? serviceType.id,
+            provider,
+            primary: resolution.normalizedConfig.primary ?? name === "web",
+            ...(resolution.normalizedConfig.environment === undefined
+              ? {}
+              : { environment: resolution.normalizedConfig.environment }),
+            defaultFeatures,
+          },
+          baseKind: resolution.base,
+          appName,
+          appRoot,
+          host,
+          normalizedConfig: resolution.normalizedConfig,
+          features,
+        }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+      });
       const servicePlan = applyAuthoredHealthcheck(
         applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service),
         service,
@@ -1092,7 +1079,7 @@ const planApp = (
       ...(networking !== undefined ? { networking } : {}),
       stores: aggregatedStores,
       fileSync: fileSyncEntries,
-      metadata: legacyMetadata,
+      metadata: encodedMetadata,
       extensions: {},
       ...(() => {
         const requiredGlobalServices = [

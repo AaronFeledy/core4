@@ -1,13 +1,16 @@
-import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { basename } from "node:path";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { Effect, Schema } from "effect";
+
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const DEFAULT_PORT = 7700;
 const DATA_TARGET = PortablePath.make("/meili_data");
+
+export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";
 
 /**
  * Dev-environment default master key, deterministic so users can hit
@@ -23,74 +26,82 @@ export const MEILISEARCH_DEFAULT_MASTER_KEY = "lando" as const;
 
 export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
 
-export const meilisearch1ServiceType: LegacyServiceType = defineLegacyServiceType({
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
+
+const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const appName = appNameFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.addEnv("MEILI_MASTER_KEY", MEILISEARCH_DEFAULT_MASTER_KEY);
+  ctx.addEnv("MEILI_NO_ANALYTICS", "true");
+  ctx.addEnv("MEILI_ENV", "development");
+  ctx.addEnv("MEILI_HTTP_ADDR", `0.0.0.0:${port}`);
+  ctx.addStorage({
+    store: `${appName}-meilisearch-data`,
+    target: DATA_TARGET,
+    readOnly: false,
+  });
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["sh", "-c", `curl -sf http://localhost:${port}/health`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 30,
+  });
+
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  if (service.command !== undefined) ctx.setCommand(service.command);
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  if (service.user !== undefined) ctx.setUser(service.user);
+};
+
+export const meilisearchServiceFeature: ServiceFeatureDefinition = {
+  id: MEILISEARCH_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: 600,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyMeilisearchFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "meilisearch service feature failed to apply",
+          feature: MEILISEARCH_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const resolveMeilisearchService: ServiceType["resolve"] = (input) =>
+  Effect.succeed({
+    base: "lando",
+    normalizedConfig: { ...input.service, type: "meilisearch" },
+    features: [{ id: MEILISEARCH_FEATURE_ID }],
+  });
+
+export const meilisearch1ServiceType: ServiceType = {
   id: "meilisearch:1",
-  toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
-    const appName = appNameFor(input);
-
-    const port = service.port ?? DEFAULT_PORT;
-
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "meilisearch",
-      appName,
-      host,
-      extraDefaults: {
-        MEILI_MASTER_KEY: MEILISEARCH_DEFAULT_MASTER_KEY,
-        MEILI_NO_ANALYTICS: "true",
-        MEILI_ENV: "development",
-        MEILI_HTTP_ADDR: `0.0.0.0:${port}`,
-      },
-      userEnv: service.environment ?? {},
-    });
-
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "meilisearch",
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: [],
-      storage: [
-        {
-          store: `${appName}-meilisearch-data`,
-          target: DATA_TARGET,
-          readOnly: false,
-        },
-      ],
-      endpoints: [{ port, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["sh", "-c", `curl -sf http://localhost:${port}/health`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 30,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+  name: "meilisearch",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: resolveMeilisearchService,
+};
 
 /** Alias: `type: meilisearch` resolves to the meilisearch:1 image line. */
-export const meilisearchServiceType: LegacyServiceType = defineLegacyServiceType({
+export const meilisearchServiceType: ServiceType = {
   id: "meilisearch",
-  toServicePlan: (input) =>
-    meilisearch1ServiceType.__legacyToServicePlan({
-      ...input,
-      service: { ...input.service },
-    }),
-});
+  name: "meilisearch",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: resolveMeilisearchService,
+};

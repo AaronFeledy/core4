@@ -15,6 +15,7 @@ import {
 import { Effect, Schema } from "effect";
 
 import { valkeyServiceType } from "../src/services/valkey.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("valkeyinttest");
@@ -115,10 +116,11 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
         if (service === undefined) throw new Error("cache service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const cache = valkeyServiceType.__legacyToServicePlan({
-          name: "cache",
+        const cache = await composeServicePlan({
+          serviceType: valkeyServiceType,
           service,
           appRoot: appRootStr,
+          serviceName: "cache",
           metadata,
         });
         const plan: AppPlan = {

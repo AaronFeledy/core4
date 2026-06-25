@@ -15,6 +15,7 @@ import {
 import { Effect, Schema } from "effect";
 
 import { opensearch2ServiceType } from "../src/services/opensearch.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("osinttest");
@@ -63,10 +64,11 @@ describe("opensearch service type — live integration: cluster health endpoint"
         if (service === undefined) throw new Error("search service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const search = opensearch2ServiceType.__legacyToServicePlan({
-          name: "search",
+        const search = await composeServicePlan({
+          serviceType: opensearch2ServiceType,
           service,
           appRoot: appRootStr,
+          serviceName: "search",
           metadata,
         });
         const plan: AppPlan = {

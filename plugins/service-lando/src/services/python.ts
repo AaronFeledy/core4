@@ -1,9 +1,8 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
@@ -11,7 +10,11 @@ export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
 export const SUPPORTED_PYTHON_FRAMEWORKS = ["django", "fastapi", "flask", "none"] as const;
 export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[number];
 
+export const PYTHON_FEATURE_ID = "service-lando.python" as const;
+export const PYTHON_FEATURE_PRIORITY = 600;
+
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
 
 interface FrameworkPreset {
   readonly port: number;
@@ -41,6 +44,14 @@ const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, FrameworkPreset> = {
     env: new Map(),
   },
 };
+
+const PythonFeatureConfigSchema = Schema.Struct({
+  framework: Schema.Literal(...SUPPORTED_PYTHON_FRAMEWORKS),
+  version: Schema.Literal(...SUPPORTED_PYTHON_VERSIONS),
+  port: Schema.Number,
+  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+});
+type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_PYTHON_VERSIONS.map((v) => `python:${v}`).join(", ")} (got python:${requested}).`;
@@ -80,84 +91,123 @@ const validateVersion = (
   throw new Error(`Unsupported Python version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
+const configFor = (ctx: ServiceFeatureContext): PythonFeatureConfig => ctx.config as PythonFeatureConfig;
 
-const makePythonServiceType = (version: SupportedPythonVersion): LegacyServiceType =>
-  defineLegacyServiceType({
-    id: `python:${version}`,
-    toServicePlan: (input) => {
-      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-      const resolvedVersion = validateVersion(service.type, version);
-      const framework = validateFramework(service.framework);
-      const preset = FRAMEWORK_PRESETS[framework];
-      const appName = appNameFor(input);
-      const serviceType = `python:${resolvedVersion}`;
-      const environment = buildLandoEnv({
-        serviceName: name,
-        serviceType,
-        appName,
-        appPaths: { appRoot: "/app", projectMount: "/app" },
-        host,
-        extraDefaults: frameworkDefaults(framework),
-        userEnv: service.environment ?? {},
-      });
-      const endpointPort = service.port ?? preset.port;
+const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const { framework, version, port, defaultCommand } = configFor(ctx);
 
-      return decodeServicePlan({
-        name: ServiceName.make(name),
-        type: serviceType,
-        provider,
-        primary: service.primary ?? primary ?? name === "web",
-        artifact: { kind: "ref", ref: service.image ?? `python:${resolvedVersion}-slim` },
-        command: service.command ?? [...DEFAULT_KEEP_ALIVE],
-        entrypoint: service.entrypoint,
-        environment,
-        user: service.user,
-        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-        appMount: {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          excludes: ["__pycache__"],
-          includes: [],
-          realization: "passthrough",
-        },
-        mounts: [
-          {
-            type: "bind",
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: false,
-            realization: "passthrough",
-          },
-        ],
-        storage: [],
-        endpoints: [{ port: endpointPort, protocol: "http", name }],
-        routes: [],
-        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-          service: ServiceName.make(dependency),
-          condition: "started",
-        })),
-        healthcheck: {
-          kind: "command",
-          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 10,
-        },
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "lando-service-python": {
-            framework,
-            version: resolvedVersion,
-            defaultCommand: preset.defaultCommand,
-            port: endpointPort,
-          },
-        },
-      });
-    },
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? `python:${version}-slim` });
+  for (const [key, value] of Object.entries(frameworkDefaults(framework))) {
+    ctx.addEnv(key, value);
+  }
+  ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  const appMount = {
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    excludes: ["__pycache__"],
+    includes: [],
+    realization: "passthrough",
+  };
+  ctx.setAppMount(appMount);
+  const mount = {
+    type: "bind" as const,
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    realization: "passthrough",
+  };
+  ctx.addMount(mount);
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 10,
   });
 
-export const python312ServiceType: LegacyServiceType = makePythonServiceType("3.12");
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  ctx.addExtension("lando-service-python", {
+    framework,
+    version,
+    defaultCommand: defaultCommand ?? null,
+    port,
+  });
+};
+
+export const pythonServiceFeature: ServiceFeatureDefinition = {
+  id: PYTHON_FEATURE_ID,
+  schema: PythonFeatureConfigSchema as Schema.Schema<unknown>,
+  priority: PYTHON_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyPythonFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.python failed to apply",
+          feature: PYTHON_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const normalizedService = (
+  service: ServiceConfig,
+  resolvedVersion: SupportedPythonVersion,
+): ServiceConfig => ({
+  ...service,
+  type: `python:${resolvedVersion}`,
+});
+
+export const makePythonServiceType = (version: SupportedPythonVersion): ServiceType => ({
+  id: `python:${version}`,
+  name: `python:${version}`,
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.try({
+      try: () => {
+        const resolvedVersion = validateVersion(input.service.type, version);
+        const framework = validateFramework(input.service.framework);
+        const preset = FRAMEWORK_PRESETS[framework];
+        const endpointPort = input.service.port ?? preset.port;
+
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          features: [
+            {
+              id: PYTHON_FEATURE_ID,
+              config: {
+                framework,
+                version: resolvedVersion,
+                port: endpointPort,
+                defaultCommand: preset.defaultCommand,
+              },
+            },
+            {
+              id: "lando.env",
+              config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+            },
+          ],
+        };
+      },
+      catch: (cause) =>
+        new ServiceTypeError({
+          message: cause instanceof Error ? cause.message : `Failed to resolve python:${version}`,
+          serviceType: `python:${version}`,
+          cause,
+        }),
+    }),
+});
+
+export const python312ServiceType: ServiceType = makePythonServiceType("3.12");

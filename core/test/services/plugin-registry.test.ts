@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
+import type { ServiceTypeInput } from "@lando/core/services";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 import { PluginRegistryLive, makePluginRegistryLive } from "../../src/plugins/registry.ts";
 import {
@@ -277,7 +278,11 @@ describe("PluginRegistryLive", () => {
           "example:custom",
           {
             id: "example:custom",
-            __legacyToServicePlan: () => Effect.die("not needed"),
+            name: "example:custom",
+            base: "lando",
+            schema: Schema.Unknown,
+            resolve: (input: ServiceTypeInput) =>
+              Effect.succeed({ base: "lando" as const, normalizedConfig: input.service, features: [] }),
           },
         ],
       ]),

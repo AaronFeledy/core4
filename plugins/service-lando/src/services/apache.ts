@@ -1,77 +1,89 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
-export const apacheServiceType: LegacyServiceType = defineLegacyServiceType({
-  id: "apache",
-  toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-    const appName = appNameFor(input);
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "apache",
-      appName,
-      appPaths: { appRoot: "/app", projectMount: "/app" },
-      webroot: "/app",
-      host,
-      extraDefaults: { APACHE_DOCUMENT_ROOT: "/app" },
-      userEnv: service.environment ?? {},
-    });
-    const endpointPort = service.port ?? DEFAULT_PORT;
+export const APACHE_FEATURE_ID = "service-lando.apache" as const;
+export const APACHE_FEATURE_PRIORITY = 600;
 
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "apache",
-      provider,
-      primary: service.primary ?? primary ?? name === "web",
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      user: service.user,
-      workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: APP_MOUNT_TARGET,
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [
+const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.addEnv("APACHE_DOCUMENT_ROOT", "/app");
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  const appMount = {
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    excludes: [],
+    includes: [],
+    realization: "passthrough" as const,
+  };
+  const bindMount = {
+    type: "bind" as const,
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    realization: "passthrough" as const,
+  };
+  ctx.setAppMount(appMount);
+  ctx.addMount(bindMount);
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 10,
+  });
+
+  if (service.command !== undefined) ctx.setCommand(service.command);
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+};
+
+export const apacheServiceFeature: ServiceFeatureDefinition = {
+  id: APACHE_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: APACHE_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyApacheFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.apache failed to apply",
+          feature: APACHE_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+export const apacheServiceType: ServiceType = {
+  id: "apache",
+  name: "apache",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "lando" as const,
+      normalizedConfig: { ...input.service, type: "apache" },
+      features: [
+        { id: APACHE_FEATURE_ID },
         {
-          type: "bind",
-          source: appRoot,
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          realization: "passthrough",
+          id: "lando.env",
+          config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: "/app" },
         },
       ],
-      storage: [],
-      endpoints: [{ port: endpointPort, protocol: "http", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["sh", "-c", `nc -z 127.0.0.1 ${endpointPort}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 10,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+    }),
+};

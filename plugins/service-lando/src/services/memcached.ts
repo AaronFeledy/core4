@@ -1,59 +1,63 @@
-import { ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "memcached:1.6";
 const DEFAULT_PORT = 11211;
+export const MEMCACHED_FEATURE_ID = "service-lando.memcached";
 
-export const memcachedServiceType: LegacyServiceType = defineLegacyServiceType({
+const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setCommand(service.command ?? ["memcached", "-p", String(port)]);
+  ctx.addEndpoint({ port, protocol: "tcp", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 30,
+  });
+
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  if (service.user !== undefined) ctx.setUser(service.user);
+};
+
+export const memcachedServiceFeature: ServiceFeatureDefinition = {
+  id: MEMCACHED_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: 600,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyMemcachedFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "memcached service feature failed to apply",
+          feature: MEMCACHED_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+export const memcachedServiceType: ServiceType = {
   id: "memcached",
-  toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
-    const appName = appNameFor(input);
-
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "memcached",
-      appName,
-      host,
-      userEnv: service.environment ?? {},
-    });
-
-    const port = service.port ?? DEFAULT_PORT;
-
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "memcached",
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command ?? ["memcached", "-p", String(port)],
-      entrypoint: service.entrypoint,
-      environment,
-      workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: [],
-      storage: [],
-      endpoints: [{ port, protocol: "tcp", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 30,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+  name: "memcached",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "lando",
+      normalizedConfig: { ...input.service, type: "memcached" },
+      features: [{ id: MEMCACHED_FEATURE_ID }],
+    }),
+};

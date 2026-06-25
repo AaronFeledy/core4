@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import {
   CapabilityError,
@@ -24,6 +24,7 @@ import {
 } from "@lando/core/schema";
 import { AppPlanner, ConfigService, PluginRegistry } from "@lando/core/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
+import type { GlobalConfig } from "@lando/sdk/schema";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -114,11 +115,12 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   );
 
 const configLayer = (defaultProviderId: ProviderId | null) => {
-  const config = { defaultProviderId, telemetry: { enabled: false } };
+  const config: GlobalConfig = { defaultProviderId, telemetry: { enabled: false } };
   const load = Effect.succeed(config);
   return Layer.succeed(ConfigService, {
     load,
-    get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
+    get: <K extends keyof GlobalConfig>(key: K) =>
+      Effect.map(load, (loadedConfig): GlobalConfig[K] => loadedConfig[key]),
   });
 };
 
@@ -196,8 +198,16 @@ const customPluginRegistry = {
       new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
     );
   },
-  loadServiceFeature: (id: string) =>
-    Effect.fail(new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id })),
+  loadServiceFeature: (id: string) => {
+    const feature = [appMountOnlyServiceType.testFeature, socketOnlyServiceType.testFeature].find(
+      (candidate) => candidate.id === id,
+    );
+    return feature === undefined
+      ? Effect.fail(
+          new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+        )
+      : Effect.succeed(feature);
+  },
   loadAppFeature: (id: string) =>
     Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
 };
@@ -232,7 +242,7 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 
   const failure = Cause.failureOption(exit.cause);
   expect(failure._tag).toBe("Some");
-  return failure.value;
+  return Option.getOrThrow(failure);
 };
 
 describe("AppPlannerLive", () => {
@@ -293,7 +303,7 @@ describe("AppPlannerLive", () => {
     ]);
   });
 
-  test("suppresses per-app Mailpit env vars for global app services", async () => {
+  test("compose-based global service injects no LANDO_* env layer", async () => {
     const appPlan = await plan({
       name: "global",
       runtime: 4,
@@ -307,7 +317,11 @@ describe("AppPlannerLive", () => {
     });
 
     const mailpit = appPlan.services[ServiceName.make("mailpit")];
-    expect(mailpit?.environment.LANDO_APP_KIND).toBe("global");
+    const landoKeys = Object.keys(mailpit?.environment ?? {}).filter(
+      (key) => key === "LANDO" || key.startsWith("LANDO_"),
+    );
+    expect(landoKeys).toEqual([]);
+    expect(mailpit?.environment.LANDO_APP_KIND).toBeUndefined();
     expect(mailpit?.environment.LANDO_MAIL_HOST).toBeUndefined();
     expect(mailpit?.environment.LANDO_MAIL_PORT).toBeUndefined();
   });
@@ -370,7 +384,15 @@ describe("AppPlannerLive", () => {
               ]),
               load: () => Effect.die("not needed"),
               loadServiceType: () => Effect.succeed(cachedType),
-              loadServiceFeature: () => Effect.die("not used"),
+              loadServiceFeature: (id: string) =>
+                id === cachedType.testFeature.id
+                  ? Effect.succeed(cachedType.testFeature)
+                  : Effect.fail(
+                      new PluginLoadError({
+                        message: `Service feature ${id} is not registered.`,
+                        pluginName: id,
+                      }),
+                    ),
               loadAppFeature: () => Effect.die("not used"),
             }),
           ),
@@ -626,62 +648,6 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("preserves service routes across the app-feature draft round-trip", async () => {
-    await withTempCwd(async () => {
-      const routedServiceType = makeLegacyServiceTypeFake({
-        id: "routed",
-        toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
-          Schema.decodeUnknownSync(ServicePlan)({
-            name: ServiceName.make(name),
-            type: "routed",
-            provider,
-            primary,
-            environment: {},
-            mounts: [],
-            storage: [],
-            endpoints: [],
-            routes: [{ index: 7 }],
-            dependsOn: [],
-            hostAliases: [],
-            metadata,
-            extensions: {},
-          }),
-      });
-      const registry = {
-        ...customPluginRegistry,
-        list: Effect.succeed([
-          Schema.decodeUnknownSync(PluginManifest)({
-            name: PluginName.make("@example/routed"),
-            version: "1.0.0",
-            api: 4 as const,
-            contributes: { serviceTypes: [routedServiceType.id] },
-          }),
-        ]),
-        loadServiceType: (id: string) =>
-          id === routedServiceType.id
-            ? Effect.succeed(routedServiceType)
-            : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
-              ),
-      };
-
-      const appPlan = await Effect.runPromise(
-        Effect.flatMap(AppPlanner, (appPlanner) =>
-          appPlanner.plan(
-            {
-              name: "myapp",
-              runtime: 4,
-              services: { [ServiceName.make("web")]: { type: routedServiceType.id } },
-            },
-            providerLandoCapabilities,
-          ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
-      );
-
-      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 7 }]);
-    });
-  });
-
   test("preserves existing service-feature build steps when app-features add build steps", async () => {
     await withTempCwd(async () => {
       const buildStepServiceType = makeLegacyServiceTypeFake({
@@ -739,6 +705,12 @@ describe("AppPlannerLive", () => {
             ? Effect.succeed(buildStepServiceType)
             : Effect.fail(
                 new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) =>
+          id === buildStepServiceType.testFeature.id
+            ? Effect.succeed(buildStepServiceType.testFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
@@ -1047,7 +1019,12 @@ describe("AppPlannerLive", () => {
         ]),
         load: () => Effect.die("not needed"),
         loadServiceType: () => Effect.succeed(serviceType),
-        loadServiceFeature: () => Effect.die("not used"),
+        loadServiceFeature: (id: string) =>
+          id === serviceType.testFeature.id
+            ? Effect.succeed(serviceType.testFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              ),
         loadAppFeature: () => Effect.die("not used"),
       };
       const appPlan = await Effect.runPromise(
@@ -1732,6 +1709,86 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("seeds composed services with normalized primary, host facts, and deduped base defaults", async () => {
+    await withTempCwd(async () => {
+      const duplicatedDefaultId = LANDO_BASE_DEFAULT_FEATURE_IDS[0] ?? "lando.user-id";
+      let duplicatedFeatureApplications = 0;
+      const baseDefaultFeatures = new Map<string, ServiceFeatureDefinition>(
+        LANDO_BASE_DEFAULT_FEATURE_IDS.map((id, index) => [
+          id,
+          {
+            id,
+            priority: 100 + index,
+            apply: (ctx) =>
+              Effect.sync(() => {
+                if (id === duplicatedDefaultId) {
+                  duplicatedFeatureApplications += 1;
+                  ctx.addEnv("LANDO_HOST_OS", ctx.host?.os ?? "missing");
+                }
+              }),
+          },
+        ]),
+      );
+      const serviceType: ServiceType = {
+        id: "compose-seed-backed",
+        name: "compose-seed-backed",
+        base: "lando",
+        schema: Schema.Unknown,
+        resolve: (input) =>
+          Effect.succeed({
+            base: "lando" as const,
+            normalizedConfig: input.service,
+            features: [{ id: duplicatedDefaultId }],
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/compose-seed"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [serviceType.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) => {
+          const definition = baseDefaultFeatures.get(id);
+          return definition === undefined
+            ? Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              )
+            : Effect.succeed(definition);
+        },
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: {
+                [ServiceName.make("api")]: { type: serviceType.id, primary: true },
+              },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      const servicePlan = appPlan.services[ServiceName.make("api")];
+      expect(servicePlan?.primary).toBe(true);
+      expect(servicePlan?.environment.LANDO_HOST_OS).toBe(process.platform);
+      expect(duplicatedFeatureApplications).toBe(1);
+    });
+  });
+
   test("exposes base default feature ids to app-feature hasFeature activation", async () => {
     await withTempCwd(async () => {
       const baseOnlyFeatureId = LANDO_BASE_DEFAULT_FEATURE_IDS[1] ?? "lando.storage";
@@ -2005,7 +2062,6 @@ describe("AppPlannerLive", () => {
       const pinnedType: ServiceType = {
         ...makeLegacyServiceTypeFake({
           id: "fake-db",
-          base: "lando",
           toServicePlan: ({
             name,
             service,
@@ -2040,6 +2096,12 @@ describe("AppPlannerLive", () => {
             ? Effect.succeed(pinnedType)
             : Effect.fail(
                 new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) =>
+          id === pinnedType.testFeature.id
+            ? Effect.succeed(pinnedType.testFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
               ),
       };
 

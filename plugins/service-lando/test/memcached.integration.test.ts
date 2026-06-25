@@ -15,6 +15,7 @@ import {
 import { Effect, Schema } from "effect";
 
 import { memcachedServiceType } from "../src/services/memcached.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("memcachedinttest");
@@ -93,10 +94,11 @@ describe("memcached service type — live integration: text protocol set/get", (
         if (service === undefined) throw new Error("cache service missing");
 
         const appRoot = AbsolutePath.make(appRootStr);
-        const cache = memcachedServiceType.__legacyToServicePlan({
-          name: "cache",
+        const cache = await composeServicePlan({
+          serviceType: memcachedServiceType,
           service,
           appRoot: appRootStr,
+          serviceName: "cache",
           metadata,
         });
         const plan: AppPlan = {

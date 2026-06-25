@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import type { ServiceType } from "@lando/sdk/services";
 
 import {
+  GO_FEATURE_ID,
   SUPPORTED_GO_FRAMEWORKS,
   SUPPORTED_GO_VERSIONS,
   go122ServiceType,
   go123ServiceType,
+  goServiceFeature,
 } from "../src/services/go.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-27T20:00:00Z",
@@ -17,6 +21,7 @@ const metadata = {
 };
 
 const APP_ROOT = "/srv/apps/myapp";
+const featureOverrides = new Map([[GO_FEATURE_ID, goServiceFeature]]);
 
 const decodeService = (raw: unknown): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -26,6 +31,30 @@ const decodeService = (raw: unknown): ServiceConfig => {
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
+};
+
+const composeGoPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_ROOT): Promise<ServicePlan> =>
+  composeServicePlan({
+    serviceType,
+    service: decodeService(raw),
+    appRoot,
+    appName: "myapp",
+    serviceName: "web",
+    metadata,
+    featureOverrides,
+  });
+
+const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
+  let rejected = false;
+  await promise.then(
+    () => undefined,
+    (error: unknown) => {
+      rejected = true;
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(pattern);
+    },
+  );
+  expect(rejected).toBe(true);
 };
 
 describe("go ServiceType — supported versions and frameworks", () => {
@@ -39,15 +68,8 @@ describe("go ServiceType — supported versions and frameworks", () => {
 });
 
 describe("go:1.22 ServiceType", () => {
-  test("plans a default Go 1.22 web service with framework=none defaults", () => {
-    const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plans a default Go 1.22 web service with framework=none defaults", async () => {
+    const plan = await composeGoPlan(go122ServiceType, { type: "go:1.22" });
 
     expect(plan.type).toBe("go:1.22");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "golang:1.22" });
@@ -62,6 +84,7 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.mounts[0]?.type).toBe("bind");
     expect(plan.mounts[0]?.source).toBe(APP_ROOT);
     expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts[0]?.readOnly).toBe(false);
 
     expect(plan.endpoints).toEqual([{ port: 8080, protocol: "http", name: "web" }]);
 
@@ -74,19 +97,20 @@ describe("go:1.22 ServiceType", () => {
       startPeriodSeconds: 10,
     });
 
-    expect(plan.environment.LANDO).toBe("ON");
-    expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.environment.LANDO_APP_KIND).toBe("user");
-    expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
-    expect(plan.environment.LANDO_PROJECT).toBe("myapp");
-    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
-    expect(plan.environment.LANDO_SERVICE_API).toBe("4");
-    expect(plan.environment.LANDO_SERVICE_NAME).toBe("web");
-    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("go:1.22");
-
-    expect(plan.environment.GOPATH).toBe("/go");
-    expect(plan.environment.GOCACHE).toBe("/root/.cache/go-build");
-    expect(plan.environment.CGO_ENABLED).toBe("0");
+    expect(plan.environment).toMatchObject({
+      LANDO: "ON",
+      LANDO_APP_NAME: "myapp",
+      LANDO_APP_KIND: "user",
+      LANDO_APP_ROOT: "/app",
+      LANDO_PROJECT: "myapp",
+      LANDO_PROJECT_MOUNT: "/app",
+      LANDO_SERVICE_API: "4",
+      LANDO_SERVICE_NAME: "web",
+      LANDO_SERVICE_TYPE: "go:1.22",
+      GOPATH: "/go",
+      GOCACHE: "/root/.cache/go-build",
+      CGO_ENABLED: "0",
+    });
 
     expect(plan.extensions["lando-service-go"]).toEqual({
       framework: "none",
@@ -96,48 +120,38 @@ describe("go:1.22 ServiceType", () => {
     });
   });
 
-  test("derives appName from appRoot basename when no explicit appName is provided", () => {
-    const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
+  test("derives appName from appRoot basename when no explicit appName is provided", async () => {
+    const plan = await composeServicePlan({
+      serviceType: go122ServiceType,
+      service: decodeService({ type: "go:1.22" }),
       appRoot: "/srv/apps/anotherapp",
+      serviceName: "web",
       metadata,
+      featureOverrides,
     });
+
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
 
-  test("user environment overrides go defaults but cannot override LANDO_*", () => {
-    const service = decodeService({
+  test("user environment overrides go defaults but cannot override LANDO_*", async () => {
+    const plan = await composeGoPlan(go122ServiceType, {
       type: "go:1.22",
       environment: { CGO_ENABLED: "1", FOO: "bar" },
     });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
 
-    expect(plan.environment.CGO_ENABLED).toBe("1");
-    expect(plan.environment.FOO).toBe("bar");
-    expect(plan.environment.LANDO_PROJECT).toBe("myapp");
+    expect(plan.environment).toMatchObject({
+      CGO_ENABLED: "1",
+      FOO: "bar",
+      LANDO_PROJECT: "myapp",
+    });
   });
 
-  test("propagates user image override and custom port", () => {
-    const service = decodeService({
+  test("propagates user image override and custom port", async () => {
+    const plan = await composeGoPlan(go122ServiceType, {
       type: "go:1.22",
       image: "registry.example.com/golang:1.22-custom",
       port: 9090,
-    });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/golang:1.22-custom" });
@@ -146,126 +160,72 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.extensions["lando-service-go"]).toMatchObject({ port: 9090 });
   });
 
-  test("plan uses provider-neutral ServicePlan fields", () => {
-    const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plan uses provider-neutral ServicePlan fields", async () => {
+    const plan = await composeGoPlan(go122ServiceType, { type: "go:1.22" });
 
     expect(plan.extensions["lando-service-go"]).toBeDefined();
-    expect(plan.artifact.kind).toBe("ref");
+    expect(plan.artifact?.kind).toBe("ref");
     expect(plan.endpoints[0]?.protocol).toBe("http");
+    expect(plan.endpoints[0]?.name).toBe("web");
     expect(plan.healthcheck?.kind).toBe("command");
     expect(Object.keys(plan)).not.toContain("providers");
     expect(Object.keys(plan)).not.toContain("providerInfo");
   });
 
-  test("default command keeps the container alive so `lando go ...` tooling can exec into it", () => {
-    const service = decodeService({ type: "go:1.22" });
-    const plan = go122ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("default command keeps the container alive so `lando go ...` tooling can exec into it", async () => {
+    const plan = await composeGoPlan(go122ServiceType, { type: "go:1.22" });
 
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
   });
 
-  test("rejects framework values outside the supported set with remediation", () => {
-    const service = decodeService({ type: "go:1.22", framework: "echo" });
-    expect(() =>
-      go122ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported Go framework "echo"\./);
+  test("rejects framework values outside the supported set with remediation", async () => {
+    await expectRejectsToThrow(
+      composeGoPlan(go122ServiceType, { type: "go:1.22", framework: "echo" }),
+      /Unsupported Go framework "echo"\./,
+    );
 
-    expect(() =>
-      go122ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set framework to one of: none/);
+    await expectRejectsToThrow(
+      composeGoPlan(go122ServiceType, { type: "go:1.22", framework: "echo" }),
+      /Set framework to one of: none/,
+    );
   });
 
-  test("rejects unsupported Go versions with remediation", () => {
-    const service = decodeService({ type: "go:1.20" });
-    expect(() =>
-      go122ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported Go version "1.20"\./);
+  test("rejects unsupported Go versions with remediation", async () => {
+    await expectRejectsToThrow(
+      composeGoPlan(go122ServiceType, { type: "go:1.20" }),
+      /Unsupported Go version "1.20"\./,
+    );
 
-    expect(() =>
-      go122ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set type to one of: go:1.22, go:1.23/);
+    await expectRejectsToThrow(
+      composeGoPlan(go122ServiceType, { type: "go:1.20" }),
+      /Set type to one of: go:1.22, go:1.23/,
+    );
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys", () => {
-    const service = decodeService({
-      type: "go:1.22",
-      environment: { LANDO_PROJECT: "evil", FOO: "bar" },
-    });
-    expect(() =>
-      go122ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
+  test("rejects user environment that targets reserved LANDO_* keys", async () => {
+    await expectRejectsToThrow(
+      composeGoPlan(go122ServiceType, {
+        type: "go:1.22",
+        environment: { LANDO_PROJECT: "evil", FOO: "bar" },
       }),
-    ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+      /reserved LANDO_\* keys.*LANDO_PROJECT/,
+    );
   });
 });
 
 describe("go:1.23 ServiceType", () => {
-  test("plans a default Go 1.23 web service", () => {
-    const service = decodeService({ type: "go:1.23" });
-    const plan = go123ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plans a default Go 1.23 web service", async () => {
+    const plan = await composeGoPlan(go123ServiceType, { type: "go:1.23" });
 
     expect(plan.type).toBe("go:1.23");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "golang:1.23" });
     expect(plan.extensions["lando-service-go"]).toMatchObject({ version: "1.23" });
   });
 
-  test("rejects unsupported Go versions through go:1.23 with full Go-family remediation", () => {
-    const service = decodeService({ type: "go:1.21" });
-    expect(() =>
-      go123ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported Go version "1.21".*Set type to one of: go:1.22, go:1.23/);
+  test("rejects unsupported Go versions through go:1.23 with full Go-family remediation", async () => {
+    await expectRejectsToThrow(
+      composeGoPlan(go123ServiceType, { type: "go:1.21" }),
+      /Unsupported Go version "1.21".*Set type to one of: go:1.22, go:1.23/,
+    );
   });
 });

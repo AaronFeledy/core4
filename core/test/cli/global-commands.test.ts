@@ -207,7 +207,10 @@ const makeHarness = async (
     list: Effect.succeed([manifest]),
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
-    loadServiceFeature: () => Effect.die("not used"),
+    loadServiceFeature: (id: string) =>
+      id === fakeServiceType.testFeature.id
+        ? Effect.succeed(fakeServiceType.testFeature)
+        : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
   };
   const layer = Layer.mergeAll(

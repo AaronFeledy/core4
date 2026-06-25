@@ -3,7 +3,12 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { postgresServiceType } from "../src/services/postgres.ts";
+import {
+  POSTGRES_FEATURE_ID,
+  postgresServiceFeature,
+  postgresServiceType,
+} from "../src/services/postgres.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-15T08:00:00Z",
@@ -12,7 +17,7 @@ const metadata = {
 };
 
 describe("postgres ServiceType", () => {
-  test("plans a default Postgres service", () => {
+  test("plans a default Postgres service", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { db: { type: "postgres" } },
@@ -20,11 +25,14 @@ describe("postgres ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = postgresServiceType.__legacyToServicePlan({
-      name: "db",
+    const plan = await composeServicePlan({
+      serviceType: postgresServiceType,
       service,
       appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      serviceName: "db",
       metadata,
+      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
     });
 
     expect(plan.type).toBe("postgres");
@@ -41,7 +49,7 @@ describe("postgres ServiceType", () => {
     expect(plan.endpoints).toEqual([{ port: 5432, protocol: "tcp", name: "db" }]);
   });
 
-  test("propagates Postgres user overrides", () => {
+  test("propagates Postgres user overrides", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
@@ -58,11 +66,14 @@ describe("postgres ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("db")];
     if (service === undefined) throw new Error("db service missing");
 
-    const plan = postgresServiceType.__legacyToServicePlan({
-      name: "db",
+    const plan = await composeServicePlan({
+      serviceType: postgresServiceType,
       service,
       appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      serviceName: "db",
       metadata,
+      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:17" });

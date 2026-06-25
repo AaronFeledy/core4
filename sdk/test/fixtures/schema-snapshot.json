@@ -165,7 +165,10 @@
             "lando.env",
             "lando.app-mount",
             "lando.healthcheck",
-            "lando.user"
+            "lando.user",
+            "service-lando.compose",
+            "service-lando.php",
+            "service-lando.postgres"
           ],
           "serviceTypes": [
             "apache",

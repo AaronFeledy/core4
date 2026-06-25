@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import type { ServiceType } from "@lando/sdk/services";
 
 import {
+  RUBY_FEATURE_ID,
   SUPPORTED_RUBY_FRAMEWORKS,
   SUPPORTED_RUBY_VERSIONS,
   ruby33ServiceType,
+  rubyServiceFeature,
 } from "../src/services/ruby.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T00:00:00Z",
@@ -16,6 +20,7 @@ const metadata = {
 };
 
 const APP_ROOT = "/srv/apps/myapp";
+const featureOverrides = new Map([[RUBY_FEATURE_ID, rubyServiceFeature]]);
 
 const decodeService = (raw: unknown): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -25,6 +30,30 @@ const decodeService = (raw: unknown): ServiceConfig => {
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
+};
+
+const composeRubyPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_ROOT): Promise<ServicePlan> =>
+  composeServicePlan({
+    serviceType,
+    service: decodeService(raw),
+    appRoot,
+    appName: "myapp",
+    serviceName: "web",
+    metadata,
+    featureOverrides,
+  });
+
+const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
+  let rejected = false;
+  await promise.then(
+    () => undefined,
+    (error: unknown) => {
+      rejected = true;
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(pattern);
+    },
+  );
+  expect(rejected).toBe(true);
 };
 
 describe("ruby ServiceType — supported versions and frameworks", () => {
@@ -38,15 +67,8 @@ describe("ruby ServiceType — supported versions and frameworks", () => {
 });
 
 describe("ruby:3.3 ServiceType", () => {
-  test("plans a default Ruby 3.3 web service with framework=none defaults", () => {
-    const service = decodeService({ type: "ruby:3.3" });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plans a default Ruby 3.3 web service with framework=none defaults", async () => {
+    const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3" });
 
     expect(plan.type).toBe("ruby:3.3");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "ruby:3.3-slim" });
@@ -73,17 +95,19 @@ describe("ruby:3.3 ServiceType", () => {
       startPeriodSeconds: 10,
     });
 
-    expect(plan.environment.LANDO).toBe("ON");
-    expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.environment.LANDO_APP_KIND).toBe("user");
-    expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
-    expect(plan.environment.LANDO_PROJECT).toBe("myapp");
-    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
-    expect(plan.environment.LANDO_SERVICE_API).toBe("4");
-    expect(plan.environment.LANDO_SERVICE_NAME).toBe("web");
-    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("ruby:3.3");
-
-    expect(plan.environment.BUNDLE_PATH).toBe("vendor/bundle");
+    expect(plan.environment).toMatchObject({
+      LANDO: "ON",
+      LANDO_APP_NAME: "myapp",
+      LANDO_APP_KIND: "user",
+      LANDO_APP_ROOT: "/app",
+      LANDO_PROJECT: "myapp",
+      LANDO_PROJECT_MOUNT: "/app",
+      LANDO_SERVICE_API: "4",
+      LANDO_SERVICE_NAME: "web",
+      LANDO_SERVICE_TYPE: "ruby:3.3",
+      LANDO_WEBROOT: "/app",
+      BUNDLE_PATH: "vendor/bundle",
+    });
 
     expect(plan.extensions["lando-service-ruby"]).toEqual({
       framework: "none",
@@ -94,15 +118,8 @@ describe("ruby:3.3 ServiceType", () => {
     });
   });
 
-  test("framework=rails sets port 3000, rails server default command preset, public/ webroot, and rails env", () => {
-    const service = decodeService({ type: "ruby:3.3", framework: "rails" });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("framework=rails sets port 3000, rails server default command preset, public/ webroot, and rails env", async () => {
+    const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
@@ -120,30 +137,25 @@ describe("ruby:3.3 ServiceType", () => {
     });
   });
 
-  test("derives appName from appRoot basename when no explicit appName is provided", () => {
-    const service = decodeService({ type: "ruby:3.3" });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
+  test("derives appName from appRoot basename when no explicit appName is provided", async () => {
+    const plan = await composeServicePlan({
+      serviceType: ruby33ServiceType,
+      service: decodeService({ type: "ruby:3.3" }),
       appRoot: "/srv/apps/anotherapp",
+      serviceName: "web",
       metadata,
+      featureOverrides,
     });
+
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
 
-  test("user environment overrides framework defaults but cannot override LANDO_*", () => {
-    const service = decodeService({
+  test("user environment overrides framework defaults", async () => {
+    const plan = await composeRubyPlan(ruby33ServiceType, {
       type: "ruby:3.3",
       framework: "rails",
       environment: { RAILS_ENV: "production", FOO: "bar" },
-    });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
     });
 
     expect(plan.environment.RAILS_ENV).toBe("production");
@@ -151,18 +163,11 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.environment.LANDO_PROJECT).toBe("myapp");
   });
 
-  test("propagates user image override and custom port", () => {
-    const service = decodeService({
+  test("propagates user image override and custom port", async () => {
+    const plan = await composeRubyPlan(ruby33ServiceType, {
       type: "ruby:3.3",
       image: "registry.example.com/ruby:3.3-custom",
       port: 4000,
-    });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/ruby:3.3-custom" });
@@ -171,83 +176,48 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });
   });
 
-  test("plan uses provider-neutral ServicePlan fields", () => {
-    const service = decodeService({ type: "ruby:3.3", framework: "rails" });
-    const plan = ruby33ServiceType.__legacyToServicePlan({
-      name: "web",
-      service,
-      appRoot: APP_ROOT,
-      appName: "myapp",
-      metadata,
-    });
+  test("plan uses provider-neutral ServicePlan fields", async () => {
+    const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
     expect(plan.extensions["lando-service-ruby"]).toBeDefined();
-    expect(plan.artifact.kind).toBe("ref");
+    expect(plan.artifact?.kind).toBe("ref");
     expect(plan.endpoints[0]?.protocol).toBe("http");
     expect(plan.healthcheck?.kind).toBe("command");
     expect(Object.keys(plan)).not.toContain("providers");
     expect(Object.keys(plan)).not.toContain("providerInfo");
   });
 
-  test("rejects unsupported framework values with remediation", () => {
-    const service = decodeService({ type: "ruby:3.3", framework: "sinatra" });
-    expect(() =>
-      ruby33ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported Ruby framework "sinatra"\./);
+  test("rejects unsupported framework values with remediation", async () => {
+    await expectRejectsToThrow(
+      composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "sinatra" }),
+      /Unsupported Ruby framework "sinatra"\./,
+    );
 
-    expect(() =>
-      ruby33ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set framework to one of: rails, none/);
+    await expectRejectsToThrow(
+      composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "sinatra" }),
+      /Set framework to one of: rails, none/,
+    );
   });
 
-  test("rejects unsupported Ruby versions with remediation", () => {
-    const service = decodeService({ type: "ruby:3.2" });
-    expect(() =>
-      ruby33ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Unsupported Ruby version "3.2"\./);
+  test("rejects unsupported Ruby versions with remediation", async () => {
+    await expectRejectsToThrow(
+      composeRubyPlan(ruby33ServiceType, { type: "ruby:3.2" }),
+      /Unsupported Ruby version "3.2"\./,
+    );
 
-    expect(() =>
-      ruby33ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
-      }),
-    ).toThrow(/Set type to one of: ruby:3.3/);
+    await expectRejectsToThrow(
+      composeRubyPlan(ruby33ServiceType, { type: "ruby:3.2" }),
+      /Set type to one of: ruby:3.3/,
+    );
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys", () => {
-    const service = decodeService({
-      type: "ruby:3.3",
-      environment: { LANDO_PROJECT: "evil", FOO: "bar" },
-    });
-    expect(() =>
-      ruby33ServiceType.__legacyToServicePlan({
-        name: "web",
-        service,
-        appRoot: APP_ROOT,
-        appName: "myapp",
-        metadata,
+  test("rejects user environment that targets reserved LANDO_* keys", async () => {
+    await expectRejectsToThrow(
+      composeRubyPlan(ruby33ServiceType, {
+        type: "ruby:3.3",
+        environment: { LANDO_PROJECT: "evil", FOO: "bar" },
       }),
-    ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+      /reserved LANDO_\* keys.*LANDO_PROJECT/,
+    );
   });
 });

@@ -1,15 +1,23 @@
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { Effect, Schema } from "effect";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type {
+  ServiceAppMountIntent,
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceMountIntent,
+  ServiceType,
+} from "@lando/sdk/services";
 
 export const SUPPORTED_GO_VERSIONS = ["1.22", "1.23"] as const;
 export type SupportedGoVersion = (typeof SUPPORTED_GO_VERSIONS)[number];
 
 export const SUPPORTED_GO_FRAMEWORKS = ["none"] as const;
 export type SupportedGoFramework = (typeof SUPPORTED_GO_FRAMEWORKS)[number];
+
+export const GO_FEATURE_ID = "service-lando.go" as const;
+export const GO_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_PORT = 8080;
@@ -20,12 +28,23 @@ interface FrameworkPreset {
   readonly defaultCommand: ReadonlyArray<string> | null;
 }
 
+type PassthroughAppMount = ServiceAppMountIntent & { readonly realization: "passthrough" };
+type PassthroughMount = ServiceMountIntent & { readonly realization: "passthrough" };
+
 const FRAMEWORK_PRESETS: Record<SupportedGoFramework, FrameworkPreset> = {
   none: {
     port: DEFAULT_PORT,
     defaultCommand: null,
   },
 };
+
+const GoFeatureConfigSchema = Schema.Struct({
+  framework: Schema.Literal(...SUPPORTED_GO_FRAMEWORKS),
+  version: Schema.Literal(...SUPPORTED_GO_VERSIONS),
+  port: Schema.Number,
+  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+});
+type GoFeatureConfig = typeof GoFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_GO_VERSIONS.map((v) => `go:${v}`).join(", ")} (got go:${requested}).`;
@@ -60,83 +79,122 @@ const validateVersion = (
   throw new Error(`Unsupported Go version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const makeGoServiceType = (version: SupportedGoVersion): LegacyServiceType =>
-  defineLegacyServiceType({
-    id: `go:${version}`,
-    toServicePlan: (input) => {
-      const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
-      const resolvedVersion = validateVersion(service.type, version);
-      const framework = validateFramework(service.framework);
-      const preset = FRAMEWORK_PRESETS[framework];
-      const appName = appNameFor(input);
-      const serviceType = `go:${resolvedVersion}`;
-      const environment = buildLandoEnv({
-        serviceName: name,
-        serviceType,
-        appName,
-        appPaths: { appRoot: "/app", projectMount: "/app" },
-        host,
-        extraDefaults: frameworkDefaults(),
-        userEnv: service.environment ?? {},
-      });
-      const endpointPort = service.port ?? preset.port;
+const configFor = (ctx: ServiceFeatureContext): GoFeatureConfig => ctx.config as GoFeatureConfig;
 
-      return decodeServicePlan({
-        name: ServiceName.make(name),
-        type: serviceType,
-        provider,
-        primary: service.primary ?? primary ?? name === "web",
-        artifact: { kind: "ref", ref: service.image ?? `golang:${resolvedVersion}` },
-        command: service.command ?? [...DEFAULT_KEEP_ALIVE],
-        entrypoint: service.entrypoint,
-        environment,
-        user: service.user,
-        workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
-        appMount: {
-          source: AbsolutePath.make(appRoot),
-          target: APP_MOUNT_TARGET,
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-        mounts: [
-          {
-            type: "bind",
-            source: appRoot,
-            target: APP_MOUNT_TARGET,
-            readOnly: false,
-            realization: "passthrough",
-          },
-        ],
-        storage: [],
-        endpoints: [{ port: endpointPort, protocol: "http", name }],
-        routes: [],
-        dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-          service: ServiceName.make(dependency),
-          condition: "started",
-        })),
-        healthcheck: {
-          kind: "command",
-          command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 10,
-        },
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "lando-service-go": {
-            framework,
-            version: resolvedVersion,
-            defaultCommand: preset.defaultCommand,
-            port: endpointPort,
-          },
-        },
-      });
-    },
+const applyGoFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const { framework, version, port, defaultCommand } = configFor(ctx);
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? `golang:${version}` });
+  for (const [key, value] of Object.entries(frameworkDefaults())) {
+    ctx.addEnv(key, value);
+  }
+  const appMount: PassthroughAppMount = {
+    source: AbsolutePath.make(ctx.appRoot),
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    excludes: [],
+    includes: [],
+    realization: "passthrough" as const,
+  };
+  const bindMount: PassthroughMount = {
+    type: "bind" as const,
+    source: ctx.appRoot,
+    target: APP_MOUNT_TARGET,
+    readOnly: false,
+    realization: "passthrough" as const,
+  };
+
+  ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
+  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
+  if (service.user !== undefined) ctx.setUser(service.user);
+  ctx.setAppMount(appMount);
+  ctx.addMount(bindMount);
+  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 10,
   });
 
-export const go122ServiceType: LegacyServiceType = makeGoServiceType("1.22");
-export const go123ServiceType: LegacyServiceType = makeGoServiceType("1.23");
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  ctx.addExtension("lando-service-go", {
+    framework,
+    version,
+    defaultCommand: defaultCommand ?? null,
+    port,
+  });
+};
+
+export const goServiceFeature: ServiceFeatureDefinition = {
+  id: GO_FEATURE_ID,
+  schema: GoFeatureConfigSchema as Schema.Schema<unknown>,
+  priority: GO_FEATURE_PRIORITY,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyGoFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "service-lando.go failed to apply",
+          feature: GO_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedGoVersion): ServiceConfig => ({
+  ...service,
+  type: `go:${resolvedVersion}`,
+});
+
+const makeGoServiceType = (version: SupportedGoVersion): ServiceType => ({
+  id: `go:${version}`,
+  name: `go:${version}`,
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.try({
+      try: () => {
+        const resolvedVersion = validateVersion(input.service.type, version);
+        const framework = validateFramework(input.service.framework);
+        const preset = FRAMEWORK_PRESETS[framework];
+        const endpointPort = input.service.port ?? preset.port;
+
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          features: [
+            {
+              id: GO_FEATURE_ID,
+              config: {
+                framework,
+                version: resolvedVersion,
+                port: endpointPort,
+                defaultCommand: preset.defaultCommand,
+              },
+            },
+            {
+              id: "lando.env",
+              config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+            },
+          ],
+        };
+      },
+      catch: (cause) =>
+        new ServiceTypeError({
+          message: cause instanceof Error ? cause.message : `Failed to resolve go:${version}`,
+          serviceType: `go:${version}`,
+          cause,
+        }),
+    }),
+});
+
+export const go122ServiceType: ServiceType = makeGoServiceType("1.22");
+export const go123ServiceType: ServiceType = makeGoServiceType("1.23");

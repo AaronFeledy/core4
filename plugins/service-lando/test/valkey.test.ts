@@ -3,7 +3,8 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { valkeyServiceType } from "../src/services/valkey.ts";
+import { VALKEY_FEATURE_ID, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -11,7 +12,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const planValkeyService = (serviceDefinition: Record<string, unknown>) => {
+const planValkeyService = async (serviceDefinition: Record<string, unknown>) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "myapp",
     services: { cache: serviceDefinition },
@@ -19,17 +20,20 @@ const planValkeyService = (serviceDefinition: Record<string, unknown>) => {
   const service = landofile.services?.[ServiceName.make("cache")];
   if (service === undefined) throw new Error("cache service missing");
 
-  return valkeyServiceType.__legacyToServicePlan({
-    name: "cache",
+  return composeServicePlan({
+    serviceType: valkeyServiceType,
     service,
     appRoot: "/srv/apps/myapp",
+    appName: "myapp",
+    serviceName: "cache",
     metadata,
+    featureOverrides: new Map([[VALKEY_FEATURE_ID, valkeyServiceFeature]]),
   });
 };
 
 describe("valkey ServiceType", () => {
-  test("plans a default Valkey service with persistent data volume and TCP endpoint", () => {
-    const plan = planValkeyService({ type: "valkey" });
+  test("plans a default Valkey service with persistent data volume and TCP endpoint", async () => {
+    const plan = await planValkeyService({ type: "valkey" });
 
     expect(plan.type).toBe("valkey");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "valkey/valkey:8" });
@@ -38,10 +42,11 @@ describe("valkey ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-valkey-data");
     expect(String(plan.storage[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([{ port: 6379, protocol: "tcp", name: "cache" }]);
+    expect(plan.appMount).toBeUndefined();
   });
 
-  test("respects image, port, and command overrides", () => {
-    const plan = planValkeyService({
+  test("respects image, port, and command overrides", async () => {
+    const plan = await planValkeyService({
       type: "valkey",
       image: "valkey/valkey:7",
       port: 16379,
@@ -53,14 +58,14 @@ describe("valkey ServiceType", () => {
     expect(plan.endpoints[0]?.port).toBe(16379);
   });
 
-  test("default command tracks the overridden port", () => {
-    const plan = planValkeyService({ type: "valkey", port: 16379 });
+  test("default command tracks the overridden port", async () => {
+    const plan = await planValkeyService({ type: "valkey", port: 16379 });
 
     expect(plan.command).toEqual(["valkey-server", "--appendonly", "yes", "--port", "16379"]);
   });
 
-  test("includes a TCP healthcheck on the default port", () => {
-    const plan = planValkeyService({ type: "valkey" });
+  test("includes a TCP healthcheck on the default port", async () => {
+    const plan = await planValkeyService({ type: "valkey" });
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -72,34 +77,34 @@ describe("valkey ServiceType", () => {
     });
   });
 
-  test("TCP healthcheck tracks the overridden port", () => {
-    const plan = planValkeyService({ type: "valkey", port: 16379 });
+  test("TCP healthcheck tracks the overridden port", async () => {
+    const plan = await planValkeyService({ type: "valkey", port: 16379 });
 
     expect(plan.endpoints[0]?.port).toBe(16379);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/16379"]);
   });
 
-  test("sets LANDO environment variables for service context", () => {
-    const plan = planValkeyService({ type: "valkey" });
-
-    expect(plan.environment.LANDO).toBe("ON");
-    expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.environment.LANDO_SERVICE_NAME).toBe("cache");
-    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("valkey");
-  });
-
-  test("user environment variables merge into the plan environment", () => {
-    const plan = planValkeyService({
+  test("user environment variables merge into the plan environment", async () => {
+    const plan = await planValkeyService({
       type: "valkey",
       environment: { EXTRA_VAR: "extra" },
     });
 
-    expect(plan.environment.EXTRA_VAR).toBe("extra");
+    expect(plan.environment).toMatchObject({ EXTRA_VAR: "extra" });
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys", () => {
-    expect(() => planValkeyService({ type: "valkey", environment: { LANDO_SERVICE_NAME: "evil" } })).toThrow(
-      /reserved LANDO_\* keys.*LANDO_SERVICE_NAME/,
-    );
+  test("passes through dependencies and optional process fields", async () => {
+    const plan = await planValkeyService({
+      type: "valkey",
+      dependsOn: ["db"],
+      entrypoint: ["docker-entrypoint.sh"],
+      workingDirectory: "/data",
+      user: "valkey",
+    });
+
+    expect(plan.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
+    expect(plan.entrypoint).toEqual(["docker-entrypoint.sh"]);
+    expect(String(plan.workingDirectory)).toBe("/data");
+    expect(plan.user).toBe("valkey");
   });
 });

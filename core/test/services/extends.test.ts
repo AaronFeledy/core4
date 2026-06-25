@@ -21,11 +21,11 @@ const makeType = (
     readonly artifacts?: Record<string, string>;
     readonly versions?: ReadonlyArray<string>;
     readonly resolution?: (input: ServiceTypeInput) => ServiceTypeResolution;
-    readonly bridge?: boolean;
+    readonly marker?: boolean;
   } = {},
 ): ServiceType => {
   const base = options.base ?? "lando";
-  const type: ServiceType & { __legacyToServicePlan?: () => unknown } = {
+  const type: ServiceType & { privateMarker?: () => unknown } = {
     id,
     name: id,
     base,
@@ -36,7 +36,7 @@ const makeType = (
     resolve: (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
       Effect.succeed(options.resolution?.(input) ?? { base, normalizedConfig: input.service, features: [] }),
   };
-  if (options.bridge === true) type.__legacyToServicePlan = () => ({ marker: id });
+  if (options.marker === true) type.privateMarker = () => ({ marker: id });
   return type;
 };
 
@@ -86,7 +86,7 @@ describe("composeExtendedServiceType", () => {
     expect(env?.config).toEqual({ from: "child" });
   });
 
-  test("preserves the leaf's private legacy bridge and merges artifacts/versions", async () => {
+  test("preserves the leaf's private fields and merges artifacts/versions", async () => {
     const parent = makeType("mariadb", {
       artifacts: { "10.11": "mariadb:10.11", "10.5": "mariadb:10.5" },
       versions: ["10.11", "10.5"],
@@ -95,15 +95,15 @@ describe("composeExtendedServiceType", () => {
       extends: "mariadb",
       artifacts: { "10.11": "drupal/mariadb:10.11" },
       versions: ["10.11"],
-      bridge: true,
+      marker: true,
     });
     const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
 
     const composed = (await Effect.runPromise(composeExtendedServiceType(child, lookup))) as ServiceType & {
-      __legacyToServicePlan?: () => unknown;
+      privateMarker?: () => unknown;
     };
 
-    expect(typeof composed.__legacyToServicePlan).toBe("function");
+    expect(typeof composed.privateMarker).toBe("function");
     expect(composed.artifacts).toEqual({ "10.11": "drupal/mariadb:10.11", "10.5": "mariadb:10.5" });
     expect(composed.versions).toEqual(["10.11", "10.5"]);
   });

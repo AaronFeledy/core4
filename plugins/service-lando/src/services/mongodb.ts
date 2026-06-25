@@ -1,74 +1,81 @@
-import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { defineLegacyServiceType } from "./legacy.ts";
-import type { LegacyServiceType } from "./legacy.ts";
+import { basename } from "node:path";
 
-import { decodeServicePlan } from "./_schema-helpers.ts";
-import { appNameFor, buildLandoEnv } from "./env.ts";
+import { Effect, Schema } from "effect";
+
+import { ServiceFeatureError } from "@lando/sdk/errors";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "mongo:7";
 const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
+export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 
-export const mongodbServiceType: LegacyServiceType = defineLegacyServiceType({
+const appNameFor = (ctx: ServiceFeatureContext): string => {
+  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
+  return basename(ctx.appRoot) || "app";
+};
+
+const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
+  const service = ctx.normalizedConfig;
+  const appName = appNameFor(ctx);
+  const port = service.port ?? DEFAULT_PORT;
+
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.addEnv("MONGO_INITDB_ROOT_USERNAME", service.user ?? "lando");
+  ctx.addEnv("MONGO_INITDB_ROOT_PASSWORD", "lando");
+  ctx.addEnv("MONGO_INITDB_DATABASE", service.database ?? appName);
+  ctx.addStorage({
+    store: `${appName}-mongodb-data`,
+    target: DATA_TARGET,
+    readOnly: false,
+  });
+  ctx.addEndpoint({ port, protocol: "tcp", name: ctx.serviceName });
+
+  for (const dependency of service.dependsOn ?? []) {
+    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+  }
+
+  if (service.command !== undefined) ctx.setCommand(service.command);
+  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  if (service.user !== undefined) ctx.setUser(service.user);
+
+  ctx.setHealthcheck({
+    kind: "command",
+    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
+    intervalSeconds: 10,
+    timeoutSeconds: 5,
+    retries: 5,
+    startPeriodSeconds: 30,
+  });
+};
+
+export const mongodbServiceFeature: ServiceFeatureDefinition = {
+  id: MONGODB_FEATURE_ID,
+  schema: Schema.Unknown,
+  priority: 600,
+  apply: (ctx) =>
+    Effect.try({
+      try: () => applyMongodbFeature(ctx),
+      catch: (cause) =>
+        new ServiceFeatureError({
+          message: cause instanceof Error ? cause.message : "mongodb service feature failed to apply",
+          feature: MONGODB_FEATURE_ID,
+          cause,
+        }),
+    }),
+};
+
+export const mongodbServiceType: ServiceType = {
   id: "mongodb",
-  toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
-    const appName = appNameFor(input);
-    const user = service.user ?? "lando";
-    const password = "lando";
-    const database = service.database ?? appName;
-
-    const environment = buildLandoEnv({
-      serviceName: name,
-      serviceType: "mongodb",
-      appName,
-      host,
-      extraDefaults: {
-        MONGO_INITDB_ROOT_USERNAME: user,
-        MONGO_INITDB_ROOT_PASSWORD: password,
-        MONGO_INITDB_DATABASE: database,
-      },
-      userEnv: service.environment ?? {},
-    });
-
-    const port = service.port ?? DEFAULT_PORT;
-
-    return decodeServicePlan({
-      name: ServiceName.make(name),
-      type: "mongodb",
-      provider,
-      primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command,
-      entrypoint: service.entrypoint,
-      environment,
-      workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: [],
-      storage: [
-        {
-          store: `${appName}-mongodb-data`,
-          target: DATA_TARGET,
-          readOnly: false,
-        },
-      ],
-      endpoints: [{ port, protocol: "tcp", name }],
-      routes: [],
-      dependsOn: (service.dependsOn ?? []).map((dependency) => ({
-        service: ServiceName.make(dependency),
-        condition: "started",
-      })),
-      healthcheck: {
-        kind: "command",
-        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-        intervalSeconds: 10,
-        timeoutSeconds: 5,
-        retries: 5,
-        startPeriodSeconds: 30,
-      },
-      hostAliases: [],
-      metadata,
-      extensions: {},
-    });
-  },
-});
+  name: "mongodb",
+  base: "lando",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "lando",
+      normalizedConfig: { ...input.service, type: "mongodb" },
+      features: [{ id: MONGODB_FEATURE_ID }],
+    }),
+};

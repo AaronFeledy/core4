@@ -165,13 +165,6 @@ const mergeVersions = (chain: ReadonlyArray<ServiceType>): ReadonlyArray<string>
   return ordered.length === 0 ? undefined : ordered;
 };
 
-/**
- * Synthesize a `ServiceType` that resolves its `extends:` chain parent-first
- * per §6.11.1. The leaf type's identity, schema, and any private bridge keys
- * (e.g. the catalog's `__legacyToServicePlan`) are preserved by spreading it;
- * only `resolve`, `artifacts`, and `versions` are replaced with the merged
- * inheritance result. A type without `extends:` is returned unchanged.
- */
 export const composeExtendedServiceType = (
   leaf: ServiceType,
   lookup: (id: string) => ServiceType | undefined,

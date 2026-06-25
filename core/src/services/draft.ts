@@ -28,6 +28,7 @@ export interface DraftServicePlan {
   appMount?: ServiceAppMountIntent;
   mounts: ServiceMountIntent[];
   buildSteps: ServiceBuildStepIntent[];
+  extensions?: Record<string, unknown>;
   storage: Array<ServicePlan["storage"][number]>;
   endpoints: Array<ServicePlan["endpoints"][number]>;
   dependsOn: Array<ServicePlan["dependsOn"][number]>;

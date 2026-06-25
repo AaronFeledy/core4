@@ -3,7 +3,8 @@ import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { redisServiceType } from "../src/services/redis.ts";
+import { REDIS_FEATURE_ID, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -12,7 +13,7 @@ const metadata = {
 };
 
 describe("redis ServiceType", () => {
-  test("plans a default Redis service with persistent data volume and append-only command", () => {
+  test("plans a default Redis service with persistent data volume and append-only command", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { cache: { type: "redis" } },
@@ -20,11 +21,13 @@ describe("redis ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("cache")];
     if (service === undefined) throw new Error("cache service missing");
 
-    const plan = redisServiceType.__legacyToServicePlan({
-      name: "cache",
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
       service,
       appRoot: "/srv/apps/myapp",
+      serviceName: "cache",
       metadata,
+      featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
     });
 
     expect(plan.type).toBe("redis");
@@ -36,7 +39,7 @@ describe("redis ServiceType", () => {
     expect(plan.endpoints).toEqual([{ port: 6379, protocol: "tcp", name: "cache" }]);
   });
 
-  test("respects image, port, and command overrides", () => {
+  test("respects image, port, and command overrides", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
@@ -51,11 +54,13 @@ describe("redis ServiceType", () => {
     const service = landofile.services?.[ServiceName.make("cache")];
     if (service === undefined) throw new Error("cache service missing");
 
-    const plan = redisServiceType.__legacyToServicePlan({
-      name: "cache",
+    const plan = await composeServicePlan({
+      serviceType: redisServiceType,
       service,
       appRoot: "/srv/apps/myapp",
+      serviceName: "cache",
       metadata,
+      featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "redis:6-alpine" });

@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import type { ServiceType } from "@lando/sdk/services";
 
 import {
   MEILISEARCH_DEFAULT_MASTER_KEY,
+  MEILISEARCH_FEATURE_ID,
   MEILISEARCH_SERVICE_DESCRIPTION,
   meilisearch1ServiceType,
+  meilisearchServiceFeature,
+  meilisearchServiceType,
 } from "../src/services/meilisearch.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
   resolvedAt: "2026-05-28T00:00:00Z",
@@ -15,7 +20,9 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const planMeiliService = (serviceDefinition: Record<string, unknown>) => {
+const featureOverrides = new Map([[MEILISEARCH_FEATURE_ID, meilisearchServiceFeature]]);
+
+const planMeiliService = async (serviceType: ServiceType, serviceDefinition: Record<string, unknown>) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "myapp",
     services: { search: serviceDefinition },
@@ -23,105 +30,113 @@ const planMeiliService = (serviceDefinition: Record<string, unknown>) => {
   const service = landofile.services?.[ServiceName.make("search")];
   if (service === undefined) throw new Error("search service missing");
 
-  return meilisearch1ServiceType.__legacyToServicePlan({
-    name: "search",
+  return composeServicePlan({
+    serviceType,
     service,
     appRoot: "/srv/apps/myapp",
+    appName: "myapp",
+    serviceName: "search",
     metadata,
+    featureOverrides,
   });
 };
 
 describe("meilisearch ServiceType", () => {
-  test("plans a default Meilisearch 1 service with persistent data volume and HTTP endpoint", () => {
-    const plan = planMeiliService({ type: "meilisearch" });
+  for (const [id, serviceType] of [
+    ["meilisearch:1", meilisearch1ServiceType],
+    ["meilisearch", meilisearchServiceType],
+  ] as const) {
+    describe(id, () => {
+      test("plans a default Meilisearch service with persistent data volume and HTTP endpoint", async () => {
+        const plan = await planMeiliService(serviceType, { type: id });
 
-    expect(plan.type).toBe("meilisearch");
-    expect(plan.artifact).toEqual({
-      kind: "ref",
-      ref: "getmeili/meilisearch:v1.11",
+        expect(plan.type).toBe("meilisearch");
+        expect(plan.artifact).toEqual({
+          kind: "ref",
+          ref: "getmeili/meilisearch:v1.11",
+        });
+        expect(plan.command).toBeUndefined();
+        expect(plan.storage).toHaveLength(1);
+        expect(plan.storage[0]?.store).toBe("myapp-meilisearch-data");
+        expect(String(plan.storage[0]?.target)).toBe("/meili_data");
+        expect(plan.storage[0]?.readOnly).toBe(false);
+        expect(plan.endpoints).toEqual([{ port: 7700, protocol: "http", name: "search" }]);
+      });
+
+      test("seeds a deterministic dev master key and disables analytics by default", async () => {
+        const plan = await planMeiliService(serviceType, { type: id });
+
+        expect(plan.environment).toMatchObject({
+          MEILI_MASTER_KEY: MEILISEARCH_DEFAULT_MASTER_KEY,
+          MEILI_NO_ANALYTICS: "true",
+          MEILI_ENV: "development",
+          MEILI_HTTP_ADDR: "0.0.0.0:7700",
+        });
+      });
+
+      test("respects image and port overrides", async () => {
+        const plan = await planMeiliService(serviceType, {
+          type: id,
+          image: "getmeili/meilisearch:v1.10",
+          port: 17700,
+        });
+
+        expect(plan.artifact).toEqual({
+          kind: "ref",
+          ref: "getmeili/meilisearch:v1.10",
+        });
+        expect(plan.endpoints).toEqual([{ port: 17700, protocol: "http", name: "search" }]);
+        expect(plan.environment).toMatchObject({ MEILI_HTTP_ADDR: "0.0.0.0:17700" });
+      });
+
+      test("includes a curl-based command healthcheck on the /health endpoint", async () => {
+        const plan = await planMeiliService(serviceType, { type: id });
+
+        expect(plan.healthcheck).toEqual({
+          kind: "command",
+          command: ["sh", "-c", "curl -sf http://localhost:7700/health"],
+          intervalSeconds: 10,
+          timeoutSeconds: 5,
+          retries: 5,
+          startPeriodSeconds: 30,
+        });
+      });
+
+      test("healthcheck command tracks the overridden port", async () => {
+        const plan = await planMeiliService(serviceType, { type: id, port: 17700 });
+
+        expect(plan.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:17700/health"]);
+      });
+
+      test("propagates authored process fields and dependencies", async () => {
+        const plan = await planMeiliService(serviceType, {
+          type: id,
+          command: ["meilisearch", "--http-addr", "0.0.0.0:7700"],
+          entrypoint: ["/bin/sh", "-c"],
+          workingDirectory: "/meili_data",
+          user: "1000:1000",
+          dependsOn: ["api"],
+        });
+
+        expect(plan.command).toEqual(["meilisearch", "--http-addr", "0.0.0.0:7700"]);
+        expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
+        expect(`${plan.workingDirectory}`).toBe("/meili_data");
+        expect(plan.user).toBe("1000:1000");
+        expect(plan.dependsOn).toHaveLength(1);
+        expect(`${plan.dependsOn[0]?.service}`).toBe("api");
+        expect(plan.dependsOn[0]?.condition).toBe("started");
+      });
+
+      test("user environment variables merge into the plan environment", async () => {
+        const plan = await planMeiliService(serviceType, {
+          type: id,
+          environment: { EXTRA_VAR: "extra" },
+        });
+
+        expect(plan.environment).toMatchObject({ EXTRA_VAR: "extra" });
+      });
     });
-    expect(plan.command).toBeUndefined();
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-meilisearch-data");
-    expect(String(plan.storage[0]?.target)).toBe("/meili_data");
-    expect(plan.endpoints).toEqual([{ port: 7700, protocol: "http", name: "search" }]);
-  });
-
-  test("seeds a deterministic dev master key and disables analytics by default", () => {
-    const plan = planMeiliService({ type: "meilisearch" });
-
-    expect(plan.environment.MEILI_MASTER_KEY).toBe(MEILISEARCH_DEFAULT_MASTER_KEY);
-    expect(plan.environment.MEILI_NO_ANALYTICS).toBe("true");
-    expect(plan.environment.MEILI_ENV).toBe("development");
-    expect(plan.environment.MEILI_HTTP_ADDR).toBe("0.0.0.0:7700");
-  });
-
-  test("respects image and port overrides", () => {
-    const plan = planMeiliService({
-      type: "meilisearch",
-      image: "getmeili/meilisearch:v1.10",
-      port: 17700,
-    });
-
-    expect(plan.artifact).toEqual({
-      kind: "ref",
-      ref: "getmeili/meilisearch:v1.10",
-    });
-    expect(plan.endpoints[0]?.port).toBe(17700);
-    expect(plan.environment.MEILI_HTTP_ADDR).toBe("0.0.0.0:17700");
-  });
-
-  test("includes a curl-based command healthcheck on the /health endpoint", () => {
-    const plan = planMeiliService({ type: "meilisearch" });
-
-    expect(plan.healthcheck).toEqual({
-      kind: "command",
-      command: ["sh", "-c", "curl -sf http://localhost:7700/health"],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 30,
-    });
-  });
-
-  test("healthcheck command tracks the overridden port", () => {
-    const plan = planMeiliService({ type: "meilisearch", port: 17700 });
-
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:17700/health"]);
-  });
-
-  test("sets LANDO environment variables for service context", () => {
-    const plan = planMeiliService({ type: "meilisearch" });
-
-    expect(plan.environment.LANDO).toBe("ON");
-    expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.environment.LANDO_SERVICE_NAME).toBe("search");
-    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("meilisearch");
-  });
-
-  test("user environment variables merge into the plan environment", () => {
-    const plan = planMeiliService({
-      type: "meilisearch",
-      environment: { EXTRA_VAR: "extra" },
-    });
-
-    expect(plan.environment.EXTRA_VAR).toBe("extra");
-  });
-
-  test("user-supplied MEILI_MASTER_KEY overrides the default", () => {
-    const plan = planMeiliService({
-      type: "meilisearch",
-      environment: { MEILI_MASTER_KEY: "my-custom-key" },
-    });
-
-    expect(plan.environment.MEILI_MASTER_KEY).toBe("my-custom-key");
-  });
-
-  test("rejects user environment that targets reserved LANDO_* keys", () => {
-    expect(() =>
-      planMeiliService({ type: "meilisearch", environment: { LANDO_SERVICE_NAME: "evil" } }),
-    ).toThrow(/reserved LANDO_\* keys.*LANDO_SERVICE_NAME/);
-  });
+  }
 
   test("service description documents MIT licensing, analytics opt-out, and master key redaction", () => {
     expect(MEILISEARCH_SERVICE_DESCRIPTION).toMatch(/MIT/);

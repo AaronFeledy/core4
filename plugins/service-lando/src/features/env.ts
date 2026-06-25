@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
@@ -12,6 +12,19 @@ const GLOBAL_APP_NAME = "global" as const;
 
 export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
 export const LANDO_ENV_FEATURE_PRIORITY = 700;
+
+const LandoEnvFeatureConfigSchema = Schema.Struct({
+  appPaths: Schema.optional(
+    Schema.Struct({
+      appRoot: Schema.String,
+      projectMount: Schema.String,
+    }),
+  ),
+  webroot: Schema.optional(Schema.String),
+});
+type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
+
+const configFor = (ctx: ServiceFeatureContext): LandoEnvFeatureConfig => ctx.config as LandoEnvFeatureConfig;
 
 const isReservedKey = (key: string): boolean =>
   key === RESERVED_PREFIX || key.startsWith(`${RESERVED_PREFIX}_`);
@@ -50,6 +63,13 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("LANDO_SERVICE_NAME", ctx.serviceName);
   ctx.addEnv("LANDO_SERVICE_TYPE", ctx.serviceType);
 
+  const { appPaths, webroot } = configFor(ctx);
+  if (appPaths !== undefined) {
+    ctx.addEnv("LANDO_APP_ROOT", appPaths.appRoot);
+    ctx.addEnv("LANDO_PROJECT_MOUNT", appPaths.projectMount);
+  }
+  if (webroot !== undefined) ctx.addEnv("LANDO_WEBROOT", webroot);
+
   if (appKind !== "global") {
     ctx.addEnv("LANDO_MAIL_HOST", MAILPIT_SHARED_NETWORK_HOST);
     ctx.addEnv("LANDO_MAIL_PORT", String(MAILPIT_SMTP_PORT));
@@ -66,6 +86,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
 
 export const landoEnvFeature: ServiceFeatureDefinition = {
   id: LANDO_ENV_FEATURE_ID,
+  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Schema<unknown>,
   priority: LANDO_ENV_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({
