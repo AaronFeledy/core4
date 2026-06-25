@@ -109,6 +109,18 @@ describe("Landofile serializer hardening — non-emittable values", () => {
     expect(() => emitLandofileYaml(obj)).toThrow(LandofileEmitError);
   });
 
+  test("rejects a nested object with only symbol keys instead of emitting an empty map", () => {
+    const nested: Record<string | symbol, unknown> = {};
+    nested[Symbol("hidden")] = 2;
+    expect(() => emitLandofileYaml({ parent: nested })).toThrow(LandofileEmitError);
+  });
+
+  test("rejects a list-item object with only symbol keys instead of emitting an empty map", () => {
+    const item: Record<string | symbol, unknown> = {};
+    item[Symbol("hidden")] = 2;
+    expect(() => emitLandofileYaml({ list: [item] })).toThrow(LandofileEmitError);
+  });
+
   test("rejects a cyclic object without hanging", () => {
     const cyclic: Record<string, unknown> = { name: "app" };
     cyclic.self = cyclic;

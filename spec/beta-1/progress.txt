@@ -291,3 +291,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - `parseScalar` ordering is contract-load-bearing: quoted-literal branches MUST run before the `${` expression rejection, otherwise quoted `${secret:…}` is wrongly rejected. This is the exact round-trip hole the story closed; the inline comment guards it against a future reorder.
   - Strict plain-object detection for an "encoded wire form" serializer is `Object.getPrototypeOf(v) === Object.prototype || === null`, NOT `typeof object && !Array.isArray`. The latter silently accepts `Date`/`RegExp`/`Map`/class instances and corrupts output; the encoded Landofile tree is always literal records, so the strict check is correct and rejects exotic objects loudly.
 ---
+
+## 2026-06-25 18:21 CDT - US-308 Review
+- Review fixed a serializer hardening gap: nested empty-looking maps and list-item maps with only symbol keys now fail with `LandofileEmitError` instead of silently emitting `{}` / `- {}`, preserving the documented symbol-key rejection and round-trip contract. The subpath error TSDoc was tightened to match the expanded rejection set.
+- Review notes (deferred/rejected): list-item secondary-key path precision is non-blocking because current messages still identify the parent item and offending key; exporting `EmitLandofileOptions` as a named public type is deferred because US-308 only requires the runtime option; parser depth/size limits are pre-existing DoS hardening outside this story; progress-log typo cleanup is cosmetic and not worth rewriting prior entries.
+- Verification: `review-work` lanes passed; typecheck and lint passed; focused Landofile spot checks passed (`serializer-hardening`, `landofile-yaml-emit`, `landofile-parser`). Full `bun test` was not run per loop policy.
+---

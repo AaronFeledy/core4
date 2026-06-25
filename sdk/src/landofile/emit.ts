@@ -112,6 +112,10 @@ const enterObject = (value: Record<string, unknown>, path: string, state: EmitSt
   state.seen.add(value);
 };
 
+const assertEmptyMapIsEmittable = (value: Record<string, unknown>, path: string, state: EmitState): void => {
+  entriesOf(value, path, state);
+};
+
 const emitMapEntries = (
   object: Record<string, unknown>,
   indent: number,
@@ -134,6 +138,7 @@ const emitMapEntries = (
     }
     if (isPlainObject(value)) {
       if (Object.keys(value).length === 0) {
+        assertEmptyMapIsEmittable(value, keyPath, state);
         lines.push(`${pad}${key}: {}`);
         continue;
       }
@@ -168,6 +173,7 @@ const emitListItemMap = (
     }
   } else if (isPlainObject(firstValue)) {
     if (Object.keys(firstValue).length === 0) {
+      assertEmptyMapIsEmittable(firstValue, firstPath, state);
       lines.push(`${pad}- ${firstKey}: {}`);
     } else {
       lines.push(`${pad}- ${firstKey}:`);
@@ -200,6 +206,7 @@ const emitArrayItems = (
     }
     if (isPlainObject(item)) {
       if (Object.keys(item).length === 0) {
+        assertEmptyMapIsEmittable(item, itemPath, state);
         lines.push(`${pad}- {}`);
         continue;
       }
