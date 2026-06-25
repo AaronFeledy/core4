@@ -47,7 +47,8 @@ describe("runServiceCompositionContract", () => {
   test("TestServiceType passes the composition contract suite", async () => {
     const contract = runServiceCompositionContract(baseInput());
     expect(Effect.isEffect(contract)).toBe(true);
-    await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
+    const result = await Effect.runPromise(contract);
+    expect(result).toBeUndefined();
   });
 
   test("fails with ContractFailure when the service type id is empty", async () => {
@@ -79,9 +80,10 @@ describe("runServiceCompositionContract", () => {
       resolve: (input: ServiceTypeInput) =>
         Effect.succeed({ base: "l337", normalizedConfig: input.service, features: [] }),
     };
-    await expect(
-      Effect.runPromise(runServiceCompositionContract(baseInput({ serviceType: l337Type }))),
-    ).resolves.toBeUndefined();
+    const result = await Effect.runPromise(
+      runServiceCompositionContract(baseInput({ serviceType: l337Type })),
+    );
+    expect(result).toBeUndefined();
   });
 
   test("fails with ContractFailure when the resolved base does not match the service type", async () => {
@@ -158,6 +160,25 @@ describe("runServiceCompositionContract", () => {
       },
     };
     await expectCompositionFailure(unstable, "resolution feature list is stable across replays");
+  });
+
+  test("fails with ContractFailure when resolved base or normalized config changes across replays", async () => {
+    let call = 0;
+    const unstableResolution: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) => {
+        call += 1;
+        return Effect.succeed({
+          base: call === 1 ? "lando" : "l337",
+          normalizedConfig: call === 1 ? input.service : { ...input.service, framework: "second" },
+          features: [],
+        } satisfies ServiceTypeResolution);
+      },
+    };
+    await expectCompositionFailure(
+      unstableResolution,
+      "resolution base + normalizedConfig stable across replays",
+    );
   });
 });
 
