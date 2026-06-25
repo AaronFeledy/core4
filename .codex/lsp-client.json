@@ -1,0 +1,8 @@
+{
+  "lsp": {
+    "marksman": {
+      "command": ["/home/aaron/.local/bin/marksman", "server"],
+      "extensions": [".md", ".markdown"]
+    }
+  }
+}
