@@ -29,6 +29,7 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -558,11 +559,11 @@ describe("AppPlannerLive", () => {
       const serviceType: ServiceType = {
         id: "feature-backed",
         name: "feature-backed",
-        base: "lando",
+        base: "l337",
         schema: Schema.Unknown,
         resolve: (input) =>
           Effect.succeed({
-            base: "lando" as const,
+            base: "l337" as const,
             normalizedConfig: input.service,
             features: [{ id: "test.service-feature" }],
           }),
@@ -1316,7 +1317,7 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("rejects storage scope: global with NotImplementedError until the global app phase", async () => {
+  test("rejects storage scope: global with NotImplementedError until cross-app global storage is supported", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
         name: "globalapp",
@@ -1625,6 +1626,305 @@ describe("AppPlannerLive", () => {
         },
       });
       expect(appPlan.services[ServiceName.make("db")]?.healthcheck).toBeUndefined();
+    });
+  });
+
+  test("applies the resolved base default feature stack alongside resolution and app features", async () => {
+    await withTempCwd(async () => {
+      // The whole lando base default stack is resolved through the registry;
+      // the first default id carries the observable env so the test proves the
+      // base defaults are applied, not silently dropped, while the rest are
+      // served as no-ops. The service type's own resolution never lists them.
+      const observedBaseDefaultId = LANDO_BASE_DEFAULT_FEATURE_IDS[0] ?? "lando.user-id";
+      const baseDefaultFeatures = new Map<string, ServiceFeatureDefinition>(
+        LANDO_BASE_DEFAULT_FEATURE_IDS.map((id, index) => [
+          id,
+          {
+            id,
+            priority: 100 + index,
+            apply: (ctx) =>
+              Effect.sync(() => {
+                if (id === observedBaseDefaultId) ctx.addEnv("BASE_DEFAULT_APPLIED", "1");
+              }),
+          },
+        ]),
+      );
+      const resolutionFeature: ServiceFeatureDefinition = {
+        id: "test.resolution-feature",
+        priority: 700,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("RESOLUTION_FEATURE_APPLIED", "1")),
+      };
+      const serviceType: ServiceType = {
+        id: "base-default-backed",
+        name: "base-default-backed",
+        base: "lando",
+        schema: Schema.Unknown,
+        resolve: (input) =>
+          Effect.succeed({
+            base: "lando" as const,
+            normalizedConfig: input.service,
+            features: [{ id: resolutionFeature.id }],
+          }),
+      };
+      const appFeature: AppFeatureDefinition = {
+        id: "test.base-default-aware",
+        priority: 100,
+        activatedBy: { services: { type: serviceType.id } },
+        selectors: { types: [serviceType.id] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("APP_FEATURE_APPLIED", "1"));
+          }),
+      };
+      const features = new Map<string, ServiceFeatureDefinition>([
+        ...baseDefaultFeatures,
+        [resolutionFeature.id, resolutionFeature],
+      ]);
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/base-default"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [serviceType.id], appFeatures: [appFeature.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) => {
+          const definition = features.get(id);
+          return definition === undefined
+            ? Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              )
+            : Effect.succeed(definition);
+        },
+        loadAppFeature: (id: string) =>
+          id === appFeature.id
+            ? Effect.succeed(appFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      const environment = appPlan.services[ServiceName.make("web")]?.environment;
+      expect(environment?.BASE_DEFAULT_APPLIED).toBe("1");
+      expect(environment?.RESOLUTION_FEATURE_APPLIED).toBe("1");
+      expect(environment?.APP_FEATURE_APPLIED).toBe("1");
+    });
+  });
+
+  test("exposes base default feature ids to app-feature hasFeature activation", async () => {
+    await withTempCwd(async () => {
+      const baseOnlyFeatureId = LANDO_BASE_DEFAULT_FEATURE_IDS[1] ?? "lando.storage";
+      const baseDefaultFeatures = new Map<string, ServiceFeatureDefinition>(
+        LANDO_BASE_DEFAULT_FEATURE_IDS.map((id, index) => [
+          id,
+          {
+            id,
+            priority: 100 + index,
+            apply: (ctx) =>
+              Effect.sync(() => {
+                if (id === baseOnlyFeatureId) ctx.addEnv("BASE_ONLY_FEATURE_COMPOSED", "1");
+              }),
+          },
+        ]),
+      );
+      const compositionGateFeature: ServiceFeatureDefinition = {
+        id: "test.composition-gate",
+        priority: 900,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("COMPOSITION_GATE", "1")),
+      };
+      const serviceType: ServiceType = {
+        id: "base-default-ids-only",
+        name: "base-default-ids-only",
+        base: "lando",
+        schema: Schema.Unknown,
+        resolve: (input) =>
+          Effect.succeed({
+            base: "lando" as const,
+            normalizedConfig: input.service,
+            features: [{ id: compositionGateFeature.id }],
+          }),
+      };
+      const appFeature: AppFeatureDefinition = {
+        id: "test.base-default-has-feature",
+        priority: 100,
+        activatedBy: { services: { hasFeature: baseOnlyFeatureId } },
+        selectors: { hasFeature: [baseOnlyFeatureId] },
+        apply: (ctx) =>
+          Effect.sync(() => {
+            ctx.forEachSelected((service) => service.addEnv("ACTIVATED_BY_BASE_DEFAULT", "1"));
+          }),
+      };
+      const features = new Map<string, ServiceFeatureDefinition>([
+        ...baseDefaultFeatures,
+        [compositionGateFeature.id, compositionGateFeature],
+      ]);
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/base-default-ids"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [serviceType.id], appFeatures: [appFeature.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) => {
+          const definition = features.get(id);
+          return definition === undefined
+            ? Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              )
+            : Effect.succeed(definition);
+        },
+        loadAppFeature: (id: string) =>
+          id === appFeature.id
+            ? Effect.succeed(appFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+              ),
+      };
+
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "myapp",
+              runtime: 4,
+              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+            },
+            providerLandoCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+      );
+
+      const environment = appPlan.services[ServiceName.make("web")]?.environment;
+      expect(environment?.BASE_ONLY_FEATURE_COMPOSED).toBe("1");
+      expect(environment?.ACTIVATED_BY_BASE_DEFAULT).toBe("1");
+    });
+  });
+
+  test("rolls the app-plan cache key when the resolved feature set changes for the same Landofile", async () => {
+    await withTempCwd(async () => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-feature-cache-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+
+      // The resolver flips the feature set between runs while the Landofile
+      // bytes stay identical: run 1 emits ONE_FEATURE, run 2 emits TWO_FEATURE.
+      // A feature-blind cache key would serve run 1's stale plan on run 2.
+      let resolveCalls = 0;
+      const oneFeature: ServiceFeatureDefinition = {
+        id: "test.one-feature",
+        priority: 500,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("ONE_FEATURE", "1")),
+      };
+      const twoFeature: ServiceFeatureDefinition = {
+        id: "test.two-feature",
+        priority: 500,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("TWO_FEATURE", "1")),
+      };
+      const features = new Map<string, ServiceFeatureDefinition>([
+        [oneFeature.id, oneFeature],
+        [twoFeature.id, twoFeature],
+      ]);
+      const serviceType: ServiceType = {
+        id: "feature-flip",
+        name: "feature-flip",
+        base: "l337",
+        schema: Schema.Unknown,
+        resolve: (input) =>
+          Effect.sync(() => {
+            resolveCalls += 1;
+            return {
+              base: "l337" as const,
+              normalizedConfig: input.service,
+              features: [{ id: resolveCalls === 1 ? oneFeature.id : twoFeature.id }],
+            };
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        list: Effect.succeed([
+          Schema.decodeUnknownSync(PluginManifest)({
+            name: PluginName.make("@example/feature-flip"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: { serviceTypes: [serviceType.id] },
+          }),
+        ]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+              ),
+        loadServiceFeature: (id: string) => {
+          const definition = features.get(id);
+          return definition === undefined
+            ? Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              )
+            : Effect.succeed(definition);
+        },
+      };
+      const layer = AppPlannerLive.pipe(
+        Layer.provide(Layer.mergeAll(CacheServiceLive, Layer.succeed(PluginRegistry, registry))),
+      );
+      const landofile: LandofileShape = {
+        name: "feature-flip-app",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: serviceType.id } },
+      };
+
+      try {
+        const runPlan = () =>
+          Effect.runPromise(
+            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+              Effect.provide(layer),
+            ),
+          );
+
+        const first = await runPlan();
+        const second = await runPlan();
+
+        expect(first.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBe("1");
+        expect(first.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBeUndefined();
+        // The feature set changed, so the cache key must roll and re-plan.
+        expect(second.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBe("1");
+        expect(second.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBeUndefined();
+        expect(resolveCalls).toBe(2);
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
     });
   });
 });
