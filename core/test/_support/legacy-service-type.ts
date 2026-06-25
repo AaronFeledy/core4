@@ -1,7 +1,7 @@
 // Test helper assembling a `ServiceType` whose plan body still lives under the
 import { Effect, Schema } from "effect";
 
-import type { PlanMetadata, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type {
   ServiceFeatureDefinition,
   ServiceType,
@@ -16,7 +16,7 @@ interface ServicePlanInput {
   readonly appName?: string;
   readonly provider?: ServicePlan["provider"];
   readonly primary?: boolean;
-  readonly metadata: typeof PlanMetadata.Encoded;
+  readonly metadata: { readonly resolvedAt: string; readonly source: string; readonly runtime: 4 };
 }
 
 export interface MakeLegacyServiceTypeFakeOptions {
@@ -42,8 +42,8 @@ export const makeLegacyServiceTypeFake = (options: MakeLegacyServiceTypeFakeOpti
           name: ctx.serviceName,
           service: ctx.normalizedConfig,
           appRoot: ctx.appRoot,
-          appName: ctx.appName,
           primary: ctx.primary,
+          ...(ctx.appName === undefined ? {} : { appName: ctx.appName }),
           metadata: {
             resolvedAt: "2026-05-18T08:00:00Z",
             source: "@lando/core/test/service-type-fake",

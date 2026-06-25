@@ -3,7 +3,7 @@ import { Effect, Exit, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/core/errors";
 import type { ServiceConfig } from "@lando/core/schema";
-import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/core/services";
+import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 
 import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,
@@ -172,13 +172,13 @@ describe("mergeResolutionOverParent", () => {
       base: "l337",
       normalizedConfig: { database: "a", user: "p" } as ServiceConfig,
       features: [{ id: "x" }, { id: "y", config: { k: 1 } }],
-      tooling: { db: { service: "web", cmd: "parent" } } as ServiceTypeResolution["tooling"],
+      tooling: { db: { service: "web", cmd: "parent" } },
     };
     const child: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: { user: "c" } as ServiceConfig,
       features: [{ id: "y", config: { k: 2 } }, { id: "z" }],
-      tooling: { db: { service: "web", cmd: "child" } } as ServiceTypeResolution["tooling"],
+      tooling: { db: { service: "web", cmd: "child" } },
     };
 
     const merged = mergeResolutionOverParent(parent, child);

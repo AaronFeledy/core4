@@ -81,7 +81,7 @@ const decodeService = (entry: CatalogCompositionEntry) => {
 describe("service catalog × composition contract suite", () => {
   for (const entry of catalogEntries) {
     test(`${entry.serviceType.id} satisfies runServiceCompositionContract`, async () => {
-      await expect(
+      return expect(
         Effect.runPromise(
           runServiceCompositionContract({
             serviceType: entry.serviceType,

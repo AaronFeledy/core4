@@ -336,11 +336,10 @@ describe("LANDO_* environment contract across catalog service families", () => {
       });
 
       if (item.id === "compose") {
-        await expect(planPromise).resolves.toMatchObject({ environment: { LANDO_PROJECT: "fake" } });
-        return;
+        return expect(planPromise).resolves.toMatchObject({ environment: { LANDO_PROJECT: "fake" } });
       }
 
-      await expect(planPromise).rejects.toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+      return expect(planPromise).rejects.toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
     });
 
     test(`${item.id} slugifies app names with whitespace into LANDO_PROJECT`, async () => {
