@@ -42,6 +42,7 @@ describe("PluginRegistry.loadAppFeature", () => {
     const feature: AppFeatureDefinition = {
       id: "test.app-feature",
       priority: 100,
+      selectors: { names: ["web"] },
       apply: () => Effect.void,
     };
     const extraBundledPlugin = {
@@ -64,6 +65,41 @@ describe("PluginRegistry.loadAppFeature", () => {
       );
 
       expect(loaded).toBe(feature);
+    } finally {
+      (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).pop();
+    }
+  });
+
+  test("rejects an app feature that declares neither activatedBy nor selectors", async () => {
+    const feature: AppFeatureDefinition = {
+      id: "test.unscoped-app-feature",
+      priority: 100,
+      apply: () => Effect.void,
+    };
+    const extraBundledPlugin = {
+      name: "@example/unscoped-app-feature",
+      layer: Layer.empty,
+      manifest: {
+        name: "@example/unscoped-app-feature",
+        version: "1.0.0",
+        api: 4,
+        entry: "index.js",
+        contributes: { appFeatures: ["test.unscoped-app-feature"] },
+      },
+      appFeatures: new Map([["test.unscoped-app-feature", feature]]),
+    } as (typeof BUNDLED_PLUGINS)[number];
+    (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).push(extraBundledPlugin);
+
+    try {
+      const exit = await runExitWithPluginRegistry(
+        Effect.flatMap(PluginRegistry, (registry) => registry.loadAppFeature("test.unscoped-app-feature")),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("expected failure");
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(PluginLoadError);
     } finally {
       (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).pop();
     }
@@ -99,7 +135,7 @@ describe("PluginRegistry.loadAppFeature", () => {
       await writeFile(
         join(pluginRoot, "index.js"),
         [
-          "export const feature = { id: 'test.external-app-feature', priority: 100, apply: () => undefined };",
+          "export const feature = { id: 'test.external-app-feature', priority: 100, selectors: { names: ['web'] }, apply: () => undefined };",
           "export const appFeatures = new Map([[feature.id, feature]]);",
           "",
         ].join("\n"),

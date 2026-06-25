@@ -220,6 +220,26 @@ const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
   "apply" in value &&
   typeof value.apply === "function";
 
+/**
+ * §10 / §6.11.4: an app feature MUST declare at least one of `activatedBy` or
+ * `selectors`. An entry with neither is unscoped (it would run on every service
+ * draft) and is rejected at load.
+ */
+const isScopedAppFeature = (feature: AppFeatureDefinition): boolean =>
+  feature.activatedBy !== undefined || feature.selectors !== undefined;
+
+const ensureScopedAppFeature = (
+  feature: AppFeatureDefinition,
+): Effect.Effect<AppFeatureDefinition, PluginLoadError> =>
+  isScopedAppFeature(feature)
+    ? Effect.succeed(feature)
+    : Effect.fail(
+        new PluginLoadError({
+          message: `App feature ${feature.id} declares neither activatedBy nor selectors; it must declare at least one.`,
+          pluginName: "@lando/core",
+        }),
+      );
+
 const externalAppFeature = (plugin: DiscoveredPlugin, id: string): AppFeatureDefinition | undefined => {
   const appFeatures = plugin.module?.appFeatures;
   if (!(appFeatures instanceof Map)) return undefined;
@@ -414,7 +434,7 @@ const makePluginRegistry = (
             if (disabled.has(bundledPlugin.manifest.name)) continue;
             const appFeature = bundledPlugin.appFeatures?.get(id);
 
-            if (appFeature !== undefined) return appFeature;
+            if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
           }
         }
 
@@ -422,7 +442,7 @@ const makePluginRegistry = (
         for (const plugin of plugins) {
           if (plugin.source === "system") continue;
           const appFeature = externalAppFeature(plugin, id);
-          if (appFeature !== undefined) return appFeature;
+          if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
         }
 
         return yield* Effect.fail(
