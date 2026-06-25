@@ -222,3 +222,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The import-boundary walker (`core/test/library/import-boundary.test.ts`) is the place to assert a subpath is free of a given runtime dep: add an `is<X>NpmSpecifier` + `classify<X>Import` + an appended `<x>Violations` channel mirroring the OCLIF/TUI pattern. `Bun.Transpiler().scan()` erases `import type` edges, so a type-only `@lando/sdk/*` import never counts as a runtime dependency — that is why a paths module that imports SDK types stays "Effect-free". Scope an effect-free assertion to the specific subpath; `@lando/core` itself legitimately imports Effect and must be used as the positive control, never asserted effect-free.
   - A subpath export added to `core/package.json#exports` resolves immediately via `Bun.resolveSync`/dynamic import in the same `bun test` run — no `bun install` refresh was needed in practice. Authored test files are NOT auto-biome-formatted; run `bun run biome check --write <file>` before the lint gate (it rewraps long `throw new Error(...)` lines) and re-run the affected `bun test <path>` since reformatting can rewrap test bodies.
 ---
+
+## [2026-06-25 13:00 CDT] - US-305 Review
+- Fixed the review-confirmed packed-install acceptance gap for `@lando/core/paths`: the subpath now has a dedicated packed-package consumer test, and the stable entry point is covered by the entry-point/documentation parity suite.
+- Review notes (deferred/rejected): dynamic-import detection for the import-boundary walker is deferred as broader lint hardening because the changed paths graph has no dynamic imports and US-305 requires static Effect/OCLIF-free coverage; residual unrelated `test/types/` references outside §2.7 are type-test documentation, not this story's import-boundary location.
+- Verification: typecheck, lint, import-boundary, entry-point export, paths packed-export, PathsService runtime, and pure/config path spot checks passed.
+---
