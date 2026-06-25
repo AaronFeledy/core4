@@ -23,7 +23,7 @@ import {
   ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, ConfigService, PluginRegistry } from "@lando/core/services";
-import type { AppFeatureDefinition } from "@lando/core/services";
+import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -550,16 +550,23 @@ describe("AppPlannerLive", () => {
 
   test("passes resolved service feature ids into app-feature activation", async () => {
     await withTempCwd(async () => {
-      const serviceType = {
-        ...appMountOnlyServiceType,
+      const serviceFeature: ServiceFeatureDefinition = {
+        id: "test.service-feature",
+        priority: 100,
+        apply: (ctx) => Effect.sync(() => ctx.addEnv("SERVICE_FEATURE_COMPOSED", "1")),
+      };
+      const serviceType: ServiceType = {
         id: "feature-backed",
+        name: "feature-backed",
+        base: "lando",
+        schema: Schema.Unknown,
         resolve: (input) =>
           Effect.succeed({
             base: "lando" as const,
             normalizedConfig: input.service,
             features: [{ id: "test.service-feature" }],
           }),
-      } satisfies typeof appMountOnlyServiceType;
+      };
       const featureDefinition: AppFeatureDefinition = {
         id: "test.feature-aware",
         priority: 100,
@@ -586,6 +593,12 @@ describe("AppPlannerLive", () => {
             : Effect.fail(
                 new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
               ),
+        loadServiceFeature: (id: string) =>
+          id === serviceFeature.id
+            ? Effect.succeed(serviceFeature)
+            : Effect.fail(
+                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+              ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
@@ -607,6 +620,7 @@ describe("AppPlannerLive", () => {
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
 
+      expect(appPlan.services[ServiceName.make("web")]?.environment.SERVICE_FEATURE_COMPOSED).toBe("1");
       expect(appPlan.services[ServiceName.make("web")]?.environment.FEATURE_AWARE).toBe("1");
     });
   });

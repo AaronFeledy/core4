@@ -51,6 +51,7 @@ import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
+import { composeService } from "./feature.ts";
 import { legacyServicePlan } from "./legacy-service-plan.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -686,20 +687,51 @@ const planApp = (
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
 
-      const rawPlan = yield* Effect.try({
-        try: () =>
-          legacyServicePlan(serviceType, {
-            name,
-            service,
-            appRoot,
-            appName,
-            provider,
-            primary: name === "web",
-            metadata: legacyMetadata,
-            host,
-          }),
-        catch: (cause) => servicePlanError(appRoot, name, cause),
-      });
+      const rawPlan =
+        serviceResolution.features.length === 0
+          ? yield* Effect.try({
+              try: () =>
+                legacyServicePlan(serviceType, {
+                  name,
+                  service,
+                  appRoot,
+                  appName,
+                  provider,
+                  primary: name === "web",
+                  metadata: legacyMetadata,
+                  host,
+                }),
+              catch: (cause) => servicePlanError(appRoot, name, cause),
+            })
+          : yield* Effect.gen(function* () {
+              const features = yield* Effect.forEach(serviceResolution.features, (featureRef) =>
+                pluginRegistry.loadServiceFeature(featureRef.id).pipe(
+                  Effect.map((definition) => ({
+                    id: featureRef.id,
+                    ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+                    definition,
+                  })),
+                  Effect.mapError((error) => servicePlanError(appRoot, name, error)),
+                ),
+              );
+              return yield* composeService({
+                base: {
+                  name: ServiceName.make(name),
+                  type: serviceType.id,
+                  provider,
+                  primary: name === "web",
+                  ...(serviceResolution.normalizedConfig.environment === undefined
+                    ? {}
+                    : { environment: serviceResolution.normalizedConfig.environment }),
+                  defaultFeatures: [],
+                },
+                baseKind: serviceResolution.base,
+                appName,
+                appRoot,
+                normalizedConfig: serviceResolution.normalizedConfig,
+                features,
+              }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
+            });
       const servicePlan = applyAuthoredHealthcheck(
         applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service),
         service,
