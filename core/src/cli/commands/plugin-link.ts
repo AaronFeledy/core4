@@ -13,6 +13,7 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { makeLandoPaths } from "../../config/paths.ts";
 import type { InstalledPluginRegistryEntry } from "../../plugins/installed-registry.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
 
@@ -262,7 +263,7 @@ export const pluginLink = (
     }
     const cwd = options.cwd ?? process.cwd();
     const linkedPath = resolve(cwd, options.path ?? ".");
-    const pluginsRoot = options.pluginsRoot ?? join(userDataRoot, "plugins");
+    const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(linkedPath),
       catch: (cause) =>

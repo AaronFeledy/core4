@@ -50,6 +50,7 @@ export interface LandoPaths {
   readonly logsDir: string;
   readonly scratchDir: string;
   readonly scratchRegistryFile: string;
+  readonly scratchRegistryLockFile: string;
   readonly appCacheDir: (appName: string, appRoot: string) => string;
   readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
   readonly fileSyncSessionsDir: string;
@@ -57,6 +58,7 @@ export interface LandoPaths {
   readonly configFile: string;
   readonly configDir: string;
   readonly globalConfigFile: string;
+  readonly pluginTrustFile: string;
 }
 
 /**

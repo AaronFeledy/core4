@@ -4,6 +4,7 @@ import type { Context, Effect } from "effect";
 
 import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 
 export type ShellenvShell = "posix" | "powershell";
@@ -15,7 +16,8 @@ const powerShellQuote = (value: string): string => `'${value.replaceAll("'", "''
 export const normalizeShellenvShell = (value: string | undefined): ShellenvShell =>
   value === "powershell" || value === "pwsh" ? "powershell" : "posix";
 
-export const shellenvBinDir = (userDataRoot = resolveUserDataRoot()): string => join(userDataRoot, "bin");
+export const shellenvBinDir = (userDataRoot = resolveUserDataRoot()): string =>
+  makeLandoPaths({ userDataRoot }).binDir;
 
 export const renderPosixShellenv = (userDataRoot = resolveUserDataRoot()): string =>
   `export LANDO_USER_DATA_ROOT=${posixQuote(userDataRoot)}\nexport PATH="\${LANDO_USER_DATA_ROOT}/bin:\${PATH}"`;

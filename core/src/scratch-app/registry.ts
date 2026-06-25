@@ -1,12 +1,10 @@
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
-import { join } from "node:path";
-
 import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
-import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { makeLandoPaths } from "../config/paths.ts";
 
 const REGISTRY_VERSION = 1 as const;
 const LOCK_STALE_MS = 30_000;
@@ -51,8 +49,12 @@ export interface ScratchRegistryPaths {
 }
 
 export const scratchRegistryPaths = (): ScratchRegistryPaths => {
-  const base = join(resolveUserCacheRoot(), "scratch");
-  return { base, registry: join(base, "registry.bin"), lock: join(base, "registry.lock") };
+  const paths = makeLandoPaths();
+  return {
+    base: paths.scratchDir,
+    registry: paths.scratchRegistryFile,
+    lock: paths.scratchRegistryLockFile,
+  };
 };
 
 const scratchRegistryError = (operation: string, message: string, cause: unknown): ScratchAppError =>

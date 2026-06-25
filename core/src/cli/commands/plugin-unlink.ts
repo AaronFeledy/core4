@@ -12,6 +12,7 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { makeLandoPaths } from "../../config/paths.ts";
 import {
   type InstalledPluginRegistry,
   readInstalledPluginRegistry,
@@ -104,7 +105,7 @@ export const pluginUnlink = (
         );
       }
     }
-    const pluginsRoot = options.pluginsRoot ?? resolve(userDataRoot, "plugins");
+    const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
     const pluginName = options.name;
 
     const result = yield* Effect.tryPromise({

@@ -13,6 +13,7 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { makeLandoPaths } from "../../config/paths.ts";
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import { removeInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { parseNpmPackageSpec } from "../../recipes/npm-source.ts";
@@ -241,7 +242,7 @@ export const pluginRemove = (
         );
       }
     }
-    const pluginsRoot = options.pluginsRoot ?? join(userDataRoot, "plugins");
+    const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
     const modulesRoot = resolve(pluginsRoot, "node_modules");
     const moduleDir = resolve(modulesRoot, options.name);
     const moduleRel = relative(modulesRoot, moduleDir);

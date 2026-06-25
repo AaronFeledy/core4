@@ -436,6 +436,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.logsDir).toBe(join(cache, "logs"));
     expect(paths.scratchDir).toBe(join(cache, "scratch"));
     expect(paths.scratchRegistryFile).toBe(join(cache, "scratch", "registry.bin"));
+    expect(paths.scratchRegistryLockFile).toBe(join(cache, "scratch", "registry.lock"));
     expect(paths.fileSyncSessionsDir).toBe(join(cache, "file-sync", "sessions"));
   });
 
@@ -445,6 +446,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.configDir).toBe(conf);
     expect(paths.configFile).toBe(join(conf, "config.yml"));
     expect(paths.globalConfigFile).toBe(join(conf, "global.config.yml"));
+    expect(paths.pluginTrustFile).toBe(join(conf, "plugin-trust.yml"));
   });
 
   test("app-cache builders sanitize names and fingerprint the app root", () => {

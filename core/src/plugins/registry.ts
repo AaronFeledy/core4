@@ -9,6 +9,7 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../config/paths.ts";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
@@ -383,7 +384,7 @@ const makePluginRegistry = (
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
-        : yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"), logger);
+        : yield* discoverInstalledPlugins("user", makeLandoPaths({ userDataRoot }).pluginsDir, logger);
     const appRoot =
       discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
     const appPlugins =

@@ -16,6 +16,7 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
+import { makeLandoPaths } from "../../config/paths.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
 import { makeInteractionService } from "../../interaction/service.ts";
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
@@ -406,7 +407,7 @@ export const pluginAdd = (
           );
         }
       }
-      pluginsRoot = join(userDataRoot, "plugins");
+      pluginsRoot = makeLandoPaths({ userDataRoot }).pluginsDir;
     }
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
