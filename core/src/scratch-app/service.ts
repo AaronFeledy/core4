@@ -38,8 +38,8 @@ import {
   type ScratchSummary,
 } from "@lando/sdk/services";
 
-import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
+import { makeLandoPaths } from "../config/paths.ts";
 import { parseLandofile } from "../landofile/parser.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
@@ -447,7 +447,7 @@ const makeScratchAppService = (
   scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
-  const root = Effect.sync(() => AbsolutePath.make(join(resolveUserCacheRoot(), SCRATCH_DIR)));
+  const root = Effect.sync(() => AbsolutePath.make(makeLandoPaths().scratchDir));
 
   const ensureRoot = root.pipe(
     Effect.flatMap((path) =>

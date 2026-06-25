@@ -6,6 +6,7 @@ import { Data, Effect } from "effect";
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
@@ -284,7 +285,7 @@ export const pluginPublish = (
       let exitCode = 0;
       if (!dryRun) {
         const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-        const authPath = join(userDataRoot, "plugin-auth.json");
+        const authPath = makeLandoPaths({ userDataRoot }).pluginAuthFile;
         const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
         const token = registryToken(auth, registry);
         if (token === undefined) {

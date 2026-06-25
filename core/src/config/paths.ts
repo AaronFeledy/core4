@@ -280,6 +280,7 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     logsDir: j(userCacheRoot, "logs"),
     scratchDir: j(userCacheRoot, "scratch"),
     scratchRegistryFile: j(userCacheRoot, "scratch", "registry.bin"),
+    scratchRegistryLockFile: j(userCacheRoot, "scratch", "registry.lock"),
     appCacheDir,
     appPlanCacheFile: (appName: string, appRoot: string) => j(appCacheDir(appName, appRoot), "plan.bin"),
     fileSyncSessionsDir: j(userCacheRoot, "file-sync", "sessions"),
@@ -287,5 +288,6 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     configFile: j(userConfRoot, "config.yml"),
     configDir: userConfRoot,
     globalConfigFile: j(userConfRoot, "global.config.yml"),
+    pluginTrustFile: j(userConfRoot, "plugin-trust.yml"),
   };
 };

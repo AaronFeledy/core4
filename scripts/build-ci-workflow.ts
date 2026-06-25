@@ -63,6 +63,9 @@ ${setupBunSteps}
       - name: Env helper boundary lint
         run: bun run check:env-helper-boundary
 
+      - name: Paths boundary lint
+        run: bun run check:paths-boundary
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |

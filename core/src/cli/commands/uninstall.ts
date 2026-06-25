@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
+import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
@@ -76,9 +77,15 @@ const isWindowsAbsolutePath = (path: string): boolean => /^[A-Za-z]:[\\/]/u.test
 const normalizedAbsolutePath = (path: string): string => normalizePathForContainment(resolve(path));
 
 const installedBinaryStatus = (execPath: string, userDataRoot: string): UninstallStepStatus => {
+  // Path-shape (not host) drives the column so a Windows-style userDataRoot is
+  // contained correctly when this runs on a POSIX host (e.g. tests).
+  const rawBinDir = makeLandoPaths({
+    userDataRoot,
+    platform: isWindowsAbsolutePath(userDataRoot) ? "win32" : normalizeHostPlatform(),
+  }).binDir;
   const binDir = isWindowsAbsolutePath(userDataRoot)
-    ? normalizePathForContainment(join(userDataRoot, "bin"))
-    : normalizedAbsolutePath(join(userDataRoot, "bin"));
+    ? normalizePathForContainment(rawBinDir)
+    : normalizedAbsolutePath(rawBinDir);
   const binaryPath = isWindowsAbsolutePath(execPath)
     ? normalizePathForContainment(execPath)
     : normalizedAbsolutePath(execPath);
@@ -123,10 +130,11 @@ export const buildUninstallPlan = (
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
+  const paths = makeLandoPaths({ userDataRoot });
   const managedProviderRuntime = join(userDataRoot, "providers", "lando");
-  const mutagenBinary = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
-  const mutagenAgents = join(userDataRoot, "bin", "mutagen-agents");
-  const globalAppState = join(userDataRoot, "global");
+  const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
+  const mutagenAgents = join(paths.binDir, "mutagen-agents");
+  const globalAppState = paths.globalAppRoot;
 
   const steps: ReadonlyArray<UninstallPlanStep> = [
     {

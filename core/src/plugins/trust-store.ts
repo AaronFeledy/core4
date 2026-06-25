@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 
 import { Effect, Layer } from "effect";
 
@@ -8,11 +8,9 @@ import { ConfigError } from "@lando/sdk/errors";
 import { type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
-import { resolveUserConfRoot } from "../config/roots.ts";
+import { makeLandoPaths } from "../config/paths.ts";
 
 const emptyState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
-
-const trustPath = (userConfRoot: string): string => join(userConfRoot, "plugin-trust.yml");
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
@@ -120,5 +118,5 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
 
 export const PluginTrustStoreLive = Layer.effect(
   PluginTrustStore,
-  Effect.succeed(makePluginTrustStore(trustPath(resolveUserConfRoot()))),
+  Effect.succeed(makePluginTrustStore(makeLandoPaths().pluginTrustFile)),
 );

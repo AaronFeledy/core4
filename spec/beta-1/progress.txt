@@ -228,3 +228,25 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): dynamic-import detection for the import-boundary walker is deferred as broader lint hardening because the changed paths graph has no dynamic imports and US-305 requires static Effect/OCLIF-free coverage; residual unrelated `test/types/` references outside §2.7 are type-test documentation, not this story's import-boundary location.
 - Verification: typecheck, lint, import-boundary, entry-point export, paths packed-export, PathsService runtime, and pure/config path spot checks passed.
 ---
+## [2026-06-25 14:18 CDT] - Babysit
+- PR: #459 https://github.com/AaronFeledy/core4/pull/459
+- CI outcome: pass
+- Review feedback: fixed (documented the @lando/core/paths export surface so guide drift passed)
+- Merge: merged (squash)
+---
+## 2026-06-25 - US-306
+- Migrated every remaining hand-rolled Lando root join onto the single path primitive and added a regrowth lint gate. Plugin store paths (`registry.ts`, plugin add/link/remove/unlink/publish), the scratch registry/service, `shellenv` bin dir, the plugin trust-store conf file, the uninstall plan (bin/global/mutagen + the windows-on-posix installed-binary containment check), and the file-sync-mutagen install dirs now resolve through `makeLandoPaths(...)`/builders instead of re-spelling `<root>/<segment>`. Planner and command-index cache-root resolution already delegated through `resolveUserCacheRoot`, so they needed no change.
+- Extended the primitive with `scratchRegistryLockFile` and `pluginTrustFile` builders (SDK `LandoPaths` type + `makeLandoPaths`) so the scratch lockfile and trust file stop being hand-joined; type-only interface growth, so no schema-snapshot or API-compat churn.
+- Added `scripts/check-paths-boundary.ts`, an AST gate flagging `join`/`resolve` of `<userDataRoot>/plugins`, `<userCacheRoot>/scratch`, and `<userDataRoot>/bin` outside the primitive (empty carve-outs). Wired it into `package.json`, the generated CI static-checks job, and the CI runbook; `ci.yml` drift is exactly the one new step. Writing the gate surfaced three un-migrated mutagen join sites that manual search missed.
+- Verification: typecheck, lint, all boundary gates passed; paths/cache-paths/gate/scratch/mutagen-download/plugin-registry spot checks green (110 tests). Manual QA: source and compiled `$bunfs` `shellenv` and `uninstall --dry-run` produce byte-identical migrated paths (dual-dispatch parity).
+- **Learnings for future iterations:**
+  - The boundary gate is the source of truth, not grep: it caught `plugins/file-sync-mutagen/src/download.ts` `<userDataRoot>/bin` joins exploration had missed. Write the gate, run it, then migrate what it reports.
+  - mutagen install-dir builders are genuinely HOST-BOUND: a test fakes `process.platform="win32"` during install but reads the path back after the fake reverts. `node:path.join` is immune to the fake (separator fixed at load); `makeLandoPaths()` defaults read `process.platform`, so under the fake it diverges. Pin the column from `node:path.sep` (`sep === "\\" ? "win32" : "linux"`) for any path that must follow the real host regardless of a faked platform.
+  - Do NOT switch plugin Effect commands from `ConfigService.get("userDataRoot")` to `PathsService`: their scenario tests inject a fake ConfigService returning a tmpdir and assert `join(tmpdir, "plugins")`. Keep the existing `userDataRoot` source and only replace the final hand-join with `makeLandoPaths({ userDataRoot }).pluginsDir` (verified byte-equal for arbitrary roots) — best path-equivalence + gate-cleanliness.
+  - trust-store stays on `makeLandoPaths().pluginTrustFile`, NOT `PathsService`: it is a sibling layer in the `minimal` `Layer.mergeAll` (cannot `serviceOption` PathsService without rewiring) AND `PathsService` honors runtime `config:` root overrides while the legacy `resolveUserConfRoot` does not — using PathsService would be a behavior change, not a path-equivalent migration.
+---
+## [2026-06-25 15:08 CDT] - US-306 Review
+- Review fixed the uninstall managed-bin containment path-column selection so the non-Windows-shaped path branch routes through `normalizeHostPlatform()` before calling `makeLandoPaths`, satisfying the strict US-306 AC2 reading without changing the Windows-shaped test-root override.
+- Review notes (deferred/rejected): mutagen `node:path.sep` platform pin remains accepted as a host-bound filesystem exception documented by the build step; broadening `check:paths-boundary` beyond `<userDataRoot>/plugins`, `<userCacheRoot>/scratch`, and `<userDataRoot>/bin` is out of scope for US-306; planner/command-index cache roots are accepted because their legacy resolver delegates to the paths primitive.
+- Verification: typecheck, lint, `check:paths-boundary`, `core/test/cli/uninstall.test.ts`, and `core/test/cli/parity/dispatch-parity.test.ts` passed; earlier review spot checks for paths, boundary, CI wiring, scratch, shellenv, plugin commands, and mutagen passed.
+---

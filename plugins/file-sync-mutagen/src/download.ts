@@ -7,11 +7,12 @@
 
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
 import { Effect, Schema } from "effect";
 
+import { makeLandoPaths } from "@lando/core/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { HostPlatform, NetworkConfig } from "@lando/sdk/schema";
 
@@ -90,11 +91,18 @@ const safeBinPath = (dir: string, installName: string): string => {
   return resolved;
 };
 
+// These builders construct real host filesystem paths and must stay bound to
+// the host separator even when a test fakes `process.platform`. `node:path.sep`
+// is fixed at load to the real host, so it selects the column independently of
+// the (possibly faked) `process.platform`, matching the old `node:path.join`.
+const hostBinDir = (userDataRoot: string): string =>
+  makeLandoPaths({ userDataRoot, platform: sep === "\\" ? "win32" : "linux" }).binDir;
+
 /** Absolute path where the Mutagen host CLI is installed. */
 export const mutagenHostBinaryPath = (userDataRoot: string, platform?: HostPlatform): string => {
   const p = platform ?? currentHostPlatform();
   const installName = p === "win32" ? "mutagen.exe" : "mutagen";
-  return safeBinPath(join(userDataRoot, "bin"), installName);
+  return safeBinPath(hostBinDir(userDataRoot), installName);
 };
 
 /** Absolute path where a Mutagen agent binary is installed. */
@@ -102,12 +110,12 @@ export const mutagenAgentBinaryPath = (userDataRoot: string, agentKey: string): 
   if (!/^[a-z0-9-]+$/u.test(agentKey)) {
     throw new Error(`Invalid Mutagen agent key "${agentKey}".`);
   }
-  return safeBinPath(join(userDataRoot, "bin", "mutagen-agents"), `mutagen-agent-${agentKey}`);
+  return safeBinPath(join(hostBinDir(userDataRoot), "mutagen-agents"), `mutagen-agent-${agentKey}`);
 };
 
 /** Path to the file that records the currently installed Mutagen version. */
 export const mutagenInstalledVersionPath = (userDataRoot: string): string =>
-  join(userDataRoot, "bin", ".mutagen-installed-version");
+  join(hostBinDir(userDataRoot), ".mutagen-installed-version");
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
