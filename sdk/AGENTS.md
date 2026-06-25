@@ -1,32 +1,32 @@
-# AGENTS.md — `@lando/sdk`
+# `@lando/sdk` Instructions
 
-The SDK is the API-stable surface. Anything that ships here is semver-stable from the moment it lands.
+The SDK is the public contract surface. Root rules apply; this file keeps SDK-specific schema and compatibility traps.
 
-## Layout
+## Navigation
 
-- `src/schema/` — Effect Schemas (the canonical contract surface). Imported via `@lando/sdk/schema`.
-- `src/events/` — Lifecycle event payload schemas. Tag-only events; discriminator lives on `_tag`.
-- `src/errors/` — Tagged error classes (Effect `TaggedError` pattern).
-- `src/services/` — Effect `Context.Tag` class shapes (method names + signatures only; Live Layers live in `@lando/core`).
-- `src/test/` — Test-only helpers re-exported as `@lando/sdk/test`.
+- `src/schema/` is the canonical Effect Schema home, imported as `@lando/sdk/schema`.
+- `src/events/` contains lifecycle payload schemas; event discriminators live on `_tag`.
+- `src/errors/` contains Effect `TaggedError` classes.
+- `src/services/` contains `Context.Tag` shapes only; Live Layers belong in `@lando/core`.
+- `src/test/` is re-exported as `@lando/sdk/test` for contract helpers.
 
-## Conventions
+## Schema Conventions
 
-- Brand primitives (`AppId`, `ServiceName`, `ProviderId`, `AbsolutePath`, `PortablePath`) are `Schema.String.pipe(Schema.brand(...))`. They accept plain strings in the `.Encoded` (wire) form; branding is TS-only.
-- When a schema is shared across SDK modules, define it once in `schema/` and `import` + `export type` re-export it from the consuming barrel. The canonical home stays in `@lando/sdk/schema`.
-- Schema modules use `// ====` section banners with a one-line description and a `SPEC:` reference (e.g. `SPEC: §5.5`). Match this style when adding a new section.
+- Brand primitives (`AppId`, `ServiceName`, `ProviderId`, `AbsolutePath`, `PortablePath`) as `Schema.String.pipe(Schema.brand(...))`; plain strings remain the `.Encoded` wire form.
+- Shared schemas live once in `src/schema/`; consuming barrels should `import` and `export type` rather than redefining.
+- Schema files use `// ====` section banners with a one-line description and `SPEC:` reference.
 
 ## Gotchas
 
-- **`.Encoded` vs `.Type`:** `MySchema.Encoded` is the wire/input shape; `MySchema.Type` is the decoded output. They diverge for non-trivial leaves — e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`. Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
-- **No `Schema.decodeUnknown` on already-decoded values:** decoders expect the encoded form. Calling `Schema.decodeUnknownSync(ServicePlan)` on a runtime `ServicePlan` re-fails on branded leaves such as `metadata.resolvedAt: DateTime` (decoder wants the string form). Use `Schema.is(MySchema)` to validate runtime shape, or `Schema.encodeUnknownEither(MySchema)` to round-trip through the encoded form. Same trap bites tests that mutate a plan in place and then re-decode it — mutate, cast, and rely on the runner's `Schema.is` instead.
-- **Public-surface lock:** Anything exported from `@lando/sdk` is compatibility-locked. New additive exports must be listed in `sdk/API_COMPATIBILITY.md` or `sdk/test/library/sdk-backward-compatibility.test.ts` fails (frozen surface in `sdk/test/fixtures/sdk-mvp-surface.json`). The backward-compat test only reads the "Additive Alpha schema exports" / "Additive Alpha service tags" headings — even Beta-era additions land under those headings, not under "Additive Beta…". New `@lando/sdk/test` helpers go under "Additive Beta test helper exports" (not asserted by the backward-compat test).
-- **§13.2 schema snapshot registry is one place:** the public JSON Schema scope is the single `JSON_SCHEMA_REGISTRY` const in `sdk/src/schema/json-schema.ts`; `JSON_SCHEMA_NAMES = Object.keys(JSON_SCHEMA_REGISTRY)` is exported from the same module, and `scripts/build-schema-snapshot.ts` iterates `JSON_SCHEMA_NAMES` directly (no separate `SDK_SCHEMA_NAMES` list, no `getJsonSchema` switch — `getJsonSchema` falls through to `getJsonSchemaWithDeprecations(JSON_SCHEMA_REGISTRY[name])` for everything except the `DeprecationNotice`/`LandofileShape`/`Expression*` special cases). So adding a public schema is a single registry edit plus `bun run codegen:schema-snapshot` to refresh `sdk/test/fixtures/schema-snapshot.json` and the per-schema `dist/schemas/*.json` artifacts. The schema-snapshot gate (`core/test/build/schema-snapshot.test.ts`) asserts `scope.sdkSchemas` equals `JSON_SCHEMA_NAMES` and that every name emits a draft-07 artifact, so a registry entry that fails to generate fails the gate with its schema id (the generator wraps each `getJsonSchema(name)` in a `Failed to generate JSON Schema for <name>` error). Public event payloads live in `JSON_SCHEMA_REGISTRY` per-tag (every exported `*Event` in `sdk/src/events/` that rides the `LandoEvent` union, including `BeforeExitEvent`).
-- **`TaggedError` field-name collisions:** Bun's `Error` superclass auto-populates `line`, `column`, etc. with the constructor's source location. A `Schema.optional(Schema.Number)` field named `line` or `column` will silently report Bun's source-line number. Use `Schema.UndefinedOr(Schema.Number)` instead — Effect explicitly assigns `undefined`, overriding Bun's built-in.
-- **Cross-field rules on a snapshotted struct:** piping `Schema.filter` onto a top-level identified struct that has `optionalWith` defaults or `Schema.Record` fields collapses its published JSON Schema to an inline root, dropping the `$defs` entry plus `title`/`description` (a snapshot regression). Keep the exported schema a plain annotated struct and apply cross-field refinements on a separate decode-only schema (see `GuideFrontmatterChecked` in `sdk/src/docs/guide-frontmatter.ts`).
-- **Configuration-expression engine is the `@lando/sdk/expressions` subpath, NOT `@lando/sdk/schema`:** `ast.ts` (AST), `parser.ts` (lexer/recursive-descent → `ExpressionTemplate`), `context.ts` (`ExpressionContext`), and `evaluator.ts` (pure sandboxed evaluator) all live there and are NOT compat-locked — the backward-compat fixture only freezes `@lando/sdk/schema` exports + service-tag signatures, so AST nodes, the context shape, and evaluator APIs are purely additive (only new *errors* need an `API_COMPATIBILITY.md` "Additive Alpha errors" entry + a presence assertion in `exports.test.ts`). The evaluator is PURE (no `Bun`/`process`/`node:fs`/Layers), mirroring the parser — keep it data-in/data-out. The sandbox is three things: (1) `FORBIDDEN_HELPERS` + the whole `fs.*` namespace throw `LandofileExpressionForbiddenError` (the IO/process carve-out helpers — `load`/`import`/`text`/`bytes`/`hash`/`which`/`glob`/`fs.*` — are intentionally unavailable here; `load()` becomes a core wiring concern when FileSystem is in scope); (2) `yaml`/`fromYaml`/`fromToml` are recognized-but-UNSUPPORTED (→ `LandofileExpressionEvalError`, not forbidden — parsing a provided string is not IO); (3) context traversal reads OWN-enumerable props only via `propertyIsEnumerable` and rejects the `BLOCKED_KEYS` (`__proto__`/`prototype`/`constructor`) + function/symbol values (TS `readonly` is not a runtime boundary). Parser distinguishes `path.a` (stays a `Path` node) from `(path).a` / `(call()).a` (an `AccessExpressionNode`) via the `forceAccess` flag set on parenthesized primaries. Whole-template type preservation only when `template.whole === true`; mixed/`${VAR}` templates always render strings. Never put a secret/credential VALUE in an error `message`/`cause` (forbidden errors carry the helper NAME only).
+- `.Encoded` is wire/input shape and `.Type` is decoded output. `Schema.DateTimeUtc` encodes as an ISO string but decodes to `DateTime.Utc`; build fixtures on `.Encoded` and date strings via `DateTime.formatIso(dt)`.
+- Do not `Schema.decodeUnknown` an already-decoded runtime value. Use `Schema.is(MySchema)` for runtime-shape assertions, or `Schema.encodeUnknownEither(MySchema)` when a test needs an encoded round trip.
+- Additive public exports must be documented in `sdk/API_COMPATIBILITY.md` or `sdk/test/library/sdk-backward-compatibility.test.ts` fails. The compat test reads the "Additive Alpha schema exports" and "Additive Alpha service tags" headings even for Beta-era additions; new `@lando/sdk/test` helpers belong under "Additive Beta test helper exports".
+- Public JSON Schema membership is the single `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/json-schema.ts`. Add public schemas/events there, then run `bun run codegen:schema-snapshot` to refresh `sdk/test/fixtures/schema-snapshot.json`, `dist/schemas`, and `docs/reference/schemas`.
+- `TaggedError` fields named `line` or `column` collide with Bun's `Error` source-location fields if declared as `Schema.optional(Schema.Number)`. Use `Schema.UndefinedOr(Schema.Number)` so Effect assigns `undefined` explicitly.
+- Do not pipe `Schema.filter` onto an exported snapshotted struct with `optionalWith` defaults or `Schema.Record` fields; it collapses the published JSON Schema root. Keep the exported struct plain and apply cross-field validation on a separate decode-only schema.
+- `@lando/sdk/expressions` is not `@lando/sdk/schema` and is not compatibility-frozen except for exported errors. Keep the evaluator pure data-in/data-out: no `Bun`, `process`, `node:fs`, Layers, host IO helpers, or secret values in error messages.
 
 ## Tests
 
-- SDK tests live in `sdk/test/` and import via the public path (`@lando/sdk/schema`, etc.) so they exercise the same surface plugin authors use.
-- `tsc -b` does not walk `sdk/test/`; Bun runs the tests directly. Treat `bun run typecheck` + `bun test` together as the gate.
+- SDK tests import public paths (`@lando/sdk/schema`, `@lando/sdk/services`, etc.) so they exercise the plugin-author surface.
+- Root `tsc -b` does not walk `sdk/test/`; keep `bun run typecheck` and `bun test` paired for SDK changes.
