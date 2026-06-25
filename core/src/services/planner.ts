@@ -31,6 +31,7 @@ import {
   ConfigService,
   PluginRegistry,
   type ServiceBuildStepIntent,
+  type ServiceType,
   type ServiceTypeHostFacts,
   type ServiceTypeResolution,
 } from "@lando/sdk/services";
@@ -49,9 +50,11 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
+import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
+import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
-import { composeService } from "./feature.ts";
+import { type ComposeServiceFeature, composeService } from "./feature.ts";
 import { legacyServicePlan } from "./legacy-service-plan.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -426,6 +429,23 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
   return { ...servicePlan, healthcheck: merged };
 };
 
+interface ServiceCompositionFingerprint {
+  readonly name: string;
+  readonly serviceType: string;
+  readonly base: ServiceTypeResolution["base"];
+  readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
+}
+
+interface ResolvedService {
+  readonly name: string;
+  readonly service: ServiceConfig;
+  readonly authored: ReturnType<typeof authoredStorageScopes>;
+  readonly serviceType: ServiceType;
+  readonly resolution: ServiceTypeResolution;
+  readonly baseDefaultIds: ReadonlyArray<string>;
+  readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
+}
+
 type PlannedServiceDraft = {
   readonly name: string;
   readonly hostnames: ReadonlyArray<string>;
@@ -433,9 +453,13 @@ type PlannedServiceDraft = {
   readonly draft: AppFeatureServiceDraft;
   readonly routes: ServicePlan["routes"];
   readonly extensions: ServicePlan["extensions"];
+  readonly fingerprint: ServiceCompositionFingerprint;
 };
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
+
+const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArray<string> =>
+  base === "lando" ? LANDO_BASE_DEFAULT_FEATURE_IDS : L337_BASE_DEFAULT_FEATURE_IDS;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -616,19 +640,6 @@ const planApp = (
     const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot).pipe(
       Effect.catchAll(() => Effect.succeed(undefined)),
     );
-    const cacheKey = deriveAppPlanCacheKey({
-      appRoot,
-      landofile: { ...landofile, provider },
-      providerCapabilities,
-      pluginManifests: manifests,
-      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
-    });
-    if (cacheService !== undefined) {
-      const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
-      );
-      if (cached !== null) return cached;
-    }
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
@@ -657,8 +668,11 @@ const planApp = (
       appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
     }
 
-    const plannedServiceDrafts: PlannedServiceDraft[] = [];
-
+    // Phase A: resolve every service type once (cheap, no plan production) so
+    // the cache key can fold in the resolved base + ordered FeatureRef list
+    // before the expensive composition runs. The resolution objects are reused
+    // verbatim in phase B on a cache miss; resolve() is never called twice.
+    const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
       const authored = authoredStorageScopes(service);
       if (authored.globalEntry !== undefined) {
@@ -674,7 +688,7 @@ const planApp = (
           ),
         );
 
-      const serviceResolution = yield* serviceType
+      const resolution = yield* serviceType
         .resolve({
           name,
           service,
@@ -687,8 +701,89 @@ const planApp = (
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
 
+      const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
+      // The base's default feature stack seeds the draft alongside the
+      // resolution's explicit features; an id the resolution already lists
+      // wins, so the base default is not loaded twice. The cache fingerprint
+      // records base defaults first, then resolution features, in that order.
+      const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
+        (id) => !resolutionFeatureIds.has(id),
+      );
+      const featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }> = [
+        ...baseDefaultIds.map((id) => ({ id })),
+        ...resolution.features.map((featureRef) => ({
+          id: featureRef.id,
+          ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+        })),
+      ];
+
+      resolvedServices.push({
+        name,
+        service,
+        authored,
+        serviceType,
+        resolution,
+        baseDefaultIds,
+        featureRefs,
+      });
+    }
+
+    // The cache key folds in the resolved base, the ordered FeatureRef list, and
+    // the app-feature DEFINITION inputs (a deterministic function of which app
+    // features activate over the resolved drafts). It is derived BEFORE plan
+    // production so a warm cache still skips composition; a feature/base change
+    // rolls the key even when the Landofile bytes are identical.
+    const cacheKey = deriveAppPlanCacheKey({
+      appRoot,
+      landofile: { ...landofile, provider },
+      providerCapabilities,
+      pluginManifests: manifests,
+      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
+      serviceInputs: {
+        landofile: landofile.services ?? {},
+        composition: {
+          services: resolvedServices.map((entry) => ({
+            name: entry.name,
+            serviceType: entry.serviceType.id,
+            base: entry.resolution.base,
+            normalizedConfig: entry.resolution.normalizedConfig,
+            featureRefs: entry.featureRefs,
+          })),
+          appFeatures: appFeatures.map((entry) => ({
+            id: entry.id,
+            ...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
+            priority: entry.definition.priority,
+            ...(entry.definition.activatedBy === undefined
+              ? {}
+              : { activatedBy: entry.definition.activatedBy }),
+            ...(entry.definition.selectors === undefined ? {} : { selectors: entry.definition.selectors }),
+            ...(entry.definition.requires === undefined ? {} : { requires: entry.definition.requires }),
+            ...(entry.config === undefined ? {} : { config: entry.config }),
+          })),
+        },
+      },
+    });
+    if (cacheService !== undefined) {
+      const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
+      );
+      if (cached !== null) return cached;
+    }
+
+    // Phase B (cache miss only): produce the per-service plans from the reused
+    // resolutions, then run the app-feature pass and finalization.
+    const plannedServiceDrafts: PlannedServiceDraft[] = [];
+    for (const {
+      name,
+      service,
+      authored,
+      serviceType,
+      resolution,
+      baseDefaultIds,
+      featureRefs,
+    } of resolvedServices) {
       const rawPlan =
-        serviceResolution.features.length === 0
+        resolution.features.length === 0
           ? yield* Effect.try({
               try: () =>
                 legacyServicePlan(serviceType, {
@@ -704,15 +799,22 @@ const planApp = (
               catch: (cause) => servicePlanError(appRoot, name, cause),
             })
           : yield* Effect.gen(function* () {
-              const features = yield* Effect.forEach(serviceResolution.features, (featureRef) =>
+              const features = yield* Effect.forEach(resolution.features, (featureRef) =>
                 pluginRegistry.loadServiceFeature(featureRef.id).pipe(
-                  Effect.map((definition) => ({
-                    id: featureRef.id,
-                    ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-                    definition,
-                  })),
+                  Effect.map(
+                    (definition): ComposeServiceFeature => ({
+                      id: featureRef.id,
+                      ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+                      definition,
+                    }),
+                  ),
                   Effect.mapError((error) => servicePlanError(appRoot, name, error)),
                 ),
+              );
+              const defaultFeatures = yield* Effect.forEach(baseDefaultIds, (id) =>
+                pluginRegistry
+                  .loadServiceFeature(id)
+                  .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error))),
               );
               return yield* composeService({
                 base: {
@@ -720,15 +822,15 @@ const planApp = (
                   type: serviceType.id,
                   provider,
                   primary: name === "web",
-                  ...(serviceResolution.normalizedConfig.environment === undefined
+                  ...(resolution.normalizedConfig.environment === undefined
                     ? {}
-                    : { environment: serviceResolution.normalizedConfig.environment }),
-                  defaultFeatures: [],
+                    : { environment: resolution.normalizedConfig.environment }),
+                  defaultFeatures,
                 },
-                baseKind: serviceResolution.base,
+                baseKind: resolution.base,
                 appName,
                 appRoot,
-                normalizedConfig: serviceResolution.normalizedConfig,
+                normalizedConfig: resolution.normalizedConfig,
                 features,
               }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
             });
@@ -740,9 +842,15 @@ const planApp = (
         name,
         hostnames: service.hostnames ?? [],
         authored,
-        draft: toAppFeatureDraft(name, servicePlan, serviceResolution),
+        draft: toAppFeatureDraft(name, servicePlan, resolution),
         routes: servicePlan.routes,
         extensions: servicePlan.extensions,
+        fingerprint: {
+          name,
+          serviceType: serviceType.id,
+          base: resolution.base,
+          featureRefs,
+        },
       });
     }
 
