@@ -336,6 +336,24 @@ describe("CacheServiceLive", () => {
     ).not.toBe(key);
     expect(deriveAppPlanCacheKey({ ...base, includedFragmentShas: ["a".repeat(64)] })).not.toBe(key);
     expect(deriveAppPlanCacheKey({ ...base, appRoot: "/workspace/other-root" })).not.toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        serviceInputs: {
+          landofile: base.landofile.services ?? {},
+          composition: { services: [], appFeatures: [] },
+        },
+      }),
+    ).not.toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        serviceInputs: {
+          landofile: base.landofile.services ?? {},
+          composition: { services: [], appFeatures: [] },
+        },
+      }),
+    ).not.toBe(deriveAppPlanCacheKey({ ...base, landofile: { name: "cache-plan", services: {} } }));
   });
 
   test("writes and reads app-plan caches through CacheService.writeAtomic", async () => {
