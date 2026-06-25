@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
@@ -81,7 +81,7 @@ const installedBinaryStatus = (execPath: string, userDataRoot: string): Uninstal
   // contained correctly when this runs on a POSIX host (e.g. tests).
   const rawBinDir = makeLandoPaths({
     userDataRoot,
-    platform: isWindowsAbsolutePath(userDataRoot) ? "win32" : process.platform,
+    platform: isWindowsAbsolutePath(userDataRoot) ? "win32" : normalizeHostPlatform(),
   }).binDir;
   const binDir = isWindowsAbsolutePath(userDataRoot)
     ? normalizePathForContainment(rawBinDir)
