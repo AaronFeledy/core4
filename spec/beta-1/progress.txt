@@ -115,3 +115,17 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - `ServiceFeatureContext` had no `host` field; an env feature that needs `LANDO_HOST_*` requires adding `host?: ServiceTypeHostFacts` to the SDK context + core `ComposeServiceInput`/`makeContext`. Use a type-only import in `sdk/src/services/features.ts` for `ServiceTypeHostFacts` (from `./plugins.ts`) to avoid the `features.ts`↔`plugins.ts` circular import; it's a type-only interface so it's exempt from the §13.4 additive-export gate (no `API_COMPATIBILITY.md` entry needed), but adding a `serviceFeatures` entry to a bundled plugin manifest DOES drift `sdk/test/fixtures/schema-snapshot.json` — regenerate with `bun run codegen:schema-snapshot`.
   - US-358 deliberately leaves `buildLandoEnv` in `plugins/service-lando/src/services/env.ts` (the unmigrated catalog + `env-contract.test.ts` still import it via the `__legacyToServicePlan` bridge). The canonical home is the `lando.env` feature; the catalog migration (US-361) and the §13.4 boundary gate forbidding direct env-helper imports (US-362) own removing the legacy import path. Do not delete or gate `services/env.ts` in US-358.
 ---
+
+## [2026-06-25 00:54:09 CDT] - Babysit
+- PR: #454 https://github.com/AaronFeledy/core4/pull/454
+- CI outcome: fail (schema-snapshot still reported pending/in_progress by commit status despite successful workflow conclusion)
+- Review feedback: fixed (guide drift resolved by documenting ServiceFeatureContext host facts; Cursor app-name finding was stale and already fixed by 240d873a)
+- Merge: deferred (strict merge gate requires no pending checks)
+---
+
+## [2026-06-25 01:05 CDT] - US-358 (Build verification)
+- Story verified complete on branch us-358-lando-l337-bases-features; no new code. Acceptance criteria already satisfied by prior commits (l337/lando bases, built-in lando.* feature modules, buildLandoEnv relocated into the lando.env feature, per-base LANDO_* identity-env unit tests). prd.json already marks passes:true.
+- Verification: typecheck passed; lint passed; spot checks green — base-composition + service-lando features (8 pass), and adjacent blast radius env-contract + feature-composition + load-service-feature (121 pass). PR #454 OPEN/MERGEABLE/CLEAN; all CI checks pass except schema-snapshot, whose commit status is stuck IN_PROGRESS while its workflow conclusion is SUCCESS (GitHub status quirk, not a code failure).
+- **Learnings for future iterations:**
+  - A `schema-snapshot` check that shows pending/in_progress while `conclusion: SUCCESS` is a stuck GitHub commit-status, not a real failure — inspect `gh pr view <n> --json statusCheckRollup` for the true conclusion before treating it as a blocker.
+---
