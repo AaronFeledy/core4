@@ -15,6 +15,7 @@ import {
   appRemoteTest,
 } from "../cli/commands/remote.ts";
 import { restartApp } from "../cli/commands/restart.ts";
+import { appShare, appShareList, appShareStop } from "../cli/commands/share.ts";
 import { startApp } from "../cli/commands/start.ts";
 import { stopApp } from "../cli/commands/stop.ts";
 import { runTooling } from "../cli/commands/tooling.ts";
@@ -38,6 +39,9 @@ export const appOperations = {
   appRemoteTest,
   appRemoteSetup,
   appRemoteEnvList,
+  appShare,
+  appShareList,
+  appShareStop,
 } as const;
 
 export type AppOperations = typeof appOperations;

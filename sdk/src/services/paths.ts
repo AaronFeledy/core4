@@ -51,6 +51,8 @@ export interface LandoPaths {
   readonly scratchDir: string;
   readonly scratchRegistryFile: string;
   readonly scratchRegistryLockFile: string;
+  readonly tunnelRegistryFile: string;
+  readonly tunnelRunDir: string;
   readonly appCacheDir: (appName: string, appRoot: string) => string;
   readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
   readonly fileSyncSessionsDir: string;

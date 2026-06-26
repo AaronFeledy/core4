@@ -409,3 +409,16 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): the low-severity security note about in-process `lockfilePath` overrides was accepted as non-blocking because CLI/default app paths are now app-root scoped and the override is an existing internal/test seam; the optional write-error cause-preservation cleanup was deferred because it does not block US-314 behavior or PRD acceptance.
 - Verification: typecheck passed; lint passed; focused spot checks passed — lockfile-store, includes, includes-update, and includes-verify unit suites. Full `bun test` was not run.
 ---
+
+## 2026-06-26 11:12 CDT - US-343
+- Shipped the provider-aware `app:share`, `app:share:list`, and `app:share:stop` skeletons plus the top-level `share` alias. The skeleton resolves an installed `TunnelService`, fails closed with actionable `TunnelProviderUnavailableError` remediation when none is installed, and keeps bundled connector providers deferred to 4.1.
+- Added `App.share`, `App.shareList`, and `App.shareStop` to the App handle and SDK App contract, wired source and compiled dispatch, regenerated the OCLIF manifest, and locked TestTunnelService round trips plus no-provider CLI behavior.
+- Verification: typecheck, lint, focused share skeleton tests, adjacent remote skeleton/app-handle tests, and real CLI no-provider invocations passed.
+- **Learnings for future iterations:**
+  - Hand-rolled compiled app command dispatch needs both explicit `run.ts` branches and regenerated `core/src/cli/oclif/compiled-manifest.ts`; source command modules alone are not enough for source/compiled parity.
+---
+## 2026-06-26 12:17 CDT - US-343 Review
+- Fixed review blockers by adding the tunnel registry StateStore bucket/run-artifact seam to share operations, validating tunnel targets before provider dispatch, and aligning source `app:share` scope handling with the compiled path.
+- Review notes (deferred/rejected): foreground StreamFrame support is not yet represented by a command-spec streaming primitive in the current codebase; the share skeleton now preserves the live foreground scope and records active sessions for reconciliation.
+- Verification: typecheck, lint, paths/share/tunnel/app-handle/dispatch focused tests passed; rebuilt compiled binary and reran sandbox no-provider share/list/stop smokes.
+---
