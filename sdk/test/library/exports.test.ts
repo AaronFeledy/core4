@@ -450,7 +450,7 @@ describe("@lando/sdk package exports", () => {
     expect(probe.RetryPolicy).toBeDefined();
     expect(probe.ProbeOutcome).toBeDefined();
     expect(probe.ProbeResult).toBeDefined();
-    expect(probe.ProbeSpecSchema).toBeDefined();
+    expect(probe.ProbeSpec).toBeDefined();
     expect(probe.toSchedule).toBeDefined();
     expect(probe.runProbe).toBeDefined();
     expect(probe.ProbeError).toBeDefined();

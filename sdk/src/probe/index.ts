@@ -70,27 +70,23 @@ export interface ClassifyFn {
 }
 
 /**
- * A probe specification: an id for events/transcripts, the retry policy, and an
- * optional verdict classifier.
- */
-export interface ProbeSpec {
-  /** Probe id for events/transcripts (e.g. `"healthcheck:web"`). */
-  readonly id: string;
-  /** Retry/backoff/timeout policy. */
-  readonly policy: RetryPolicy;
-  /** Optional verdict classifier; defaults to success ⇒ green, failure ⇒ red. */
-  readonly classify?: ClassifyFn | undefined;
-}
-
-/**
  * Schema for {@link ProbeSpec}. The `classify` function is intentionally not
  * part of the decoded wire form (functions are not serializable), so the schema
  * validates `id` and `policy` only; a decoded value omits `classify`.
  */
-export const ProbeSpecSchema = Schema.Struct({
+export const ProbeSpec = Schema.Struct({
   id: Schema.String,
   policy: RetryPolicy,
 });
+
+/**
+ * A probe specification: an id for events/transcripts, the retry policy, and an
+ * optional verdict classifier.
+ */
+export interface ProbeSpec extends Schema.Schema.Type<typeof ProbeSpec> {
+  /** Optional verdict classifier; defaults to success ⇒ green, failure ⇒ red. */
+  readonly classify?: ClassifyFn | undefined;
+}
 
 /** The terminal result of a {@link runProbe} run. Never thrown; always resolved. */
 export const ProbeResult = Schema.Struct({
@@ -154,6 +150,9 @@ const baseDelayMillis = (policy: RetryPolicy): number =>
 const maxDelayMillis = (policy: RetryPolicy): number | undefined =>
   policy.maxDelay === undefined ? undefined : Duration.toMillis(policy.maxDelay);
 
+const jitterRatioForRetryIndex = (retryIndex: number): number =>
+  (Math.imul(retryIndex + 1, 2_654_435_761) >>> 0) / 0xffff_ffff;
+
 /**
  * The inter-attempt delay (in milliseconds) before the attempt at the given
  * 0-based retry index (0 = delay before the 2nd attempt). Applies the backoff
@@ -171,10 +170,10 @@ const delayForRetryIndex = (policy: RetryPolicy, retryIndex: number): number => 
   const capped = cap === undefined ? raw : Math.min(raw, cap);
 
   if (policy.jitter === true) {
-    // Full jitter: uniform in [0, capped]. Deterministic under TestClock
-    // because the delay magnitude only affects the virtual clock, never a
-    // wall-clock read.
-    return Math.random() * capped;
+    // Deterministic full jitter in [0, capped], keyed by retry index so
+    // TestClock assertions can prove exact elapsed time without wall-clock or
+    // ambient random state.
+    return Math.floor(jitterRatioForRetryIndex(retryIndex) * capped);
   }
   return capped;
 };
@@ -232,7 +231,24 @@ export const runProbe = <A, E, R>(
       }
 
       attempts += 1;
-      const exit = yield* Effect.exit(attempt);
+      const run = Effect.exit(attempt);
+      const completed =
+        deadline === undefined
+          ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
+          : yield* Effect.timeoutTo(run, {
+              duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
+              onSuccess: (exit) => ({ _tag: "Completed" as const, exit }),
+              onTimeout: () => ({ _tag: "TimedOut" as const }),
+            });
+
+      if (completed._tag === "TimedOut") {
+        lastOutcome = "red";
+        lastError = new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts });
+        hadError = true;
+        break;
+      }
+
+      const { exit } = completed;
 
       if (exit._tag === "Success") {
         lastOutcome = classify === undefined ? "green" : classify.success(exit.value);

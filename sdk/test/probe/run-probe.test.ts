@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Duration, Effect, Fiber, Schema, TestClock, TestContext } from "effect";
+import { Duration, Effect, Fiber, Schema, TestClock, TestContext } from "effect";
 
 import {
   type ClassifyFn,
@@ -7,6 +7,7 @@ import {
   ProbeOutcome,
   ProbeResult,
   type ProbeSpec,
+  ProbeSpec as ProbeSpecSchema,
   ProbeTimeoutError,
   RetryPolicy,
   runProbe,
@@ -72,6 +73,16 @@ describe("@lando/sdk/probe schemas", () => {
     expect(decoded.attempts).toBe(1);
   });
 
+  test("ProbeSpec decodes the serializable spec envelope", () => {
+    const decoded = Schema.decodeUnknownSync(ProbeSpecSchema)({
+      id: "healthcheck:web",
+      policy: { maxAttempts: 2, delay: 50 },
+    });
+
+    expect(decoded.id).toBe("healthcheck:web");
+    expect(decoded.policy.maxAttempts).toBe(2);
+  });
+
   test("ProbeError and ProbeTimeoutError are tagged errors", () => {
     const timeout = new ProbeTimeoutError({ probeId: "p", timeoutMs: 100, attempts: 2 });
     expect(timeout._tag).toBe("ProbeTimeoutError");
@@ -90,7 +101,7 @@ describe("runProbe", () => {
       return "ok";
     });
 
-    const result = await drive(runProbe(spec({ maxAttempts: 3, delay: 100 }), attempt));
+    const result = await drive(runProbe(spec({ maxAttempts: 3, delay: Duration.millis(100) }), attempt));
 
     expect(result.outcome).toBe("green");
     expect(result.attempts).toBe(1);
@@ -109,7 +120,10 @@ describe("runProbe", () => {
 
     // delays: 100 (before attempt 2) + 200 (before attempt 3) = 300ms
     const result = await runUnderClock(
-      runProbe(spec({ maxAttempts: 3, delay: 100, backoff: "exponential", factor: 2 }), attempt),
+      runProbe(
+        spec({ maxAttempts: 3, delay: Duration.millis(100), backoff: "exponential", factor: 2 }),
+        attempt,
+      ),
       "300 millis",
     );
 
@@ -129,7 +143,7 @@ describe("runProbe", () => {
 
     // fixed 100ms x 2 retries = 200ms
     const result = await runUnderClock(
-      runProbe(spec({ maxAttempts: 3, delay: 100, backoff: "fixed" }), attempt),
+      runProbe(spec({ maxAttempts: 3, delay: Duration.millis(100), backoff: "fixed" }), attempt),
       "200 millis",
     );
 
@@ -149,7 +163,13 @@ describe("runProbe", () => {
     // exponential base 100, factor 4, cap 150 => delays 100, 150, 150 across 4 attempts = 400ms
     const result = await runUnderClock(
       runProbe(
-        spec({ maxAttempts: 4, delay: 100, backoff: "exponential", factor: 4, maxDelay: 150 }),
+        spec({
+          maxAttempts: 4,
+          delay: Duration.millis(100),
+          backoff: "exponential",
+          factor: 4,
+          maxDelay: Duration.millis(150),
+        }),
         attempt,
       ),
       "400 millis",
@@ -161,6 +181,24 @@ describe("runProbe", () => {
     expect(calls).toBe(4);
   });
 
+  test("S2d jitter is deterministic under TestClock", async () => {
+    let calls = 0;
+    const attempt = Effect.gen(function* () {
+      calls += 1;
+      return yield* Effect.fail(new Error("nope"));
+    });
+
+    const result = await runUnderClock(
+      runProbe(spec({ maxAttempts: 3, delay: Duration.millis(100), jitter: true }), attempt),
+      "84 millis",
+    );
+
+    expect(result.outcome).toBe("red");
+    expect(result.attempts).toBe(3);
+    expect(result.elapsedMs).toBe(84);
+    expect(calls).toBe(3);
+  });
+
   test("S3 timeout: overall deadline resolves with last non-green result, does not fail", async () => {
     let calls = 0;
     const attempt = Effect.gen(function* () {
@@ -170,14 +208,37 @@ describe("runProbe", () => {
 
     // attempts at t=0,1000,2000; t=3000 advance, deadline 2500 blocks a 4th.
     const result = await runUnderClock(
-      runProbe(spec({ maxAttempts: 100, delay: 1000, backoff: "fixed", timeout: 2500 }), attempt),
+      runProbe(
+        spec({
+          maxAttempts: 100,
+          delay: Duration.millis(1000),
+          backoff: "fixed",
+          timeout: Duration.millis(2500),
+        }),
+        attempt,
+      ),
       "3 seconds",
     );
 
     expect(result.outcome).toBe("red");
     expect(result.attempts).toBe(3);
-    expect(result.elapsedMs).toBeLessThanOrEqual(2500);
+    expect(result.elapsedMs).toBe(2500);
     expect(calls).toBe(3);
+  });
+
+  test("S3b timeout: overall deadline bounds an in-flight attempt", async () => {
+    const result = await runUnderClock(
+      runProbe(
+        spec({ maxAttempts: 1, timeout: Duration.millis(100) }),
+        Effect.sleep("1 second").pipe(Effect.as("ok")),
+      ),
+      "100 millis",
+    );
+
+    expect(result.outcome).toBe("red");
+    expect(result.attempts).toBe(1);
+    expect(result.elapsedMs).toBe(100);
+    expect(result.lastError).toBeInstanceOf(ProbeTimeoutError);
   });
 
   test("S4 yellow: classify maps to yellow, retries like red, surfaces yellow distinctly", async () => {
@@ -192,7 +253,7 @@ describe("runProbe", () => {
     });
 
     const result = await runUnderClock(
-      runProbe(spec({ maxAttempts: 2, delay: 50 }, classify), attempt),
+      runProbe(spec({ maxAttempts: 2, delay: Duration.millis(50) }, classify), attempt),
       "50 millis",
     );
 
@@ -209,7 +270,10 @@ describe("runProbe", () => {
       return "ok";
     });
 
-    const result = await runUnderClock(runProbe(spec({ maxAttempts: 5, delay: 100 }), attempt), "100 millis");
+    const result = await runUnderClock(
+      runProbe(spec({ maxAttempts: 5, delay: Duration.millis(100) }), attempt),
+      "100 millis",
+    );
 
     expect(result.outcome).toBe("green");
     expect(result.attempts).toBe(2);
@@ -261,7 +325,7 @@ describe("runProbe", () => {
 
 describe("toSchedule", () => {
   test("produces a Schedule capped to maxAttempts - 1 recurrences", () => {
-    const schedule = toSchedule({ maxAttempts: 3, delay: 100, backoff: "exponential" });
+    const schedule = toSchedule({ maxAttempts: 3, delay: Duration.millis(100), backoff: "exponential" });
     expect(schedule).toBeDefined();
   });
 });
