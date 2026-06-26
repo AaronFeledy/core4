@@ -4,13 +4,13 @@ import { dirname, join } from "node:path";
 import { Effect } from "effect";
 
 import { ConfigError, type LandoCommandError, NotImplementedError } from "@lando/sdk/errors";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "../../config/overlay.ts";
 import { resolveUserConfRoot } from "../../config/roots.ts";
 import { parseMinimalYaml } from "../../config/yaml-min.ts";
-import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../../runtime/cli-options.ts";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "../../telemetry/policy.ts";
 

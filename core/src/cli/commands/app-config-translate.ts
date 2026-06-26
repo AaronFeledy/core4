@@ -10,6 +10,7 @@ import {
   LandofileParseError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import { LandofileShape } from "@lando/sdk/schema";
 import type { ConfigTranslateDiagnostic, ConfigTranslatorShape } from "@lando/sdk/services";
@@ -20,7 +21,6 @@ import { findLandofilePath } from "../../landofile/discovery.ts";
 import { mergeLandofiles } from "../../landofile/merge.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
 import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
-import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
 
 export type AppConfigTranslateFormat = "text" | "json";
 
