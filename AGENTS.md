@@ -47,6 +47,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Command output goes through the `Renderer` service. Direct `console.*` or `process.std*.write` under `core/src/**` or `plugins/**` fails the renderer-boundary gate except documented fast-path carve-outs.
 - In Effect layers, `Effect.serviceOption(X)` sees services provided to that sub-layer, not sibling layers in `Layer.mergeAll`; provide dependencies directly to the layer that needs them.
 - Use the Effect-free paths primitive in `core/src/config/paths.ts` for Lando roots and derived paths; do not re-spell `$HOME`, XDG, `%APPDATA%`, or platform separators. Hand-rolled `join(<userDataRoot>, "plugins"|"bin")` / `join(<userCacheRoot>, "scratch")` is blocked by `check:paths-boundary`; route through `makeLandoPaths` (pure) or `PathsService` (Effect). A genuinely host-bound path that must ignore a faked `process.platform` (e.g. mutagen install dirs) should pin `makeLandoPaths({ platform: sep === "\\" ? "win32" : "linux" })` from `node:path.sep`, not read `process.platform`.
+- Durable atomic, versioned, lockable state belongs in `StateStore` (`core/src/state/**`); plugins use `LandoPluginContext.stateStore`; host/tests override `StateStore` or use `TestStateStore`. Do not hand-roll write-temp+rename+lockfile+version envelopes; `check:state-store-boundary` enforces this.
 - CLI commands resolving a user app should go through `loadUserLandofile(...)` from `core/src/cli/app-resolution.ts`, not raw `LandofileService.discover`.
 
 ## Platform and Runtime Gotchas

@@ -436,6 +436,7 @@
 - `RemoteSourceToolProvisionRecord`
 - `ServiceCompositionContractInput`
 - `ServiceFeatureContractHarness`
+- `StateStoreContractHarness`
 - `SupportedContractCell`
 - `SupportedFileSyncContractCell`
 - `TunnelServiceContractHarness`
@@ -466,6 +467,7 @@
 - `runRemoteSourceContract`
 - `runServiceCompositionContract`
 - `runServiceFeatureContract`
+- `runStateStoreContract`
 - `runAppFeatureContract`
 - `AppFeatureContractHarness`
 - `AppFeatureContractService`

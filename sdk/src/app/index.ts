@@ -83,6 +83,7 @@ import type {
   Renderer,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  StateStore,
   Telemetry,
   ToolingEngine,
 } from "../services/index.ts";
@@ -106,6 +107,7 @@ export type LandoRuntimeServices =
   | PrivilegeService
   | ProcessRunner
   | Downloader
+  | StateStore
   | PluginRegistry
   | RuntimeProvider
   | RuntimeProviderRegistry

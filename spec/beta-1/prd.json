@@ -2085,8 +2085,8 @@
         "Lint passes."
       ],
       "priority": 116,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "StateStore is exposed through LandoPluginContext.stateStore, the runtime host surface, @lando/core/testing TestStateStore, @lando/sdk/test runStateStoreContract, and check:state-store-boundary with contract/live/test-double coverage."
     },
     {
       "id": "US-316",

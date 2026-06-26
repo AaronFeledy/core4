@@ -409,3 +409,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): the low-severity security note about in-process `lockfilePath` overrides was accepted as non-blocking because CLI/default app paths are now app-root scoped and the override is an existing internal/test seam; the optional write-error cause-preservation cleanup was deferred because it does not block US-314 behavior or PRD acceptance.
 - Verification: typecheck passed; lint passed; focused spot checks passed — lockfile-store, includes, includes-update, and includes-verify unit suites. Full `bun test` was not run.
 ---
+
+## 2026-06-26 10:58 CDT - US-315
+- Exposed durable StateStore access at every required boundary: plugin contexts now receive a stateStore facade rooted inside their plugin subtree, embedding hosts can resolve StateStore through the runtime, @lando/core/testing exports an inspectable in-memory TestStateStore, and @lando/sdk/test exports a shared StateStore contract suite covering live and test implementations.
+- Added a state-store boundary gate so future durable atomic/versioned/lockable state cannot be hand-rolled outside the canonical primitive, wired it into generated CI, and aligned the durable-state repo/spec notes with the shipped single-segment namespace and plugin pre-rooting behavior.
+- Verification: typecheck, lint, schema-snapshot drift, full codegen idempotency, focused StateStore/plugin/runtime/boundary/export/CI tests, check:state-store-boundary, and check:paths-boundary passed. Full `bun test` was not run.
+- **Learnings for future iterations:** StateStore `namespace`/`key` are single path segments; plugin or app scoped subtrees must be pre-rooted with `{ path }`/`{ app }` via the Paths primitive instead of embedding slashes in namespace strings.
+---
