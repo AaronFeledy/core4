@@ -665,7 +665,7 @@ const lockTextDecoder = new TextDecoder();
  * CUSTOM codec wrapping {@link renderLockfile} / {@link parseLockEntriesFromText}
  * so the on-disk YAML stays byte-for-byte identical, and the store provides the
  * atomic write + path containment (no direct `writeFileAtomicViaRename`). The
- * default app lockfile uses the PRD's `{ app: appRoot }` root; explicit
+ * default app lockfile uses the `{ app: appRoot }` StateStore root; explicit
  * `lockfilePath` overrides pin the bucket to that path's directory.
  */
 const lockfileRoot = (
