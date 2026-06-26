@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Effect, ParseResult, Schema } from "effect";
 
 import { LandofileIncludeError, LandofileLockMismatchError, LandofileParseError } from "@lando/sdk/errors";
-import { type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
+import type { StateBucket } from "@lando/sdk/services";
 
-import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { type GitRecipeCloner, defaultGitRecipeCloner, publish } from "../recipes/git-source.ts";
 import { type NpmPackument, type NpmRegistryClient, parseNpmPackageSpec } from "../recipes/npm-source.ts";
@@ -17,6 +17,7 @@ import {
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
 } from "../recipes/tarball-source.ts";
+import { makeStateStore } from "../state/service.ts";
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 
@@ -570,41 +571,65 @@ const lockScalar = (value: unknown): string | undefined => {
   return undefined;
 };
 
-const parseLockEntries = (path: string): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError> =>
-  Effect.tryPromise({
-    try: async () => {
-      if (!(await fileExists(path))) return new Map<string, LockEntry>();
-      return Bun.file(path).text();
-    },
-    catch: (cause) =>
-      new LandofileParseError({
-        message: `Failed to read include lockfile ${path}: ${causeMessage(cause)}`,
-        filePath: path,
-        line: undefined,
-        column: undefined,
-        cause,
-      }),
-  }).pipe(
-    Effect.flatMap((contentOrMap) => {
-      if (contentOrMap instanceof Map) return Effect.succeed(contentOrMap);
-      return parseLandofile({ file: path, content: contentOrMap, cwd: dirname(path) });
-    }),
-    Effect.map((parsed) => {
-      if (parsed instanceof Map) return parsed;
-      if (!isPlainRecord(parsed) || !Array.isArray(parsed.includes)) return new Map<string, LockEntry>();
-      const entries = new Map<string, LockEntry>();
-      for (const entry of parsed.includes) {
-        if (!isPlainRecord(entry)) continue;
-        const source = lockScalar(entry.source);
-        const resolved = lockScalar(entry.resolved);
-        const checksum = lockScalar(entry.checksum);
-        if (source !== undefined && resolved !== undefined && checksum !== undefined) {
-          entries.set(source, { source, resolved, checksum });
-        }
-      }
-      return entries;
-    }),
-  );
+/**
+ * Parse the on-disk `.lando.lock.yml` text into `LockEntry` records. Pure (no
+ * IO): this is the body of the `StateBucket` custom codec's `decode`. Malformed
+ * YAML throws so the bucket's `onCorrupt: "discard"` policy can recover to the
+ * empty-lock default — the prior `parseLockEntries` swallowed every error into an
+ * empty map, so this keeps the migrated read tolerant of a corrupt lockfile.
+ */
+const parseLockEntriesFromText = (content: string): LockEntry[] => {
+  const parsed = parseLockfileYaml(content);
+  if (!isPlainRecord(parsed) || !Array.isArray(parsed.includes)) return [];
+  const entries: LockEntry[] = [];
+  for (const entry of parsed.includes) {
+    if (!isPlainRecord(entry)) continue;
+    const source = lockScalar(entry.source);
+    const resolved = lockScalar(entry.resolved);
+    const checksum = lockScalar(entry.checksum);
+    if (source !== undefined && resolved !== undefined && checksum !== undefined) {
+      entries.push({ source, resolved, checksum });
+    }
+  }
+  return entries;
+};
+
+/**
+ * Minimal block-style YAML reader for the lockfile's fixed shape
+ * (`includes:` -> list of `source`/`resolved`/`checksum` maps). The lockfile is
+ * Lando-owned and only ever emitted by `renderLockfile`, so a tolerant
+ * line-based reader is sufficient and avoids pulling the Landofile parser into
+ * the codec (which would re-introduce the throw-on-corrupt behavior the store's
+ * discard policy is meant to absorb).
+ */
+const parseLockfileYaml = (content: string): { includes: Array<Record<string, unknown>> } => {
+  const includes: Array<Record<string, unknown>> = [];
+  let current: Record<string, unknown> | undefined;
+  for (const rawLine of content.split("\n")) {
+    const line = rawLine.replace(/\r$/u, "");
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+    if (/^includes:\s*$/u.test(line)) continue;
+    const itemMatch = /^ {2}- source:\s*(.*)$/u.exec(line);
+    if (itemMatch !== null) {
+      current = { source: unescapeScalar(itemMatch[1] ?? "") };
+      includes.push(current);
+      continue;
+    }
+    const fieldMatch = /^ {4}(resolved|checksum):\s*(.*)$/u.exec(line);
+    if (fieldMatch !== null && current !== undefined) {
+      current[fieldMatch[1] as "resolved" | "checksum"] = unescapeScalar(fieldMatch[2] ?? "");
+    }
+  }
+  return { includes };
+};
+
+const unescapeScalar = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/gu, "'");
+  }
+  return trimmed;
+};
 
 const escapeScalar = (value: string): string => {
   if (/^[A-Za-z0-9._~:/@+-]+$/u.test(value) && value !== "true" && value !== "false" && value !== "null")
@@ -625,11 +650,98 @@ const renderLockfile = (entries: ReadonlyArray<LockEntry>): string => {
   return lines.join("\n");
 };
 
-const writeLockfileIfNeeded = async (ctx: ResolveContext): Promise<void> => {
-  if (ctx.stagedLocks.size === 0) return;
+const LockEntrySchema = Schema.Struct({
+  source: Schema.String,
+  resolved: Schema.String,
+  checksum: Schema.String,
+});
+const LockEntriesSchema = Schema.Array(LockEntrySchema);
+
+const lockfileStore = makeStateStore();
+const lockTextDecoder = new TextDecoder();
+
+/**
+ * Open the `StateBucket` that owns one app's `.lando.lock.yml`. The bucket uses a
+ * CUSTOM codec wrapping {@link renderLockfile} / {@link parseLockEntriesFromText}
+ * so the on-disk YAML stays byte-for-byte identical, and the store provides the
+ * atomic write + path containment (no direct `writeFileAtomicViaRename`). Root is
+ * pinned to the lockfile's own directory so a caller-supplied `lockfilePath`
+ * still resolves correctly, and `onCorrupt: "discard"` recovers a malformed
+ * lockfile to the empty default instead of throwing.
+ */
+const openLockfileBucket = (
+  lockfilePath: string,
+): Effect.Effect<StateBucket<readonly LockEntry[]>, LandofileParseError> =>
+  lockfileStore
+    .open({
+      root: { path: AbsolutePath.make(dirname(lockfilePath)) },
+      key: basename(lockfilePath),
+      schema: LockEntriesSchema,
+      version: 1,
+      lock: "none",
+      onCorrupt: "discard",
+      default: [],
+      codec: {
+        encode: (entries) => renderLockfile(entries),
+        decode: (raw) => parseLockEntriesFromText(lockTextDecoder.decode(raw)),
+      },
+    })
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new LandofileParseError({
+            message: `Failed to open include lockfile ${lockfilePath}: ${causeMessage(cause)}`,
+            filePath: lockfilePath,
+            line: undefined,
+            column: undefined,
+            cause,
+          }),
+      ),
+    );
+
+const parseLockEntries = (path: string): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError> =>
+  openLockfileBucket(path).pipe(
+    Effect.flatMap((bucket) =>
+      bucket.get.pipe(
+        Effect.mapError(
+          (cause) =>
+            new LandofileParseError({
+              message: `Failed to read include lockfile ${path}: ${causeMessage(cause)}`,
+              filePath: path,
+              line: undefined,
+              column: undefined,
+              cause,
+            }),
+        ),
+      ),
+    ),
+    Effect.map((entries) => {
+      const map = new Map<string, LockEntry>();
+      for (const entry of entries ?? []) map.set(entry.source, entry);
+      return map;
+    }),
+  );
+
+const writeLockEntries = (
+  lockfilePath: string,
+  entries: ReadonlyArray<LockEntry>,
+): Effect.Effect<void, LandofileIncludeError> =>
+  openLockfileBucket(lockfilePath).pipe(
+    Effect.flatMap((bucket) => bucket.set(entries)),
+    Effect.mapError(() =>
+      includeError({
+        message: `Could not write include lockfile ${lockfilePath}.`,
+        source: lockfilePath,
+        kind: "fetch-failed",
+      }),
+    ),
+  );
+
+const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, LandofileIncludeError> => {
+  if (ctx.stagedLocks.size === 0) return Effect.void;
   const merged = new Map(ctx.lockEntries);
   for (const [source, entry] of ctx.stagedLocks) merged.set(source, entry);
-  await writeFileAtomicViaRename(ctx.lockfilePath, renderLockfile([...merged.values()]));
+  return writeLockEntries(ctx.lockfilePath, [...merged.values()]);
 };
 
 export const resolveLandofileIncludes = (
@@ -656,15 +768,7 @@ export const resolveLandofileIncludes = (
       stagedLocks: new Map(),
     };
     const resolved = yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
-    yield* Effect.tryPromise({
-      try: () => writeLockfileIfNeeded(ctx),
-      catch: (cause) =>
-        includeError({
-          message: `Could not write include lockfile ${lockfilePath}: ${causeMessage(cause)}`,
-          source: lockfilePath,
-          kind: "fetch-failed",
-        }),
-    });
+    yield* writeLockfileIfNeeded(ctx);
     return resolved;
   });
 };
@@ -746,15 +850,7 @@ export const updateLandofileIncludes = (
 
     let wrote = false;
     if (!checkMode && drift) {
-      yield* Effect.tryPromise({
-        try: () => writeFileAtomicViaRename(lockfilePath, renderLockfile([...ctx.stagedLocks.values()])),
-        catch: (cause) =>
-          includeError({
-            message: `Could not write include lockfile ${lockfilePath}: ${causeMessage(cause)}`,
-            source: lockfilePath,
-            kind: "fetch-failed",
-          }),
-      });
+      yield* writeLockEntries(lockfilePath, [...ctx.stagedLocks.values()]);
       wrote = true;
     }
 
