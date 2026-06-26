@@ -61,6 +61,41 @@ const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffend
   const sourceText = await Bun.file(file).text();
   const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const offenders: ProbeBoundaryOffender[] = [];
+  const effectAliases = new Set(["Effect"]);
+  const scheduleAliases = new Set(["Schedule"]);
+  const effectMemberAliases = new Map<string, string>();
+  const scheduleMemberAliases = new Map<string, string>();
+
+  const collectImports = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const moduleName = node.moduleSpecifier.text;
+      const clause = node.importClause;
+      if (clause !== undefined && clause.phaseModifier !== ts.SyntaxKind.TypeKeyword) {
+        const bindings = clause.namedBindings;
+        if (bindings !== undefined) {
+          if (ts.isNamedImports(bindings)) {
+            for (const element of bindings.elements) {
+              const imported = element.propertyName?.text ?? element.name.text;
+              const local = element.name.text;
+              if (moduleName === "effect" && imported === "Effect") effectAliases.add(local);
+              if (moduleName === "effect" && imported === "Schedule") scheduleAliases.add(local);
+              if (moduleName === "effect/Effect" && FORBIDDEN_EFFECT_MEMBERS.has(imported)) {
+                effectMemberAliases.set(local, imported);
+              }
+              if (moduleName === "effect/Schedule") scheduleMemberAliases.set(local, imported);
+            }
+          } else if (ts.isNamespaceImport(bindings)) {
+            if (moduleName === "effect/Effect") effectAliases.add(bindings.name.text);
+            if (moduleName === "effect/Schedule") scheduleAliases.add(bindings.name.text);
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, collectImports);
+  };
+
+  collectImports(source);
 
   const record = (node: ts.Node, match: string): void => {
     const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -72,16 +107,21 @@ const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffend
       const object = node.expression.text;
       const member = node.name.text;
 
-      // `Effect.retry` / `Effect.repeat` / `Effect.schedule` — hand-rolled
-      // retry/backoff loops.
-      if (object === "Effect" && FORBIDDEN_EFFECT_MEMBERS.has(member)) {
+      if (effectAliases.has(object) && FORBIDDEN_EFFECT_MEMBERS.has(member)) {
         record(node, `Effect.${member}`);
       }
 
-      // `Schedule.<anything>` — any direct Schedule construction.
-      if (object === "Schedule") {
+      if (scheduleAliases.has(object)) {
         record(node, `Schedule.${member}`);
       }
+    }
+
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const effectMember = effectMemberAliases.get(node.expression.text);
+      if (effectMember !== undefined) record(node.expression, `Effect.${effectMember}`);
+
+      const scheduleMember = scheduleMemberAliases.get(node.expression.text);
+      if (scheduleMember !== undefined) record(node.expression, `Schedule.${scheduleMember}`);
     }
 
     ts.forEachChild(node, visit);

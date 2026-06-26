@@ -85,6 +85,44 @@ describe("probe boundary lint gate", () => {
     }
   });
 
+  test("reports aliased Effect and Schedule imports", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/x/aliased-namespaces.ts",
+        'import { Effect as Fx, Schedule as Sch } from "effect"; export const r = Fx.retry(eff, Sch.spaced("1 second"));\n',
+      );
+      await write(
+        root,
+        "core/src/x/direct-effect.ts",
+        'import { retry as retryEffect } from "effect/Effect"; export const r = retryEffect(eff, sched);\n',
+      );
+      await write(
+        root,
+        "plugins/y/src/direct-schedule.ts",
+        'import { recurs as repeatThree } from "effect/Schedule"; export const s = repeatThree(3);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/x/aliased-namespaces.ts:1:Effect.retry",
+        "core/src/x/aliased-namespaces.ts:1:Schedule.spaced",
+        "core/src/x/direct-effect.ts:1:Effect.retry",
+        "plugins/y/src/direct-schedule.ts:1:Schedule.recurs",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("allowlisted non-probe lock loops and named consumers are not flagged, but the same pattern elsewhere is", async () => {
     const root = await makeFixtureRoot();
     try {

@@ -463,3 +463,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The probe-boundary gate detects via TypeScript AST property-access (`Effect.retry|repeat|schedule`, `Schedule.<member>`), so JSDoc prose that names those APIs is NOT flagged and `String.prototype.repeat()` is never a false positive (object identifier must be `Effect`/`Schedule`). This is the cleanest detection for "forbid these named calls" gates — mirror `check-redaction-boundary.ts`, not a text grep.
   - The two `Effect.sleep`-based advisory-lock loops are NOT caught by an `Effect.retry/repeat/schedule` + `Schedule.*` detector (they use neither), so the CARVE_OUTS allowlist for them is belt-and-suspenders / documents intent rather than load-bearing; a future gate that also flags `Effect.sleep` retry loops would need it to be load-bearing.
 ---
+
+## 2026-06-26 19:05 CDT - US-317 Review
+- Review hardened the probe boundary gate so aliased `Effect`/`Schedule` imports and direct `effect/Effect` or `effect/Schedule` member imports cannot bypass the regrowth check.
+- Review notes (deferred/rejected): rejected review-work's literal AC1-AC3 migration finding because the build-step code audit confirmed those consumers have no private retry loop to migrate today; wrapping stubs or single-shot code in `runProbe(maxAttempts:1)` would be behavior-risking ceremony, not a review fix. Rejected redaction-gate enforcement for this story because no `ProbeResult.lastError` consumer exists until a real runProbe-backed consumer lands; the existing redaction paths remain unchanged.
+- Verification: typecheck, lint, `check:probe-boundary`, probe-boundary tests, CI workflow/codegen/runbook spot checks, and doctor/downloader/setup regression spot checks passed.
+- **Learnings for future iterations:** Boundary gates that key on namespace calls must account for aliased namespace imports and direct submodule member imports, not only the canonical `Effect.foo` spelling.
+---
