@@ -19,6 +19,7 @@ import { makeLandoPaths } from "../config/paths.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { encodeFrame } from "../state/codec.ts";
 import { acquireAdvisoryLockAt, withAdvisoryLock } from "../state/lock.ts";
+import { resolveStatePath } from "../state/paths.ts";
 import { makeStateStore } from "../state/service.ts";
 
 const REGISTRY_VERSION = 1 as const;
@@ -96,40 +97,44 @@ const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   }
 };
 
-const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> => {
-  const paths = scratchRegistryPaths();
-  const inspectLegacyEnvelope = Effect.promise(async () => {
-    try {
-      return decodeLegacyEnvelope(await readFile(paths.registry, "utf8"));
-    } catch (cause) {
-      if (isMissing(cause)) return null;
-      return null;
-    }
-  });
-
-  const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
-    Schema.encode(RegistryEntriesSchema)(entries).pipe(
-      Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
-      Effect.flatMap((body) => writeFileAtomicScoped(paths.registry, body)),
-      Effect.mapError((cause) =>
-        scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
-      ),
-    );
-
-  return withAdvisoryLock(
-    paths.registry,
-    "registry.migrate",
-    inspectLegacyEnvelope.pipe(
-      Effect.flatMap((entries) => (entries === null ? Effect.void : rewriteLegacyEnvelope(entries))),
+const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> =>
+  resolveStatePath("userCache", "scratch", "registry.bin", "registry.migrate").pipe(
+    Effect.mapError((cause) =>
+      scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
     ),
-  ).pipe(
+    Effect.flatMap(({ file: registryFile }) => {
+      const inspectLegacyEnvelope = Effect.promise(async () => {
+        try {
+          return decodeLegacyEnvelope(await readFile(registryFile, "utf8"));
+        } catch (cause) {
+          if (isMissing(cause)) return null;
+          return null;
+        }
+      });
+
+      const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
+        Schema.encode(RegistryEntriesSchema)(entries).pipe(
+          Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
+          Effect.flatMap((body) => writeFileAtomicScoped(registryFile, body)),
+          Effect.mapError((cause) =>
+            scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
+          ),
+        );
+
+      return withAdvisoryLock(
+        registryFile,
+        "registry.migrate",
+        inspectLegacyEnvelope.pipe(
+          Effect.flatMap((entries) => (entries === null ? Effect.void : rewriteLegacyEnvelope(entries))),
+        ),
+      );
+    }),
     Effect.mapError((cause) =>
       cause instanceof ScratchAppError
         ? cause
         : scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
     ),
   );
-};
 
 /**
  * Re-acquire the legacy `registry.lock` advisory lock via the generic state
