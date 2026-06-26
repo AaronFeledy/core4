@@ -2032,8 +2032,8 @@
         "Lint passes."
       ],
       "priority": 113,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "core/src/state/ implements the durable store: paths.ts (StateRoot resolution through @lando/core/paths + realpath containment, reason:path on escape), codec.ts (framed json {version,data} + magic-header binary envelopes carrying the schema version; custom codecs own the whole file byte-for-byte and are unversioned), lock.ts (O_EXCL token lockfile with stale-owner takeover via age + kill(pid,0), bounded retry/backoff, token-checked Scope-acquired release, plus a per-path in-process semaphore so same-process fibers serialize), and service.ts (StateStoreLive/makeStateStore/StateBucket with atomic set via writeFileAtomicScoped, onCorrupt discard/quarantine/fail, onVersionMismatch discard/migrator, advisory vs none locking). StateStoreLive is emitted eagerly into the generated minimal bootstrap layer; verified resolvable end-to-end from makeMinimalBootstrapLayer."
     },
     {
       "id": "US-313",
