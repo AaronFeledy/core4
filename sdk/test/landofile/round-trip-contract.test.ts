@@ -1,4 +1,4 @@
-// §7.8.1 round-trip contract suite for the public `@lando/sdk/landofile` surface.
+// Round-trip contract suite for the public `@lando/sdk/landofile` surface.
 // Proves `parseLandofile(emitLandofileYaml(x))` deep-equals `x` across the supported
 // domain, that the rejection set fails with `LandofileEmitError` without emitting,
 // that a merged `LandofileShape` fragment re-decodes after emit, and that emitted
@@ -22,7 +22,7 @@ const roundTrip = async (value: Record<string, unknown>): Promise<unknown> => {
   return Effect.runPromise(parseLandofile({ file: ".lando.yml", content: yaml, cwd: "/tmp" }));
 };
 
-describe("@lando/sdk/landofile — §7.8.1 round-trip law over the supported domain", () => {
+describe("@lando/sdk/landofile — round-trip law over the supported domain", () => {
   test("scalars: string, number, boolean, null", async () => {
     const value = { name: "my-app", runtime: 4, enabled: true, disabled: false, nothing: null };
     expect(await roundTrip(value)).toEqual(value);
