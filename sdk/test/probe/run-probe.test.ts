@@ -241,7 +241,30 @@ describe("runProbe", () => {
     expect(result.lastError).toBeInstanceOf(ProbeTimeoutError);
   });
 
-  test("S4 yellow: classify maps to yellow, retries like red, surfaces yellow distinctly", async () => {
+  test("S4 yellow: last attempt yellow has no stale lastError from earlier failures", async () => {
+    let calls = 0;
+    const attempt = Effect.gen(function* () {
+      calls += 1;
+      if (calls === 1) return yield* Effect.fail({ code: "first-fail" });
+      return "degraded";
+    });
+    const classify: ClassifyFn = {
+      success: () => "yellow",
+      failure: () => "red",
+    };
+
+    const result = await runUnderClock(
+      runProbe(spec({ maxAttempts: 2, delay: Duration.millis(50) }, classify), attempt),
+      "50 millis",
+    );
+
+    expect(result.outcome).toBe("yellow");
+    expect(result.attempts).toBe(2);
+    expect(result.lastError).toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  test("S4b yellow: classify maps to yellow, retries like red, surfaces yellow distinctly", async () => {
     const classify: ClassifyFn = {
       success: () => "yellow",
       failure: () => "red",
@@ -305,6 +328,20 @@ describe("runProbe", () => {
     expect(result.outcome).toBe("red");
     expect(result.attempts).toBe(1);
     expect(result.elapsedMs).toBe(0);
+    expect(calls).toBe(1);
+  });
+
+  test("S7 deadline already elapsed: first attempt still runs when timeout is zero", async () => {
+    let calls = 0;
+    const attempt = Effect.sync(() => {
+      calls += 1;
+      return "ok";
+    });
+
+    const result = await drive(runProbe(spec({ maxAttempts: 3, timeout: Duration.millis(0) }), attempt));
+
+    expect(result.outcome).toBe("green");
+    expect(result.attempts).toBe(1);
     expect(calls).toBe(1);
   });
 

@@ -221,16 +221,16 @@ export const runProbe = <A, E, R>(
     let attempts = 0;
     let lastOutcome: ProbeOutcome = "red";
     let lastError: unknown;
-    let hadError = false;
+    let lastAttemptHadError = false;
 
     while (attempts < maxAttempts) {
-      // Enforce the overall deadline before performing the attempt.
-      if (deadline !== undefined) {
+      if (deadline !== undefined && attempts > 0) {
         const now = yield* Clock.currentTimeMillis;
         if (now >= deadline) break;
       }
 
       attempts += 1;
+      lastAttemptHadError = false;
       const run = Effect.exit(attempt);
       const completed =
         deadline === undefined
@@ -244,7 +244,7 @@ export const runProbe = <A, E, R>(
       if (completed._tag === "TimedOut") {
         lastOutcome = "red";
         lastError = new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts });
-        hadError = true;
+        lastAttemptHadError = true;
         break;
       }
 
@@ -253,14 +253,12 @@ export const runProbe = <A, E, R>(
       if (exit._tag === "Success") {
         lastOutcome = classify === undefined ? "green" : classify.success(exit.value);
         if (lastOutcome === "green") {
-          hadError = false;
-          lastError = undefined;
           break;
         }
       } else {
         const error = yield* extractFailure(spec, exit.cause);
         lastError = error;
-        hadError = true;
+        lastAttemptHadError = true;
         lastOutcome = classify === undefined ? "red" : classify.failure(error);
         if (lastOutcome === "green") {
           break;
@@ -284,11 +282,13 @@ export const runProbe = <A, E, R>(
 
     const end = yield* Clock.currentTimeMillis;
 
+    const includeLastError = lastOutcome !== "green" && lastAttemptHadError;
+
     return {
       outcome: lastOutcome,
       attempts,
       elapsedMs: end - start,
-      ...(hadError ? { lastError } : {}),
+      ...(includeLastError ? { lastError } : {}),
     } satisfies ProbeResult;
   });
 
