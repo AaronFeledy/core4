@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -104,9 +104,28 @@ describe("store-backed include lockfile", () => {
     expect(await readFile(lockPath, "utf8")).toBe(onDisk);
   });
 
+  test("verify reads a pre-migration block-style lockfile fixture without rewriting it", async () => {
+    const lockPath = join(appRoot, ".lando.lock.yml");
+    const fixture = renderExpectedLockfile([
+      { source: "github:acme/fragments/postgres.yml", resolved: "abc123", checksum: sha256(FRAGMENT) },
+    ]);
+    await writeFile(lockPath, fixture, "utf8");
+    const report = await Effect.runPromise(
+      verifyLandofileIncludes({
+        landofile: landofile(),
+        appRoot,
+        cacheRoot,
+        deps: { gitCloner: clonerReturning("abc123") },
+      }),
+    );
+    expect(report.ok).toBe(true);
+    expect(await readFile(lockPath, "utf8")).toBe(fixture);
+  });
+
   test("a corrupt lockfile is discarded (no throw, no quarantine) and re-resolves clean", async () => {
     const lockPath = join(appRoot, ".lando.lock.yml");
-    await writeFile(lockPath, "::: not valid lockfile yaml :::\n", "utf8");
+    const corrupt = "::: not valid lockfile yaml :::\n";
+    await writeFile(lockPath, corrupt, "utf8");
     const report = await Effect.runPromise(
       verifyLandofileIncludes({
         landofile: landofile(),
@@ -119,7 +138,7 @@ describe("store-backed include lockfile", () => {
     expect(report.ok).toBe(false);
     expect(report.entries[0]?.status).toBe("missing");
     // onCorrupt: "discard" must NOT leave a quarantine sibling.
-    const siblings = await readFile(lockPath, "utf8").catch(() => "");
-    expect(siblings.length).toBeGreaterThanOrEqual(0);
+    expect((await readdir(appRoot)).some((name) => name.startsWith(".lando.lock.yml.corrupt-"))).toBe(false);
+    expect(await readFile(lockPath, "utf8")).toBe(corrupt);
   });
 });
