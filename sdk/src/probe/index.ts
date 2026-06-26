@@ -23,7 +23,7 @@
  * passed through the canonical `RedactionService` by the **consuming surface**
  * before it reaches a lifecycle event, transcript, or `lando info`.
  */
-import { type Cause, Clock, Duration, Effect, Schedule, Schema } from "effect";
+import { Cause, Clock, Duration, Effect, Schedule, Schema } from "effect";
 
 /**
  * Declarative retry/backoff/timeout policy. All fields are optional with the
@@ -256,6 +256,9 @@ export const runProbe = <A, E, R>(
           break;
         }
       } else {
+        if (Cause.isInterruptedOnly(exit.cause)) {
+          return yield* Effect.interrupt;
+        }
         const error = yield* extractFailure(spec, exit.cause);
         lastError = error;
         lastAttemptHadError = true;

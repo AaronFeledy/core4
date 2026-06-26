@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Duration, Effect, Fiber, Schema, TestClock, TestContext } from "effect";
+import { Cause, Duration, Effect, Fiber, Schema, TestClock, TestContext } from "effect";
 
 import {
   type ClassifyFn,
@@ -356,6 +356,24 @@ describe("runProbe", () => {
     if (exit._tag === "Failure") {
       const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
       expect(failure).toBeInstanceOf(ProbeError);
+    }
+  });
+
+  test("interruption-only attempt exit propagates interrupt, not ProbeError", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          runProbe(spec({ maxAttempts: 3, delay: Duration.millis(100) }), Effect.never),
+        );
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestContext.TestContext)),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+      expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).not.toBeInstanceOf(ProbeError);
     }
   });
 });
