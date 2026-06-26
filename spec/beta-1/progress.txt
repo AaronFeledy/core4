@@ -403,3 +403,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - A custom StateStore codec must NOT reuse the Landofile parser for decode: the parser throws on malformed YAML, which would convert `onCorrupt: "discard"` into a hard failure. A tolerant line-based reader for the fixed lockfile shape preserves both byte-identity (it round-trips `renderLockfile` output) and the discard recovery.
   - `{ root: { path } }` / `{ app }` require an `AbsolutePath`-branded string; wrap with `AbsolutePath.make(dirname(lockfilePath))` (the `global-app`/`test-runtime` precedent). Lockfile paths are always absolute (`join(appRoot, ...)`), so `.make` is safe without re-validation.
 ---
+
+## 2026-06-26 05:42 CDT - US-314 Review
+- Reviewed the include-lockfile StateStore migration with the five-lane review-work pass and fixed the confirmed acceptance blockers: the default `.lando.lock.yml` bucket now uses the PRD's `{ app: appRoot }` root and `.lando.lock.yml` key, explicit `lockfilePath` overrides keep their path-root behavior, malformed lockfile syntax now exercises the store's `onCorrupt: "discard"` recovery, and the lockfile-store suite now includes a pre-migration block-style fixture plus a real no-quarantine assertion.
+- Review notes (deferred/rejected): the low-severity security note about in-process `lockfilePath` overrides was accepted as non-blocking because CLI/default app paths are now app-root scoped and the override is an existing internal/test seam; the optional write-error cause-preservation cleanup was deferred because it does not block US-314 behavior or PRD acceptance.
+- Verification: typecheck passed; lint passed; focused spot checks passed — lockfile-store, includes, includes-update, and includes-verify unit suites. Full `bun test` was not run.
+---
