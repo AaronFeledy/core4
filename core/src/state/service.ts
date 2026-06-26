@@ -207,10 +207,4 @@ export const makeStateStore = (): StateStoreShape => ({
     ),
 });
 
-/**
- * The durable, atomic, schema-validated, versioned, optionally cross-process
- * locked on-disk state store, available eagerly at bootstrap level `minimal`.
- * Construction touches no network, provider, or plugin module; root resolution
- * flows through the pure `@lando/core/paths` primitive.
- */
 export const StateStoreLive: Layer.Layer<StateStore> = Layer.succeed(StateStore, makeStateStore());
