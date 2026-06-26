@@ -385,3 +385,27 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck passed; lint passed; focused spot checks passed — scratch registry/gc/state-store plus adjacent scratch fork, recipe, finalizer, flags, and list/info suites. Full `bun test` was not run.
 - **Learnings for future iterations:** When moving a persisted artifact onto StateStore, treat any previous on-disk envelope as a persisted contract even in pre-release work; migrate the valid legacy shape before the new codec can classify it as corruption.
 ---
+
+## [2026-06-26 05:15:41 CDT] - Babysit
+- PR: #467 https://github.com/AaronFeledy/core4/pull/467
+- CI outcome: pass
+- Review feedback: fixed (canonicalized scratch registry migration/advisory-lock paths for Bugbot symlinked-cache race)
+- Merge: merged (squash)
+---
+
+## 2026-06-26 - US-314
+- Routed the include lockfile (`.lando.lock.yml`) read/write in `core/src/landofile/includes.ts` through a `StateBucket` instead of direct `Bun.file` reads and `writeFileAtomicViaRename`. The bucket is opened via the dependency-free `makeStateStore()` factory with a CUSTOM codec wrapping the existing `renderLockfile` (encode) and a new pure `parseLockEntriesFromText` (decode), so every include function stays `R = never` and the on-disk YAML is byte-for-byte identical. The bucket spec pins `{ root: { path: dirname(lockfilePath) }, key: basename(lockfilePath), lock: "none", onCorrupt: "discard", default: [], version: 1 }`, so a caller-supplied `lockfilePath` still resolves and the store now owns the atomic write + path containment.
+- Replaced the three lockfile I/O sites: `parseLockEntries` reads `bucket.get` (mapping the entry array back to the legacy `Map`); `writeLockfileIfNeeded` (resolve/pin) and the inline drift-write in `updateLandofileIncludes` (refresh) both call a shared `writeLockEntries` -> `bucket.set`. `writeFileAtomicViaRename` is no longer imported or called from `includes.ts`.
+- Behavioral delta from the migration: a malformed `.lando.lock.yml` now follows the store's `onCorrupt: "discard"` policy (recover to the empty default, no throw, no quarantine sibling), whereas the prior reader threw `LandofileParseError`. The codec's decoder uses a small block-style line reader rather than the Landofile parser, deliberately, so the discard policy is not defeated by the parser's throw-on-corrupt.
+- Verification: typecheck, lint (incl. deprecation gate) passed; new `landofile-includes-lockfile-store.test.ts` (byte-identity round-trip vs the pre-migration renderer, read-only verify, corrupt-discard) RED->GREEN; existing includes/includes-update/includes-verify, both `app:includes:*` CLI scenario suites, `app/resolve`, and `state-store` spot checks (85 tests) regression-clean. Manual QA drove both `app:includes:update` and `app:includes:verify` through the real CLI in source-mode AND the rebuilt compiled `$bunfs` binary: store-backed read parsed a valid git-style lockfile (stale detection, exit 1), a corrupt lockfile discarded cleanly (exit 0), and update ran no-op clean — identical across both dispatch paths.
+- **Learnings for future iterations:**
+  - This is the US-313 template applied to a human-facing on-disk file: build the bucket from `makeStateStore()` (not `yield* StateStore`) so a `R = never` caller with no `StateStore` in context keeps working, and store the inner value (the lock-entry array) as the bucket schema, reconstructing the legacy `Map` only at the read boundary. The CLI commands (`appIncludesUpdate`/`appIncludesVerify`) are `R = never` and never provide a `StateStore`, so the factory approach is mandatory, not optional.
+  - A custom StateStore codec must NOT reuse the Landofile parser for decode: the parser throws on malformed YAML, which would convert `onCorrupt: "discard"` into a hard failure. A tolerant line-based reader for the fixed lockfile shape preserves both byte-identity (it round-trips `renderLockfile` output) and the discard recovery.
+  - `{ root: { path } }` / `{ app }` require an `AbsolutePath`-branded string; wrap with `AbsolutePath.make(dirname(lockfilePath))` (the `global-app`/`test-runtime` precedent). Lockfile paths are always absolute (`join(appRoot, ...)`), so `.make` is safe without re-validation.
+---
+
+## 2026-06-26 05:42 CDT - US-314 Review
+- Reviewed the include-lockfile StateStore migration with the five-lane review-work pass and fixed the confirmed acceptance blockers: the default `.lando.lock.yml` bucket now uses the PRD's `{ app: appRoot }` root and `.lando.lock.yml` key, explicit `lockfilePath` overrides keep their path-root behavior, malformed lockfile syntax now exercises the store's `onCorrupt: "discard"` recovery, and the lockfile-store suite now includes a pre-migration block-style fixture plus a real no-quarantine assertion.
+- Review notes (deferred/rejected): the low-severity security note about in-process `lockfilePath` overrides was accepted as non-blocking because CLI/default app paths are now app-root scoped and the override is an existing internal/test seam; the optional write-error cause-preservation cleanup was deferred because it does not block US-314 behavior or PRD acceptance.
+- Verification: typecheck passed; lint passed; focused spot checks passed — lockfile-store, includes, includes-update, and includes-verify unit suites. Full `bun test` was not run.
+---
