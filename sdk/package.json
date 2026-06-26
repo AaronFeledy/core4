@@ -27,6 +27,7 @@
     "./events": "./src/events/index.ts",
     "./expressions": "./src/expressions/index.ts",
     "./landofile": "./src/landofile/index.ts",
+    "./probe": "./src/probe/index.ts",
     "./renderer": "./src/renderer/index.ts",
     "./secrets": "./src/secrets/index.ts",
     "./template": "./src/template/index.ts",
