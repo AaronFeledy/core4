@@ -331,5 +331,14 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:**
   - Biome auto-removes a directly-unused error import from `services/index.ts`: a `declare class` tag mirror references only the `*Shape` type (which transitively uses the error), so only `import type { <X>Shape }` is needed — do not hand-add the error import for the mirror.
   - A spec type with an intentional unused 2nd generic param (`StateCodec<A, I>`, symmetric with `StateBucketSpec<A, I>.codec`) trips `noUnusedVariables` (warn). Rename the unused param to `_I` to keep the public 2-arg arity (callers unaffected) and a zero-warning lint.
-  - The `line`/`column` Bun `TaggedError` gotcha is about not declaring schema FIELDS named `line`/`column` (they collide with the `YieldableError` base getters). `Object.keys(err)` excludes them; they only surface via `in` from the base class, exactly like `ScratchAppError`.
+  - The `line`/`column` Bun `TaggedError` gotcha is about not declaring schema FIELDS named `line`/`column` (they collide with Bun/Effect error source-location fields). Those properties may still appear on the runtime `Error` instance, so verify the declared schema payload/`Object.keys(err)` rather than asserting the properties are absent.
+---
+
+## 2026-06-25 23:11 CDT - US-311 Review
+- Reviewed the StateStore SDK contract commit range (`origin/main...HEAD`) with the five-lane `review-work` pass. No code blockers were found; review corrected the progress-log learning about Bun/Effect `line`/`column` properties so future agents check declared schema payload fields rather than runtime Error instance property presence.
+- Review notes (deferred/rejected): `StateStoreError.operation` as `Schema.String` is AC-compliant and leaves implementation operations flexible; no literal-union fix needed now.
+- Review notes (deferred/rejected): no `sdk-mvp-surface.json` update is required for this additive tag; the backward-compat gate documents additive service tags through `sdk/API_COMPATIBILITY.md`, matching the existing PathsService pattern.
+- Review notes (deferred/rejected): StateStoreLive, bootstrap wiring, contract suite, TestStateStore, plugin/host exposure, scratch/include migrations, and guide/spec durable-state notes remain US-312..US-315 scope.
+- Verification: typecheck, lint, schema-snapshot codegen/no drift, `sdk/test/library/exports.test.ts`, `sdk/test/library/sdk-backward-compatibility.test.ts`, runtime import/error construction probe, and `git diff --check` passed.
+- **Learnings for future iterations:** For `Schema.TaggedError`, avoiding payload fields named `line`/`column` prevents the Bun collision; do not assert those property names are absent from runtime Error instances, because the base error may still provide them.
 ---
