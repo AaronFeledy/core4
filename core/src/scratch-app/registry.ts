@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 // The scratch registry — a thin, scratch-shaped view over a single durable
 // `StateBucket`. All atomic write, advisory cross-process locking, corruption
 // quarantine, and version-envelope handling are delegated to `StateStore`
@@ -14,7 +16,9 @@ import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "../config/paths.ts";
-import { acquireAdvisoryLockAt } from "../state/lock.ts";
+import { writeFileAtomicScoped } from "../state-store/atomic.ts";
+import { encodeFrame } from "../state/codec.ts";
+import { acquireAdvisoryLockAt, withAdvisoryLock } from "../state/lock.ts";
 import { makeStateStore } from "../state/service.ts";
 
 const REGISTRY_VERSION = 1 as const;
@@ -63,16 +67,69 @@ export const scratchRegistryPaths = (): ScratchRegistryPaths => {
   };
 };
 
-const scratchRegistryError = (operation: string, message: string, cause: StateStoreError): ScratchAppError =>
+const scratchRegistryError = (operation: string, message: string, cause: unknown): ScratchAppError =>
   new ScratchAppError({
     operation,
     message,
     cause,
-    ...(cause.remediation === undefined ? {} : { remediation: cause.remediation }),
+    ...(typeof cause === "object" &&
+    cause !== null &&
+    "remediation" in cause &&
+    typeof cause.remediation === "string"
+      ? { remediation: cause.remediation }
+      : {}),
   });
 
 const sortById = (entries: RegistryEntries): RegistryEntries =>
   [...entries].sort((left, right) => left.id.localeCompare(right.id));
+
+const isMissing = (cause: unknown): boolean =>
+  typeof cause === "object" && cause !== null && (cause as { readonly code?: unknown }).code === "ENOENT";
+
+const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
+  try {
+    return Schema.decodeUnknownSync(RegistryEnvelopeSchema)(JSON.parse(content), {
+      onExcessProperty: "error",
+    }).entries;
+  } catch {
+    return null;
+  }
+};
+
+const migrateLegacyEnvelope = (): Effect.Effect<void, ScratchAppError> => {
+  const paths = scratchRegistryPaths();
+  const inspectLegacyEnvelope = Effect.promise(async () => {
+    try {
+      return decodeLegacyEnvelope(await readFile(paths.registry, "utf8"));
+    } catch (cause) {
+      if (isMissing(cause)) return null;
+      return null;
+    }
+  });
+
+  const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
+    Schema.encode(RegistryEntriesSchema)(entries).pipe(
+      Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
+      Effect.flatMap((body) => writeFileAtomicScoped(paths.registry, body)),
+      Effect.mapError((cause) =>
+        scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
+      ),
+    );
+
+  return withAdvisoryLock(
+    paths.registry,
+    "registry.migrate",
+    inspectLegacyEnvelope.pipe(
+      Effect.flatMap((entries) => (entries === null ? Effect.void : rewriteLegacyEnvelope(entries))),
+    ),
+  ).pipe(
+    Effect.mapError((cause) =>
+      cause instanceof ScratchAppError
+        ? cause
+        : scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
+    ),
+  );
+};
 
 /**
  * Re-acquire the legacy `registry.lock` advisory lock via the generic state
@@ -130,7 +187,11 @@ export const makeScratchRegistry = (): ScratchRegistryService => {
   ): Effect.Effect<A, ScratchAppError> =>
     openRegistryBucket().pipe(
       Effect.flatMap((bucket) =>
-        use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
+        migrateLegacyEnvelope().pipe(
+          Effect.zipRight(
+            use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
+          ),
+        ),
       ),
     );
 

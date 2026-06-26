@@ -10,6 +10,7 @@ import {
   makeScratchRegistry,
   scratchRegistryPaths,
 } from "../../src/scratch-app/registry.ts";
+import { LOCK_STALE_THRESHOLD_MS } from "../../src/state/lock.ts";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));
@@ -69,6 +70,23 @@ describe("scratch registry", () => {
     });
   });
 
+  test("legacy registry envelopes are migrated into the StateStore frame", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const first = entry("scratch-one-000001");
+      const second = entry("scratch-two-000002");
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(paths.registry, `${JSON.stringify({ version: 1, entries: [first, second] })}\n`);
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first, second]);
+
+      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
+      expect(raw).toEqual({ version: 1, data: [first, second] });
+      const files = await readdir(paths.base);
+      expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(false);
+    });
+  });
+
   test("lock release removes only the matching token", async () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();
@@ -82,6 +100,28 @@ describe("scratch registry", () => {
 
       const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
       expect(current.token).toBe("other");
+    });
+  });
+
+  test("stale legacy locks are taken over", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(
+        paths.lock,
+        JSON.stringify({
+          pid: process.pid,
+          token: "stale",
+          createdAt: Date.now() - LOCK_STALE_THRESHOLD_MS - 1_000,
+        }),
+      );
+
+      const lock = await Effect.runPromise(acquireScratchRegistryLock(paths));
+
+      const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
+      expect(current.token).toBe(lock.token);
+      await Effect.runPromise(lock.release);
+      expect(await Bun.file(paths.lock).exists()).toBe(false);
     });
   });
 });
