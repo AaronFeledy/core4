@@ -9,7 +9,7 @@
 // failed critical section always releases the lock and never deletes a lock a
 // different owner has since taken.
 
-import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -25,6 +25,9 @@ const LOCK_ATTEMPTS = 200;
 // holder's release-unlink and the next `O_EXCL` create. Both layers are load
 // bearing: remove the semaphore and same-process fibers can lose a write.
 const inProcessGuards = new Map<string, Effect.Semaphore>();
+
+const canonicalLockTarget = (file: string): Effect.Effect<string> =>
+  Effect.promise(() => realpath(file).catch(() => file));
 
 const guardFor = (file: string): Effect.Effect<Effect.Semaphore> =>
   Effect.sync(() => {
@@ -155,15 +158,18 @@ export const withAdvisoryLock = <A, E>(
   file: string,
   operation: string,
   body: Effect.Effect<A, E>,
-): Effect.Effect<A, E | StateStoreError> => {
-  const lockPath = `${file}.lock`;
-  const token = makeLockToken();
-  const fileLocked = Effect.acquireUseRelease(
-    acquire(lockPath, token, operation),
-    () => body,
-    () => release(lockPath, token),
+): Effect.Effect<A, E | StateStoreError> =>
+  canonicalLockTarget(file).pipe(
+    Effect.flatMap((canonicalFile) => {
+      const lockPath = `${canonicalFile}.lock`;
+      const token = makeLockToken();
+      const fileLocked = Effect.acquireUseRelease(
+        acquire(lockPath, token, operation),
+        () => body,
+        () => release(lockPath, token),
+      );
+      return guardFor(canonicalFile).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
+    }),
   );
-  return guardFor(file).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
-};
 
 export const LOCK_STALE_THRESHOLD_MS = LOCK_STALE_MS;
