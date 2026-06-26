@@ -503,6 +503,12 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makeTunnelServiceContractSuite).toBeDefined();
   });
 
+  test("test entry point exports the state store contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runStateStoreContract).toBeDefined();
+  });
+
   test("test entry point exports the interaction contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 

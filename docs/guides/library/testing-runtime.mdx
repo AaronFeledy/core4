@@ -64,4 +64,14 @@ tags: [beta, docs, library, testing]
       <Variable name="contract" value="runInteractionContract" display="@lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees" />
     </Step>
   </Scenario>
+
+  <Scenario id="state-store-test-double" render={false} reason="The in-memory StateStore double mirrors live bucket semantics and is verified by runStateStoreContract without writing to the host disk">
+    <Step name="in-memory-buckets">
+      <Variable name="factory" value="makeTestStateStore" display="@lando/core/testing exports makeTestStateStore for hosts and plugin tests that need StateStore without filesystem IO" />
+      <Variable name="layer" value="Layer.succeed(StateStore)" display="makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks" />
+      <Variable name="semantics" value="codec and lock parity" display="The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive" />
+      <Variable name="list" value="basename keys" display="list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests" />
+      <Variable name="contract" value="runStateStoreContract" display="@lando/sdk/test exposes runStateStoreContract so live, in-memory, and host-provided StateStore implementations prove the same bucket guarantees" />
+    </Step>
+  </Scenario>
 </Guide>

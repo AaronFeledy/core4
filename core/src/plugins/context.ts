@@ -1,8 +1,9 @@
 // Constrained context plugins receive instead of internal core objects. Exposes
 // `managedFiles`, a `ManagedFileService` view pre-namespaced to the plugin id.
 // Plugin writes always record `owner: <plugin-id>`; a plugin cannot see, remove,
-// or adopt files owned by another plugin or by core. A future `stateStore`
-// accessor can be added here; ownership rules live in `makePluginManagedFiles`.
+// or adopt files owned by another plugin or by core. `stateStore` is likewise
+// pre-rooted to `<userDataRoot>/plugins/<plugin-id>/` by the host; plugin code
+// cannot select another durable-state root.
 
 import { posix as pathPosix } from "node:path";
 
@@ -10,16 +11,33 @@ import { Effect } from "effect";
 import type { Context, Scope } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
+import { StateStoreError } from "@lando/sdk/errors";
 import type {
+  AbsolutePath,
   ManagedFile,
   ManagedFileInfo,
   ManagedFilePlan,
   ManagedFileResult,
   PortablePath,
 } from "@lando/sdk/schema";
-import type { ManagedFileApplyOptions, ManagedFileSelector, ManagedFileService } from "@lando/sdk/services";
+import type {
+  ManagedFileApplyOptions,
+  ManagedFileSelector,
+  ManagedFileService,
+  StateBucket,
+  StateBucketSpec,
+  StateStoreShape,
+} from "@lando/sdk/services";
 
 type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
+
+/** A plugin declares a state bucket; the root is supplied by the host surface. */
+export type PluginStateBucketSpec<A, I> = Omit<StateBucketSpec<A, I>, "root">;
+
+/** The plugin-scoped `StateStore` view a plugin operates through. */
+export interface PluginStateStore {
+  readonly open: <A, I>(spec: PluginStateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+}
 
 /** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
 export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
@@ -200,17 +218,53 @@ export const makePluginManagedFiles = (
   return { plan, apply, remove, status, adopt, release };
 };
 
+const stateRootPathOf = (root: unknown): string | undefined => {
+  if (typeof root !== "object" || root === null || !("path" in root)) return undefined;
+  const path = root.path;
+  return typeof path === "string" ? path : undefined;
+};
+
+const pluginStatePathError = (pluginStateRoot: AbsolutePath): StateStoreError =>
+  new StateStoreError({
+    reason: "path",
+    operation: "open",
+    path: pluginStateRoot,
+    remediation: "Plugins are confined to their host-assigned durable-state subtree.",
+  });
+
+/**
+ * Build a `StateStore` view that injects the plugin's state root on every open.
+ * A foreign `root` supplied by an untyped caller is rejected instead of ignored.
+ */
+export const makePluginStateStore = (
+  store: StateStoreShape,
+  pluginStateRoot: AbsolutePath,
+): PluginStateStore => {
+  const open: PluginStateStore["open"] = (spec) => {
+    if ("root" in spec && stateRootPathOf(spec.root) !== pluginStateRoot) {
+      return Effect.fail(pluginStatePathError(pluginStateRoot));
+    }
+    return store.open({ ...spec, root: { path: pluginStateRoot } });
+  };
+
+  return { open };
+};
+
 /** Constrained context a plugin receives at runtime. */
 export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
+  readonly stateStore: PluginStateStore;
 }
 
-/** Build a `LandoPluginContext` whose `managedFiles` is scoped to `id`. */
+/** Build a `LandoPluginContext` whose plugin host services are scoped to `id`. */
 export const makeLandoPluginContext = (input: {
   readonly id: string;
   readonly managedFileService: ManagedFileServiceImpl;
+  readonly stateStore: StateStoreShape;
+  readonly pluginStateRoot: AbsolutePath;
 }): LandoPluginContext => ({
   id: input.id,
   managedFiles: makePluginManagedFiles(input.id, input.managedFileService),
+  stateStore: makePluginStateStore(input.stateStore, input.pluginStateRoot),
 });

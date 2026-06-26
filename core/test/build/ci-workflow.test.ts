@@ -214,6 +214,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run check:redaction-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:env-helper-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:paths-boundary");
+    expect(staticChecksPlatform).toContain("        run: bun run check:state-store-boundary");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable-only platforms");
     expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform != 'linux-x64' }}");
     expect(staticChecksPlatform).toContain(

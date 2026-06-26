@@ -83,6 +83,7 @@ import type {
   Renderer,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  StateStore,
   Telemetry,
   ToolingEngine,
   TunnelError,
@@ -107,6 +108,7 @@ export type LandoRuntimeServices =
   | PrivilegeService
   | ProcessRunner
   | Downloader
+  | StateStore
   | PluginRegistry
   | RuntimeProvider
   | RuntimeProviderRegistry

@@ -151,13 +151,13 @@ export type StateRoot =
 
 export type StateCodec<A, I> =
   | "json"                                       // { version, data } envelope; debuggable
-  | "binary"                                     // §12.2 magic-header + Bun.serialize | schema-binary
+  | "binary"                                     // LSB1 magic + 4-byte BE schema version + JSON payload body
   | { readonly encode: (a: A) => string | Uint8Array;
       readonly decode: (raw: Uint8Array) => A }; // user-facing formats (the includes YAML)
 
 export interface StateBucketSpec<A, I> {
   readonly root: StateRoot;
-  readonly namespace?: string;                   // subdir under root (e.g. "scratch", "apps/<id>")
+  readonly namespace?: string;                   // optional single path segment under root (e.g. "scratch")
   readonly key: string;                          // filename; no path separators
   readonly schema: Schema.Schema<A, I>;
   readonly version: number;                       // document schema version
@@ -186,7 +186,7 @@ export class StateStore extends Context.Tag("@lando/core/StateStore")<StateStore
 Required behaviors:
 
 - **Atomicity.** Every `set` / `update` encodes in memory, writes `<path>.tmp-<rnd>`, fsyncs, and renames (§12.3). A crash mid-write leaves only a temp file, which is cleaned up; the live file is never partially written.
-- **Versioning.** The `json` codec wraps payloads as `{ version, data }`; the `binary` codec writes the §12.2 fixed magic header. On read mismatch the bucket applies `onVersionMismatch`: `"discard"` silently invalidates (cache semantics), or a `StateMigrator` upgrades durable data that must not be lost.
+- **Versioning.** The `json` codec wraps payloads as `{ version, data }`; the `binary` codec writes an `LSB1` magic header, a 4-byte big-endian schema version, and a JSON-encoded payload body (not `Bun.serialize`). On read mismatch the bucket applies `onVersionMismatch`: `"discard"` silently invalidates (cache semantics), or a `StateMigrator` upgrades durable data that must not be lost.
 - **Corruption.** A decode failure applies `onCorrupt`: `"quarantine"` renames the bad file to `<path>.corrupt-<timestamp>` and returns `default`/`null` (the scratch-registry behavior, generalized), `"discard"` resets silently, `"fail"` surfaces `StateStoreError`.
 - **Locking.** `advisory` buckets serialize `update`/`modify` across processes with an `O_CREAT|O_EXCL` lockfile recording `{ pid, token, createdAt }`, stale-owner takeover (age threshold or dead pid via `kill(pid, 0)`), bounded retry/backoff, and token-checked release; the lock is acquired through `Scope` so interruption finalizes it. `none` buckets assume a single writer.
 - **Containment.** The resolved `(root, namespace, key)` realpath MUST stay under the resolved root; `../`, absolute keys, and symlink escapes fail with `StateStoreError` (`reason: "path"`), mirroring the §9.7 plugin module-path containment rule.
@@ -204,10 +204,10 @@ The durable subsystems realized through `StateStore` include:
 - **Scratch registry** (§21.11): a single `advisory`, `quarantine` bucket at `{ root: "userCache", namespace: "scratch", key: "registry.bin" }`; `read` is `get` with an empty-envelope default, and `upsert` / `remove` are `update`. The §21.11 token lockfile and corruption-quarantine behavior are now the store's.
 - **Include lockfile** (§7.7.4): a `none`-lock bucket at `{ root: { app: appRoot }, key: ".lando.lock.yml" }` with a custom codec wrapping the existing renderer/parser, so the committed YAML is byte-for-byte unchanged while gaining the shared atomic-write and containment path.
 - **Snapshot index** (§10.11.3): an app-scoped bucket indexing `DataMover` snapshots under `<userDataRoot>/snapshots/<app-id>/index.bin`; `listSnapshots`/`pruneSnapshots` read and update the bucket instead of a bespoke registry.
-- **Managed-file ledger** (§10.13.3): an app-scoped `advisory`, `quarantine` bucket at `{ root: "userData", namespace: "managed-files/<app-id>", key: "ledger.json" }` recording marker ownership, checksums, source hashes, and adopted/conflict state for `ManagedFileService`.
+- **Managed-file ledger** (§10.13.3): an app-scoped `advisory`, `quarantine` bucket at `{ root: { path: <userDataRoot>/managed-files/<app-id> }, key: "ledger.json" }` (path from `PathsService.managedFileLedger`, §7.5.1) recording marker ownership, checksums, source hashes, and adopted/conflict state for `ManagedFileService`.
 
 #### 12.7.3 Plugins and embedding hosts
 
-Plugins receive a `stateStore` factory through `LandoPluginContext` (§9.8) **pre-namespaced** to `plugins/<plugin-id>/` under `userData`, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a `SecretStore` to cache resolved tokens, an `UpdateService` to persist channel metadata, or a `ConfigTranslator` to write a sidecar lockfile. Embedding hosts (§16) resolve the `StateStore` tag from the runtime and MAY open buckets under `{ path: ... }` for per-tenant or per-test isolation, pairing with the §16.5 cache-root override. `@lando/core/testing` ships an in-memory `StateStore` (no disk; inspectable) plus a contract suite both the real and in-memory stores satisfy.
+Plugins receive a `stateStore` factory through `LandoPluginContext` (§9.8) **pre-namespaced** to `plugins/<plugin-id>/` under `userData`, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a `SecretStore` to cache resolved tokens, an `UpdateService` to persist channel metadata, or a `ConfigTranslator` to write a sidecar lockfile. Embedding hosts (§16) resolve the `StateStore` tag from the runtime and MAY open buckets under `{ path: ... }` for per-tenant or per-test isolation, pairing with the §16.5 cache-root override. `@lando/core/testing` ships `TestStateStore` (in-memory, no disk; inspectable); `@lando/sdk/test` ships `runStateStoreContract` and `StateStoreContractHarness` for the disk and in-memory implementations.
 
 ---
