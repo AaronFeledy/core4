@@ -444,6 +444,19 @@ describe("@lando/sdk package exports", () => {
     expect(verifiedStream.VerifiedStreamError).toBeDefined();
   });
 
+  test("probe entry point exports the pure retry/verdict primitive", async () => {
+    const probe = await import("@lando/sdk/probe");
+
+    expect(probe.RetryPolicy).toBeDefined();
+    expect(probe.ProbeOutcome).toBeDefined();
+    expect(probe.ProbeResult).toBeDefined();
+    expect(probe.ProbeSpecSchema).toBeDefined();
+    expect(probe.toSchedule).toBeDefined();
+    expect(probe.runProbe).toBeDefined();
+    expect(probe.ProbeError).toBeDefined();
+    expect(probe.ProbeTimeoutError).toBeDefined();
+  });
+
   test("app entry point resolves (type-only App handle contracts)", async () => {
     const app = await import("@lando/sdk/app");
 
