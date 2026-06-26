@@ -2588,8 +2588,8 @@
         "Lint passes."
       ],
       "priority": 144,
-      "passes": false,
-      "notes": "TunnelService CLI/handle skeleton + detached registry seam (spec \u00a78.2, \u00a78.11, \u00a710.2.2, \u00a712.1, \u00a712.4, \u00a716.3). Depends on US-342, PRD-11 (App handles), PRD-15 (universal JSON)."
+      "passes": true,
+      "notes": "Shipped provider-aware app:share/app:share:list/app:share:stop skeletons plus App.share/shareList/shareStop. Commands and handles dispatch to installed TunnelService, fail closed with TunnelProviderUnavailableError when absent, and keep bundled connector providers deferred to 4.1."
     },
     {
       "id": "US-344",

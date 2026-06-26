@@ -272,6 +272,8 @@
 - `ProviderSetupOptions.runtimeBundleSha256`
 - `ProviderSetupOptions.network`
 - `ProviderSetupOptions.privilege`
+- `LandoPaths.tunnelRegistryFile`
+- `LandoPaths.tunnelRunDir`
 
 ## Additive Beta schema fields
 

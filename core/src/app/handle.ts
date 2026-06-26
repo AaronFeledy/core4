@@ -15,6 +15,8 @@ import type {
   PushAppOptions,
   RebuildAppOptions,
   RestartAppOptions,
+  ShareAppOptions,
+  ShareStopAppOptions,
   StartAppOptions,
   StopAppOptions,
   ToolingOptions,
@@ -158,6 +160,10 @@ export const makeAppHandle = (
       ),
     pull: (options?: PullAppOptions) => ops.appPull(options, target).pipe(Effect.provide(runtime)),
     push: (options?: PushAppOptions) => ops.appPush(options, target).pipe(Effect.provide(runtime)),
+    share: (options?: ShareAppOptions) => ops.appShare(options, target).pipe(Effect.provide(runtime)),
+    shareList: () => ops.appShareList({ cwd: root }, target).pipe(Effect.provide(runtime)),
+    shareStop: (options: ShareStopAppOptions) =>
+      ops.appShareStop({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
     remote: {
       list: () => ops.appRemoteList({ cwd: root }).pipe(Effect.provide(runtime)),
       add: (options: AppRemoteMutationOptions) =>

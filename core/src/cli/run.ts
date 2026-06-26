@@ -130,6 +130,14 @@ import {
   scratchStartOptionsFromInput,
   scratchStop,
 } from "./commands/scratch.ts";
+import {
+  appShare,
+  appShareList,
+  appShareStop,
+  renderShareListResult,
+  renderShareResult,
+  renderShareStopResult,
+} from "./commands/share.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderShellenv } from "./commands/shellenv.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
@@ -149,6 +157,11 @@ import {
   remoteSyncOptionsFromInput,
   remoteTestOptionsFromInput,
 } from "./oclif/commands/app/remote/common.ts";
+import {
+  shareListOptionsFromInput,
+  shareOptionsFromInput,
+  shareStopOptionsFromInput,
+} from "./oclif/commands/app/share/common.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
@@ -635,6 +648,34 @@ const runPush = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:push", argv);
   return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
     renderSyncResult(value, compiledFormat(input), ctx),
+  );
+};
+
+const runShare = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:share", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:share", argv);
+  return runCompiledCommand(
+    Effect.scoped(appShare(shareOptionsFromInput(input))),
+    appRuntimeLayer(),
+    (value, ctx) => renderShareResult(value, compiledFormat(input), ctx),
+  );
+};
+
+const runShareList = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:share:list", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:share:list", argv);
+  const options = shareListOptionsFromInput(input);
+  return runCompiledCommand(appShareList(options), appRuntimeLayer(), (value, ctx) =>
+    renderShareListResult(value, options.format, ctx),
+  );
+};
+
+const runShareStop = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:share:stop", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("app:share:stop", argv);
+  const options = shareStopOptionsFromInput(input);
+  return runCompiledCommand(appShareStop(options), appRuntimeLayer(), (value, ctx) =>
+    renderShareStopResult(value, options.format, ctx),
   );
 };
 
@@ -1791,6 +1832,35 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "push" || argv[0] === "app:push" || argv[0] === "push:app") {
     await runPush(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "share" || argv[0] === "app:share" || argv[0] === "share:app") {
+    await runShare(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:share:list" ||
+    argv[0] === "share:app:list" ||
+    argv[0] === "share:list:app" ||
+    argv[0] === "app:list:share" ||
+    argv[0] === "list:app:share" ||
+    argv[0] === "list:share:app"
+  ) {
+    await runShareList(argv.slice(1));
+    return;
+  }
+
+  if (
+    argv[0] === "app:share:stop" ||
+    argv[0] === "share:app:stop" ||
+    argv[0] === "share:stop:app" ||
+    argv[0] === "app:stop:share" ||
+    argv[0] === "stop:app:share" ||
+    argv[0] === "stop:share:app"
+  ) {
+    await runShareStop(argv.slice(1));
     return;
   }
 

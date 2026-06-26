@@ -281,6 +281,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     scratchDir: j(userCacheRoot, "scratch"),
     scratchRegistryFile: j(userCacheRoot, "scratch", "registry.bin"),
     scratchRegistryLockFile: j(userCacheRoot, "scratch", "registry.lock"),
+    tunnelRegistryFile: j(userCacheRoot, "tunnels", "registry.bin"),
+    tunnelRunDir: j(userDataRoot, "run", "tunnels"),
     appCacheDir,
     appPlanCacheFile: (appName: string, appRoot: string) => j(appCacheDir(appName, appRoot), "plan.bin"),
     fileSyncSessionsDir: j(userCacheRoot, "file-sync", "sessions"),
