@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/core/services";
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
-import { ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const serviceTarget: TunnelTarget = {
@@ -151,6 +151,11 @@ describe("share command skeleton", () => {
       expect(await exists(paths.tunnelRegistryFile)).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.pid`))).toBe(true);
+      const otherSession = await Effect.runPromise(
+        Effect.scoped(
+          TestTunnelService.service.start({ app: AppId.make("other-app"), target: serviceTarget }),
+        ),
+      );
       const listed = (await Effect.runPromise(
         operations.appShareList({ cwd: dir }).pipe(Effect.provide(layer)),
       )) as ReadonlyArray<TunnelSession>;
@@ -162,6 +167,7 @@ describe("share command skeleton", () => {
       expect(session.provider).toBe(TestTunnelService.service.id);
       expect(session.detached).toBe(true);
       expect(listed.map((entry) => entry.id)).toContain(session.id);
+      expect(listed.map((entry) => entry.id)).not.toContain(otherSession.id);
       expect(stopped).toMatchObject({ sessionId: session.id, status: "stopped" });
       expect(detached.map((entry) => entry.operation)).toEqual(expect.arrayContaining(["record", "remove"]));
       expect(await exists(paths.tunnelRegistryFile)).toBe(true);

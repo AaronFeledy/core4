@@ -46,8 +46,15 @@ const pidIsAlive = (pid: number): boolean => {
   }
 };
 
-const reconcileEntries = (entries: ReadonlyArray<TunnelRegistryEntry>): TunnelRegistryEntries =>
-  entries.filter((entry) => pidIsAlive(entry.pid));
+const partitionEntries = (entries: ReadonlyArray<TunnelRegistryEntry>) => {
+  const live: Array<TunnelRegistryEntry> = [];
+  const staleIds: string[] = [];
+  for (const entry of entries) {
+    if (pidIsAlive(entry.pid)) live.push(entry);
+    else staleIds.push(entry.session.id);
+  }
+  return { live: live as TunnelRegistryEntries, staleIds };
+};
 
 const writeRunArtifacts = (session: TunnelSession): Effect.Effect<void, StateStoreError> => {
   const dir = runDir();
@@ -84,7 +91,7 @@ export const recordTunnelSession = (
     const registry = yield* bucket;
     const now = new Date().toISOString();
     yield* registry.update((current) => {
-      const next = reconcileEntries(current ?? []).filter((entry) => entry.session.id !== session.id);
+      const next = partitionEntries(current ?? []).live.filter((entry) => entry.session.id !== session.id);
       return [...next, { session, pid: process.pid, updatedAt: now }];
     });
     yield* writeRunArtifacts(session);
@@ -97,17 +104,19 @@ export const reconcileTunnelRegistry = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const registry = yield* bucket;
-    return yield* registry.modify((current) => {
-      const next = reconcileEntries(current ?? []);
-      return [next.map((entry) => entry.session), next];
+    const reconciled = yield* registry.modify((current) => {
+      const { live, staleIds } = partitionEntries(current ?? []);
+      return [{ sessions: live.map((entry) => entry.session), staleIds }, live];
     });
+    for (const staleId of reconciled.staleIds) yield* removeRunArtifacts(staleId);
+    return reconciled.sessions;
   });
 
 export const removeTunnelSession = (sessionId: string): Effect.Effect<void, StateStoreError, StateStore> =>
   Effect.gen(function* () {
     const registry = yield* bucket;
     yield* registry.update((current) =>
-      reconcileEntries(current ?? []).filter((entry) => entry.session.id !== sessionId),
+      partitionEntries(current ?? []).live.filter((entry) => entry.session.id !== sessionId),
     );
     yield* removeRunArtifacts(sessionId);
   });

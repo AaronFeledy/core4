@@ -139,7 +139,8 @@ export const appShareList = (
 > =>
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
-    const app = target?.plan.id;
+    const plan = yield* resolvePlan(options.cwd, target);
+    const app = plan.id;
     const reconciled = yield* reconcileTunnelRegistry();
     const listed = yield* service.list({
       ...(app === undefined ? {} : { app }),
