@@ -176,6 +176,25 @@ describe("share command skeleton", () => {
     });
   });
 
+  test("share stop rejects a missing session id before provider stop", async () => {
+    await withTempShareApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      const layer = makeLandoRuntime({
+        bootstrap: "app",
+        plugins: { policy: "bundled-only", layers: [tunnelLayer, ...providerLayers] },
+      });
+
+      const exit = await Effect.runPromiseExit(
+        operations.appShareStop({ cwd: dir, sessionId: "" }).pipe(Effect.provide(layer)),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        expect(JSON.stringify(exit.cause.toJSON())).toContain("Expected a tunnel identifier");
+      }
+    });
+  });
+
   test("App handle exposes share, shareList, and shareStop", async () => {
     await withTempShareApp(async () => {
       const result = await Effect.runPromise(

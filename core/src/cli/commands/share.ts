@@ -7,6 +7,7 @@ import {
   type TunnelSession as TunnelSessionType,
   TunnelStatus,
   type TunnelStatus as TunnelStatusType,
+  TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
 } from "@lando/sdk/schema";
@@ -167,14 +168,15 @@ export const appShareStop = (
   options: ShareStopOptions,
 ): Effect.Effect<ShareStopResult, TunnelError | TunnelProviderUnavailableError | unknown, StateStore> =>
   Effect.gen(function* () {
-    const service = yield* resolveTunnelService(options.provider);
-    yield* service.stop({
+    const stopRequest = yield* Schema.decodeUnknown(TunnelStopRequest)({
       sessionId: options.sessionId,
       ...(options.provider === undefined ? {} : { provider: options.provider }),
       ...(options.force === undefined ? {} : { force: options.force }),
     });
-    yield* removeTunnelSession(options.sessionId);
-    return { sessionId: options.sessionId, provider: service.id, status: "stopped" as TunnelStatusType };
+    const service = yield* resolveTunnelService(stopRequest.provider);
+    yield* service.stop(stopRequest);
+    yield* removeTunnelSession(stopRequest.sessionId);
+    return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" as TunnelStatusType };
   });
 
 const renderJson = (value: unknown): string => `${JSON.stringify(value)}\n`;
