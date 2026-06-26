@@ -360,3 +360,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The SDK custom-codec shape (`encode:(a)=>string|Uint8Array`, `decode:(raw)=>A`) has no version slot, so it cannot carry a StateStore version frame without breaking a human-facing on-disk format (US-314 needs that byte-preservation). Built-in `json`/`binary` are framed/versioned; custom codecs own their whole file and skip `onVersionMismatch`. Do not add a sidecar version file — the data and version files cannot be renamed atomically together.
   - `StateStoreLive` resolves named roots via the pure `resolveLandoRoots()` inside the layer (exactly the `ManagedFileServiceLive` precedent), NOT by consuming `PathsService`, because `PathsService` is a sibling in the `minimal` `Layer.mergeAll` and `Effect.serviceOption` would not see it. This still satisfies "root resolution flows through `@lando/core/paths`". Tests isolate with the `{path}` `StateRoot` (no env needed).
 ---
+
+## 2026-06-26 01:31 CDT - US-312 Review
+- Strengthened the minimal-bootstrap proof so `StateStore` is yielded through the real `makeLandoRuntime({ bootstrap: "minimal" })` layer, and fixed the runtime service type union so the type surface matches the generated minimal wiring.
+- Fixed advisory-lock release to preserve token safety when the lock record is unparseable; unknown-owner records are now left for acquire-time stale handling instead of being unlinked during release.
+- Review notes (deferred/rejected): cross-process stale-takeover coverage remains deferred to the US-313/US-315 lock/contract wave because US-312 now covers the confirmed corrupt-release regression and same-process advisory serialization; `writeFileAtomicScoped` was retained over literal `writeFileAtomicViaRename` because it is the scoped/interruption-safe temp-rename seam used by durable state paths.
+- Verification: typecheck passed; lint passed; `bun test core/test/unit/state-store.test.ts` passed; `bun test core/test/state-store/atomic.test.ts core/test/state-store/json-bucket.test.ts` passed; bootstrap layer generator produced no committed drift.
+- **Learnings for future iterations:** Keep runtime service unions in `core/src/runtime/layer.ts` synchronized with generated bootstrap service membership, or real minimal-layer tests will expose a type/runtime mismatch.
+---

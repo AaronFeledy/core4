@@ -42,6 +42,7 @@ import type {
   RuntimeProvider,
   RuntimeProviderRegistry,
   ScratchAppService,
+  StateStore,
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
@@ -143,6 +144,7 @@ type MinimalRuntimeServices =
   | PrivilegeService
   | ProcessRunner
   | RedactionService
+  | StateStore
   | Downloader;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;

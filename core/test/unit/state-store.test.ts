@@ -12,9 +12,12 @@ import { join } from "node:path";
 import { Effect, Exit, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
+import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
 
-import { StateStoreLive, makeStateStore } from "../../src/state/service.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { withAdvisoryLock } from "../../src/state/lock.ts";
+import { makeStateStore } from "../../src/state/service.ts";
 
 const store = makeStateStore();
 
@@ -35,10 +38,10 @@ const failure = async <A>(effect: Effect.Effect<A, StateStoreError>): Promise<St
 const Doc = Schema.Struct({ count: Schema.Number, label: Schema.String });
 type Doc = typeof Doc.Type;
 
-let dir: string;
+let dir: AbsolutePathType;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "lando-state-"));
+  dir = Schema.decodeUnknownSync(AbsolutePath)(await mkdtemp(join(tmpdir(), "lando-state-")));
 });
 
 afterEach(async () => {
@@ -393,19 +396,32 @@ describe("StateStore — advisory lock", () => {
     const entries = await readdir(dir);
     expect(entries.some((name) => name.endsWith(".lock"))).toBe(false);
   });
+
+  test("release leaves an unknown corrupt lock record for stale takeover", async () => {
+    const file = join(dir, "locked.json");
+    const lockPath = `${file}.lock`;
+
+    await run(
+      withAdvisoryLock(
+        file,
+        "test",
+        Effect.promise(() => writeFile(lockPath, "not-json")),
+      ),
+    );
+
+    expect(await readFile(lockPath, "utf8")).toBe("not-json");
+  });
 });
 
 describe("StateStore — minimal bootstrap availability", () => {
-  test("StateStore is yielded from StateStoreLive and round-trips a bucket", async () => {
+  test("StateStore is yielded from the minimal bootstrap layer and round-trips a bucket", async () => {
     const value = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const svc = yield* StateStore;
-          const bucket = yield* svc.open(jsonSpec());
-          yield* bucket.set({ count: 42, label: "boot" });
-          return yield* bucket.get;
-        }),
-      ).pipe(Effect.provide(StateStoreLive)),
+      Effect.gen(function* () {
+        const svc = yield* StateStore;
+        const bucket = yield* svc.open(jsonSpec());
+        yield* bucket.set({ count: 42, label: "boot" });
+        return yield* bucket.get;
+      }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })), Effect.scoped),
     );
     expect(value).toEqual({ count: 42, label: "boot" });
   });

@@ -124,8 +124,8 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
         await unlink(lockPath).catch(() => undefined);
       }
     } catch {
-      // Unparseable lock record: best-effort removal so a corrupt lock never wedges forever.
-      await unlink(lockPath).catch(() => undefined);
+      // Unknown owner: leave it for acquire-time stale-record handling instead
+      // of deleting a lock we cannot prove belongs to this holder.
     }
   });
 
