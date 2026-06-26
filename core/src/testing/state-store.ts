@@ -3,7 +3,7 @@
 // serialization) against a `Map` of absolute paths to bytes so
 // `runStateStoreContract` can run without disk IO.
 
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 import { Effect, Layer } from "effect";
 
@@ -221,7 +221,7 @@ export const makeTestStateStore = (): TestStateStore => {
       const names: string[] = [];
       for (const key of files.keys()) {
         if (resolve(dirname(key)) === dirResolved) {
-          const base = key.slice(key.lastIndexOf("/") + 1);
+          const base = basename(key);
           if (base.length > 0) names.push(base);
         }
       }
