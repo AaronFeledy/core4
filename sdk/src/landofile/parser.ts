@@ -158,11 +158,23 @@ const unescapeDoubleQuotedScalar = (value: string): string =>
   });
 
 const parseScalar = (value: string, filePath: string, line: number): unknown => {
-  if (value.includes("${")) {
+  const trimmed = value.trim();
+
+  // A quoted scalar is a literal: its content is never re-interpreted as an
+  // expression, so a translator fragment carrying `${secret:…}` round-trips
+  // unchanged. The `${…}` expression rejection below applies only to UNQUOTED
+  // scalars.
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
+    return trimmed.slice(1, -1);
+  }
+
+  if (trimmed.includes("${")) {
     throw parseError(filePath, `Expressions are not supported in Landofiles at line ${line}`, line);
   }
 
-  const trimmed = value.trim();
   if (trimmed === "") return "";
   if (trimmed === "null") return null;
   if (trimmed === "true") return true;
@@ -175,12 +187,6 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
     // Round-trip it while populated inline objects stay rejected.
     if (trimmed.slice(1, -1).trim() === "") return {};
     throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
-  }
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
-  }
-  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1);
   }
   return trimmed;
 };
@@ -287,7 +293,7 @@ const parseList = (
       );
     }
 
-    const mapMatch = value.match(/^([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$/);
+    const mapMatch = value.match(/^([A-Za-z0-9_.-]+):(?:\s+(.*))?$/);
     if (mapMatch !== null) {
       const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
       const firstRawValue = firstRawValueRaw ?? "";
