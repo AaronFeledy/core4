@@ -74,4 +74,14 @@ tags: [beta, docs, library, testing]
       <Variable name="contract" value="runStateStoreContract" display="@lando/sdk/test exposes runStateStoreContract so live, in-memory, and host-provided StateStore implementations prove the same bucket guarantees" />
     </Step>
   </Scenario>
+
+  <Scenario id="probe-primitive" render={false} reason="The contracts-only probe primitive is pure SDK surface verified by TestClock tests without a LandoRuntime or provider backed app">
+    <Step name="retry-and-verdict">
+      <Variable name="subpath" value="@lando/sdk/probe" display="@lando/sdk/probe exports RetryPolicy, ProbeSpec, ProbeOutcome, ProbeResult, toSchedule, and runProbe as a contracts-only tier with no service Layer" />
+      <Variable name="verdict" value="green yellow red" display="runProbe stops on the first green outcome and retries yellow or red per policy until maxAttempts or overall timeout" />
+      <Variable name="clock" value="TestClock" display="Backoff, jitter, and timeout are driven through Effect Clock and Schedule so attempt counts and elapsed time are deterministic in tests" />
+      <Variable name="lastError" value="consumer redaction" display="runProbe returns lastError verbatim on non-green terminal outcomes; callers redact through RedactionService before events or transcripts" />
+      <Variable name="tests" value="sdk/test/probe" display="sdk/test/probe/run-probe.test.ts locks terminal ProbeResult semantics including zero-timeout and post-success lastError clearing" />
+    </Step>
+  </Scenario>
 </Guide>
