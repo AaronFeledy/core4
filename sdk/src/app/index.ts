@@ -46,6 +46,7 @@ import type {
   ShellScriptOutsideRootError,
   ToolingCompileError,
   ToolingExecError,
+  TunnelProviderUnavailableError,
 } from "../errors/index.ts";
 import type {
   AbsolutePath,
@@ -58,6 +59,8 @@ import type {
   RemoteEnvironment,
   RemoteTestResult,
   SyncResult,
+  TunnelSession,
+  TunnelTarget,
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
 import type {
@@ -85,6 +88,7 @@ import type {
   RuntimeProviderRegistry,
   Telemetry,
   ToolingEngine,
+  TunnelError,
 } from "../services/index.ts";
 import type { LogChunk, ProviderError } from "../services/provider.ts";
 import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts";
@@ -411,6 +415,27 @@ export interface RemoteSyncOptions {
 export type PullAppOptions = RemoteSyncOptions;
 export type PushAppOptions = RemoteSyncOptions;
 
+export interface ShareAppOptions {
+  readonly target?: TunnelTarget;
+  readonly provider?: string;
+  readonly detach?: boolean;
+  readonly yes?: boolean;
+}
+
+export interface ShareStopAppOptions {
+  readonly sessionId: string;
+  readonly provider?: string;
+  readonly force?: boolean;
+}
+
+export interface ShareStopAppResult {
+  readonly sessionId: string;
+  readonly provider?: string;
+  readonly status: "stopped";
+}
+
+export type ShareAppError = TunnelError | TunnelProviderUnavailableError | RemoteSyncError;
+
 export type RemoteSyncError =
   | AppIdReservedError
   | LandofileNotFoundError
@@ -535,6 +560,9 @@ export interface App {
   readonly logs: (options?: LogsAppOptions) => Stream.Stream<LogChunk, LogsAppError, Scope.Scope>;
   readonly pull: (options?: PullAppOptions) => Effect.Effect<SyncResult, PullAppError>;
   readonly push: (options?: PushAppOptions) => Effect.Effect<SyncResult, PushAppError>;
+  readonly share: (options?: ShareAppOptions) => Effect.Effect<TunnelSession, ShareAppError>;
+  readonly shareList: () => Effect.Effect<ReadonlyArray<TunnelSession>, ShareAppError>;
+  readonly shareStop: (options: ShareStopAppOptions) => Effect.Effect<ShareStopAppResult, ShareAppError>;
   readonly remote: AppRemoteApi;
   readonly config: AppConfigApi;
   readonly events: AppEventsApi;

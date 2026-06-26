@@ -20,6 +20,9 @@ import RemoteRemoveCommand from "./commands/app/remote/remove.ts";
 import RemoteSetupCommand from "./commands/app/remote/setup.ts";
 import RemoteTestCommand from "./commands/app/remote/test.ts";
 import RestartCommand from "./commands/app/restart.ts";
+import ShareCommand from "./commands/app/share.ts";
+import ShareListCommand from "./commands/app/share/list.ts";
+import ShareStopCommand from "./commands/app/share/stop.ts";
 import ShellCommand from "./commands/app/shell.ts";
 import SshCommand from "./commands/app/ssh.ts";
 import StartCommand from "./commands/app/start.ts";
@@ -89,6 +92,9 @@ export default {
   "app:remote:remove": RemoteRemoveCommand,
   "app:remote:setup": RemoteSetupCommand,
   "app:remote:test": RemoteTestCommand,
+  "app:share": ShareCommand,
+  "app:share:list": ShareListCommand,
+  "app:share:stop": ShareStopCommand,
   "app:rebuild": RebuildCommand,
   "app:restart": RestartCommand,
   "app:shell": ShellCommand,
