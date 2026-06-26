@@ -7,7 +7,12 @@
  *   `okCodes`, `maxRedirects`.
  * - Per-service overrides under `services.<name>.scanner:`.
  * - Results are reported as green/yellow/red with optional structured
- *   detail.
+ *   detail. The full scanner is not implemented yet; when it lands, its
+ *   `retry`/`delay`/`timeout` loop and green/yellow/red verdict must build on
+ *   `@lando/sdk/probe`'s `runProbe` rather than a hand-rolled
+ *   `Effect.retry`/`Schedule` loop (enforced by the probe boundary gate), and
+ *   must redact `ProbeResult.lastError` before it reaches an event or
+ *   transcript.
  */
 import { Effect, Layer } from "effect";
 
