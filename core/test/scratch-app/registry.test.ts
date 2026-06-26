@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import {
   makeScratchRegistry,
   scratchRegistryPaths,
 } from "../../src/scratch-app/registry.ts";
+import { LOCK_STALE_THRESHOLD_MS } from "../../src/state/lock.ts";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));
@@ -69,6 +70,55 @@ describe("scratch registry", () => {
     });
   });
 
+  test("legacy migration uses the same registry path as the StateStore bucket under a symlinked cache root", async () => {
+    const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-real-")));
+    const linkRoot = join(tmpdir(), `lando-scratch-registry-link-${Date.now()}`);
+    await symlink(cacheRoot, linkRoot);
+
+    const previous = process.env.LANDO_USER_CACHE_ROOT;
+    try {
+      process.env.LANDO_USER_CACHE_ROOT = linkRoot;
+      const paths = scratchRegistryPaths();
+      const first = entry("scratch-one-000001");
+      await mkdir(join(cacheRoot, "scratch"), { recursive: true });
+      await writeFile(
+        join(cacheRoot, "scratch", "registry.bin"),
+        `${JSON.stringify({ version: 1, entries: [first] })}\n`,
+      );
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first]);
+
+      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
+      expect(raw).toEqual({ version: 1, data: [first] });
+    } finally {
+      if (previous === undefined) {
+        // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+        delete process.env.LANDO_USER_CACHE_ROOT;
+      } else {
+        process.env.LANDO_USER_CACHE_ROOT = previous;
+      }
+      await rm(linkRoot, { force: true });
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("legacy registry envelopes are migrated into the StateStore frame", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const first = entry("scratch-one-000001");
+      const second = entry("scratch-two-000002");
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(paths.registry, `${JSON.stringify({ version: 1, entries: [first, second] })}\n`);
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first, second]);
+
+      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
+      expect(raw).toEqual({ version: 1, data: [first, second] });
+      const files = await readdir(paths.base);
+      expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(false);
+    });
+  });
+
   test("lock release removes only the matching token", async () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();
@@ -82,6 +132,28 @@ describe("scratch registry", () => {
 
       const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
       expect(current.token).toBe("other");
+    });
+  });
+
+  test("stale legacy locks are taken over", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(
+        paths.lock,
+        JSON.stringify({
+          pid: process.pid,
+          token: "stale",
+          createdAt: Date.now() - LOCK_STALE_THRESHOLD_MS - 1_000,
+        }),
+      );
+
+      const lock = await Effect.runPromise(acquireScratchRegistryLock(paths));
+
+      const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
+      expect(current.token).toBe(lock.token);
+      await Effect.runPromise(lock.release);
+      expect(await Bun.file(paths.lock).exists()).toBe(false);
     });
   });
 });

@@ -9,7 +9,7 @@
 // failed critical section always releases the lock and never deletes a lock a
 // different owner has since taken.
 
-import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -25,6 +25,9 @@ const LOCK_ATTEMPTS = 200;
 // holder's release-unlink and the next `O_EXCL` create. Both layers are load
 // bearing: remove the semaphore and same-process fibers can lose a write.
 const inProcessGuards = new Map<string, Effect.Semaphore>();
+
+const canonicalLockTarget = (file: string): Effect.Effect<string> =>
+  Effect.promise(() => realpath(file).catch(() => file));
 
 const guardFor = (file: string): Effect.Effect<Effect.Semaphore> =>
   Effect.sync(() => {
@@ -130,6 +133,22 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
   });
 
 /**
+ * Acquire an advisory lock at an EXACT lock path (no derived `${file}.lock`
+ * suffix) and return its token plus a token-checked release effect. Reuses the
+ * same stale-takeover semantics as {@link withAdvisoryLock} so a dead or expired
+ * holder is reclaimed. Callers that need scope-managed acquire/use/release
+ * should prefer {@link withAdvisoryLock}; this lower-level handle exists for
+ * surfaces that hold the lock outside an `acquireUseRelease` bracket.
+ */
+export const acquireAdvisoryLockAt = (
+  lockPath: string,
+  operation: string,
+): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
+  const token = makeLockToken();
+  return acquire(lockPath, token, operation).pipe(Effect.as({ token, release: release(lockPath, token) }));
+};
+
+/**
  * Run `body` while holding the advisory lock for `file`. The lock is acquired
  * before `body`, registered into the ambient `Scope` for guaranteed
  * token-checked release, and released after `body` settles (success, failure,
@@ -139,15 +158,18 @@ export const withAdvisoryLock = <A, E>(
   file: string,
   operation: string,
   body: Effect.Effect<A, E>,
-): Effect.Effect<A, E | StateStoreError> => {
-  const lockPath = `${file}.lock`;
-  const token = makeLockToken();
-  const fileLocked = Effect.acquireUseRelease(
-    acquire(lockPath, token, operation),
-    () => body,
-    () => release(lockPath, token),
+): Effect.Effect<A, E | StateStoreError> =>
+  canonicalLockTarget(file).pipe(
+    Effect.flatMap((canonicalFile) => {
+      const lockPath = `${canonicalFile}.lock`;
+      const token = makeLockToken();
+      const fileLocked = Effect.acquireUseRelease(
+        acquire(lockPath, token, operation),
+        () => body,
+        () => release(lockPath, token),
+      );
+      return guardFor(canonicalFile).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
+    }),
   );
-  return guardFor(file).pipe(Effect.flatMap((guard) => guard.withPermits(1)(fileLocked)));
-};
 
 export const LOCK_STALE_THRESHOLD_MS = LOCK_STALE_MS;

@@ -19,7 +19,7 @@ tags: [beta, docs, scratch, gc]
     <Step name="prune">
       <Variable name="command" value="apps:scratch:gc --prune" display="Reaps orphaned scratch ids by pruning provider resources, removing the cache directory, and deleting the registry entry" />
       <Variable name="idempotent" value="safe repeat" display="A missing provider resource or scratch directory is treated as success, so a second --prune pass reports no remaining work" />
-      <Variable name="registry" value="&lt;userCacheRoot&gt;/scratch/registry.bin" display="The registry is the source for scratch list/info and is cross-checked against on-disk scratch dirs" />
+      <Variable name="registry" value="&lt;userCacheRoot&gt;/scratch/registry.bin" display="The durable scratch registry is a versioned StateStore bucket (registry.bin); legacy registry.json envelopes are migrated on first read and list/info/gc all use the same store" />
       <Variable name="labels" value="dev.lando.scratch-id" display="Provider containers for scratch apps carry the scratch id label so GC can find resources whose registry entry is gone" />
     </Step>
   </Scenario>

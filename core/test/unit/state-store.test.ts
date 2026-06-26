@@ -5,7 +5,7 @@
  * locking, and availability at the `minimal` bootstrap layer.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -410,6 +410,33 @@ describe("StateStore — advisory lock", () => {
     );
 
     expect(await readFile(lockPath, "utf8")).toBe("not-json");
+  });
+
+  test("lexical and realpathed targets share one in-process guard", async () => {
+    const link = join(dir, "link.json");
+    const target = join(dir, "target.json");
+    await writeFile(target, "{}");
+    await symlink(target, link);
+
+    const canonical = await realpath(target);
+    expect(canonical).not.toBe(link);
+
+    let held = 0;
+    let maxHeld = 0;
+    const bump = Effect.gen(function* () {
+      held += 1;
+      maxHeld = Math.max(maxHeld, held);
+      yield* Effect.sleep("15 millis");
+      held -= 1;
+    });
+
+    await Effect.runPromise(
+      Effect.all([withAdvisoryLock(link, "lexical", bump), withAdvisoryLock(canonical, "canonical", bump)], {
+        concurrency: "unbounded",
+      }),
+    );
+
+    expect(maxHeld).toBe(1);
   });
 });
 
