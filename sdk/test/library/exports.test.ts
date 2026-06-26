@@ -312,6 +312,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ConfigTranslateNoTranslatorsError).toBeDefined();
     expect(errors.DeprecatedSurfaceError).toBeDefined();
     expect(errors.DeprecationContradictionError).toBeDefined();
+    expect(errors.StateStoreError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -388,6 +389,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.RemoteSource).toBeDefined();
     expect(services.Dataset).toBeDefined();
     expect(services.TunnelService).toBeDefined();
+    expect(services.StateStore).toBeDefined();
   });
 
   test("secrets entry point exports the canonical redaction primitive", async () => {
