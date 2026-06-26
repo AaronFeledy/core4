@@ -133,4 +133,35 @@ describe("LandoPluginContext stateStore scoping", () => {
     expect(result.pathA).not.toBe(result.pathB);
     expect(result.valueB).toBeNull();
   });
+
+  test("a plugin cannot see core state under the same user data root", async () => {
+    const stateStore = makeStateStore();
+    const plugin = makeLandoPluginContext({
+      id: "plugin-a",
+      managedFileService: (await run(makeTestManagedFileStore())).service,
+      stateStore,
+      pluginStateRoot: await ensurePluginStateRoot("plugin-a"),
+    });
+
+    const result = await run(
+      Effect.gen(function* () {
+        const coreBucket = yield* stateStore.open({
+          root: { path: userDataRoot },
+          key: "doc.json",
+          schema: Doc,
+          version: 1,
+        });
+        yield* coreBucket.set({ count: 99, label: "core" });
+        const pluginBucket = yield* plugin.stateStore.open(spec());
+        return {
+          corePath: coreBucket.path,
+          pluginPath: pluginBucket.path,
+          pluginValue: yield* pluginBucket.get,
+        } as const;
+      }),
+    );
+
+    expect(result.corePath).not.toBe(result.pluginPath);
+    expect(result.pluginValue).toBeNull();
+  });
 });

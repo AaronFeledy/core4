@@ -416,3 +416,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck, lint, schema-snapshot drift, full codegen idempotency, focused StateStore/plugin/runtime/boundary/export/CI tests, check:state-store-boundary, and check:paths-boundary passed. Full `bun test` was not run.
 - **Learnings for future iterations:** StateStore `namespace`/`key` are single path segments; plugin or app scoped subtrees must be pre-rooted with `{ path }`/`{ app }` via the Paths primitive instead of embedding slashes in namespace strings.
 ---
+
+## 2026-06-26 12:14 CDT - US-315 Review
+- Review tightened the plugin StateStore isolation proof to assert that plugin buckets cannot see core-owned state under the same user data root, and added `check:state-store-boundary` to the standard boundary-gate command list.
+- Review notes (deferred/rejected): rejected the requested production plugin-loader wiring as out of US-315 scope because the accepted managed-files/context precedent is a constrained `LandoPluginContext` surface plus tests; no production loader currently constructs the context, so wiring the full plugin runtime belongs to a separate plugin-loader story rather than this StateStore exposure review.
+- Verification: typecheck, lint, focused plugin-state/boundary tests, and check:state-store-boundary passed. Full `bun test` was not run.
+---
