@@ -1,15 +1,23 @@
-import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+// The scratch registry — a thin, scratch-shaped view over a single durable
+// `StateBucket`. All atomic write, advisory cross-process locking, corruption
+// quarantine, and version-envelope handling are delegated to `StateStore`
+// (`core/src/state/`); this module only owns the scratch entry schema and the
+// `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The bucket
+// is opened from the dependency-free `makeStateStore()` factory (the same value
+// `StateStoreLive` wraps) so `makeScratchRegistry()` stays a zero-arg synchronous
+// constructor usable without a `StateStore` service in context.
+
 import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
+import type { StateStoreError } from "@lando/sdk/errors";
+import type { StateBucket } from "@lando/sdk/services";
 
-import { writeFileAtomicViaRename } from "../cache/atomic.ts";
 import { makeLandoPaths } from "../config/paths.ts";
+import { acquireAdvisoryLockAt } from "../state/lock.ts";
+import { makeStateStore } from "../state/service.ts";
 
 const REGISTRY_VERSION = 1 as const;
-const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 10;
-const LOCK_ATTEMPTS = 50;
 
 const ScratchSourceSchema = Schema.Union(
   Schema.Struct({ kind: Schema.Literal("fork") }),
@@ -28,19 +36,17 @@ const RegistryEntrySchema = Schema.Struct({
   updatedAt: Schema.String,
 });
 
+const RegistryEntriesSchema = Schema.Array(RegistryEntrySchema);
+
 const RegistryEnvelopeSchema = Schema.Struct({
   version: Schema.Literal(REGISTRY_VERSION),
-  entries: Schema.Array(RegistryEntrySchema),
+  entries: RegistryEntriesSchema,
 });
 
 export type ScratchRegistryEntry = typeof RegistryEntrySchema.Type;
 export type ScratchRegistryEnvelope = typeof RegistryEnvelopeSchema.Type;
 
-interface LockRecord {
-  readonly pid: number;
-  readonly token: string;
-  readonly createdAt: number;
-}
+type RegistryEntries = ReadonlyArray<ScratchRegistryEntry>;
 
 export interface ScratchRegistryPaths {
   readonly base: string;
@@ -57,128 +63,32 @@ export const scratchRegistryPaths = (): ScratchRegistryPaths => {
   };
 };
 
-const scratchRegistryError = (operation: string, message: string, cause: unknown): ScratchAppError =>
-  new ScratchAppError({ operation, message, cause });
+const scratchRegistryError = (operation: string, message: string, cause: StateStoreError): ScratchAppError =>
+  new ScratchAppError({
+    operation,
+    message,
+    cause,
+    ...(cause.remediation === undefined ? {} : { remediation: cause.remediation }),
+  });
 
-const encode = (envelope: ScratchRegistryEnvelope): string => {
-  const entries = [...envelope.entries].sort((left, right) => left.id.localeCompare(right.id));
-  return `${JSON.stringify({ version: REGISTRY_VERSION, entries })}\n`;
-};
+const sortById = (entries: RegistryEntries): RegistryEntries =>
+  [...entries].sort((left, right) => left.id.localeCompare(right.id));
 
-const decode = (content: string): ScratchRegistryEnvelope =>
-  Schema.decodeUnknownSync(RegistryEnvelopeSchema)(JSON.parse(content), { onExcessProperty: "error" });
-
-const isMissing = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && (cause as { readonly code?: unknown }).code === "ENOENT";
-
-const processIsDead = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (cause) {
-    return (cause as { readonly code?: unknown }).code === "ESRCH";
-  }
-};
-
-const readLock = async (path: string): Promise<LockRecord | null> => {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as LockRecord;
-  } catch (cause) {
-    if (isMissing(cause)) return null;
-    return null;
-  }
-};
-
-const removeLockIfTokenMatches = async (path: string, token: string): Promise<void> => {
-  const current = await readLock(path);
-  if (current?.token === token) await unlink(path).catch(() => undefined);
-};
-
+/**
+ * Re-acquire the legacy `registry.lock` advisory lock via the generic state
+ * lock primitive. The scratch registry's mutations are now serialized by the
+ * bucket's own advisory lock (`registry.bin.lock`); this helper is retained as a
+ * thin delegation to the shared lock so callers that held the explicit lock
+ * handle keep working with the same token-checked release semantics.
+ */
 export const acquireScratchRegistryLock = (
   paths: ScratchRegistryPaths = scratchRegistryPaths(),
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, ScratchAppError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const token = crypto.randomUUID();
-      await mkdir(paths.base, { recursive: true });
-      for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
-        try {
-          const handle = await open(paths.lock, "wx");
-          await handle.writeFile(JSON.stringify({ pid: process.pid, token, createdAt: Date.now() }));
-          await handle.close();
-          return {
-            token,
-            release: Effect.promise(() => removeLockIfTokenMatches(paths.lock, token)),
-          };
-        } catch (cause) {
-          if (!isMissing(cause) && (cause as { readonly code?: unknown }).code !== "EEXIST") throw cause;
-          const current = await readLock(paths.lock);
-          if (
-            current === null ||
-            Date.now() - current.createdAt > LOCK_STALE_MS ||
-            processIsDead(current.pid)
-          ) {
-            await unlink(paths.lock).catch(() => undefined);
-          } else {
-            await Bun.sleep(LOCK_RETRY_MS);
-          }
-        }
-      }
-      throw new Error(`Timed out waiting for scratch registry lock at ${paths.lock}`);
-    },
-    catch: (cause) =>
+  acquireAdvisoryLockAt(paths.lock, "registry.lock").pipe(
+    Effect.mapError((cause) =>
       scratchRegistryError("registry.lock", "Unable to acquire the scratch registry lock.", cause),
-  });
-
-const withLock = <A>(
-  paths: ScratchRegistryPaths,
-  use: Effect.Effect<A, ScratchAppError>,
-): Effect.Effect<A, ScratchAppError> =>
-  Effect.acquireUseRelease(
-    acquireScratchRegistryLock(paths),
-    () => use,
-    (lock) => lock.release,
-  );
-
-const readEnvelope = (paths: ScratchRegistryPaths): Effect.Effect<ScratchRegistryEnvelope, ScratchAppError> =>
-  Effect.tryPromise({
-    try: () => readFile(paths.registry, "utf8"),
-    catch: (cause) =>
-      scratchRegistryError("registry.read", "Unable to read the scratch registry file.", cause),
-  }).pipe(
-    Effect.catchIf(
-      (error) => isMissing(error.cause),
-      () => Effect.succeed(null),
     ),
-    Effect.flatMap((content) => {
-      if (content === null) return Effect.succeed({ version: REGISTRY_VERSION, entries: [] });
-      return Effect.try({
-        try: () => decode(content),
-        catch: (cause) =>
-          scratchRegistryError(
-            "registry.decode",
-            "Scratch registry was corrupt and has been quarantined.",
-            cause,
-          ),
-      }).pipe(
-        Effect.catchAll((error) =>
-          Effect.tryPromise({
-            try: () => rename(paths.registry, `${paths.registry}.corrupt-${Date.now()}`),
-            catch: () => error,
-          }).pipe(Effect.ignore, Effect.as({ version: REGISTRY_VERSION, entries: [] })),
-        ),
-      );
-    }),
   );
-
-const writeEnvelope = (
-  paths: ScratchRegistryPaths,
-  envelope: ScratchRegistryEnvelope,
-): Effect.Effect<void, ScratchAppError> =>
-  Effect.tryPromise({
-    try: () => writeFileAtomicViaRename(paths.registry, encode(envelope)),
-    catch: (cause) => scratchRegistryError("registry.write", "Unable to write the scratch registry.", cause),
-  });
 
 export interface ScratchRegistryService {
   readonly read: () => Effect.Effect<ScratchRegistryEnvelope, ScratchAppError>;
@@ -193,34 +103,61 @@ export class ScratchRegistry extends Context.Tag("@lando/core/ScratchRegistry")<
   ScratchRegistryService
 >() {}
 
-export const makeScratchRegistry = (
-  paths: ScratchRegistryPaths = scratchRegistryPaths(),
-): ScratchRegistryService => {
-  const read = () => readEnvelope(paths);
-  const list = () => read().pipe(Effect.map((envelope) => envelope.entries));
+const openRegistryBucket = (): Effect.Effect<StateBucket<RegistryEntries>, ScratchAppError> =>
+  makeStateStore()
+    .open<RegistryEntries, RegistryEntries>({
+      root: "userCache",
+      namespace: "scratch",
+      key: "registry.bin",
+      schema: RegistryEntriesSchema,
+      version: REGISTRY_VERSION,
+      codec: "json",
+      lock: "advisory",
+      onCorrupt: "quarantine",
+      default: [],
+    })
+    .pipe(
+      Effect.mapError((cause) =>
+        scratchRegistryError("registry.open", "Unable to open the scratch registry.", cause),
+      ),
+    );
+
+export const makeScratchRegistry = (): ScratchRegistryService => {
+  const withBucket = <A>(
+    operation: string,
+    message: string,
+    use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
+  ): Effect.Effect<A, ScratchAppError> =>
+    openRegistryBucket().pipe(
+      Effect.flatMap((bucket) =>
+        use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
+      ),
+    );
+
+  const readEntries = (operation: string, message: string): Effect.Effect<RegistryEntries, ScratchAppError> =>
+    withBucket(operation, message, (bucket) => bucket.get.pipe(Effect.map((entries) => entries ?? [])));
+
+  const read = () =>
+    readEntries("registry.read", "Unable to read the scratch registry.").pipe(
+      Effect.map((entries) => ({ version: REGISTRY_VERSION, entries }) satisfies ScratchRegistryEnvelope),
+    );
+
+  const list = () => readEntries("registry.read", "Unable to read the scratch registry.");
+
   const get = (id: string) => list().pipe(Effect.map((entries) => entries.find((entry) => entry.id === id)));
+
   const upsert = (entry: ScratchRegistryEntry) =>
-    withLock(
-      paths,
-      read().pipe(
-        Effect.map((envelope) => ({
-          version: REGISTRY_VERSION,
-          entries: [...envelope.entries.filter((current) => current.id !== entry.id), entry],
-        })),
-        Effect.flatMap((envelope) => writeEnvelope(paths, envelope)),
+    withBucket("registry.write", "Unable to write the scratch registry.", (bucket) =>
+      bucket.update((current) =>
+        sortById([...(current ?? []).filter((existing) => existing.id !== entry.id), entry]),
       ),
-    );
+    ).pipe(Effect.asVoid);
+
   const remove = (id: string) =>
-    withLock(
-      paths,
-      read().pipe(
-        Effect.map((envelope) => ({
-          version: REGISTRY_VERSION,
-          entries: envelope.entries.filter((entry) => entry.id !== id),
-        })),
-        Effect.flatMap((envelope) => writeEnvelope(paths, envelope)),
-      ),
-    );
+    withBucket("registry.write", "Unable to write the scratch registry.", (bucket) =>
+      bucket.update((current) => (current ?? []).filter((entry) => entry.id !== id)),
+    ).pipe(Effect.asVoid);
+
   return { read, upsert, remove, list, get };
 };
 

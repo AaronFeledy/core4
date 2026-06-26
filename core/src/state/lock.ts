@@ -130,6 +130,22 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
   });
 
 /**
+ * Acquire an advisory lock at an EXACT lock path (no derived `${file}.lock`
+ * suffix) and return its token plus a token-checked release effect. Reuses the
+ * same stale-takeover semantics as {@link withAdvisoryLock} so a dead or expired
+ * holder is reclaimed. Callers that need scope-managed acquire/use/release
+ * should prefer {@link withAdvisoryLock}; this lower-level handle exists for
+ * surfaces that hold the lock outside an `acquireUseRelease` bracket.
+ */
+export const acquireAdvisoryLockAt = (
+  lockPath: string,
+  operation: string,
+): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
+  const token = makeLockToken();
+  return acquire(lockPath, token, operation).pipe(Effect.as({ token, release: release(lockPath, token) }));
+};
+
+/**
  * Run `body` while holding the advisory lock for `file`. The lock is acquired
  * before `body`, registered into the ambient `Scope` for guaranteed
  * token-checked release, and released after `body` settles (success, failure,
