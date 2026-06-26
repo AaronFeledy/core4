@@ -160,6 +160,7 @@ import type {
   ScratchStartOptions,
   ScratchSummary,
 } from "./scratch.ts";
+import type { StateStoreShape } from "./state-store.ts";
 import type { TunnelError } from "./tunnel.ts";
 
 export * from "./app-features.ts";
@@ -188,6 +189,7 @@ export * from "./provider.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
+export * from "./state-store.ts";
 export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 
@@ -708,6 +710,11 @@ export declare class DataMover extends Context.Tag("@lando/core/DataMover")<Data
 export declare class PathsService extends Context.Tag("@lando/core/PathsService")<
   PathsService,
   LandoPaths
+>() {}
+
+export declare class StateStore extends Context.Tag("@lando/core/StateStore")<
+  StateStore,
+  StateStoreShape
 >() {}
 
 export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<

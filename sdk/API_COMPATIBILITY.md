@@ -360,6 +360,7 @@
 - `AppFeatureMutationConflictError`
 - `AppFeatureCycleError`
 - `ServiceTypeCollisionError`
+- `StateStoreError`
 
 ## Additive Alpha service tags
 
@@ -388,6 +389,7 @@
 - `SchemaValidator`
 - `ScratchAppService`
 - `SecretStore`
+- `StateStore`
 - `HostProxyService`
 - `SshService`
 - `Telemetry`
