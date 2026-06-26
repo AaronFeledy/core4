@@ -46,11 +46,14 @@ const pidIsAlive = (pid: number): boolean => {
   }
 };
 
-const partitionEntries = (entries: ReadonlyArray<TunnelRegistryEntry>) => {
+const partitionEntries = (
+  entries: ReadonlyArray<TunnelRegistryEntry>,
+  activeSessionIds: ReadonlySet<string>,
+) => {
   const live: Array<TunnelRegistryEntry> = [];
   const staleIds: string[] = [];
   for (const entry of entries) {
-    if (pidIsAlive(entry.pid)) live.push(entry);
+    if (pidIsAlive(entry.pid) || activeSessionIds.has(entry.session.id)) live.push(entry);
     else staleIds.push(entry.session.id);
   }
   return { live: live as TunnelRegistryEntries, staleIds };
@@ -91,21 +94,21 @@ export const recordTunnelSession = (
     const registry = yield* bucket;
     const now = new Date().toISOString();
     yield* registry.update((current) => {
-      const next = partitionEntries(current ?? []).live.filter((entry) => entry.session.id !== session.id);
+      const next = partitionEntries(current ?? [], new Set()).live.filter(
+        (entry) => entry.session.id !== session.id,
+      );
       return [...next, { session, pid: process.pid, updatedAt: now }];
     });
     yield* writeRunArtifacts(session);
   });
 
-export const reconcileTunnelRegistry = (): Effect.Effect<
-  ReadonlyArray<TunnelSession>,
-  StateStoreError,
-  StateStore
-> =>
+export const reconcileTunnelRegistry = (
+  activeSessionIds: ReadonlySet<string> = new Set(),
+): Effect.Effect<ReadonlyArray<TunnelSession>, StateStoreError, StateStore> =>
   Effect.gen(function* () {
     const registry = yield* bucket;
     const reconciled = yield* registry.modify((current) => {
-      const { live, staleIds } = partitionEntries(current ?? []);
+      const { live, staleIds } = partitionEntries(current ?? [], activeSessionIds);
       return [{ sessions: live.map((entry) => entry.session), staleIds }, live];
     });
     for (const staleId of reconciled.staleIds) yield* removeRunArtifacts(staleId);
@@ -116,7 +119,7 @@ export const removeTunnelSession = (sessionId: string): Effect.Effect<void, Stat
   Effect.gen(function* () {
     const registry = yield* bucket;
     yield* registry.update((current) =>
-      partitionEntries(current ?? []).live.filter((entry) => entry.session.id !== sessionId),
+      partitionEntries(current ?? [], new Set()).live.filter((entry) => entry.session.id !== sessionId),
     );
     yield* removeRunArtifacts(sessionId);
   });

@@ -94,6 +94,13 @@ const resolvePlan = (
   });
 };
 
+const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
+  const firstRoute = plan.routes[0];
+  if (firstRoute !== undefined)
+    return { _tag: "route", routeId: firstRoute.hostname, hostname: firstRoute.hostname };
+  return { _tag: "route", routeId: plan.id };
+};
+
 export const appShare = (
   options: ShareOptions = {},
   target?: ResolvedAppTarget,
@@ -106,7 +113,7 @@ export const appShare = (
     const service = yield* resolveTunnelService(options.provider);
     const plan = yield* resolvePlan(options.cwd, target);
     const tunnelTarget = yield* Schema.decodeUnknown(TunnelTarget)(
-      options.target ?? ({ _tag: "route", routeId: plan.id } satisfies TunnelTargetType),
+      options.target ?? defaultTunnelTarget(plan),
     );
     const start = service.start({
       app: plan.id,
@@ -141,11 +148,11 @@ export const appShareList = (
     const service = yield* resolveTunnelService(options.provider);
     const plan = yield* resolvePlan(options.cwd, target);
     const app = plan.id;
-    const reconciled = yield* reconcileTunnelRegistry();
     const listed = yield* service.list({
       ...(app === undefined ? {} : { app }),
       ...(options.provider === undefined ? {} : { provider: options.provider }),
     });
+    const reconciled = yield* reconcileTunnelRegistry(new Set(listed.map((session) => session.id)));
     const byId = new Map<string, TunnelSessionType>();
     for (const session of reconciled) byId.set(session.id, session);
     for (const session of listed) byId.set(session.id, session);
