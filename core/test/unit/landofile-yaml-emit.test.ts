@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 
 import { parseLandofile } from "../../src/landofile/parser.ts";
-import { emitLandofileYaml } from "../../src/landofile/yaml-emit.ts";
 
 const roundTrip = async (value: Record<string, unknown>): Promise<unknown> => {
   const yaml = emitLandofileYaml(value);

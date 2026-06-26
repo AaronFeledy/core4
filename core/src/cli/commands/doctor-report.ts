@@ -6,12 +6,12 @@
  */
 import { Effect, Option } from "effect";
 
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { DeprecationNotice, DeprecationSurfaceKind } from "@lando/sdk/schema";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { lintLandofile } from "../../landofile/lint.ts";
-import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
 import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
 import {
   type SummaryDocument,

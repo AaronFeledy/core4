@@ -297,3 +297,18 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): list-item secondary-key path precision is non-blocking because current messages still identify the parent item and offending key; exporting `EmitLandofileOptions` as a named public type is deferred because US-308 only requires the runtime option; parser depth/size limits are pre-existing DoS hardening outside this story; progress-log typo cleanup is cosmetic and not worth rewriting prior entries.
 - Verification: `review-work` lanes passed; typecheck and lint passed; focused Landofile spot checks passed (`serializer-hardening`, `landofile-yaml-emit`, `landofile-parser`). Full `bun test` was not run per loop policy.
 ---
+## [2026-06-25 19:30:28 CDT] - Babysit
+- PR: #462 https://github.com/AaronFeledy/core4/pull/462
+- CI outcome: pass
+- Review feedback: fixed guide coverage drift for the new Landofile serializer surface
+- Merge: merged (squash)
+---
+
+## 2026-06-25 - US-309
+- Migrated the three `emitLandofileYaml` importers (`app-config-translate`, `config`, `doctor-report`) directly onto `@lando/sdk/landofile` and deleted the private `core/src/landofile/yaml-emit.ts` re-export shim, leaving the SDK subpath as the single emitter implementation. The parser kept its existing one-line `core/src/landofile/parser.ts` re-export of the published `parseLandofile` (allowed by the story; no second implementation), so all parser importers already resolve to the published primitive.
+- Behavior is byte-identical because the deleted shim merely re-exported the SDK function; the only intended deltas (new rejections, more permissive quoted-`${…}` parse) already shipped with the SDK move in the prior story.
+- Verification: typecheck, lint passed; emit round-trip, parser, managed-file-codec, and app-config-translate test spot checks passed. Real CLI runs confirmed the live emitter path: `config telemetry off` wrote correct block-style global config YAML, and `doctor --format=yaml` produced correctly quoted/nested YAML through the migrated import.
+- **Learnings for future iterations:**
+  - The active worktree's `AGENTS.md` files carry NO "Canonical Landofile serializer" note to update for this story — that note only exists in the `.local/*` sibling worktrees (separate checkouts that must not be touched). The story's "update the AGENTS.md note" criterion is vacuous here; do not fabricate a note.
+  - `lando config set/unset/edit/validate/translate` are deferred-to-Beta (`NotImplementedError`) and never reach `writeConfigObject`/`emitLandofileYaml`; the only live `config` emitter path is `config telemetry off`. `app:config:translate` short-circuits with `ConfigTranslateNoTranslatorsError` when no translator plugin is registered, so it does not exercise the emitter in the default bundle. Use `config telemetry off` (isolated via `LANDO_USER_CONF_ROOT`) and `doctor --format=yaml` to verify the emitter through real commands.
+---
