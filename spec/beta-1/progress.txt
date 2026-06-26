@@ -422,3 +422,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): foreground StreamFrame support is not yet represented by a command-spec streaming primitive in the current codebase; the share skeleton now preserves the live foreground scope and records active sessions for reconciliation.
 - Verification: typecheck, lint, paths/share/tunnel/app-handle/dispatch focused tests passed; rebuilt compiled binary and reran sandbox no-provider share/list/stop smokes.
 ---
+
+## 2026-06-26 13:58 CDT - US-337
+- Implemented `DataMoverLive` as the provider-level byte-movement substrate: native service-path copies use the provider data plane, generic volume import/export uses the helper-container run/runStream path, host archive transfers now write/read real tar archives with verified SHA-256 persistence, and transfer/snapshot lifecycle events publish through the redacted EventService seam.
+- Added the in-memory `TestDataMover` for host/unit tests and wired DataMover into the generated provider bootstrap layer without adding a plugin contribution surface.
+- Verification: typecheck and lint passed; focused DataMover, runtime bootstrap, core testing export, SDK schema/export/backward-compat spot checks passed; reviewer gate returned unconditional approval.
+- **Learnings for future iterations:** Keep DataMover substrate stories split: US-337 owns dispatch/events/archive verification and the test double; the durable snapshot index remains US-338, and bundled-provider native implementations remain US-339. When adding new event union members, regenerate all LandoEvent schema artifacts together.
+---

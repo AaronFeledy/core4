@@ -14,11 +14,14 @@
 import { Layer } from "effect";
 
 import { RuntimeProvider } from "@lando/sdk/services";
+import { DataMoverLive } from "../../../data-mover/service.ts";
 import { GlobalAppServiceLive } from "../../../global-app/service.ts";
 import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";
+import { RedactionServiceLive } from "../../../redaction/service.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
 import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
+import { SecretStoreLive } from "../../../services/secret-store.ts";
 import { type BootstrapLayerInputs, runtimeProviderService } from "../../bootstrap-layer-support.ts";
 import { makePluginsBootstrapLayer } from "./plugins.ts";
 
@@ -32,6 +35,15 @@ export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     pluginsRuntimeLive,
     EventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
+    DataMoverLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(RuntimeProvider, runtimeProviderService),
+          EventServiceLive,
+          RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
+        ),
+      ),
+    ),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );

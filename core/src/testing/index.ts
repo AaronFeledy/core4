@@ -5,6 +5,7 @@
  */
 
 export * from "./downloader.ts";
+export * from "./data-mover.ts";
 export * from "./interaction.ts";
 export * from "./managed-file.ts";
 export * from "./remote-sync.ts";

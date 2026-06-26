@@ -11223,6 +11223,213 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-data-transfer"],
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-data-transfer"],
+              "type": "string"
+            },
+            "fromEndpoint": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "toEndpoint": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "fromEndpoint", "toEndpoint", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["data-transfer-progress"],
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["data-transfer-progress"],
+              "type": "string"
+            },
+            "fromEndpoint": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "toEndpoint": {
+              "type": "string"
+            },
+            "totalBytes": {
+              "type": "number"
+            },
+            "transferredBytes": {
+              "type": "number"
+            }
+          },
+          "required": ["_tag", "eventName", "fromEndpoint", "toEndpoint", "transferredBytes", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-data-transfer"],
+              "type": "string"
+            },
+            "accelerated": {
+              "type": "boolean"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["post-data-transfer"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "fromEndpoint": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "sizeBytes": {
+              "type": "number"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "toEndpoint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "fromEndpoint",
+            "toEndpoint",
+            "outcome",
+            "accelerated",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-volume-snapshot"],
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-volume-snapshot"],
+              "type": "string"
+            },
+            "format": {
+              "enum": ["tar", "tar.gz", "tar.zst"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "volume": {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "type": "string"
+                },
+                "scope": {
+                  "enum": ["service", "app", "global"],
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["app", "store"],
+              "type": "object"
+            }
+          },
+          "required": ["_tag", "eventName", "volume", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-volume-snapshot"],
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["post-volume-snapshot"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "sizeBytes": {
+              "type": "number"
+            },
+            "snapshotId": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "volume": {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "type": "string"
+                },
+                "scope": {
+                  "enum": ["service", "app", "global"],
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string"
+                }
+              },
+              "required": ["app", "store"],
+              "type": "object"
+            }
+          },
+          "required": ["_tag", "eventName", "volume", "snapshotId", "outcome", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-pull"],
               "type": "string"
             },

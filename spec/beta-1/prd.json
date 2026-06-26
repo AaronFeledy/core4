@@ -2475,7 +2475,7 @@
         "Lint passes."
       ],
       "priority": 138,
-      "passes": false,
+      "passes": true,
       "notes": "Data-movement primitive (spec \u00a710.11.1, \u00a710.11.2, \u00a73.5, \u00a73.7, \u00a74.2). Depends on US-334, US-336, PRD-13 (RedactionService)."
     },
     {

@@ -14,6 +14,13 @@ import {
 } from "./app.ts";
 import { BeforeExitEvent, PostBootstrapEvent, PreBootstrapEvent, ReadyEvent } from "./bootstrap.ts";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "./cli.ts";
+import {
+  DataTransferProgressEvent,
+  PostDataTransferEvent,
+  PostVolumeSnapshotEvent,
+  PreDataTransferEvent,
+  PreVolumeSnapshotEvent,
+} from "./data.ts";
 import { DeprecationUsedEvent } from "./deprecation.ts";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "./download.ts";
 import {
@@ -117,6 +124,11 @@ export const LandoEvent = Schema.Union(
   PreDownloadEvent,
   DownloadProgressEvent,
   PostDownloadEvent,
+  PreDataTransferEvent,
+  DataTransferProgressEvent,
+  PostDataTransferEvent,
+  PreVolumeSnapshotEvent,
+  PostVolumeSnapshotEvent,
   PrePullEvent,
   PostPullEvent,
   PrePushEvent,
