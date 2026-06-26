@@ -1388,6 +1388,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         session: {
           description: "Tunnel session id.",
           name: "session",
+          required: true,
           hasDynamicHelp: false,
           multiple: false,
           type: "option",
@@ -1433,6 +1434,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         flags: {
           session: {
             description: "Tunnel session id.",
+            required: true,
             input: [],
             multiple: false,
             type: "option",
