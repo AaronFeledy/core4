@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,30 +8,58 @@ import { Effect, Layer } from "effect";
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/core/services";
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
-import type { TunnelSession, TunnelTarget } from "@lando/sdk/schema";
+import { ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 
-const serviceTarget: TunnelTarget = { _tag: "service", service: "web", port: 80, protocol: "http" };
+const serviceTarget: TunnelTarget = {
+  _tag: "service",
+  service: ServiceName.make("web"),
+  port: 80,
+  protocol: "http",
+};
 
 const withTempShareApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-share-skeleton-")));
+  const dataRoot = join(dir, "data");
+  const cacheRoot = join(dir, "cache");
+  const oldDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  const oldCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
   await writeFile(
     join(dir, ".lando.yml"),
     `name: share-skeleton\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    type: node:lts\n`,
   );
   const original = process.cwd();
+  process.env.LANDO_USER_DATA_ROOT = dataRoot;
+  process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   process.chdir(dir);
   try {
     return await run(dir);
   } finally {
     process.chdir(original);
+    if (oldDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = oldDataRoot;
+    if (oldCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    else process.env.LANDO_USER_CACHE_ROOT = oldCacheRoot;
     await rm(dir, { recursive: true, force: true });
+  }
+};
+
+const exists = async (path: string): Promise<boolean> => {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && (error as { code?: string }).code === "ENOENT") {
+      return false;
+    }
+    throw error;
   }
 };
 
 const providerLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
   Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([TestRuntimeProvider.id]),
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
   }),
@@ -89,7 +117,7 @@ describe("share command skeleton", () => {
       const operations = await import("@lando/core/cli/operations");
 
       const startExit = await Effect.runPromiseExit(
-        operations.appShare({ cwd: dir, target: serviceTarget, yes: true }),
+        Effect.scoped(operations.appShare({ cwd: dir, target: serviceTarget, yes: true })),
       );
       const listExit = await Effect.runPromiseExit(operations.appShareList({ cwd: dir }));
       const stopExit = await Effect.runPromiseExit(operations.appShareStop({ cwd: dir, sessionId: "tun_1" }));
@@ -117,8 +145,12 @@ describe("share command skeleton", () => {
       const session = (await Effect.runPromise(
         operations
           .appShare({ cwd: dir, target: serviceTarget, detach: true, yes: true })
-          .pipe(Effect.provide(layer)),
+          .pipe(Effect.provide(layer), Effect.scoped),
       )) as TunnelSession;
+      const paths = makeLandoPaths();
+      expect(await exists(paths.tunnelRegistryFile)).toBe(true);
+      expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(true);
+      expect(await exists(join(paths.tunnelRunDir, `${session.id}.pid`))).toBe(true);
       const listed = (await Effect.runPromise(
         operations.appShareList({ cwd: dir }).pipe(Effect.provide(layer)),
       )) as ReadonlyArray<TunnelSession>;
@@ -132,6 +164,9 @@ describe("share command skeleton", () => {
       expect(listed.map((entry) => entry.id)).toContain(session.id);
       expect(stopped).toMatchObject({ sessionId: session.id, status: "stopped" });
       expect(detached.map((entry) => entry.operation)).toEqual(expect.arrayContaining(["record", "remove"]));
+      expect(await exists(paths.tunnelRegistryFile)).toBe(true);
+      expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(false);
+      expect(await exists(join(paths.tunnelRunDir, `${session.id}.pid`))).toBe(false);
     });
   });
 

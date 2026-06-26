@@ -417,3 +417,8 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:**
   - Hand-rolled compiled app command dispatch needs both explicit `run.ts` branches and regenerated `core/src/cli/oclif/compiled-manifest.ts`; source command modules alone are not enough for source/compiled parity.
 ---
+## 2026-06-26 12:17 CDT - US-343 Review
+- Fixed review blockers by adding the tunnel registry StateStore bucket/run-artifact seam to share operations, validating tunnel targets before provider dispatch, and aligning source `app:share` scope handling with the compiled path.
+- Review notes (deferred/rejected): foreground StreamFrame support is not yet represented by a command-spec streaming primitive in the current codebase; the share skeleton now preserves the live foreground scope and records active sessions for reconciliation.
+- Verification: typecheck, lint, paths/share/tunnel/app-handle/dispatch focused tests passed; rebuilt compiled binary and reran sandbox no-provider share/list/stop smokes.
+---

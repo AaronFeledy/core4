@@ -428,6 +428,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.certsDir).toBe(join(data, "certs"));
     expect(paths.runtimeDir).toBe(join(data, "runtime"));
     expect(paths.globalAppRoot).toBe(join(data, "global"));
+    expect(paths.tunnelRunDir).toBe(join(data, "run", "tunnels"));
   });
 
   test("userCache-scoped builders", () => {
@@ -437,6 +438,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.scratchDir).toBe(join(cache, "scratch"));
     expect(paths.scratchRegistryFile).toBe(join(cache, "scratch", "registry.bin"));
     expect(paths.scratchRegistryLockFile).toBe(join(cache, "scratch", "registry.lock"));
+    expect(paths.tunnelRegistryFile).toBe(join(cache, "tunnels", "registry.bin"));
     expect(paths.fileSyncSessionsDir).toBe(join(cache, "file-sync", "sessions"));
   });
 
@@ -478,6 +480,8 @@ describe("makeLandoPaths derived builders", () => {
     });
     expect(paths.pluginsDir).toBe("/iso/data/plugins");
     expect(paths.scratchDir).toBe("/iso/cache/scratch");
+    expect(paths.tunnelRunDir).toBe("/iso/data/run/tunnels");
+    expect(paths.tunnelRegistryFile).toBe("/iso/cache/tunnels/registry.bin");
     expect(paths.configFile).toBe("/iso/conf/config.yml");
   });
 
@@ -494,6 +498,10 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.pluginsDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\plugins");
     expect(paths.scratchRegistryFile).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\scratch\\registry.bin",
+    );
+    expect(paths.tunnelRunDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\run\\tunnels");
+    expect(paths.tunnelRegistryFile).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\tunnels\\registry.bin",
     );
   });
 });
