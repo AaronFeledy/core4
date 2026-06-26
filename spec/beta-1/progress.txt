@@ -297,3 +297,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): list-item secondary-key path precision is non-blocking because current messages still identify the parent item and offending key; exporting `EmitLandofileOptions` as a named public type is deferred because US-308 only requires the runtime option; parser depth/size limits are pre-existing DoS hardening outside this story; progress-log typo cleanup is cosmetic and not worth rewriting prior entries.
 - Verification: `review-work` lanes passed; typecheck and lint passed; focused Landofile spot checks passed (`serializer-hardening`, `landofile-yaml-emit`, `landofile-parser`). Full `bun test` was not run per loop policy.
 ---
+## [2026-06-25 19:30:28 CDT] - Babysit
+- PR: #462 https://github.com/AaronFeledy/core4/pull/462
+- CI outcome: pass
+- Review feedback: fixed guide coverage drift for the new Landofile serializer surface
+- Merge: merged (squash)
+---
