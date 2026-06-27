@@ -5536,24 +5536,6 @@ export interface ConfigTranslatorContractHarness {
   };
 }
 
-const sortJsonValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, sortJsonValue(child)]),
-    );
-  }
-
-  return value;
-};
-
-const canonicalize = (value: unknown): string => JSON.stringify(sortJsonValue(value));
-
 export const runConfigTranslatorContractSuite = (
   harness: ConfigTranslatorContractHarness,
 ): Effect.Effect<void, ContractFailure> =>
@@ -5642,7 +5624,7 @@ export const runConfigTranslatorContractSuite = (
 
     if (harness.expectedFragment) {
       yield* requireConfigTranslatorContract(
-        canonicalize(result.fragment) === canonicalize(harness.expectedFragment),
+        stableJson(result.fragment) === stableJson(harness.expectedFragment),
         `${label}: translate emits the expected fragment`,
         { actual: result.fragment, expected: harness.expectedFragment },
       );
@@ -5657,7 +5639,7 @@ export const runConfigTranslatorContractSuite = (
         ),
       );
     yield* requireConfigTranslatorContract(
-      canonicalize(result.fragment) === canonicalize(result2.fragment),
+      stableJson(result.fragment) === stableJson(result2.fragment),
       `${label}: translate is deterministic for identical input`,
       { first: result.fragment, second: result2.fragment },
     );
@@ -5684,7 +5666,7 @@ export const runConfigTranslatorContractSuite = (
       ),
     );
     yield* requireConfigTranslatorContract(
-      canonicalize(reparsed) === canonicalize(result.fragment),
+      stableJson(reparsed) === stableJson(result.fragment),
       `${label}: emitted fragment round-trips through the canonical Landofile serializer`,
       { reparsed, fragment: result.fragment, emitted },
     );
@@ -5834,7 +5816,7 @@ export const runRouteFilterContractSuite = <Route, Options>(
         ),
       );
     yield* requireRouteFilterContract(
-      JSON.stringify(applied) === JSON.stringify(harness.expected),
+      stableJson(applied) === stableJson(harness.expected),
       `${label}: apply produces the expected route intent`,
       { actual: applied, expected: harness.expected },
     );
@@ -5853,7 +5835,7 @@ export const runRouteFilterContractSuite = <Route, Options>(
       .apply(harness.input, harness.validOptions)
       .pipe(Effect.mapError((cause) => routeFilterContractFailure(`${label}: repeat apply resolves`, cause)));
     yield* requireRouteFilterContract(
-      JSON.stringify(applied) === JSON.stringify(appliedAgain),
+      stableJson(applied) === stableJson(appliedAgain),
       `${label}: apply is deterministic for identical input/options`,
       { first: applied, second: appliedAgain },
     );
@@ -5867,7 +5849,7 @@ export const runRouteFilterContractSuite = <Route, Options>(
         ),
       );
     yield* requireRouteFilterContract(
-      JSON.stringify(reapplied) === JSON.stringify(applied),
+      stableJson(reapplied) === stableJson(applied),
       `${label}: apply is idempotent (apply twice equals apply once)`,
       { once: applied, twice: reapplied },
     );
@@ -5898,7 +5880,7 @@ export const runRouteFilterContractSuite = <Route, Options>(
       const firstPass = yield* runSequence();
       const secondPass = yield* runSequence();
       yield* requireRouteFilterContract(
-        JSON.stringify(firstPass) === JSON.stringify(secondPass),
+        stableJson(firstPass) === stableJson(secondPass),
         `${label}: filter ordering/output is stable across replays`,
         { firstPass, secondPass },
       );
