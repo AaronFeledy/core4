@@ -436,6 +436,8 @@
 - `InteractionServiceSpec`
 - `ManagedFileContractHarness`
 - `PluginContractInput`
+- `PluginSourceContractHarness`
+- `PluginSourceTaggedError`
 - `ProviderDataPlaneContractInput`
 - `RemoteSourceContractHarness`
 - `RemoteSourceContractObservations`
@@ -462,14 +464,18 @@
 - `TestFileSyncEngine`
 - `TestPluginManifest`
 - `TestServiceType`
+- `ToolingEngineContractHarness`
+- `ToolingEngineUnderTest`
 - `UnsupportedContractCell`
 - `UnsupportedFileSyncContractCell`
 - `makeConfigTranslatorContractSuite`
 - `makeDatasetContractSuite`
 - `makeDoctorCheckContractSuite`
+- `makePluginSourceContractSuite`
 - `makeRemoteSourceContractSuite`
 - `makeRouteFilterContractSuite`
 - `makeSecretStoreContractSuite`
+- `makeToolingEngineContractSuite`
 - `makeTunnelServiceContractSuite`
 - `runDatasetContract`
 - `runFileSyncEngineContract`
@@ -483,6 +489,7 @@
 - `runRedactionContract`
 - `runConfigTranslatorContractSuite`
 - `runDoctorCheckContractSuite`
+- `runPluginSourceContractSuite`
 - `runRemoteSourceContract`
 - `runRouteFilterContractSuite`
 - `runSecretStoreContractSuite`
@@ -492,5 +499,6 @@
 - `runAppFeatureContract`
 - `AppFeatureContractHarness`
 - `AppFeatureContractService`
+- `runToolingEngineContractSuite`
 - `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`

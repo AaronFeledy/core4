@@ -552,6 +552,20 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.DoctorCheckError).toBeDefined();
   });
 
+  test("test entry point exports the tooling engine contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runToolingEngineContractSuite).toBeDefined();
+    expect(sdkTest.makeToolingEngineContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the plugin source contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runPluginSourceContractSuite).toBeDefined();
+    expect(sdkTest.makePluginSourceContractSuite).toBeDefined();
+  });
+
   test("test entry point exports the interaction contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 

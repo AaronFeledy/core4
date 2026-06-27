@@ -2182,8 +2182,8 @@
         "Lint passes."
       ],
       "priority": 121,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Published makeToolingEngineContractSuite and makePluginSourceContractSuite from @lando/sdk/test against the shipped SDK surface; idealized guarantees (tooling-step events, sources/generates skip, network/auth/offline) are optional harness probes since those surfaces are not yet implemented. Real providerExec/host engines and a realpath containment resolver pass the suites."
     },
     {
       "id": "US-321",
