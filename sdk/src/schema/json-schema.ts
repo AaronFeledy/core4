@@ -171,6 +171,7 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
 import {
@@ -525,6 +526,10 @@ const rawPublicSchemaRegistry = {
   PaintBannerEvent,
   PromptSpec,
   InteractionServiceContribution,
+  CommandResultFormat,
+  CommandWarning,
+  CommandResultEnvelope,
+  StreamFrame,
 } as const;
 
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
@@ -761,6 +766,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PaintBannerEvent: "Public Lando schema contract for Paint Banner Event.",
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
   InteractionServiceContribution: "Public Lando schema contract for Interaction Service Contribution.",
+  CommandResultFormat: "Public Lando schema contract for Command Result Format.",
+  CommandWarning: "Public Lando schema contract for Command Warning.",
+  CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  StreamFrame: "Public Lando schema contract for Stream Frame.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
 
 const titleFromSchemaName = (schemaName: string): string =>
@@ -902,6 +911,16 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "CliCommandRunEvent._tag",
   "CliCommandRunEvent.commandId",
   "CliCommandRunEvent.timestamp",
+  "CommandResultEnvelope.apiVersion",
+  "CommandResultEnvelope.command",
+  "CommandResultEnvelope.deprecations",
+  "CommandResultEnvelope.error",
+  "CommandResultEnvelope.ok",
+  "CommandResultEnvelope.result",
+  "CommandResultEnvelope.warnings",
+  "CommandWarning.code",
+  "CommandWarning.message",
+  "CommandWarning.remediation",
   "ConfigLintResult.app",
   "ConfigLintResult.file",
   "ConfigLintResult.valid",
@@ -1783,6 +1802,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "SharedNetworkMembershipPlan.aliases",
   "SharedNetworkMembershipPlan.name",
   "SkipProps.until",
+  "StreamFrame._tag",
   "TabsProps.axis",
   "TaskCompleteEvent._tag",
   "TaskCompleteEvent.durationMs",
