@@ -620,3 +620,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - All built-in spec files import `LandoCommandBase` from a relative `command-base.ts`, so exporting `EmptyResultSchema` from there lets each spec add the placeholder by extending an import it already has (no new `Schema` import per file) and gives US-327 a single grep target to replace. Deferred stubs all flow through `makeDeferredStubCommand` (`deferred-stub.ts`), so one edit there covers every stub.
   - `validateCommandSpec`'s param is typed `{ id; resultSchema?: unknown }` (looser than `LandoCommandSpec`) so the runtime `=== undefined` guard does not trip TS "no-overlap" on the now-required field; the guard exists for JS/plugin-compiled specs that bypass the type.
 ---
+
+## 2026-06-27 18:10 CDT - US-323 Review
+- Reviewed the required `resultSchema` command-spec work and fixed a confirmed blocker: the OCLIF init-hook fixture commands now declare `EmptyResultSchema`, so the new `validateCommandSpec` gate no longer breaks the bootstrap hook spot test.
+- Review notes (deferred/rejected): accurate per-command result schemas are intentionally deferred to US-327; `encodeCommandResult`/schema-backed JSON emission is US-324; `check:machine-output` is US-328; dispatch-time `validateCommandSpec` is accepted for this story because built-ins are compile-time typed and covered by the registry test.
+- Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `init-hook`, `deferred-commands`, and `not-implemented`.
+---
