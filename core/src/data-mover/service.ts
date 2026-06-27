@@ -167,7 +167,9 @@ const packTar = (payload: Uint8Array): Uint8Array => {
 
 const parseOctal = (bytes: Uint8Array): number => {
   const text = new TextDecoder().decode(bytes).replaceAll("\0", "").trim();
-  return text.length === 0 ? 0 : Number.parseInt(text, 8);
+  if (text.length === 0) return 0;
+  if (!/^[0-7]+$/.test(text)) return Number.NaN;
+  return Number.parseInt(text, 8);
 };
 
 const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
@@ -180,6 +182,14 @@ const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
     });
   }
   const size = parseOctal(archive.slice(124, 136));
+  if (!Number.isSafeInteger(size)) {
+    throw new ArchiveFormatError({
+      message: "Archive payload size is not a valid tar octal value.",
+      format: "tar",
+      archivePath: path,
+      remediation: "Recreate the archive and retry the transfer.",
+    });
+  }
   const start = 512;
   const end = start + size;
   if (end > archive.byteLength) {
@@ -563,13 +573,16 @@ const writeStreamToEndpoint = (
     case "hostArchive":
       return Effect.gen(function* () {
         const payload = yield* collectByteStream(body);
-        const archive = yield* archivePayload(payload, target.format);
-        const result = yield* persistVerifiedStream({
-          body: Stream.make(archive),
-          destinationPath: target.path,
+        const verified = yield* collectVerifiedStream({
+          body: Stream.make(payload),
           expectedSha256: spec.expectedDigest,
         }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
-        return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
+        const archive = yield* archivePayload(payload, target.format);
+        yield* persistVerifiedStream({
+          body: Stream.make(archive),
+          destinationPath: target.path,
+        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        return { accelerated: false, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
     case "servicePath":
       if (provider.capabilities.serviceFileCopy !== "native")

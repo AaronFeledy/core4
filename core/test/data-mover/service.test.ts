@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -6,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
 import {
+  ArchiveFormatError,
   DataChecksumMismatchError,
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
@@ -46,6 +48,7 @@ const bytes = (value: string): Uint8Array => encoder.encode(value);
 const text = (value: Uint8Array): string => decoder.decode(value);
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 const portable = (path: string) => Schema.decodeUnknownSync(PortablePath)(path);
+const sha256 = (payload: string | Uint8Array): string => createHash("sha256").update(payload).digest("hex");
 
 const minimalEmptyTar = (): Uint8Array => {
   const header = new Uint8Array(512);
@@ -65,6 +68,12 @@ const minimalEmptyTar = (): Uint8Array => {
   const checksum = header.reduce((sum, byte) => sum + byte, 0);
   write(148, `${checksum.toString(8).padStart(6, "0")}\0 `, 8);
   return header;
+};
+
+const invalidSizeTar = (): Uint8Array => {
+  const archive = minimalEmptyTar();
+  archive.set(encoder.encode("not-octal\0\0\0"), 124);
+  return archive;
 };
 
 const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
@@ -241,7 +250,31 @@ describe("DataMoverLive", () => {
       expect(observedRunStdin).toBeUndefined();
       expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
       expect(await readFile(restored, "utf8")).toBe("volume-payload");
-      expect(result.exportResult.digest).toBeDefined();
+      expect(result.exportResult.digest).toBe(sha256("volume-payload"));
+    });
+  });
+
+  test("host archive writes verify and report the payload digest", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "payload.txt");
+      const archive = join(dir, "payload.tar");
+      await writeFile(source, "archive-payload");
+
+      const result = await runDataMover(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
+            expectedDigest: sha256("archive-payload"),
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(result.digest).toBe(sha256("archive-payload"));
+      expect(result.sizeBytes).toBe(bytes("archive-payload").byteLength);
+      expect(await readFile(archive, "utf8")).not.toBe("archive-payload");
     });
   });
 
@@ -332,6 +365,38 @@ describe("DataMoverLive", () => {
       );
 
       expect(await readFile(target, "utf8")).toBe("");
+    });
+  });
+
+  test("rejects tar archives with invalid payload size fields", async () => {
+    await withTempDir(async (dir) => {
+      const archive = join(dir, "invalid-size.tar");
+      const target = join(dir, "target.txt");
+      await writeFile(archive, invalidSizeTar());
+      await writeFile(target, "old");
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
+              to: { _tag: "hostPath", path: absolute(target) },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(providerLayer()),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
+      }
+      expect(await readFile(target, "utf8")).toBe("old");
     });
   });
 
