@@ -488,3 +488,17 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): zero-subscriber `hasSubscribers` short-circuit is broader pre-existing §11.1 event-registration work, not introduced by this story and not a focused review fix; live PubSub remaining raw was intentionally documented by the build step because US-318 redacts the bounded history/query surface only.
 - Verification: typecheck and lint passed; focused spot checks passed for EventService wait/query behavior, test runtime helpers, SDK narrowing/compatibility/tag fixtures, downloader event wiring, and redaction service coverage.
 ---
+## [2026-06-26 23:09:36 CDT] - Babysit
+- PR: #473 https://github.com/AaronFeledy/core4/pull/473
+- CI outcome: fail (Cursor Bugbot: History stores raw without redaction; latest run still had linux-x64 pending)
+- Review feedback: fixed three Cursor findings, linux-x64 unit expectation, and guide drift; new Cursor finding appeared after the fifth triage round
+- Merge: deferred (five triage rounds exhausted; do not merge with open Bugbot finding)
+---
+## 2026-06-26 - US-318 Build (finish open review finding)
+- Closed the remaining High-severity review finding ("History stores raw without redaction"): the EventService history buffer no longer stores a raw payload when no redaction service is provided. Previously the append path fell back to the original event whenever the redaction dependency was absent, so the bounded buffer and `query`/history snapshot could expose secrets for any bare-`EventServiceLive` consumer (renderer sites, embedding hosts, tests).
+- Added a fail-safe standalone redactor to the redaction module that builds the same profile pattern classes and option-derived exact values (env auth tokens, proxy userinfo, explicit tokens) as the service-backed path, minus secret-store values. Both history-redaction branches now share one profile/options source so they cannot drift, and the redaction service itself was refactored to reuse the same option-construction helper.
+- Verification: typecheck and lint passed; redaction-boundary gate passed; spot checks passed for the EventService wait/query/history suite (new fail-first None-path test plus existing append-time redaction and behavior regressions), adjacent event consumers (downloader, managed-file, testing helpers), and the redaction service / cannot-weaken suites.
+- **Learnings for future iterations:**
+  - A redaction dependency resolved with `Effect.serviceOption` must never fall back to emitting/retaining the raw value. For any buffer or sink that must stay redacted, use the dependency-free `createStandaloneRedactor(profile, options)` on the `None` branch so pattern + option-derived masking still applies; only exact secret-store values are unavailable without the service.
+  - Keep the `None` and `Some` redaction branches reading one shared profile + options value, and centralize redactor-option construction in `core/src/redaction/service.ts` (`makeRedactorOptions`) so the service path and the standalone path cannot diverge in which env/proxy/token values they mask.
+---

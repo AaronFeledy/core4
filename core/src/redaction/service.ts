@@ -81,18 +81,32 @@ const dedupeValues = (values: Iterable<string>): string[] => {
   return [...deduped];
 };
 
+const makeRedactorOptions = (
+  secretValues: Iterable<string>,
+  options: RedactionForProfileOptions | undefined,
+): CreateRedactorOptions => ({
+  values: dedupeValues([...secretValues, ...collectOptionValues(options)]),
+  ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
+});
+
+/**
+ * Fail-safe redactor for callers where `RedactionService` may be absent but a
+ * payload must never be retained raw. Applies the same profile pattern classes
+ * and option-derived exact values as the service path; only secret-store values
+ * are unavailable.
+ */
+export const createStandaloneRedactor = (
+  profile: RedactionProfile,
+  options?: RedactionForProfileOptions,
+): Redactor => createRedactor(profile, makeRedactorOptions([], options));
+
 export const makeRedactionService = (
   secretStore: Context.Tag.Service<typeof SecretStore>,
 ): RedactionServiceShape => ({
   forProfile: (profile, options) =>
     Effect.gen(function* () {
       const secretValues = yield* collectSecretStoreValues(secretStore);
-      const values = dedupeValues([...secretValues, ...collectOptionValues(options)]);
-      const redactorOptions: CreateRedactorOptions = {
-        values,
-        ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
-      };
-      return createRedactor(profile, redactorOptions);
+      return createRedactor(profile, makeRedactorOptions(secretValues, options));
     }),
 });
 

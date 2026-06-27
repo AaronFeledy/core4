@@ -3,7 +3,11 @@ import { Cause, type Context, type Duration, Effect, Layer, Option, PubSub, Ref,
 import { EventError } from "@lando/sdk/errors";
 import { type EventFor, EventService, type EventWaitSpec, type LandoEvent } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
+import {
+  type RedactionForProfileOptions,
+  RedactionService,
+  createStandaloneRedactor,
+} from "../redaction/service.ts";
 
 const DEFAULT_HISTORY_CAP = 64;
 const EMPTY_HISTORY: ReadonlyArray<LandoEvent> = Object.freeze([]);
@@ -28,15 +32,26 @@ type EventServiceConfig = {
   readonly redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>;
 };
 
+const HISTORY_REDACTION_PROFILE = "secrets" as const;
+
+const historyRedactionOptions = (): RedactionForProfileOptions => ({ sourceEnv: process.env });
+
 const redactForHistory = (
   redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>,
   event: LandoEvent,
-): Effect.Effect<LandoEvent> =>
-  Option.isNone(redaction)
-    ? Effect.succeed(event)
-    : redaction.value
-        .forProfile("secrets", { sourceEnv: process.env })
-        .pipe(Effect.map((redactor) => redactor.redactValue(event) as LandoEvent));
+): Effect.Effect<LandoEvent> => {
+  const options = historyRedactionOptions();
+  return Option.match(redaction, {
+    onNone: () =>
+      Effect.sync(
+        () => createStandaloneRedactor(HISTORY_REDACTION_PROFILE, options).redactValue(event) as LandoEvent,
+      ),
+    onSome: (service) =>
+      service
+        .forProfile(HISTORY_REDACTION_PROFILE, options)
+        .pipe(Effect.map((redactor) => redactor.redactValue(event) as LandoEvent)),
+  });
+};
 
 const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeof EventService> => {
   const { pubsub, history, historyCap, redaction } = config;

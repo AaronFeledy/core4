@@ -203,6 +203,32 @@ describe("EventService history buffer and query", () => {
     }
   });
 
+  test("redacts history with the standalone fallback when RedactionService is absent", async () => {
+    const token = "fallback-auth-token-us-318";
+    const envKey = "BUN_AUTH_TOKEN";
+    const previous = process.env[envKey];
+    process.env[envKey] = token;
+
+    try {
+      const snapshot = await Effect.runPromise(
+        Effect.flatMap(EventService, (events) =>
+          Effect.gen(function* () {
+            yield* events.publish(secretEvent(token));
+            return yield* events.query("*");
+          }),
+        ).pipe(Effect.provide(makeEventServiceLive(8))),
+      );
+
+      const serialized = JSON.stringify(snapshot);
+      expect(serialized).not.toContain(token);
+      expect(serialized).toContain("[redacted]");
+      expect(serialized).toContain("example.com/asset");
+    } finally {
+      if (previous === undefined) delete process.env[envKey];
+      else process.env[envKey] = previous;
+    }
+  });
+
   test("cap of 0 is a zero-allocation no-op: query returns the same empty array", async () => {
     const { first, second } = await Effect.runPromise(
       Effect.flatMap(EventService, (events) =>
