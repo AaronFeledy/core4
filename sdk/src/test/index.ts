@@ -5541,7 +5541,23 @@ export interface ConfigTranslatorContractHarness {
   };
 }
 
-const canonicalize = (value: unknown): string => JSON.stringify(value, Object.keys(value as object).sort());
+const sortJsonValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(sortJsonValue);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, sortJsonValue(child)]),
+    );
+  }
+
+  return value;
+};
+
+const canonicalize = (value: unknown): string => JSON.stringify(sortJsonValue(value));
 
 export const runConfigTranslatorContractSuite = (
   harness: ConfigTranslatorContractHarness,

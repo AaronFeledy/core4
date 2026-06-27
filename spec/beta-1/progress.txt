@@ -519,3 +519,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - Contract suites are plain `Effect<void, ContractFailure>` runners (NO `bun:test` import); make every spec guarantee that today's implementation does not yet satisfy an OPTIONAL harness probe (asserted only when the hook is supplied) so the suite encodes the full §13.1 contract while staying satisfiable by the current built-ins.
   - ConfigTranslator round-trip verification: emit the fragment via `emitLandofileYaml`, re-parse via `parseLandofile`, and compare canonicalized (key-sorted JSON) structures — `parseLandofile` returns `Effect<unknown>`, so structural equality on the normalized objects is the right round-trip assertion.
 ---
+
+## 2026-06-27 01:31 CDT - US-319 Review
+- Fixed the config-translator contract suite's canonical round-trip comparison so nested Landofile fragments are recursively key-sorted before comparison; the previous top-level-only `JSON.stringify` replacer could mask nested serializer/parser drift.
+- Review notes (deferred/rejected): Strict review-work findings that the six route-filter built-ins and built-in core doctor checks are not production-wired are accepted as deferred by design for this contract-first story; US-319 deliberately proves reference harnesses plus the real env/TestSecretStore, while production route-filter/doctor frameworks remain owned by later feature stories.
+- Review notes (deferred/rejected): Doctor shell/redaction probes remain optional and harness-supplied because no pluggable doctor-check engine exists yet; requiring real ShellRunner integration here would force implementation beyond the declarative contract-suite slice.
+- Verification: `bun run typecheck`, `bun run lint`, `bun test sdk/test/contract/secret-store.test.ts sdk/test/contract/config-translator.test.ts sdk/test/contract/route-filter.test.ts sdk/test/contract/doctor-check.test.ts core/test/services/secret-store-contract.test.ts core/test/library/core-testing-export.test.ts sdk/test/library/exports.test.ts`, `bun run biome check sdk/src/test/index.ts`, and `git diff --check` passed.
+---
