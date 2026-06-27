@@ -3,6 +3,7 @@ import { Schema } from "effect";
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.Literal("timeout")),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 

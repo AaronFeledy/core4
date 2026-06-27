@@ -21,6 +21,8 @@ const captureEventsLayer = (events: LandoEvent[]) =>
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<never>(),
     waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
   } satisfies EventService.Service);
 
 const runProcess = (input: Parameters<ProcessRunner.Service["run"]>[0]) =>

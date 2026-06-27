@@ -49,6 +49,8 @@ const makeCapturingEventService = () => {
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
   };
   return { layer: Layer.succeed(EventService, service), events: () => [...captured] };
 };

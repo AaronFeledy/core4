@@ -2,7 +2,19 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
-import { Cause, Clock, type Context, DateTime, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
+import {
+  Cause,
+  Clock,
+  type Context,
+  DateTime,
+  type Duration,
+  Effect,
+  Layer,
+  Option,
+  PubSub,
+  Schema,
+  Stream,
+} from "effect";
 
 import {
   CacheError,
@@ -30,7 +42,9 @@ import {
   CommandRegistry,
   ConfigService,
   DeprecationService,
+  type EventFor,
   EventService,
+  type EventWaitSpec,
   FileSyncEngine,
   FileSystem,
   GlobalAppService,
@@ -419,6 +433,41 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
 
   const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
+  const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
+  const waitForEventMatch = <A>(
+    label: string,
+    predicate: (event: LandoEvent) => boolean,
+    timeout: Duration.DurationInput | undefined,
+  ): Effect.Effect<A, EventError> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const queue = yield* PubSub.subscribe(eventPubSub);
+        const awaited = Stream.fromQueue(queue).pipe(
+          Stream.filter(predicate),
+          Stream.runHead,
+          Effect.flatMap(
+            Option.match({
+              onNone: () =>
+                Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
+              onSome: (event) => Effect.succeed(event as A),
+            }),
+          ),
+        );
+        return yield* timeout === undefined
+          ? awaited
+          : awaited.pipe(
+              Effect.timeoutFail({
+                duration: timeout,
+                onTimeout: () =>
+                  new EventError({
+                    message: `Timed out waiting for event: ${label}`,
+                    event: label,
+                    reason: "timeout",
+                  }),
+              }),
+            );
+      }),
+    );
   const eventService: Context.Tag.Service<typeof EventService> = {
     publish: (event) =>
       Effect.sync(() => {
@@ -434,18 +483,32 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
             : Option.none(),
         ),
       ),
-    subscribe: (name) =>
-      Stream.fromPubSub(eventPubSub).pipe(Stream.filter((event) => name === "*" || event._tag === name)),
+    subscribe: <Name extends string>(name: Name) =>
+      Stream.fromPubSub(eventPubSub).pipe(
+        Stream.filter((event): event is EventFor<Name> => matchesEventName(name, event)),
+      ),
     subscribeQueue: PubSub.subscribe(eventPubSub),
-    waitFor: (name, filter) =>
-      eventService.subscribe(name).pipe(
-        Stream.filter((event) => filter?.(event) ?? true),
-        Stream.runHead,
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.fail(eventError(name, `Event stream ended before receiving event: ${name}`)),
-            onSome: Effect.succeed,
-          }),
+    waitFor: (name, options) =>
+      waitForEventMatch<EventFor<typeof name>>(
+        name,
+        (event) => matchesEventName(name, event) && (options?.filter?.(event as never) ?? true),
+        options?.timeout,
+      ),
+    waitForAny: (specs, options) =>
+      waitForEventMatch(
+        "*",
+        (event) =>
+          specs.some(
+            (spec: EventWaitSpec) =>
+              matchesEventName(spec.name, event) && (spec.filter?.(event as never) ?? true),
+          ),
+        options?.timeout,
+      ),
+    query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
+      Effect.sync(() =>
+        calls.events.filter(
+          (event): event is EventFor<Name> =>
+            matchesEventName(name, event) && (filter?.(event as EventFor<Name>) ?? true),
         ),
       ),
   };
