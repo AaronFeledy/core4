@@ -47,7 +47,9 @@ interface ComposeDocument {
   readonly networks: Readonly<
     Record<string, { readonly driver?: string; readonly external?: boolean; readonly name?: string }>
   >;
-  readonly volumes?: Readonly<Record<string, { readonly driver?: string }>>;
+  readonly volumes?: Readonly<
+    Record<string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }>
+  >;
 }
 
 const composeError = (message: string, details?: unknown) =>
@@ -200,10 +202,18 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
     }),
   );
   const volumes = Object.fromEntries([
-    ...plan.stores.map((store): [string, { readonly driver?: string }] => [
-      store.name,
-      store.driver === undefined ? {} : { driver: store.driver },
-    ]),
+    ...plan.stores.map(
+      (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
+        const labels = store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+        return [
+          store.name,
+          {
+            ...(store.driver === undefined ? {} : { driver: store.driver }),
+            ...(labels === undefined ? {} : { labels }),
+          },
+        ];
+      },
+    ),
     ...(plan.fileSync ?? []).flatMap(
       (entry): ReadonlyArray<[string, { readonly driver?: string }]> =>
         entry.session.target._tag === "volume" ? [[entry.session.target.name, {}]] : [],
@@ -300,6 +310,10 @@ export const renderCompose = (plan: AppPlan): string => {
       lines.push(`  ${volumeName}:`);
       if (volume.driver !== undefined) {
         lines.push(`    driver: ${scalar(volume.driver)}`);
+      }
+      if (volume.labels !== undefined) {
+        lines.push("    labels:");
+        writeScalarMap(lines, "      ", volume.labels);
       }
     }
   }

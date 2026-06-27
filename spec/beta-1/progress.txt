@@ -602,3 +602,27 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - For a tagged-UNION public schema, the §13.2 annotation gate only flags the shared `_tag` discriminant once (not every member field); add a single `"<Schema>._tag"` entry to `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS`. A `Schema.Literal` schema (`CommandResultFormat`) has no fields and needs no exemption at all.
   - The schema-snapshot drift gate (`core/test/build/schema-snapshot.test.ts`) asserts every `dist/schemas/<name>.json` is `git ls-files`-tracked, so newly generated artifacts MUST be `git add`ed or the gate fails even though the snapshot JSON itself matches.
 ---
+
+## 2026-06-27 - US-341
+- Added the cache storage kind so authored `storage[].kind: cache` entries become cross-app `lando-cache-<key>` stores with destination-derived default keys, provider-identifying cache labels, and planning rejection for `scope: service`.
+- Updated destroy semantics so regular data-volume removal leaves cache stores intact and `--purge-caches` is the explicit cache removal path across the command and bundled provider destroy paths.
+- Verification: typecheck and lint passed; focused schema, planner, destroy, provider-lando compose/bring-down, and provider-docker contract spot checks passed; manual CLI `destroy --purge-caches` accepted the flag and reached normal app-resolution behavior.
+- **Learnings for future iterations:**
+  - `storage[].kind` defaults decode onto every `DataStorePlan`, so exact typed fixtures that construct `AppPlan.stores` directly may need explicit `kind: "data"`.
+---
+
+## 2026-06-27 14:31 CDT - US-341 Verify
+- Compiled binary built successfully with `cd core && bun run build`, but sandbox `./core/dist/lando setup` failed before scenario testing because the provider-lando runtime bundle could not be downloaded and no local `LANDO_RUNTIME_BUNDLE_MANIFEST`/staged runtime bundle artifacts were available in the worktree.
+- Blocker recorded: real compiled-binary setup and the end-to-end cache-volume scenario need a staged runtime bundle manifest (or reachable release bundle) before Verify can complete.
+---
+
+## 2026-06-27 14:45 CDT - US-341 Review
+- Review fixed cache-volume runtime materialization so direct Docker/provider-lando apply paths create planned volumes with `dev.lando.storage-kind: "cache"` labels and mount `service.storage` entries into containers.
+- Review notes (deferred/rejected): duplicate-authored-storage concern was not changed in this review pass; focused planner tests still cover cache storage normalization and no confirmed failing scenario was isolated.
+- Verification: typecheck and lint passed; focused container-runtime, provider-lando bring-up/bring-down, provider-docker contract, planner, destroy, and schema spot checks passed.
+---
+
+## 2026-06-27 14:52 CDT - US-341 Verify
+- Rebuilt the compiled binary after review fix `07368c96`; sandbox `./core/dist/lando setup` still failed before scenario testing because the provider-lando runtime bundle could not be downloaded and no local `LANDO_RUNTIME_BUNDLE_MANIFEST`/staged runtime bundle artifacts were available.
+- Blocker remains environmental: Verify needs a staged runtime bundle manifest or reachable release bundle before the compiled setup and cache-volume end-to-end scenario can complete.
+---

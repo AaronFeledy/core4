@@ -541,9 +541,10 @@ const runInfo = (): Promise<void> =>
 
 const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const volumes = argv.includes("--volumes");
+  const purgeCaches = argv.includes("--purge-caches");
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
-    destroyApp({ volumes, yes }),
+    destroyApp({ volumes, purgeCaches, yes }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderDestroyAppResult,
   );

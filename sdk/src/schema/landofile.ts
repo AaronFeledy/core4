@@ -50,6 +50,8 @@ export const StorageInput = Schema.Union(
     target: Schema.String,
     readOnly: Schema.optional(Schema.Boolean),
     scope: Schema.optional(StorageScope),
+    kind: Schema.optional(Schema.Literal("data", "cache")),
+    key: Schema.optional(Schema.String),
   }),
 );
 export type StorageInput = typeof StorageInput.Type;

@@ -77,7 +77,10 @@ const plan: AppPlan = {
   services: { [database.name]: database, [node.name]: node },
   routes: [],
   networks: [],
-  stores: [{ name: "bringdownapp_database_data", scope: "app" }],
+  stores: [
+    { name: "bringdownapp_database_data", scope: "app" },
+    { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
+  ],
   metadata,
   extensions: {},
 };
@@ -101,6 +104,12 @@ const makeFakeApi = () => {
           const requestedName = (request.body as { Name?: string }).Name ?? "";
           networks.add(requestedName);
           return { status: 201, body: "{}" };
+        }
+        if (request.path === "/volumes/create") {
+          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(requestedName);
+          volumes.add(requestedName);
+          return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           const network = decodeURIComponent(request.path.slice("/networks/".length));
@@ -146,6 +155,11 @@ const makeFakeApi = () => {
           const volume = decodeURIComponent(request.path.slice("/volumes/".length).replace(/\/json$/u, ""));
           return { status: volumes.has(volume) ? 200 : 404, body: "{}" };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
+          const volume = decodeURIComponent(request.path.slice("/volumes/".length));
+          const deleted = volumes.delete(volume);
+          return { status: deleted ? 204 : 404, body: "" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -169,6 +183,7 @@ describe("provider-lando bringDown", () => {
     expect(fake.existing.size).toBe(0);
     expect(Array.from(fake.networks)).toEqual(["lando_bridge_network"]);
     expect(fake.volumes.has("bringdownapp_database_data")).toBe(true);
+    expect(fake.volumes.has("lando-cache-npm")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
@@ -182,6 +197,16 @@ describe("provider-lando bringDown", () => {
       "pre-service-stop",
       "post-service-stop",
     ]);
+  });
+
+  test("purgeCaches removes cache volumes without removing app data volumes", async () => {
+    const fake = makeFakeApi();
+
+    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: false, purgeCaches: true }));
+
+    expect(fake.volumes.has("bringdownapp_database_data")).toBe(true);
+    expect(fake.volumes.has("lando-cache-npm")).toBe(false);
   });
 
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(

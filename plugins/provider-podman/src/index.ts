@@ -640,7 +640,13 @@ export const makeRuntimeProvider = (
           Effect.gen(function* () {
             const plan = yield* resolvePlan(target);
             if (plan === undefined) return;
-            yield* bringDown(plan, { podmanApi, volumes: destroyOptions.volumes });
+            yield* bringDown(plan, {
+              podmanApi,
+              volumes: destroyOptions.volumes,
+              ...(destroyOptions.purgeCaches === undefined
+                ? {}
+                : { purgeCaches: destroyOptions.purgeCaches }),
+            });
             if (destroyOptions.removeState !== false) {
               yield* forgetPlan(target.app);
             }

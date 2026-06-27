@@ -3339,6 +3339,13 @@
                 "required": [],
                 "type": "object"
               },
+              "key": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": ["data", "cache"],
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },
@@ -5138,6 +5145,13 @@
                     "required": [],
                     "type": "object"
                   },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -5211,6 +5225,13 @@
           "properties": {},
           "required": [],
           "type": "object"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": ["data", "cache"],
+          "type": "string"
         },
         "name": {
           "type": "string"
@@ -8675,6 +8696,13 @@
                         "required": [],
                         "type": "object"
                       },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["data", "cache"],
+                        "type": "string"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -9287,6 +9315,13 @@
                         "properties": {},
                         "required": [],
                         "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["data", "cache"],
+                        "type": "string"
                       },
                       "name": {
                         "type": "string"
@@ -10101,6 +10136,13 @@
                         "required": [],
                         "type": "object"
                       },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["data", "cache"],
+                        "type": "string"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -10726,6 +10768,13 @@
                         "properties": {},
                         "required": [],
                         "type": "object"
+                      },
+                      "key": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["data", "cache"],
+                        "type": "string"
                       },
                       "name": {
                         "type": "string"
@@ -13498,6 +13547,13 @@
                     {
                       "additionalProperties": false,
                       "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": ["data", "cache"],
+                          "type": "string"
+                        },
                         "readOnly": {
                           "type": "boolean"
                         },
@@ -17075,6 +17131,13 @@
                     "required": [],
                     "type": "object"
                   },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -18218,6 +18281,13 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
                   },
                   "name": {
                     "type": "string"
@@ -19480,6 +19550,13 @@
                     "required": [],
                     "type": "object"
                   },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -20608,6 +20685,13 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
                   },
                   "name": {
                     "type": "string"
@@ -22493,6 +22577,13 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
+                  },
                   "readOnly": {
                     "type": "boolean"
                   },
@@ -24666,6 +24757,13 @@
                         {
                           "additionalProperties": false,
                           "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": ["data", "cache"],
+                              "type": "string"
+                            },
                             "readOnly": {
                               "type": "boolean"
                             },
@@ -26548,6 +26646,13 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": ["data", "cache"],
+                    "type": "string"
                   },
                   "name": {
                     "type": "string"

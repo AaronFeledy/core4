@@ -625,6 +625,16 @@
                 {
                   "additionalProperties": false,
                   "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "data",
+                        "cache"
+                      ],
+                      "type": "string"
+                    },
                     "readOnly": {
                       "type": "boolean"
                     },

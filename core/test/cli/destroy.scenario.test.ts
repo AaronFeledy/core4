@@ -119,7 +119,10 @@ const plan: AppPlan = {
   services: { [web.name]: web, [database.name]: database },
   routes: [],
   networks: [],
-  stores: [{ name: "test_destroy_database_data", scope: "app" }],
+  stores: [
+    { name: "test_destroy_database_data", scope: "app" },
+    { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
+  ],
   fileSync: [],
   metadata,
   extensions: {},
@@ -190,9 +193,13 @@ const makeDestroyLayer = () => {
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        if (options.volumes) {
+        if (options.volumes || options.purgeCaches) {
           for (const store of plan.stores) {
-            if (store.scope !== "global") volumes.delete(store.name);
+            if (store.kind === "cache") {
+              if (options.purgeCaches) volumes.delete(store.name);
+            } else if (options.volumes && store.scope !== "global") {
+              volumes.delete(store.name);
+            }
           }
         }
       }),
@@ -247,6 +254,7 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
+    expect(harness.volumes.has("lando-cache-npm")).toBe(true);
     expect(result.servicesDestroyed).toEqual(["database", "web"]);
     expect(renderDestroyAppResult(result)).toContain("destroyed: test-destroy");
     expect(renderDestroyAppResult(result)).toContain("volumes preserved");
@@ -274,12 +282,39 @@ describe("lando destroy", () => {
 
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
+    expect(harness.volumes.has("lando-cache-npm")).toBe(true);
+    expect(renderDestroyAppResult(result)).toContain("volumes removed");
+  });
+
+  test("removes cache volumes only when purgeCaches is requested", async () => {
+    const harness = makeDestroyLayer();
+    const result = await Effect.runPromise(
+      destroyApp({ purgeCaches: true }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      volumes: false,
+      purgeCaches: true,
+      removeState: true,
+    });
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
+    expect(harness.volumes.has("lando-cache-npm")).toBe(false);
     expect(renderDestroyAppResult(result)).toContain("volumes removed");
   });
 
   test("compiled CLI exposes lando destroy --volumes flag", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--volumes"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
+      expect(result.stderr).toContain("lando init");
+    });
+  });
+
+  test("compiled CLI exposes lando destroy --purge-caches flag", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(["destroy", "--purge-caches"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");

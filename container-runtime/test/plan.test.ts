@@ -29,6 +29,7 @@ const service = {
     { type: "bind", source: "/host/app", target: "/app", readOnly: true, realization: "passthrough" },
     { type: "bind", source: "/host/cache", target: "/cache", readOnly: false, realization: "passthrough" },
   ],
+  storage: [{ store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false }],
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
@@ -47,7 +48,7 @@ describe("container plan helpers", () => {
 
     expect(containerHostConfigFragment(plan, service)).toEqual({
       PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
-      Binds: ["/host/app:/app:ro", "/host/cache:/cache"],
+      Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
     });
   });
 
@@ -67,7 +68,7 @@ describe("container plan helpers", () => {
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
-        Binds: ["/host/app:/app:ro", "/host/cache:/cache"],
+        Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
     });

@@ -69,7 +69,7 @@ const plan: AppPlan = {
   services: { [database.name]: database, [web.name]: web },
   routes: [],
   networks: [],
-  stores: [{ name: "crossprocessapp_database_data", scope: "app" }],
+  stores: [{ name: "crossprocessapp_database_data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
   extensions: {},
@@ -104,6 +104,12 @@ const makeFakePodmanState = () => {
           const requested = (request.body as { Name?: string }).Name ?? "";
           networks.add(requested);
           return { status: 201, body: "{}" };
+        }
+        if (request.path === "/volumes/create") {
+          const requested = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(requested);
+          volumes.add(requested);
+          return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           const network = decodeURIComponent(request.path.slice("/networks/".length));

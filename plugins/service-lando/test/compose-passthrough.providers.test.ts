@@ -96,8 +96,16 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
   test("compose-declared named volumes follow destroy-preserves-volumes for both providers", async () => {
     const landoPlan = await planFor(composeLandofile, "lando");
     const dockerPlan = await planFor(composeLandofile, "docker");
-    expect(landoPlan.stores).toContainEqual({ name: "composeapp-worker-state", scope: "service" });
-    expect(dockerPlan.stores).toContainEqual({ name: "composeapp-worker-state", scope: "service" });
+    expect(landoPlan.stores).toContainEqual({
+      name: "composeapp-worker-state",
+      scope: "service",
+      kind: "data",
+    });
+    expect(dockerPlan.stores).toContainEqual({
+      name: "composeapp-worker-state",
+      scope: "service",
+      kind: "data",
+    });
   });
 
   test("provider extensions in service.providers.<id> flow through to ServicePlan.extensions", async () => {

@@ -237,6 +237,7 @@ export type RebuildAppError = StartAppError;
 
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
+  readonly purgeCaches?: boolean;
   readonly yes?: boolean;
 }
 

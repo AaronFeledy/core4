@@ -7,6 +7,7 @@ import { type DestroyAppResult, destroyApp, renderDestroyAppResult } from "../..
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 interface DestroyFlags {
+  readonly "purge-caches": boolean;
   readonly volumes: boolean;
   readonly yes: boolean;
 }
@@ -29,6 +30,10 @@ export default class DestroyCommand extends LandoCommandBase {
       description: "Also remove app/service-scoped storage volumes.",
       default: false,
     }),
+    "purge-caches": Flags.boolean({
+      description: "Remove cache storage volumes.",
+      default: false,
+    }),
     yes: Flags.boolean({
       char: "y",
       description: "Skip the confirmation prompt (no-op until interactive prompts land).",
@@ -42,7 +47,7 @@ export default class DestroyCommand extends LandoCommandBase {
     const { flags } = (await this.parse(DestroyCommand)) as { readonly flags: DestroyFlags };
     await this.runEffect({
       ...destroySpec,
-      run: () => destroyApp({ volumes: flags.volumes, yes: flags.yes }),
+      run: () => destroyApp({ volumes: flags.volumes, purgeCaches: flags["purge-caches"], yes: flags.yes }),
     });
   }
 }

@@ -227,6 +227,39 @@ const ensureNetwork = (
   );
 };
 
+const volumeLabels = (store: AppPlan["stores"][number]): Readonly<Record<string, string>> | undefined =>
+  store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+
+const ensureVolume = (
+  api: PodmanApiClient,
+  store: AppPlan["stores"][number],
+): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> =>
+  request(api, {
+    method: "POST",
+    path: "/volumes/create",
+    body: {
+      Name: store.name,
+      ...(volumeLabels(store) === undefined ? {} : { Labels: volumeLabels(store) }),
+    },
+  }).pipe(
+    Effect.flatMap((response) => {
+      if (response.status === 201 || response.status === 200) return Effect.succeed(true);
+      if (response.status === 409) return Effect.succeed(false);
+      return Effect.fail(
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "bringUp.volume",
+          message: withApiReason(`Podman volume create failed with HTTP ${response.status}.`, {
+            status: response.status,
+            body: response.body,
+          }),
+          details: redactDetails({ name: store.name, status: response.status, body: response.body }),
+          remediation: APPLY_REMEDIATION,
+        }),
+      );
+    }),
+  );
+
 const createContainer = (
   api: PodmanApiClient,
   plan: AppPlan,
@@ -422,8 +455,11 @@ export const bringUp = (
         createdNetworks.add(name);
       }
     }
-    const touched: string[] = [];
     let changed = false;
+    for (const store of plan.stores) {
+      changed = (yield* ensureVolume(resolvedApi, store)) || changed;
+    }
+    const touched: string[] = [];
     for (const service of Object.values(plan.services)) {
       if (options.signal?.aborted === true) {
         yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
