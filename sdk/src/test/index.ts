@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 
 import {
   Cause,
@@ -6472,7 +6472,7 @@ export const runPluginSourceContractSuite = <Spec>(
         Effect.mapError((cause) => pluginSourceContractFailure(`${label}: contained spec resolves`, cause)),
       );
     const root = harness.managedStoreRoot;
-    const prefix = root.endsWith("/") ? root : `${root}/`;
+    const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
     yield* requirePluginSourceContract(
       contained === root || contained.startsWith(prefix),
       `${label}: resolved root stays under the managed store after realpath`,
