@@ -32,3 +32,9 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 
 - SDK tests import public paths (`@lando/sdk/schema`, `@lando/sdk/services`, etc.) so they exercise the plugin-author surface.
 - Root `tsc -b` does not walk `sdk/test/`; keep `bun run typecheck` and `bun test` paired for SDK changes.
+
+## Plugin-abstraction contract kit
+
+- Each §4.2 plugin-abstraction publishes a shared contract suite from `@lando/sdk/test` as a `make*ContractSuite` + `run*ContractSuite` pair (the `make*` form is an alias of the `run*` form). The six kit abstractions are `ToolingEngine`, `RouteFilter`, `SecretStore`, `ConfigTranslator`, `PluginSource`, `DoctorCheck`.
+- Every kit suite MUST be exercised against its built-in implementation(s) by a `core/test/**` invocation — NEVER an `sdk/test/**` self-test (those are suite self-tests, not built-in coverage). The §13.1 layer-coverage gate `core/test/contract/plugin-abstraction-coverage.test.ts` holds a canonical manifest and FAILS when a published kit suite has no built-in invocation, when an invocation file is deleted or stops calling its suite, or when a kit suite export is renamed/removed. Adding a new §4.2 abstraction with a suite means adding a manifest row AND a built-in invocation.
+- Manifest `defaultPolicy` encodes how built-in coverage is provided: `built-in` (a concrete core impl is run), `reference-mirror` (schema-only in core today, so the suite runs over the spec's documented reference transforms — e.g. `RouteFilter`), or `none-bundled` (§4.2 ships NO built-in by default — e.g. `ConfigTranslator` — so the gate requires only the suite exports). Do not fabricate a fake "built-in" to satisfy the gate for a `none-bundled` abstraction.
