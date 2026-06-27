@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import ts from "typescript";
 
@@ -57,16 +58,94 @@ const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   }
 };
 
-const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffender>> => {
-  const sourceText = await Bun.file(file).text();
-  const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const offenders: ProbeBoundaryOffender[] = [];
-  const effectAliases = new Set(["Effect"]);
-  const scheduleAliases = new Set(["Schedule"]);
+type ForbiddenExport =
+  | { readonly kind: "effect-ns" }
+  | { readonly kind: "schedule-ns" }
+  | { readonly kind: "effect-member"; readonly member: string }
+  | { readonly kind: "schedule-member"; readonly member: string };
+
+interface ModuleProbeBindings {
+  readonly effectAliases: ReadonlySet<string>;
+  readonly scheduleAliases: ReadonlySet<string>;
+  readonly effectMemberAliases: ReadonlyMap<string, string>;
+  readonly scheduleMemberAliases: ReadonlyMap<string, string>;
+  readonly exports: ReadonlyMap<string, ForbiddenExport>;
+}
+
+const emptyModuleProbeBindings = (): ModuleProbeBindings => ({
+  effectAliases: new Set(["Effect"]),
+  scheduleAliases: new Set(["Schedule"]),
+  effectMemberAliases: new Map(),
+  scheduleMemberAliases: new Map(),
+  exports: new Map(),
+});
+
+const bindingFromEffectImport = (moduleName: string, imported: string): ForbiddenExport | undefined => {
+  if (moduleName === "effect" && imported === "Effect") return { kind: "effect-ns" };
+  if (moduleName === "effect" && imported === "Schedule") return { kind: "schedule-ns" };
+  if (moduleName === "effect/Effect" && FORBIDDEN_EFFECT_MEMBERS.has(imported)) {
+    return { kind: "effect-member", member: imported };
+  }
+  if (moduleName === "effect/Schedule") return { kind: "schedule-member", member: imported };
+  return undefined;
+};
+
+const applyBindingToImportMaps = (
+  local: string,
+  binding: ForbiddenExport,
+  effectAliases: Set<string>,
+  scheduleAliases: Set<string>,
+  effectMemberAliases: Map<string, string>,
+  scheduleMemberAliases: Map<string, string>,
+): void => {
+  switch (binding.kind) {
+    case "effect-ns":
+      effectAliases.add(local);
+      return;
+    case "schedule-ns":
+      scheduleAliases.add(local);
+      return;
+    case "effect-member":
+      effectMemberAliases.set(local, binding.member);
+      return;
+    case "schedule-member":
+      scheduleMemberAliases.set(local, binding.member);
+      return;
+    default:
+      return;
+  }
+};
+
+const analyzeModuleBindings = (
+  source: ts.SourceFile,
+  resolveRelativeExport: (fromFile: string, moduleSpecifier: string) => ModuleProbeBindings | undefined,
+): ModuleProbeBindings => {
+  const effectAliases = new Set<string>(["Effect"]);
+  const scheduleAliases = new Set<string>(["Schedule"]);
   const effectMemberAliases = new Map<string, string>();
   const scheduleMemberAliases = new Map<string, string>();
+  const exports = new Map<string, ForbiddenExport>();
+  const localImportBindings = new Map<string, ForbiddenExport>();
 
-  const collectImports = (node: ts.Node): void => {
+  const registerExport = (exportedName: string, binding: ForbiddenExport): void => {
+    exports.set(exportedName, binding);
+  };
+
+  const handleEffectModuleImport = (moduleName: string, imported: string, local: string): void => {
+    const binding = bindingFromEffectImport(moduleName, imported);
+    if (binding === undefined) return;
+    applyBindingToImportMaps(
+      local,
+      binding,
+      effectAliases,
+      scheduleAliases,
+      effectMemberAliases,
+      scheduleMemberAliases,
+    );
+    localImportBindings.set(local, binding);
+  };
+
+  const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       const moduleName = node.moduleSpecifier.text;
       const clause = node.importClause;
@@ -77,14 +156,28 @@ const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffend
             for (const element of bindings.elements) {
               const imported = element.propertyName?.text ?? element.name.text;
               const local = element.name.text;
-              if (moduleName === "effect" && imported === "Effect") effectAliases.add(local);
-              if (moduleName === "effect" && imported === "Schedule") scheduleAliases.add(local);
-              if (moduleName === "effect/Effect" && FORBIDDEN_EFFECT_MEMBERS.has(imported)) {
-                effectMemberAliases.set(local, imported);
+              if (moduleName.startsWith(".") || moduleName.startsWith("/")) {
+                const resolved = resolveRelativeExport(source.fileName, moduleName);
+                if (resolved !== undefined) {
+                  const binding = resolved.exports.get(imported);
+                  if (binding !== undefined) {
+                    applyBindingToImportMaps(
+                      local,
+                      binding,
+                      effectAliases,
+                      scheduleAliases,
+                      effectMemberAliases,
+                      scheduleMemberAliases,
+                    );
+                    localImportBindings.set(local, binding);
+                  }
+                }
+                continue;
               }
-              if (moduleName === "effect/Schedule") scheduleMemberAliases.set(local, imported);
+              handleEffectModuleImport(moduleName, imported, local);
             }
           } else if (ts.isNamespaceImport(bindings)) {
+            if (moduleName === "effect") effectAliases.add(bindings.name.text);
             if (moduleName === "effect/Effect") effectAliases.add(bindings.name.text);
             if (moduleName === "effect/Schedule") scheduleAliases.add(bindings.name.text);
           }
@@ -92,26 +185,94 @@ const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffend
       }
     }
 
-    ts.forEachChild(node, collectImports);
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      const moduleName = node.moduleSpecifier.text;
+      const exportClause = node.exportClause;
+      if (exportClause !== undefined && ts.isNamedExports(exportClause)) {
+        for (const element of exportClause.elements) {
+          const exported = element.name.text;
+          const imported = element.propertyName?.text ?? element.name.text;
+          if (moduleName.startsWith(".") || moduleName.startsWith("/")) {
+            const resolved = resolveRelativeExport(source.fileName, moduleName);
+            const binding = resolved?.exports.get(imported);
+            if (binding !== undefined) registerExport(exported, binding);
+            continue;
+          }
+          const binding = bindingFromEffectImport(moduleName, imported);
+          if (binding !== undefined) registerExport(exported, binding);
+        }
+      }
+    }
+
+    if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier === undefined &&
+      node.exportClause !== undefined &&
+      ts.isNamedExports(node.exportClause)
+    ) {
+      for (const element of node.exportClause.elements) {
+        const exported = element.name.text;
+        const local = element.propertyName?.text ?? element.name.text;
+        const binding = localImportBindings.get(local);
+        if (binding !== undefined) registerExport(exported, binding);
+      }
+    }
+
+    ts.forEachChild(node, visit);
   };
 
-  collectImports(source);
+  visit(source);
+
+  return {
+    effectAliases,
+    scheduleAliases,
+    effectMemberAliases,
+    scheduleMemberAliases,
+    exports,
+  };
+};
+
+const scanFileWithBindings = (
+  file: string,
+  source: ts.SourceFile,
+  bindings: ModuleProbeBindings,
+): ReadonlyArray<ProbeBoundaryOffender> => {
+  const offenders: ProbeBoundaryOffender[] = [];
+  const { effectAliases, scheduleAliases, effectMemberAliases, scheduleMemberAliases } = bindings;
 
   const record = (node: ts.Node, match: string): void => {
     const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
     offenders.push({ file, line: line + 1, match });
   };
 
+  const isEffectAliasIdentifier = (node: ts.Identifier): boolean => effectAliases.has(node.text);
+
   const visit = (node: ts.Node): void => {
-    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-      const object = node.expression.text;
+    if (ts.isPropertyAccessExpression(node)) {
       const member = node.name.text;
 
-      if (effectAliases.has(object) && FORBIDDEN_EFFECT_MEMBERS.has(member)) {
-        record(node, `Effect.${member}`);
+      if (ts.isIdentifier(node.expression)) {
+        const object = node.expression.text;
+
+        if (effectAliases.has(object) && FORBIDDEN_EFFECT_MEMBERS.has(member)) {
+          record(node, `Effect.${member}`);
+        }
+
+        if (scheduleAliases.has(object)) {
+          record(node, `Schedule.${member}`);
+        }
       }
 
-      if (scheduleAliases.has(object)) {
+      if (
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        isEffectAliasIdentifier(node.expression.expression) &&
+        node.expression.name.text === "Schedule"
+      ) {
         record(node, `Schedule.${member}`);
       }
     }
@@ -131,6 +292,41 @@ const scanFile = async (file: string): Promise<ReadonlyArray<ProbeBoundaryOffend
   return offenders;
 };
 
+const resolveTypeScriptModulePath = (fromFile: string, moduleSpecifier: string): string | undefined => {
+  if (!moduleSpecifier.startsWith(".")) return undefined;
+  const base = resolve(dirname(fromFile), moduleSpecifier);
+  const candidates = [`${base}.ts`, join(base, "index.ts")];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+};
+
+const bindingsForFile = (
+  file: string,
+  sources: ReadonlyMap<string, ts.SourceFile>,
+  cache: Map<string, ModuleProbeBindings>,
+  analyzing: Set<string>,
+): ModuleProbeBindings => {
+  const cached = cache.get(file);
+  if (cached !== undefined) return cached;
+
+  if (analyzing.has(file)) return emptyModuleProbeBindings();
+
+  const source = sources.get(file);
+  if (source === undefined) return emptyModuleProbeBindings();
+
+  analyzing.add(file);
+  const bindings = analyzeModuleBindings(source, (fromFile, moduleSpecifier) => {
+    const resolved = resolveTypeScriptModulePath(fromFile, moduleSpecifier);
+    if (resolved === undefined || !sources.has(resolved)) return undefined;
+    return bindingsForFile(resolved, sources, cache, analyzing);
+  });
+  analyzing.delete(file);
+  cache.set(file, bindings);
+  return bindings;
+};
+
 export const checkProbeBoundary = async (
   options: CheckProbeBoundaryOptions = {},
 ): Promise<ProbeBoundaryResult> => {
@@ -141,16 +337,27 @@ export const checkProbeBoundary = async (
     .flat()
     .sort();
 
-  const offenders = (
-    await Promise.all(
-      files.map(async (file) => {
-        const relativeFile = relative(root, file).replaceAll("\\", "/");
-        if (CARVE_OUTS.has(relativeFile)) return [];
-        return scanFile(file);
-      }),
-    )
-  )
-    .flat()
+  const sources = new Map<string, ts.SourceFile>();
+  await Promise.all(
+    files.map(async (file) => {
+      const sourceText = await Bun.file(file).text();
+      sources.set(
+        file,
+        ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+      );
+    }),
+  );
+
+  const moduleCache = new Map<string, ModuleProbeBindings>();
+  const offenders = files
+    .flatMap((file) => {
+      const relativeFile = relative(root, file).replaceAll("\\", "/");
+      if (CARVE_OUTS.has(relativeFile)) return [];
+      const source = sources.get(file);
+      if (source === undefined) return [];
+      const bindings = bindingsForFile(file, sources, moduleCache, new Set());
+      return scanFileWithBindings(file, source, bindings);
+    })
     .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
 
   return { ok: offenders.length === 0, offenders };

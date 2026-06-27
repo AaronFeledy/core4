@@ -123,6 +123,38 @@ describe("probe boundary lint gate", () => {
     }
   });
 
+  test("reports barrel re-exports and Effect.Schedule chained access", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/x/barrel.ts", 'export { retry as retryViaBarrel } from "effect/Effect";\n');
+      await write(
+        root,
+        "core/src/x/consumer.ts",
+        'import { retryViaBarrel } from "./barrel"; export const r = retryViaBarrel(eff, sched);\n',
+      );
+      await write(
+        root,
+        "core/src/x/chained-schedule.ts",
+        'import { Effect } from "effect"; export const s = Effect.Schedule.recurs(3);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/x/chained-schedule.ts:1:Schedule.recurs",
+        "core/src/x/consumer.ts:1:Effect.retry",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("allowlisted non-probe lock loops and named consumers are not flagged, but the same pattern elsewhere is", async () => {
     const root = await makeFixtureRoot();
     try {
