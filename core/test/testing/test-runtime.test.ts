@@ -32,6 +32,7 @@ import {
   TestRuntimeProvider,
   makeTestRuntime,
   provideTestRuntime,
+  recordedEvents,
 } from "@lando/core/testing";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
@@ -151,7 +152,7 @@ describe("@lando/core/testing", () => {
           const events = yield* EventService;
           const queue = yield* events.subscribeQueue;
           const waiter = yield* events
-            .waitFor("test-runtime:event", (event) => event.value === 2)
+            .waitFor("test-runtime:event", { filter: (event) => event.value === 2 })
             .pipe(Effect.fork);
 
           yield* Effect.sleep("10 millis");
@@ -167,6 +168,28 @@ describe("@lando/core/testing", () => {
 
     expect(result).toEqual({ queued: firstEvent, waited: secondEvent });
     expect(runtime.calls.events).toEqual([firstEvent, secondEvent]);
+  });
+
+  test("recordedEvents returns redacted test runtime history", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+    const secret = "pa55word-secret-value";
+    const event = {
+      _tag: "test-runtime:secret",
+      url: `https://user:${secret}@example.com/asset`,
+      token: secret,
+    };
+
+    const history = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish(event);
+        return yield* recordedEvents();
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(JSON.stringify(history)).not.toContain(secret);
+    expect(JSON.stringify(history)).toContain("[redacted]");
+    expect(runtime.calls.events).toEqual([event]);
   });
 
   test("CacheService double stores values in memory and reports misses", async () => {

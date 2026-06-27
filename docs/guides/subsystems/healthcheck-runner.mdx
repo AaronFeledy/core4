@@ -30,4 +30,12 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
       <Variable name="verificationRef" value="sdk/test/contract/healthcheck-runner.test.ts" display="Unit tests verify the HealthcheckRunner contract against TestHealthcheckRunner" />
     </Step>
   </Scenario>
+
+  <Scenario id="healthcheck-probe-primitive" render={false} reason="Provider-exec HealthcheckRunner is not implemented yet; documents the required probe primitive for future retry/delay/timeout loops">
+    <Step name="probe-primitive">
+      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Future healthcheck retry/delay/timeout-to-ready loops must use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
+      <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
+      <Variable name="apiRef" value="core/src/subsystems/healthcheck/api.ts" display="HealthcheckRunnerUnavailableLive stub documents the contract until provider-exec lands" />
+    </Step>
+  </Scenario>
 </Guide>

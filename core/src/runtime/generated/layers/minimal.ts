@@ -37,6 +37,8 @@ import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-
 
 export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
+  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const eventServiceLive = EventServiceLive.pipe(Layer.provide(redactionLive));
 
   return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
@@ -44,9 +46,9 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),
     telemetryLive,
     ConfigServiceLive,
-    EventServiceLive,
-    DeprecationServiceLive.pipe(Layer.provide(EventServiceLive)),
-    DeprecationTelemetryLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, telemetryLive))),
+    eventServiceLive,
+    DeprecationServiceLive.pipe(Layer.provide(eventServiceLive)),
+    DeprecationTelemetryLive.pipe(Layer.provide(Layer.mergeAll(eventServiceLive, telemetryLive))),
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
@@ -54,9 +56,9 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     PrivilegeServiceLive,
     SecretStoreLive,
     StateStoreLive,
-    RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
-    Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(EventServiceLive)),
+    redactionLive,
+    Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(eventServiceLive)),
     Layer.suspend(() => InteractionServiceLive),
-    DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive))),
+    DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, eventServiceLive))),
   );
 };

@@ -444,6 +444,19 @@ describe("@lando/sdk package exports", () => {
     expect(verifiedStream.VerifiedStreamError).toBeDefined();
   });
 
+  test("probe entry point exports the pure retry/verdict primitive", async () => {
+    const probe = await import("@lando/sdk/probe");
+
+    expect(probe.RetryPolicy).toBeDefined();
+    expect(probe.ProbeOutcome).toBeDefined();
+    expect(probe.ProbeResult).toBeDefined();
+    expect(probe.ProbeSpec).toBeDefined();
+    expect(probe.toSchedule).toBeDefined();
+    expect(probe.runProbe).toBeDefined();
+    expect(probe.ProbeError).toBeDefined();
+    expect(probe.ProbeTimeoutError).toBeDefined();
+  });
+
   test("app entry point resolves (type-only App handle contracts)", async () => {
     const app = await import("@lando/sdk/app");
 
@@ -501,6 +514,12 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runTunnelServiceContract).toBeDefined();
     expect(sdkTest.makeTunnelServiceContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the state store contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runStateStoreContract).toBeDefined();
   });
 
   test("test entry point exports the interaction contract suite", async () => {

@@ -36,6 +36,8 @@ const recordingEventLayer = (events: LandoEvent[]) =>
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.fail(new Error("not implemented")),
+    waitForAny: () => Effect.fail(new Error("not implemented")),
+    query: () => Effect.succeed([]),
   } as never);
 
 const writePluginManifest = async (

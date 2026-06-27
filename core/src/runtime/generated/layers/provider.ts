@@ -27,13 +27,16 @@ import { makePluginsBootstrapLayer } from "./plugins.ts";
 
 export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const pluginsRuntimeLive = makePluginsBootstrapLayer(inputs);
+  const eventServiceLive = EventServiceLive.pipe(
+    Layer.provide(RedactionServiceLive.pipe(Layer.provide(SecretStoreLive))),
+  );
   const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginsRuntimeLive, EventServiceLive)),
+    Layer.provide(Layer.mergeAll(pluginsRuntimeLive, eventServiceLive)),
   );
 
   return Layer.mergeAll(
     pluginsRuntimeLive,
-    EventServiceLive,
+    eventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     DataMoverLive.pipe(
       Layer.provide(

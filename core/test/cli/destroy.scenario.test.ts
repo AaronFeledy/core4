@@ -229,6 +229,8 @@ const makeDestroyLayer = () => {
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      waitForAny: () => Effect.die("not used"),
+      query: () => Effect.succeed([]),
     }),
   );
 

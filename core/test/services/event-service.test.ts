@@ -104,7 +104,7 @@ describe("EventServiceLive", () => {
       Effect.flatMap(EventService, (eventService) =>
         Effect.gen(function* () {
           const waiter = yield* eventService
-            .waitFor("pre-app-start", (event) => event._tag === "pre-app-start")
+            .waitFor("pre-app-start", { filter: (event) => event._tag === "pre-app-start" })
             .pipe(Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(postAppStartEvent);

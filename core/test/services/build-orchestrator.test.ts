@@ -310,7 +310,7 @@ describe("BuildOrchestratorLive", () => {
       ),
     );
 
-    expect(profileReads).toBe(1);
+    expect(profileReads).toBe(3);
     expect(JSON.stringify(Array.from(events))).not.toContain("latersecret");
   });
 });

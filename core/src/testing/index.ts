@@ -6,9 +6,11 @@
 
 export * from "./downloader.ts";
 export * from "./data-mover.ts";
+export * from "./events.ts";
 export * from "./interaction.ts";
 export * from "./managed-file.ts";
 export * from "./remote-sync.ts";
 export * from "./scenario-context.ts";
+export * from "./state-store.ts";
 export * from "./test-runtime.ts";
 export * from "./tunnel.ts";

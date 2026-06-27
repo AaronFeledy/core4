@@ -35,9 +35,11 @@
     ],
     "EventService": [
       "publish: (event: LandoEvent) => Effect.Effect<void, EventError>",
-      "subscribe: (name: string) => Stream.Stream<LandoEvent, EventError>",
+      "subscribe: <Name extends string>(name: Name) => Stream.Stream<EventFor<Name>, EventError>",
       "subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>",
-      "waitFor: (name: string, filter?: (event: LandoEvent) => boolean) => Effect.Effect<LandoEvent, EventError>"
+      "waitFor: <Name extends string>(name: Name, options?: EventWaitOptions<Name>) => Effect.Effect<EventFor<Name>, EventError>",
+      "waitForAny: <const Names extends readonly string[]>(specs: EventWaitSpecs<Names>, options?: EventWaitAnyOptions) => Effect.Effect<EventFor<Names[number] & string>, EventError>",
+      "query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>"
     ],
     "FileSystem": [
       "exists: (path: string) => Effect.Effect<boolean, FileSystemError>",

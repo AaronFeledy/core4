@@ -226,6 +226,8 @@ const makeHarness = async (
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<LandoEvent>(),
       waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(RuntimeProviderRegistry, {

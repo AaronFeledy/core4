@@ -2085,8 +2085,8 @@
         "Lint passes."
       ],
       "priority": 116,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "StateStore is exposed through LandoPluginContext.stateStore, the runtime host surface, @lando/core/testing TestStateStore, @lando/sdk/test runStateStoreContract, and check:state-store-boundary with contract/live/test-double coverage."
     },
     {
       "id": "US-316",
@@ -2105,7 +2105,7 @@
         "Lint passes."
       ],
       "priority": 117,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -2124,8 +2124,8 @@
         "Lint passes."
       ],
       "priority": 118,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Verified ground truth: the default provider-exec HealthcheckRunner/UrlScanner are deferred unavailable stubs (no retry loop yet) and doctor/downloader/setup-readiness are single-shot with no private retry loop, so AC1-AC3 have nothing to migrate today and wrapping single-shot code in runProbe(maxAttempts:1) would be cargo-cult risking AC5 behavior drift. Load-bearing deliverable is the AC4/FR-1 invariant: new scripts/check-probe-boundary.ts (AST gate flagging Effect.retry/repeat/schedule + Schedule.* in core/src + plugins, allowlisting the two advisory-lock loops state/lock.ts + state-store/json-bucket.ts) wired into package.json, the CI generator static-checks, ci-workflow/codegen-ci/ci-runbook tests, and docs/ci-runbook.md. Forward-looking JSDoc on both stubs and an AGENTS.md tenet direct future runners onto runProbe + ProbeResult.lastError redaction. Existing redaction paths preserved; consumer suites observably unchanged (AC5). Verified: typecheck, lint, probe-boundary gate green on real repo, CI/runbook tests, and hc/scanner/doctor/downloader/setup regression suites all pass."
     },
     {
       "id": "US-318",
@@ -2144,7 +2144,7 @@
         "Lint passes."
       ],
       "priority": 119,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

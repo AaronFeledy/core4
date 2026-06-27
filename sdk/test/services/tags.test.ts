@@ -28,7 +28,7 @@ const EXPECTED_TAGS = [
   {
     tag: EventService,
     key: "@lando/core/EventService",
-    methods: ["publish", "subscribe", "subscribeQueue", "waitFor"],
+    methods: ["publish", "subscribe", "subscribeQueue", "waitFor", "waitForAny", "query"],
   },
   {
     tag: RuntimeProvider,
@@ -122,7 +122,7 @@ describe("Effect service tags", () => {
   test("freezes each documented service method name", () => {
     const expectedMethods: string[][] = [
       ["debug", "info", "warn", "error"],
-      ["publish", "subscribe", "subscribeQueue", "waitFor"],
+      ["publish", "subscribe", "subscribeQueue", "waitFor", "waitForAny", "query"],
       [
         "isAvailable",
         "setup",
@@ -195,6 +195,8 @@ describe("Effect service tags", () => {
       subscribe: (_name: string) => Stream.empty,
       subscribeQueue: Effect.never as Context.Tag.Service<typeof EventService>["subscribeQueue"],
       waitFor: (_name: string) => Effect.succeed({ _tag: "test-event" }),
+      waitForAny: () => Effect.succeed({ _tag: "test-event" }),
+      query: () => Effect.succeed([]),
     };
 
     const cacheService: Context.Tag.Service<typeof CacheService> = {

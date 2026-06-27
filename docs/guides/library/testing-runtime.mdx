@@ -64,4 +64,35 @@ tags: [beta, docs, library, testing]
       <Variable name="contract" value="runInteractionContract" display="@lando/sdk/test exposes runInteractionContract so the Live service, the test double, and plugin or host implementations all prove the same interaction guarantees" />
     </Step>
   </Scenario>
+
+  <Scenario id="event-service-test-helpers" render={false} reason="Event helpers are verified by core testing runtime contract tests without requiring a provider backed app">
+    <Step name="wait-and-query-events">
+      <Variable name="waitFor" value="typed live wait" display="EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline" />
+      <Variable name="waitForAny" value="typed race" display="EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout" />
+      <Variable name="query" value="bounded redacted history" display="EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking" />
+      <Variable name="expectEvent" value="default timeout" display="@lando/core/testing exports expectEvent(name, options?) with a five second default timeout so missing test events fail fast" />
+      <Variable name="waitForEvent" value="caller timeout" display="@lando/core/testing exports waitForEvent(name, options?) for tests that need the EventService waitFor contract without the expectEvent default timeout" />
+      <Variable name="recordedEvents" value="query star" display="@lando/core/testing exports recordedEvents() as a snapshot of EventService.query('*') for assertions against emitted runtime history" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="state-store-test-double" render={false} reason="The in-memory StateStore double mirrors live bucket semantics and is verified by runStateStoreContract without writing to the host disk">
+    <Step name="in-memory-buckets">
+      <Variable name="factory" value="makeTestStateStore" display="@lando/core/testing exports makeTestStateStore for hosts and plugin tests that need StateStore without filesystem IO" />
+      <Variable name="layer" value="Layer.succeed(StateStore)" display="makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks" />
+      <Variable name="semantics" value="codec and lock parity" display="The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive" />
+      <Variable name="list" value="basename keys" display="list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests" />
+      <Variable name="contract" value="runStateStoreContract" display="@lando/sdk/test exposes runStateStoreContract so live, in-memory, and host-provided StateStore implementations prove the same bucket guarantees" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="probe-primitive" render={false} reason="The contracts-only probe primitive is pure SDK surface verified by TestClock tests without a LandoRuntime or provider backed app">
+    <Step name="retry-and-verdict">
+      <Variable name="subpath" value="@lando/sdk/probe" display="@lando/sdk/probe exports RetryPolicy, ProbeSpec, ProbeOutcome, ProbeResult, toSchedule, and runProbe as a contracts-only tier with no service Layer" />
+      <Variable name="verdict" value="green yellow red" display="runProbe stops on the first green outcome and retries yellow or red per policy until maxAttempts or overall timeout" />
+      <Variable name="clock" value="TestClock" display="Backoff, jitter, and timeout are driven through Effect Clock and Schedule so attempt counts and elapsed time are deterministic in tests" />
+      <Variable name="lastError" value="consumer redaction" display="runProbe returns lastError verbatim on non-green terminal outcomes; callers redact through RedactionService before events or transcripts" />
+      <Variable name="tests" value="sdk/test/probe" display="sdk/test/probe/run-probe.test.ts locks terminal ProbeResult semantics including zero-timeout and post-success lastError clearing" />
+    </Step>
+  </Scenario>
 </Guide>

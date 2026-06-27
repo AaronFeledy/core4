@@ -225,6 +225,8 @@ const makeStopLayer = (plannedApp: AppPlan = plan) => {
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      waitForAny: () => Effect.die("not used"),
+      query: () => Effect.succeed([]),
     }),
   );
 
@@ -393,6 +395,8 @@ describe("lando stop", () => {
         subscribe: () => Effect.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
       }),
       Layer.succeed(FileSyncEngine, unavailableEngine),
     );
@@ -617,6 +621,8 @@ describe("lando stop", () => {
         subscribe: () => Effect.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
       }),
       Layer.succeed(FileSyncEngine, fakeEngine),
     );

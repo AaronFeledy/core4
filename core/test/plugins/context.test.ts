@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
+import type { Scope } from "effect";
 
-import type { PortablePath } from "@lando/sdk/schema";
+import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
+import { makeStateStore } from "../../src/state/service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
-const runScoped = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));
 const exit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseExit(effect);
 
@@ -21,10 +23,21 @@ const pluginFile = (id: string, path: string) =>
     content: { kind: "text" as const, value: "managed\n" },
   }) as const;
 
+const pluginContext = (
+  id: string,
+  managedFileService: Parameters<typeof makeLandoPluginContext>[0]["managedFileService"],
+) =>
+  makeLandoPluginContext({
+    id,
+    managedFileService,
+    stateStore: makeStateStore(),
+    pluginStateRoot: AbsolutePath.make(`/tmp/lando-plugin-context/${id}`),
+  });
+
 describe("LandoPluginContext managed files ownership scoping", () => {
   test("a plugin's managed files are recorded with its own owner id", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
@@ -34,21 +47,21 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("a plugin's status only sees its own files", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
-    const b = makeLandoPluginContext({ id: "plugin-b", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
+    const b = pluginContext("plugin-b", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
     const aStatus = await run(a.managedFiles.status);
     const bStatus = await run(b.managedFiles.status);
-    expect(aStatus.map((info) => info.path)).toEqual(["cfg.txt"]);
+    expect(aStatus.map((info) => String(info.path))).toEqual(["cfg.txt"]);
     expect(bStatus).toEqual([]);
   });
 
   test("a plugin cannot apply over a path owned by another plugin", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
-    const b = makeLandoPluginContext({ id: "plugin-b", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
+    const b = pluginContext("plugin-b", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
@@ -60,8 +73,8 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("a plugin cannot apply over another owner's path through an equivalent path spelling", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
-    const b = makeLandoPluginContext({ id: "plugin-b", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
+    const b = pluginContext("plugin-b", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
@@ -87,8 +100,8 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("a plugin cannot remove, adopt, or release another plugin's file", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
-    const b = makeLandoPluginContext({ id: "plugin-b", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
+    const b = pluginContext("plugin-b", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
@@ -106,7 +119,7 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("a plugin can manage its own files end to end", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
     const removed = await run(a.managedFiles.remove({ path: "cfg.txt" as PortablePath }));
@@ -117,16 +130,13 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("plugin path spellings are normalized before reaching the ledger", async () => {
     const planStore = await run(makeTestManagedFileStore());
-    const planPlugin = makeLandoPluginContext({ id: "plugin-a", managedFileService: planStore.service });
+    const planPlugin = pluginContext("plugin-a", planStore.service);
     const plan = await run(planPlugin.managedFiles.plan([pluginFile("a:cfg", "./cfg.txt")]));
 
-    expect(plan.entries[0]?.path).toBe("cfg.txt");
+    expect(String(plan.entries[0]?.path)).toBe("cfg.txt");
 
     const removeStore = await run(makeTestManagedFileStore());
-    const removePlugin = makeLandoPluginContext({
-      id: "plugin-a",
-      managedFileService: removeStore.service,
-    });
+    const removePlugin = pluginContext("plugin-a", removeStore.service);
     await runScoped(removePlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
     const removed = await run(removePlugin.managedFiles.remove({ path: "./cfg.txt" as PortablePath }));
 
@@ -134,17 +144,14 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(removeStore.read("cfg.txt")).toBeNull();
 
     const adoptStore = await run(makeTestManagedFileStore());
-    const adoptPlugin = makeLandoPluginContext({ id: "plugin-a", managedFileService: adoptStore.service });
+    const adoptPlugin = pluginContext("plugin-a", adoptStore.service);
     await runScoped(adoptPlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
     await run(adoptPlugin.managedFiles.adopt("./cfg.txt" as PortablePath));
 
     expect(adoptStore.ledger()[0]?.state).toBe("adopted");
 
     const releaseStore = await run(makeTestManagedFileStore());
-    const releasePlugin = makeLandoPluginContext({
-      id: "plugin-a",
-      managedFileService: releaseStore.service,
-    });
+    const releasePlugin = pluginContext("plugin-a", releaseStore.service);
     await runScoped(releasePlugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
     await run(releasePlugin.managedFiles.release("./cfg.txt" as PortablePath));
 
@@ -153,7 +160,7 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("an explicitly declared remove base is rejected, not allowed to miss the plugin ledger entry", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
 
     await runScoped(a.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")]));
 
@@ -170,7 +177,7 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("an explicitly declared foreign owner is rejected, not coerced", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
 
     const foreign = { ...pluginFile("a:cfg", "cfg.txt"), owner: "someone-else" };
     const result = await exit(
@@ -183,7 +190,7 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
   test("an explicitly declared base is rejected, not recorded", async () => {
     const store = await run(makeTestManagedFileStore());
-    const a = makeLandoPluginContext({ id: "plugin-a", managedFileService: store.service });
+    const a = pluginContext("plugin-a", store.service);
 
     const withBase = { ...pluginFile("a:cfg", "cfg.txt"), base: "/other/app" };
     const result = await exit(
