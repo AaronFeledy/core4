@@ -4,9 +4,15 @@
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const pluginLogoutSpec: LandoCommandSpec<never> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:logout",
   summary: "Forget plugin source authentication.",
   namespace: "meta",

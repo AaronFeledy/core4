@@ -24,7 +24,12 @@ import {
   writeResultLine,
 } from "../../../renderer-boundary.ts";
 import type { RendererMode } from "../../../renderer-selection.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export interface InitFlags {
   readonly full: boolean;
@@ -78,6 +83,7 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
 };
 
 export const initSpec: LandoCommandSpec<never> = {
+  resultSchema: EmptyResultSchema,
   id: "apps:init",
   summary: "Generate a new Lando app.",
   namespace: "apps",

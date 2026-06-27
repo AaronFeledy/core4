@@ -6,9 +6,10 @@ import {
   appIncludesVerify,
   renderIncludesVerifyResult,
 } from "../../../../commands/app-includes-verify.ts";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+import { EmptyResultSchema, LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
 export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
+  resultSchema: EmptyResultSchema,
   id: "app:includes:verify",
   summary: "Verify the includes lockfile matches the resolved tree without updating it.",
   namespace: "app",

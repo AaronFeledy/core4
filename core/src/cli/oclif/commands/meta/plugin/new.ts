@@ -2,7 +2,12 @@ import { Args, Flags } from "@oclif/core";
 
 import { type PluginNewResult, pluginNew, renderPluginNewResult } from "../../../../commands/plugin-new.ts";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 const extractInput = (input: unknown) => {
   const parsed =
@@ -33,6 +38,7 @@ const extractInput = (input: unknown) => {
 };
 
 export const pluginNewSpec: LandoCommandSpec<PluginNewResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:new",
   summary: "Scaffold a new plugin from a built-in template (authoring command).",
   namespace: "meta",

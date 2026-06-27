@@ -602,3 +602,21 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - For a tagged-UNION public schema, the §13.2 annotation gate only flags the shared `_tag` discriminant once (not every member field); add a single `"<Schema>._tag"` entry to `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS`. A `Schema.Literal` schema (`CommandResultFormat`) has no fields and needs no exemption at all.
   - The schema-snapshot drift gate (`core/test/build/schema-snapshot.test.ts`) asserts every `dist/schemas/<name>.json` is `git ls-files`-tracked, so newly generated artifacts MUST be `git add`ed or the gate fails even though the snapshot JSON itself matches.
 ---
+
+## [2026-06-27 16:18:59 CDT] - Babysit
+- PR: #479 https://github.com/AaronFeledy/core4/pull/479
+- CI outcome: pass
+- Review feedback: fixed (added SDK compatibility guide coverage for machine-output schemas after guide-scenarios drift failed)
+- Merge: merged (squash)
+---
+
+## 2026-06-27 17:56 CDT - US-323
+- Made `LandoCommandSpec.resultSchema` a required field (was `resultSchema?: unknown`) typed `Schema.Schema.AnyNoContext`, added optional `streaming?: StreamFrameSchema`, and published a type-only `StreamFrameSchema = typeof StreamFrame` alias from `@lando/sdk/schema`. Added a shared `EmptyResultSchema` (`Schema.Struct({})`) placeholder, a core-private tagged `CommandRegistrationError`, and `validateCommandSpec()` that rejects a spec lacking `resultSchema`; wired the check into `LandoCommandBase.runEffect` so registration/dispatch rejects a missing schema.
+- Declared `resultSchema: EmptyResultSchema` on every built-in command spec (56 files) and on the shared deferred-stub factory (covers all deferred-command stubs in one place). Added a registry-level test that enumerates the `compiled-commands` registry and fails if any canonical command lacks a `resultSchema`, plus unit coverage for `validateCommandSpec`/`CommandRegistrationError`.
+- Verification: typecheck, lint passed; spot checks passed for the new registry test, deferred-commands, not-implemented, remote-sync/share skeletons, import-boundary, and the SDK backward-compat/exports/machine-output schema tests (no schema-snapshot drift). Manual QA: `lando version` runs cleanly through the new `validateCommandSpec` gate; deferred stubs covered end-to-end by `deferred-commands.test`.
+- **Learnings for future iterations:**
+  - `LandoCommandSpec` lives in `core/src/cli/oclif/command-base.ts` (NOT the SDK); the authoritative enumeration of ALL canonical commands (built-ins + deferred stubs) is the default `Record<id, CommandClass>` export of `core/src/cli/oclif/compiled-commands.ts`, each class exposing a static `landoSpec`. Use it for any "drive/validate every command" registry test.
+  - Type `resultSchema` as `Schema.Schema.AnyNoContext`, NOT `Schema.Schema<A>`. Most specs are declared as bare `LandoCommandSpec` (A=void) with `run` returning a real value and `render` casting `result as never`, so a strict `Schema.Schema<A>` would force accurate per-command schemas now (that is US-327) and cascade type errors across ~67 files. `AnyNoContext` decouples the field from the `A` generic so both `EmptyResultSchema` and concrete schemas assign. Accurate per-command shapes + the `--format json` encode seam are US-324/US-327.
+  - All built-in spec files import `LandoCommandBase` from a relative `command-base.ts`, so exporting `EmptyResultSchema` from there lets each spec add the placeholder by extending an import it already has (no new `Schema` import per file) and gives US-327 a single grep target to replace. Deferred stubs all flow through `makeDeferredStubCommand` (`deferred-stub.ts`), so one edit there covers every stub.
+  - `validateCommandSpec`'s param is typed `{ id; resultSchema?: unknown }` (looser than `LandoCommandSpec`) so the runtime `=== undefined` guard does not trip TS "no-overlap" on the now-required field; the guard exists for JS/plugin-compiled specs that bypass the type.
+---

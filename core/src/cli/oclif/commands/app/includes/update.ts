@@ -6,9 +6,10 @@ import {
   appIncludesUpdate,
   renderIncludesUpdateResult,
 } from "../../../../commands/app-includes-update.ts";
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+import { EmptyResultSchema, LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
 export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
+  resultSchema: EmptyResultSchema,
   id: "app:includes:update",
   summary: "Refresh every includes lockfile entry to its latest source-resolved version.",
   namespace: "app",

@@ -6,7 +6,12 @@ import {
   globalDestroy,
   renderGlobalDestroyResult,
 } from "../../../../commands/meta/global-destroy.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -15,6 +20,7 @@ export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOpti
 };
 
 export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:global:destroy",
   summary: "Destroy the host-level global Lando app provider resources.",
   namespace: "meta",

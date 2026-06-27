@@ -9,7 +9,12 @@ import {
   renderPluginRemoveResult,
 } from "../../../../commands/plugin-remove.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 const extractInput = (input: unknown): { name: string } => {
   if (typeof input !== "object" || input === null) return { name: "" };
@@ -18,6 +23,7 @@ const extractInput = (input: unknown): { name: string } => {
 };
 
 export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:remove",
   summary: "Remove an installed Lando plugin.",
   namespace: "meta",
