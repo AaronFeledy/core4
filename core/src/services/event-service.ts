@@ -25,17 +25,29 @@ type EventServiceConfig = {
   readonly pubsub: PubSub.PubSub<LandoEvent>;
   readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
   readonly historyCap: number;
-  readonly redact: (event: LandoEvent) => LandoEvent;
+  readonly redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>;
 };
 
+const redactForHistory = (
+  redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>,
+  event: LandoEvent,
+): Effect.Effect<LandoEvent> =>
+  Option.isNone(redaction)
+    ? Effect.succeed(event)
+    : redaction.value
+        .forProfile("secrets", { sourceEnv: process.env })
+        .pipe(Effect.map((redactor) => redactor.redactValue(event) as LandoEvent));
+
 const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeof EventService> => {
-  const { pubsub, history, historyCap, redact } = config;
+  const { pubsub, history, historyCap, redaction } = config;
 
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
     if (historyCap <= 0) return Effect.void;
-    return Ref.update(history, (events) => {
-      const redacted = redact(event);
-      return events.length < historyCap ? [...events, redacted] : [...events.slice(1), redacted];
+    return Effect.gen(function* () {
+      const redacted = yield* redactForHistory(redaction, event);
+      yield* Ref.update(history, (events) =>
+        events.length < historyCap ? [...events, redacted] : [...events.slice(1), redacted],
+      );
     });
   };
 
@@ -110,17 +122,6 @@ const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeo
   return service;
 };
 
-const resolveRedactor = (): Effect.Effect<(event: LandoEvent) => LandoEvent> =>
-  Effect.serviceOption(RedactionService).pipe(
-    Effect.flatMap((option) =>
-      Option.isNone(option)
-        ? Effect.succeed((event: LandoEvent) => event)
-        : option.value
-            .forProfile("secrets")
-            .pipe(Effect.map((redactor) => (event: LandoEvent) => redactor.redactValue(event) as LandoEvent)),
-    ),
-  );
-
 export const makeEventServiceLive = (
   historyCap = DEFAULT_HISTORY_CAP,
 ): Layer.Layer<EventService, never, never> =>
@@ -130,8 +131,8 @@ export const makeEventServiceLive = (
       const pubsub = yield* PubSub.unbounded<LandoEvent>();
       yield* Effect.addFinalizer(() => PubSub.shutdown(pubsub));
       const history = yield* Ref.make<ReadonlyArray<LandoEvent>>([]);
-      const redact = yield* resolveRedactor();
-      return makeEventService({ pubsub, history, historyCap, redact });
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      return makeEventService({ pubsub, history, historyCap, redaction });
     }),
   );
 

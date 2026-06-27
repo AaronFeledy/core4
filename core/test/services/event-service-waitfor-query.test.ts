@@ -175,6 +175,34 @@ describe("EventService history buffer and query", () => {
     expect(serialized).toContain("[redacted]");
   });
 
+  test("refreshes redaction at append time for secrets store and env auth values", async () => {
+    const token = "late-env-auth-token-xyz789";
+    const envKey = "BUN_AUTH_TOKEN";
+    const previous = process.env[envKey];
+    delete process.env[envKey];
+    try {
+      const redaction = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer([])));
+      const eventLayer = makeEventServiceLive(8).pipe(Layer.provide(redaction));
+      process.env[envKey] = token;
+
+      const snapshot = await Effect.runPromise(
+        Effect.flatMap(EventService, (events) =>
+          Effect.gen(function* () {
+            yield* events.publish(secretEvent(token));
+            return yield* events.query("*");
+          }),
+        ).pipe(Effect.provide(eventLayer)),
+      );
+
+      const serialized = JSON.stringify(snapshot);
+      expect(serialized).not.toContain(token);
+      expect(serialized).toContain("[redacted]");
+    } finally {
+      if (previous === undefined) delete process.env[envKey];
+      else process.env[envKey] = previous;
+    }
+  });
+
   test("cap of 0 is a zero-allocation no-op: query returns the same empty array", async () => {
     const { first, second } = await Effect.runPromise(
       Effect.flatMap(EventService, (events) =>
