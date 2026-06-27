@@ -68,8 +68,8 @@ const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeo
 
   const service: Context.Tag.Service<typeof EventService> = {
     publish: (event) =>
-      appendHistory(event).pipe(
-        Effect.zipRight(PubSub.publish(pubsub, event)),
+      PubSub.publish(pubsub, event).pipe(
+        Effect.zipRight(appendHistory(event)),
         Effect.asVoid,
         Effect.catchSomeCause((cause) =>
           Cause.isDie(cause)
