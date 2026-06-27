@@ -603,3 +603,8 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): duplicate-authored-storage concern was not changed in this review pass; focused planner tests still cover cache storage normalization and no confirmed failing scenario was isolated.
 - Verification: typecheck and lint passed; focused container-runtime, provider-lando bring-up/bring-down, provider-docker contract, planner, destroy, and schema spot checks passed.
 ---
+
+## 2026-06-27 14:52 CDT - US-341 Verify
+- Rebuilt the compiled binary after review fix `07368c96`; sandbox `./core/dist/lando setup` still failed before scenario testing because the provider-lando runtime bundle could not be downloaded and no local `LANDO_RUNTIME_BUNDLE_MANIFEST`/staged runtime bundle artifacts were available.
+- Blocker remains environmental: Verify needs a staged runtime bundle manifest or reachable release bundle before the compiled setup and cache-volume end-to-end scenario can complete.
+---
