@@ -170,9 +170,9 @@ const parseOctal = (bytes: Uint8Array): number => {
 };
 
 const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
-  if (archive.byteLength < 1024) {
+  if (archive.byteLength < 512) {
     throw new ArchiveFormatError({
-      message: "Archive is too small to be a tar stream.",
+      message: "Archive is too small to contain a tar header.",
       format: "tar",
       archivePath: path,
       remediation: "Use a valid tar archive produced by DataMover.",
@@ -789,42 +789,44 @@ export const makeDataMoverService = (
     ),
   snapshot: (store, opts) =>
     Effect.gen(function* () {
-      yield* events.publish(
-        PreVolumeSnapshotEvent.make({
-          eventName: "pre-volume-snapshot",
-          volume: store,
-          ...(opts?.format === undefined ? {} : { format: opts.format }),
-          timestamp: timestamp(),
-        }),
-      );
       const snapshotId = opts?.label ?? `${store.store}-${randomUUID()}`;
-      yield* provider
-        .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
-        .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)));
-      yield* events.publish(
-        PostVolumeSnapshotEvent.make({
-          eventName: "post-volume-snapshot",
-          volume: store,
-          snapshotId,
-          outcome: "success",
-          timestamp: timestamp(),
-        }),
-      );
-      return { id: snapshotId, store };
-    }).pipe(
-      Effect.tapErrorCause((cause) =>
-        events.publish(
+      return yield* Effect.gen(function* () {
+        yield* events.publish(
+          PreVolumeSnapshotEvent.make({
+            eventName: "pre-volume-snapshot",
+            volume: store,
+            ...(opts?.format === undefined ? {} : { format: opts.format }),
+            timestamp: timestamp(),
+          }),
+        );
+        yield* provider
+          .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
+          .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)));
+        yield* events.publish(
           PostVolumeSnapshotEvent.make({
             eventName: "post-volume-snapshot",
             volume: store,
-            snapshotId: opts?.label ?? "unknown",
-            outcome: "failure",
-            failureDetail: events.redactText(failureDetail(cause)),
+            snapshotId,
+            outcome: "success",
             timestamp: timestamp(),
           }),
+        );
+        return { id: snapshotId, store };
+      }).pipe(
+        Effect.tapErrorCause((cause) =>
+          events.publish(
+            PostVolumeSnapshotEvent.make({
+              eventName: "post-volume-snapshot",
+              volume: store,
+              snapshotId,
+              outcome: "failure",
+              failureDetail: events.redactText(failureDetail(cause)),
+              timestamp: timestamp(),
+            }),
+          ),
         ),
-      ),
-    ),
+      );
+    }),
   restore: (handle, store) =>
     typeof handle === "string"
       ? Effect.fail(

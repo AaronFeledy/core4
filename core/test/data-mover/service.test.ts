@@ -37,6 +37,26 @@ const text = (value: Uint8Array): string => decoder.decode(value);
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 const portable = (path: string) => Schema.decodeUnknownSync(PortablePath)(path);
 
+const minimalEmptyTar = (): Uint8Array => {
+  const header = new Uint8Array(512);
+  const write = (offset: number, value: string, length: number) => {
+    header.set(encoder.encode(value.slice(0, length)), offset);
+  };
+  write(0, "empty", 100);
+  write(100, "0000644\0", 8);
+  write(108, "0000000\0", 8);
+  write(116, "0000000\0", 8);
+  write(124, "00000000000\0", 12);
+  write(136, "00000000000\0", 12);
+  header.fill(0x20, 148, 156);
+  write(156, "0", 1);
+  write(257, "ustar\0", 6);
+  write(263, "00", 2);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  write(148, `${checksum.toString(8).padStart(6, "0")}\0 `, 8);
+  return header;
+};
+
 const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   ...TestRuntimeProvider.capabilities,
   ...overrides,
@@ -228,6 +248,27 @@ describe("DataMoverLive", () => {
       );
 
       expect(await readFile(target, "utf8")).toBe("zstd-payload");
+    });
+  });
+
+  test("imports a 512-byte valid tar archive with an empty payload", async () => {
+    await withTempDir(async (dir) => {
+      const archive = join(dir, "empty.tar");
+      const target = join(dir, "empty.txt");
+      await writeFile(archive, minimalEmptyTar());
+
+      await runDataMover(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(await readFile(target, "utf8")).toBe("");
     });
   });
 
@@ -483,6 +524,39 @@ describe("DataMoverLive", () => {
       "post-volume-snapshot",
     ]);
     expect(capture.events()[1]).toMatchObject({ eventName: "post-volume-snapshot", snapshotId: "snap-one" });
+  });
+
+  test("publishes the generated snapshot id when snapshot creation fails", async () => {
+    const capture = captureEvents();
+    let providerSnapshotId: string | undefined;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.snapshot({ app, store: "data" });
+        }),
+      ).pipe(
+        Effect.provide(DataMoverLive),
+        Effect.provide(
+          providerLayer({
+            snapshotVolume: (spec) => {
+              providerSnapshotId = spec.snapshotId;
+              return Effect.fail(new Error("snapshot failed"));
+            },
+          }),
+        ),
+        Effect.provide(Layer.merge(capture.layer, redactionLayer)),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(providerSnapshotId?.startsWith("data-")).toBe(true);
+    expect(capture.events()[1]).toMatchObject({
+      eventName: "post-volume-snapshot",
+      outcome: "failure",
+      snapshotId: providerSnapshotId,
+    });
   });
 
   test("exports an in-memory TestDataMover for unit tests", async () => {
