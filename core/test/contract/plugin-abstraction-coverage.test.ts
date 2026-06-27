@@ -106,6 +106,27 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     defaultPolicy: "built-in",
     invocationFiles: ["core/test/cli/doctor-check-contract.test.ts"],
   },
+  {
+    abstraction: "TunnelService",
+    makeExport: "makeTunnelServiceContractSuite",
+    runExport: "runTunnelServiceContract",
+    defaultPolicy: "reference-mirror",
+    invocationFiles: ["core/test/tunnel/contract.test.ts"],
+  },
+  {
+    abstraction: "RemoteSource",
+    makeExport: "makeRemoteSourceContractSuite",
+    runExport: "runRemoteSourceContract",
+    defaultPolicy: "reference-mirror",
+    invocationFiles: ["core/test/remote-sync/contract.test.ts"],
+  },
+  {
+    abstraction: "Dataset",
+    makeExport: "makeDatasetContractSuite",
+    runExport: "runDatasetContract",
+    defaultPolicy: "reference-mirror",
+    invocationFiles: ["core/test/remote-sync/contract.test.ts"],
+  },
 ];
 
 /** Every `make*ContractSuite` export the SDK test surface publishes today. */
@@ -154,9 +175,7 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
     const KIT_MAKE_EXPORTS = kitMakeSuiteExports();
     const published = publishedMakeSuiteExports();
     for (const exportName of published) {
-      if (KIT_MAKE_EXPORTS.has(exportName)) {
-        expect(manifestMakeExports.has(exportName)).toBe(true);
-      }
+      expect(manifestMakeExports.has(exportName)).toBe(true);
     }
     // And every kit export the manifest claims must actually be published.
     for (const exportName of KIT_MAKE_EXPORTS) {
