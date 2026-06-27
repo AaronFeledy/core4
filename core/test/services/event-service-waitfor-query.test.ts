@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Exit, Fiber, Layer, Stream, TestClock, TestContext } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Stream, TestClock, TestContext } from "effect";
 
 import { EventService, SecretStore } from "@lando/sdk/services";
 
@@ -64,8 +64,12 @@ describe("EventService waitFor", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause.toString();
-      expect(error).toContain("EventError");
+      const error = Cause.failureOption(exit.cause);
+      expect(error._tag).toBe("Some");
+      if (error._tag === "Some") {
+        expect(error.value._tag).toBe("EventError");
+        expect(error.value.reason).toBe("timeout");
+      }
     }
   });
 

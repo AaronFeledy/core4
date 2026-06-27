@@ -36,6 +36,7 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   CacheService,
@@ -433,6 +434,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
 
   const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
+  const eventHistoryRedactor = createRedactor("secrets");
   const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
   const waitForEventMatch = <A>(
     label: string,
@@ -506,10 +508,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       ),
     query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
       Effect.sync(() =>
-        calls.events.filter(
-          (event): event is EventFor<Name> =>
-            matchesEventName(name, event) && (filter?.(event as EventFor<Name>) ?? true),
-        ),
+        calls.events
+          .filter(
+            (event): event is EventFor<Name> =>
+              matchesEventName(name, event) && (filter?.(event as EventFor<Name>) ?? true),
+          )
+          .map((event) => eventHistoryRedactor.redactValue(event) as EventFor<Name>),
       ),
   };
 

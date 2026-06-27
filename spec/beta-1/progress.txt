@@ -482,3 +482,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - Referencing a large discriminated union inline in a `Context.Tag` service object trips `TS2310/TS2506` self-recursion; extract the object to a named `interface XShape`. The `index.ts` `declare class` mirror must stay an inline type literal because the backward-compat test parses that file alone.
   - `Effect.serviceOption(Sibling)` cannot see a sibling in the same `Layer.mergeAll`; provide the dependency into the consumer layer in the bootstrap generator and reuse the wired layer at every provide site.
 ---
+
+## 2026-06-26 21:47 CDT - US-318 Review
+- Review fixed the test-runtime history path so `EventService.query("*")` / `recordedEvents()` return redacted snapshots, matching the embedding spec, while preserving `runtime.calls.events` as the raw assertion log. The timeout test now asserts the structured `EventError.reason === "timeout"` contract instead of only checking the cause string.
+- Review notes (deferred/rejected): zero-subscriber `hasSubscribers` short-circuit is broader pre-existing §11.1 event-registration work, not introduced by this story and not a focused review fix; live PubSub remaining raw was intentionally documented by the build step because US-318 redacts the bounded history/query surface only.
+- Verification: typecheck and lint passed; focused spot checks passed for EventService wait/query behavior, test runtime helpers, SDK narrowing/compatibility/tag fixtures, downloader event wiring, and redaction service coverage.
+---
