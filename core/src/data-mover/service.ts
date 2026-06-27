@@ -37,6 +37,7 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
 
 interface DataMoverEvents {
@@ -132,11 +133,19 @@ const providerFailure = (operation: string, cause: unknown): DataTransferError =
     remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
   });
 
-const octal = (value: number, width: number): string =>
-  value
-    .toString(8)
-    .padStart(width - 1, "0")
-    .slice(0, width - 1);
+const octal = (value: number, width: number): string => {
+  const text = value.toString(8);
+  if (text.length > width - 1) {
+    throw new ArchiveFormatError({
+      message: "Archive payload is too large for the portable tar header.",
+      format: "tar",
+      remediation: "Use a smaller payload or a provider-native data transfer path.",
+    });
+  }
+  return text.padStart(width - 1, "0");
+};
+
+export const __testOnlyEncodeTarOctal = octal;
 
 const writeAscii = (target: Uint8Array, offset: number, value: string, length: number) => {
   const bytes = new TextEncoder().encode(value.slice(0, length));
@@ -212,25 +221,40 @@ const archivePayload = (
   payload: Uint8Array,
   format: "tar" | "tar.gz" | "tar.zst",
 ): Effect.Effect<Uint8Array, ArchiveFormatError> => {
-  const tar = packTar(payload);
-  switch (format) {
-    case "tar":
-      return Effect.succeed(tar);
-    case "tar.gz":
-    case "tar.zst":
-      return Effect.tryPromise({
-        try: () =>
-          webStreamBytes(
-            new Blob([tar]).stream().pipeThrough(new CompressionStream(compressionFormat(format))),
-          ),
-        catch: (cause) =>
-          new ArchiveFormatError({
+  const tar = Effect.try({
+    try: () => packTar(payload),
+    catch: (cause) =>
+      cause instanceof ArchiveFormatError
+        ? cause
+        : new ArchiveFormatError({
             message: "Failed to encode host archive endpoint.",
-            format,
+            format: "tar",
             cause,
             remediation: "Retry the transfer or choose a different archive format.",
           }),
-      });
+  });
+  switch (format) {
+    case "tar":
+      return tar;
+    case "tar.gz":
+    case "tar.zst":
+      return tar.pipe(
+        Effect.flatMap((archive) =>
+          Effect.tryPromise({
+            try: () =>
+              webStreamBytes(
+                new Blob([archive]).stream().pipeThrough(new CompressionStream(compressionFormat(format))),
+              ),
+            catch: (cause) =>
+              new ArchiveFormatError({
+                message: "Failed to encode host archive endpoint.",
+                format,
+                cause,
+                remediation: "Retry the transfer or choose a different archive format.",
+              }),
+          }),
+        ),
+      );
   }
 };
 
@@ -326,16 +350,20 @@ const realpathNearestExisting = async (path: string): Promise<string> => {
   }
 };
 
-const ensureInsideRoot = (path: string) =>
+const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => {
+  const cwdRoot = await findAppRoot(process.cwd());
+  if (cwdRoot !== undefined) return realpath(cwdRoot);
+
+  for (const path of paths) {
+    const endpointRoot = await findAppRoot(path);
+    if (endpointRoot !== undefined) return realpath(endpointRoot);
+  }
+
+  return realpath(process.cwd());
+};
+
+const ensureInsideRoot = (path: string, root: string) =>
   Effect.gen(function* () {
-    const root = yield* Effect.tryPromise({
-      try: () => realpath(process.cwd()),
-      catch: () =>
-        new DataSourceOutsideRootError({
-          message: "Failed to resolve the app root for data endpoint validation.",
-          path,
-        }),
-    });
     const normalized = resolve(path);
     const relativeNormalized = relative(root, normalized);
     if (relativeNormalized.startsWith("..") || isAbsolute(relativeNormalized)) {
@@ -371,15 +399,27 @@ const ensureInsideRoot = (path: string) =>
     );
   });
 
-const validateHostEndpoints = (spec: DataTransferSpec) =>
-  Effect.all(
-    [spec.from, spec.to].flatMap((endpoint) => {
-      if (endpoint._tag === "hostPath" || endpoint._tag === "hostArchive")
-        return [ensureInsideRoot(endpoint.path)];
-      return [];
-    }),
-    { discard: true },
+const validateHostEndpoints = (spec: DataTransferSpec) => {
+  const endpoints = [spec.from, spec.to].filter(
+    (endpoint): endpoint is Extract<DataEndpoint, { readonly _tag: "hostPath" | "hostArchive" }> =>
+      endpoint._tag === "hostPath" || endpoint._tag === "hostArchive",
   );
+  if (endpoints.length === 0) return Effect.void;
+  return Effect.gen(function* () {
+    const root = yield* Effect.tryPromise({
+      try: () => resolveAppRoot(endpoints.map((endpoint) => endpoint.path)),
+      catch: () =>
+        new DataSourceOutsideRootError({
+          message: "Failed to resolve the app root for data endpoint validation.",
+          path: endpoints[0]?.path ?? process.cwd(),
+        }),
+    });
+    yield* Effect.all(
+      endpoints.map((endpoint) => ensureInsideRoot(endpoint.path, root)),
+      { discard: true },
+    );
+  });
+};
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
   Stream.unwrap(

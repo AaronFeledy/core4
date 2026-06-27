@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
@@ -33,7 +33,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { DataMoverLive } from "../../src/data-mover/service.ts";
+import { DataMoverLive, __testOnlyEncodeTarOctal } from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { makeTestDataMover } from "../../src/testing/data-mover.ts";
@@ -276,6 +276,12 @@ describe("DataMoverLive", () => {
       expect(result.sizeBytes).toBe(bytes("archive-payload").byteLength);
       expect(await readFile(archive, "utf8")).not.toBe("archive-payload");
     });
+  });
+
+  test("rejects tar payload sizes that do not fit the portable header", () => {
+    const maxPortableTarSize = 0o77777777777;
+    expect(__testOnlyEncodeTarOctal(maxPortableTarSize, 12)).toBe("77777777777");
+    expect(() => __testOnlyEncodeTarOctal(maxPortableTarSize + 1, 12)).toThrow(ArchiveFormatError);
   });
 
   test("imports to volumes when existence preflight is unavailable", async () => {
@@ -769,6 +775,54 @@ describe("DataMoverLive", () => {
     } finally {
       await rm(outsideDir, { recursive: true, force: true });
     }
+  });
+
+  test("uses the discovered app root for host endpoint containment", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const siblingRoot = join(dir, "sibling");
+      const source = join(appRoot, "nested", "source.txt");
+      const allowedTarget = join(appRoot, "nested", "target.txt");
+      const outsideTarget = join(siblingRoot, "target.txt");
+      await mkdir(dirname(source), { recursive: true });
+      await mkdir(siblingRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: data-root\n");
+      await writeFile(source, "app-root-payload");
+
+      await runDataMover(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(allowedTarget) },
+            overwrite: true,
+          });
+        }),
+      );
+      expect(await readFile(allowedTarget, "utf8")).toBe("app-root-payload");
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: { _tag: "hostPath", path: absolute(outsideTarget) },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(providerLayer()),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      }
+    });
   });
 
   test("publishes redacted Data lifecycle events", async () => {
