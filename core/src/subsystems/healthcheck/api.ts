@@ -8,7 +8,12 @@
  * - Startup distinguishes `running` from `ready`. The `ready` event fires
  *   when all healthchecks pass.
  * - The active `HealthcheckRunner` decides execution mechanics. Default:
- *   `RuntimeProvider.exec` with retry/delay loop.
+ *   `RuntimeProvider.exec` with retry/delay loop. The full provider-exec
+ *   runner is not implemented yet; when it lands, its retry/delay/timeout
+ *   loop and `ready` verdict must build on `@lando/sdk/probe`'s `runProbe`
+ *   rather than a hand-rolled `Effect.retry`/`Schedule` loop (enforced by the
+ *   probe boundary gate), and must redact `ProbeResult.lastError` before it
+ *   reaches an event or transcript.
  */
 import { Effect, Layer } from "effect";
 

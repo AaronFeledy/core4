@@ -39,6 +39,7 @@
     "check:env-helper-boundary": "bun run scripts/check-env-helper-boundary.ts",
     "check:paths-boundary": "bun run scripts/check-paths-boundary.ts",
     "check:state-store-boundary": "bun run scripts/check-state-store-boundary.ts",
+    "check:probe-boundary": "bun run scripts/check-probe-boundary.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",

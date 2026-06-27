@@ -69,6 +69,9 @@ ${setupBunSteps}
       - name: State-store boundary lint
         run: bun run check:state-store-boundary
 
+      - name: Probe boundary lint
+        run: bun run check:probe-boundary
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |
