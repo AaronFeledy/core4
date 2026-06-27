@@ -211,6 +211,92 @@ describe("probe boundary lint gate", () => {
     }
   });
 
+  test("reports destructuring in switch case and for-loop initializer", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/x/switch-case.ts",
+        'import { Effect } from "effect"; export const f = (x: number) => { switch (x) { case 1: const { retry } = Effect; return retry(eff, sched); default: return eff; } };\n',
+      );
+      await write(
+        root,
+        "core/src/x/for-loop.ts",
+        'import { Schedule } from "effect"; export const g = () => { for (const { recurs } = Schedule; false;) recurs(1); return 0; };\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["core/src/x/for-loop.ts:1:Schedule.recurs", "core/src/x/switch-case.ts:1:Effect.retry"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves barrel re-exports after fixpoint module analysis when the barrel is analyzed before its dependency", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/x/order-barrel.ts",
+        'export { retry as retryViaBarrel } from "./order-inner";\n',
+      );
+      await write(root, "core/src/x/order-inner.ts", 'export { retry } from "effect/Effect";\n');
+      await write(
+        root,
+        "core/src/x/order-consumer.ts",
+        'import { retryViaBarrel } from "./order-barrel"; export const r = retryViaBarrel(eff, sched);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["core/src/x/order-consumer.ts:1:Effect.retry"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports forbidden calls through circular relative re-exports after fixpoint analysis", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/x/cycle-a.ts",
+        'export { retry } from "effect/Effect";\nexport { retry as viaB } from "./cycle-b";\n',
+      );
+      await write(root, "core/src/x/cycle-b.ts", 'export { retry } from "./cycle-a";\n');
+      await write(
+        root,
+        "core/src/x/cycle-consumer.ts",
+        'import { viaB } from "./cycle-a"; export const r = viaB(eff, sched);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["core/src/x/cycle-consumer.ts:1:Effect.retry"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("allowlisted non-probe lock loops and named consumers are not flagged, but the same pattern elsewhere is", async () => {
     const root = await makeFixtureRoot();
     try {

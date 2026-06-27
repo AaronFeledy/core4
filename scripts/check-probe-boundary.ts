@@ -337,6 +337,34 @@ const scanFileWithBindings = (
     }
   };
 
+  const visitForInitializer = (
+    initializer: ts.ForInitializer | undefined,
+    effectLocal: Map<string, string>,
+    scheduleLocal: Map<string, string>,
+  ): void => {
+    if (initializer === undefined) return;
+    if (ts.isVariableDeclarationList(initializer)) {
+      const scopeEffect = new Map(effectLocal);
+      const scopeSchedule = new Map(scheduleLocal);
+      for (const declaration of initializer.declarations) {
+        extendScopeFromVariableDeclaration(
+          declaration,
+          effectAliases,
+          scheduleAliases,
+          scopeEffect,
+          scopeSchedule,
+        );
+      }
+      for (const declaration of initializer.declarations) {
+        if (declaration.initializer !== undefined) {
+          visit(declaration.initializer, scopeEffect, scopeSchedule);
+        }
+      }
+      return;
+    }
+    visit(initializer, effectLocal, scheduleLocal);
+  };
+
   const visit = (
     node: ts.Node,
     effectLocal: Map<string, string>,
@@ -344,6 +372,32 @@ const scanFileWithBindings = (
   ): void => {
     if (ts.isSourceFile(node) || ts.isBlock(node)) {
       visitStatements(node.statements, effectLocal, scheduleLocal);
+      return;
+    }
+
+    if (ts.isCaseClause(node) || ts.isDefaultClause(node)) {
+      visitStatements(node.statements, effectLocal, scheduleLocal);
+      return;
+    }
+
+    if (ts.isForStatement(node)) {
+      visitForInitializer(node.initializer, effectLocal, scheduleLocal);
+      const scopeEffect = new Map(effectLocal);
+      const scopeSchedule = new Map(scheduleLocal);
+      if (node.initializer !== undefined && ts.isVariableDeclarationList(node.initializer)) {
+        for (const declaration of node.initializer.declarations) {
+          extendScopeFromVariableDeclaration(
+            declaration,
+            effectAliases,
+            scheduleAliases,
+            scopeEffect,
+            scopeSchedule,
+          );
+        }
+      }
+      if (node.condition !== undefined) visit(node.condition, scopeEffect, scopeSchedule);
+      if (node.incrementor !== undefined) visit(node.incrementor, scopeEffect, scopeSchedule);
+      visit(node.statement, scopeEffect, scopeSchedule);
       return;
     }
 
@@ -398,29 +452,76 @@ const resolveTypeScriptModulePath = (fromFile: string, moduleSpecifier: string):
   return undefined;
 };
 
-const bindingsForFile = (
-  file: string,
+const exportMapsEqual = (
+  left: ReadonlyMap<string, ForbiddenExport>,
+  right: ReadonlyMap<string, ForbiddenExport>,
+): boolean => {
+  if (left.size !== right.size) return false;
+  for (const [key, value] of left) {
+    const other = right.get(key);
+    if (other === undefined) return false;
+    if (value.kind !== other.kind) return false;
+    if (value.kind === "effect-member" && other.kind === "effect-member" && value.member !== other.member) {
+      return false;
+    }
+    if (
+      value.kind === "schedule-member" &&
+      other.kind === "schedule-member" &&
+      value.member !== other.member
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const setEqual = (left: ReadonlySet<string>, right: ReadonlySet<string>): boolean => {
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+};
+
+const stringMapEqual = (left: ReadonlyMap<string, string>, right: ReadonlyMap<string, string>): boolean => {
+  if (left.size !== right.size) return false;
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) return false;
+  }
+  return true;
+};
+
+const moduleBindingsEqual = (left: ModuleProbeBindings, right: ModuleProbeBindings): boolean =>
+  exportMapsEqual(left.exports, right.exports) &&
+  setEqual(left.effectAliases, right.effectAliases) &&
+  setEqual(left.scheduleAliases, right.scheduleAliases) &&
+  stringMapEqual(left.effectMemberAliases, right.effectMemberAliases) &&
+  stringMapEqual(left.scheduleMemberAliases, right.scheduleMemberAliases);
+
+const computeModuleBindings = (
+  files: ReadonlyArray<string>,
   sources: ReadonlyMap<string, ts.SourceFile>,
-  cache: Map<string, ModuleProbeBindings>,
-  analyzing: Set<string>,
-): ModuleProbeBindings => {
-  const cached = cache.get(file);
-  if (cached !== undefined) return cached;
-
-  if (analyzing.has(file)) return emptyModuleProbeBindings();
-
-  const source = sources.get(file);
-  if (source === undefined) return emptyModuleProbeBindings();
-
-  analyzing.add(file);
-  const bindings = analyzeModuleBindings(source, (fromFile, moduleSpecifier) => {
-    const resolved = resolveTypeScriptModulePath(fromFile, moduleSpecifier);
-    if (resolved === undefined || !sources.has(resolved)) return undefined;
-    return bindingsForFile(resolved, sources, cache, analyzing);
-  });
-  analyzing.delete(file);
-  cache.set(file, bindings);
-  return bindings;
+): Map<string, ModuleProbeBindings> => {
+  const cache = new Map<string, ModuleProbeBindings>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const file of files) {
+      const source = sources.get(file);
+      if (source === undefined) continue;
+      const next = analyzeModuleBindings(source, (fromFile, moduleSpecifier) => {
+        const resolved = resolveTypeScriptModulePath(fromFile, moduleSpecifier);
+        if (resolved === undefined || !sources.has(resolved)) return undefined;
+        return cache.get(resolved) ?? emptyModuleProbeBindings();
+      });
+      const prev = cache.get(file);
+      if (prev === undefined || !moduleBindingsEqual(prev, next)) {
+        cache.set(file, next);
+        changed = true;
+      }
+    }
+  }
+  return cache;
 };
 
 export const checkProbeBoundary = async (
@@ -444,14 +545,14 @@ export const checkProbeBoundary = async (
     }),
   );
 
-  const moduleCache = new Map<string, ModuleProbeBindings>();
+  const moduleCache = computeModuleBindings(files, sources);
   const offenders = files
     .flatMap((file) => {
       const relativeFile = relative(root, file).replaceAll("\\", "/");
       if (CARVE_OUTS.has(relativeFile)) return [];
       const source = sources.get(file);
       if (source === undefined) return [];
-      const bindings = bindingsForFile(file, sources, moduleCache, new Set());
+      const bindings = moduleCache.get(file) ?? emptyModuleProbeBindings();
       return scanFileWithBindings(file, source, bindings);
     })
     .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
