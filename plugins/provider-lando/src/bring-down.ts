@@ -26,6 +26,7 @@ export interface BringDownOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly eventService?: EventPublisher;
   readonly volumes?: boolean;
+  readonly purgeCaches?: boolean;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -161,11 +162,16 @@ const removeVolume = (api: PodmanApiClient, name: string): Effect.Effect<boolean
 const removeAppScopedVolumes = (
   api: PodmanApiClient,
   plan: AppPlan,
+  options: BringDownOptions,
 ): Effect.Effect<boolean, BringDownError> =>
   Effect.gen(function* () {
     let changed = false;
     for (const store of plan.stores) {
-      if (store.scope === "global") continue;
+      if (store.kind === "cache") {
+        if (options.purgeCaches !== true) continue;
+      } else if (store.scope === "global" || options.volumes !== true) {
+        continue;
+      }
       const removed = yield* removeVolume(api, store.name);
       changed = changed || removed;
     }
@@ -228,7 +234,10 @@ export const bringDown = (
       changed = changed || result.changed;
     }
     const networkRemoved = yield* removeNetwork(api, plan);
-    const volumesRemoved = options.volumes === true ? yield* removeAppScopedVolumes(api, plan) : false;
+    const volumesRemoved =
+      options.volumes === true || options.purgeCaches === true
+        ? yield* removeAppScopedVolumes(api, plan, options)
+        : false;
 
     return { changed: changed || networkRemoved || volumesRemoved };
   });

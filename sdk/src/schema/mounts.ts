@@ -54,6 +54,10 @@ export const DataStorePlan = Schema.Struct({
   /** Provider-visible volume name (already auto-scoped). */
   name: Schema.String,
   scope: StorageScope,
+  /** Storage kind; `cache` stores are cross-app shared dependency caches. */
+  kind: Schema.optionalWith(Schema.Literal("data", "cache"), { default: () => "data" as const }),
+  /** Cache identity when `kind` is `cache`. */
+  key: Schema.optional(Schema.String),
   /** Driver (provider-specific; `null` = default). */
   driver: Schema.optional(Schema.String),
   /** Optional driver opts. */

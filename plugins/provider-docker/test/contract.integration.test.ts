@@ -333,7 +333,12 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   services: { [dbServiceName]: makeDbService(), [serviceName]: makeService() },
   routes: [],
   networks: [],
-  stores: opts.includeStores ? [{ name: "myapp_db_data", scope: "app" as const }] : [],
+  stores: opts.includeStores
+    ? [
+        { name: "myapp_db_data", scope: "app" as const },
+        { name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" },
+      ]
+    : [],
   metadata,
   extensions: {},
 });
@@ -992,10 +997,10 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError.message).toContain("APP_TOKEN=[redacted]");
   });
 
-  test("destroy with volumes:true removes app-scoped volumes; default preserves them", async () => {
+  test("destroy removes cache volumes only when purgeCaches is requested", async () => {
     const plan = makeMultiServicePlan({ includeStores: true });
 
-    const fake1 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const fake1 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
     const provider1 = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake1.api }))),
     );
@@ -1003,11 +1008,12 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider1.destroy({ app: appId }, { volumes: false }));
 
     expect(fake1.volumes.has("myapp_db_data")).toBe(true);
+    expect(fake1.volumes.has("lando-cache-npm")).toBe(true);
     expect(fake1.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
 
-    const fake2 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const fake2 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
     const provider2 = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake2.api }))),
     );
@@ -1015,8 +1021,19 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider2.destroy({ app: appId }, { volumes: true }));
 
     expect(fake2.volumes.has("myapp_db_data")).toBe(false);
+    expect(fake2.volumes.has("lando-cache-npm")).toBe(true);
     expect(fake2.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       true,
     );
+
+    const fake3 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
+    const provider3 = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake3.api }))),
+    );
+    await Effect.runPromise(Effect.scoped(provider3.apply(plan, { reconcile: true })));
+    await Effect.runPromise(provider3.destroy({ app: appId }, { volumes: false, purgeCaches: true }));
+
+    expect(fake3.volumes.has("myapp_db_data")).toBe(true);
+    expect(fake3.volumes.has("lando-cache-npm")).toBe(false);
   });
 });

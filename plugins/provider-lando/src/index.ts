@@ -287,6 +287,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             yield* bringDown(plan, {
               ...(podmanApi === undefined ? {} : { podmanApi }),
               volumes: destroyOptions.volumes,
+              ...(destroyOptions.purgeCaches === undefined
+                ? {}
+                : { purgeCaches: destroyOptions.purgeCaches }),
             });
             if (destroyOptions.removeState !== false) {
               yield* forgetPlan(target.app);

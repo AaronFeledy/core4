@@ -584,3 +584,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The core `DoctorCheck` severity vocabulary is `info|warn|error` and solution kind `automatic|manual`; the SDK `DoctorCheckContractHarness` uses `info|warning|error`. Map `warn -> warning` when adapting a real doctor check. `TestRuntimeProvider.getStatus` is `{running:true}`, so override it to `{running:false}` to exercise the selected-provider warning + manual remediation path.
   - GOTCHA: the Edit tool can corrupt a spec markdown file when `old_string` is anchored on a token containing `$` (e.g. `Bun.$`) — it truncated mid-token and injected a duplicate file header. Anchor spec-md edits on `$`-free prose; `git checkout <file>` cleanly reverts if it happens.
 ---
+
+## 2026-06-27 - US-341
+- Added the cache storage kind so authored `storage[].kind: cache` entries become cross-app `lando-cache-<key>` stores with destination-derived default keys, provider-identifying cache labels, and planning rejection for `scope: service`.
+- Updated destroy semantics so regular data-volume removal leaves cache stores intact and `--purge-caches` is the explicit cache removal path across the command and bundled provider destroy paths.
+- Verification: typecheck and lint passed; focused schema, planner, destroy, provider-lando compose/bring-down, and provider-docker contract spot checks passed; manual CLI `destroy --purge-caches` accepted the flag and reached normal app-resolution behavior.
+- **Learnings for future iterations:**
+  - `storage[].kind` defaults decode onto every `DataStorePlan`, so exact typed fixtures that construct `AppPlan.stores` directly may need explicit `kind: "data"`.
+---

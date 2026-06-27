@@ -1263,6 +1263,73 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("plans cache storage as cross-app lando-cache volumes with destination-derived keys", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "cacheapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            storage: [
+              {
+                store: "npm-cache",
+                target: "/home/node/.npm",
+                kind: "cache",
+              },
+              {
+                store: "composer-cache",
+                target: "/tmp/composer/cache",
+                kind: "cache",
+                key: "php-deps",
+              },
+            ],
+          },
+        },
+      });
+
+      expect(appPlan.services[ServiceName.make("web")]?.storage.map((mount) => mount.store)).toEqual(
+        expect.arrayContaining(["lando-cache-home-node-npm", "lando-cache-php-deps"]),
+      );
+      expect(appPlan.stores.filter((store) => store.kind === "cache")).toEqual([
+        { name: "lando-cache-home-node-npm", scope: "global", kind: "cache", key: "home-node-npm" },
+        { name: "lando-cache-php-deps", scope: "global", kind: "cache", key: "php-deps" },
+      ]);
+    });
+  });
+
+  test("rejects service-scoped cache storage because cache volumes are global by nature", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "badcache",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            storage: [
+              {
+                store: "npm-cache",
+                target: "/home/node/.npm",
+                scope: "service",
+                kind: "cache",
+              },
+            ],
+          },
+        },
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.message).toContain("kind: cache");
+        expect(failure.message).toContain("scope: service");
+        expect(failure.issues).toContain("services.web.storage[0].scope");
+      }
+    });
+  });
+
   test("fails before apply when service storage requires an unsupported provider capability", async () => {
     await withTempCwd(async () => {
       const exit = await planExit(

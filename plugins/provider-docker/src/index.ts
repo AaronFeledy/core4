@@ -882,6 +882,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
 
 interface BringDownOptions {
   readonly volumes?: boolean;
+  readonly purgeCaches?: boolean;
 }
 
 const bringDown = (plan: AppPlan, api: DockerApiClient, options: BringDownOptions = {}) =>
@@ -937,9 +938,13 @@ const bringDown = (plan: AppPlan, api: DockerApiClient, options: BringDownOption
             ),
       ),
     );
-    if (options.volumes === true) {
+    if (options.volumes === true || options.purgeCaches === true) {
       for (const store of plan.stores) {
-        if (store.scope === "global") continue;
+        if (store.kind === "cache") {
+          if (options.purgeCaches !== true) continue;
+        } else if (store.scope === "global" || options.volumes !== true) {
+          continue;
+        }
         yield* removeVolumeSilent(api, store.name);
       }
     }
@@ -1242,9 +1247,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           const plan = resolvePlan(target);
           return plan === undefined
             ? Effect.void
-            : bringDown(plan, dockerApi, { volumes: destroyOptions.volumes }).pipe(
-                Effect.tap(() => Effect.sync(() => plans.delete(target.app))),
-              );
+            : bringDown(plan, dockerApi, {
+                volumes: destroyOptions.volumes,
+                ...(destroyOptions.purgeCaches === undefined
+                  ? {}
+                  : { purgeCaches: destroyOptions.purgeCaches }),
+              }).pipe(Effect.tap(() => Effect.sync(() => plans.delete(target.app))));
         },
         exec: (target, command) => {
           const plan = resolvePlan(target);

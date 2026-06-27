@@ -2,8 +2,8 @@
  * `lando destroy` — destroy the current app.
  *
  * Removes containers and the app network. App-scoped storage volumes are
- * preserved by default; pass `volumes: true` to also remove app/service
- * scoped volumes. `global` scope volumes always survive `destroy`.
+ * preserved by default; pass `volumes: true` to remove data volumes. Cache
+ * volumes survive unless `purgeCaches` is also true.
  *
  * Bootstrap level: `app`.
  */
@@ -64,7 +64,14 @@ export const destroyApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider.destroy({ app: plan.id, plan }, { volumes, removeState: true });
+    yield* provider.destroy(
+      { app: plan.id, plan },
+      {
+        volumes,
+        ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
+        removeState: true,
+      },
+    );
 
     yield* events.publish(
       PostDestroyEvent.make({
@@ -79,6 +86,6 @@ export const destroyApp = (
       servicesDestroyed: Object.values(plan.services)
         .reverse()
         .map((service) => String(service.name)),
-      volumesRemoved: volumes,
+      volumesRemoved: volumes || options.purgeCaches === true,
     };
   });

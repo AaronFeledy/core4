@@ -70,7 +70,7 @@ const plan: AppPlan = {
   services: {},
   routes: [],
   networks: [],
-  stores: [{ name: "database", scope: "app" }],
+  stores: [{ name: "database", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: TIMESTAMP, source: "@lando/core/testing", runtime: 4 },
   extensions: {},

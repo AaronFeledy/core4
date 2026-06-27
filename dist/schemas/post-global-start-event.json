@@ -818,6 +818,16 @@
                 "required": [],
                 "type": "object"
               },
+              "key": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "data",
+                  "cache"
+                ],
+                "type": "string"
+              },
               "name": {
                 "type": "string"
               },

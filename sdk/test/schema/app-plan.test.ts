@@ -7,6 +7,7 @@ import {
   AppId,
   AppPlan,
   AppRef,
+  DataStorePlan,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -153,6 +154,22 @@ describe("ServicePlan", () => {
 });
 
 describe("AppPlan", () => {
+  test("decodes data stores with default data kind and explicit cache keys", () => {
+    const dataStore = Schema.decodeUnknownSync(DataStorePlan)({
+      name: "myapp-db-data",
+      scope: "app",
+    });
+    expect(dataStore.kind).toBe("data");
+
+    const cacheStore = Schema.decodeUnknownSync(DataStorePlan)({
+      name: "lando-cache-npm",
+      scope: "global",
+      kind: "cache",
+      key: "npm",
+    });
+    expect(cacheStore).toMatchObject({ kind: "cache", key: "npm" });
+  });
+
   test("decodes a minimal MVP app (one service, one mount, one endpoint)", () => {
     const decoded = Schema.decodeUnknownSync(AppPlan)(appPlanFixture);
     expect(decoded.id).toBe(AppId.make("myapp"));
