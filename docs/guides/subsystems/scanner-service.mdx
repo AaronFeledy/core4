@@ -29,4 +29,12 @@ tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
       <Variable name="verificationRef" value="sdk/test/contract/url-scanner.test.ts" display="Unit tests verify the UrlScanner contract against TestUrlScanner" />
     </Step>
   </Scenario>
+
+  <Scenario id="scanner-probe-primitive" render={false} reason="Live UrlScanner is not implemented yet; documents the required probe primitive for future retry/delay/timeout URL probes">
+    <Step name="probe-primitive">
+      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Future scanner retry/delay/timeout-to-verdict loops must use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
+      <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
+      <Variable name="apiRef" value="core/src/subsystems/scanner/api.ts" display="UrlScannerUnavailableLive stub documents the contract until provider-inspect lands" />
+    </Step>
+  </Scenario>
 </Guide>
