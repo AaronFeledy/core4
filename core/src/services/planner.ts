@@ -15,6 +15,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  type DataStoreMountPlan,
   type FileSyncPlan,
   type FileSyncSessionSpec,
   type LandofileShape,
@@ -446,7 +447,7 @@ const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceConfig):
   const authored = service.storage ?? [];
   if (authored.length === 0) return servicePlan;
   const occupiedTargets = new Set(servicePlan.storage.map((mount) => storageMountTargetKey(mount.target)));
-  const additions: Array<ServicePlan["storage"][number]> = [];
+  const additions: DataStoreMountPlan[] = [];
   for (const entry of authored) {
     const target = typeof entry === "string" ? entry : entry.target;
     const mountTarget = PortablePath.make(target);
