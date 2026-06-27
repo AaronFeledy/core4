@@ -1299,6 +1299,45 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("skips authored storage mounts whose container path is already in the service plan", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "overlapapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            volumes: ["worker-cache:/var/cache"],
+            storage: [
+              {
+                store: "worker-cache",
+                target: "/var/cache",
+                kind: "cache",
+              },
+              {
+                store: "extra-data",
+                target: "/data/extra",
+              },
+            ],
+          },
+        },
+      });
+
+      const webStorage = appPlan.services[ServiceName.make("web")]?.storage ?? [];
+      expect(webStorage.filter((mount) => String(mount.target) === "/var/cache")).toEqual([
+        { store: "overlapapp-worker-cache", target: PortablePath.make("/var/cache"), readOnly: false },
+      ]);
+      expect(webStorage.map((mount) => mount.store)).toEqual(
+        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+      );
+      expect(appPlan.stores.map((store) => store.name)).toEqual(
+        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+      );
+      expect(appPlan.stores.some((store) => store.name === "lando-cache-var-cache")).toBe(false);
+    });
+  });
+
   test("rejects service-scoped cache storage because cache volumes are global by nature", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({

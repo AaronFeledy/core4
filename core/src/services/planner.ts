@@ -440,23 +440,32 @@ const authoredStorageScopes = (
   return { byStore };
 };
 
+const storageMountTargetKey = (target: PortablePath): string => String(target);
+
 const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.storage ?? [];
   if (authored.length === 0) return servicePlan;
-  const additions = authored.map((entry) => {
+  const occupiedTargets = new Set(servicePlan.storage.map((mount) => storageMountTargetKey(mount.target)));
+  const additions: Array<ServicePlan["storage"][number]> = [];
+  for (const entry of authored) {
     const target = typeof entry === "string" ? entry : entry.target;
+    const mountTarget = PortablePath.make(target);
+    const targetKey = storageMountTargetKey(mountTarget);
+    if (occupiedTargets.has(targetKey)) continue;
+    occupiedTargets.add(targetKey);
     const store =
       typeof entry === "string"
         ? kebab(target)
         : entry.kind === "cache"
           ? cacheStoreName(target, entry.key)
           : entry.store;
-    return {
+    additions.push({
       store,
-      target: PortablePath.make(target),
+      target: mountTarget,
       readOnly: typeof entry === "string" ? false : (entry.readOnly ?? false),
-    };
-  });
+    });
+  }
+  if (additions.length === 0) return servicePlan;
   return { ...servicePlan, storage: [...servicePlan.storage, ...additions] };
 };
 
