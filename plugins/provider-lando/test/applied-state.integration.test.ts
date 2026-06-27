@@ -70,7 +70,7 @@ const plan: AppPlan = {
   services: { [web.name]: web, [database.name]: database },
   routes: [],
   networks: [],
-  stores: [{ name: "applied_state_db", scope: "app" }],
+  stores: [{ name: "applied_state_db", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
   extensions: {},
@@ -109,7 +109,7 @@ describe("provider-lando applied state persistence", () => {
       expect(loaded?.id).toBe(plan.id);
       expect(loaded?.slug).toBe(plan.slug);
       expect(Object.keys(loaded?.services ?? {}).sort()).toEqual(["database", "web"]);
-      expect(loaded?.stores).toEqual([{ name: "applied_state_db", scope: "app" }]);
+      expect(loaded?.stores).toEqual([{ name: "applied_state_db", scope: "app", kind: "data" }]);
     });
   });
 
