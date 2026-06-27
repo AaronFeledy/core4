@@ -41,7 +41,7 @@ import {
   TunnelTargetUnresolvedError,
 } from "../errors/index.ts";
 
-import { emitLandofileYaml, parseLandofile } from "../landofile/index.ts";
+import { emitLandofileYamlEither, parseLandofile } from "../landofile/index.ts";
 import {
   AbsolutePath,
   AppId,
@@ -5577,6 +5577,9 @@ export const runConfigTranslatorContractSuite = (
       translator.inputKinds,
     );
 
+    const mutationBaseline =
+      harness.mutationProbe === undefined ? undefined : yield* harness.mutationProbe.snapshot;
+
     // --- detect() is authoritative for the matching input ---
     const detectInput = { appRoot: harness.matchingInput.appRoot, files: harness.matchingInput.files };
     const matches = yield* translator
@@ -5660,7 +5663,18 @@ export const runConfigTranslatorContractSuite = (
     );
 
     // --- the emitted fragment round-trips through the canonical serializer ---
-    const emitted = emitLandofileYaml(result.fragment as Record<string, unknown>);
+    const emitEither = emitLandofileYamlEither(result.fragment as Record<string, unknown>);
+    let emitted: string;
+    if (Either.isLeft(emitEither)) {
+      yield* requireConfigTranslatorContract(
+        false,
+        `${label}: emitted fragment is serializable by the canonical Landofile emitter`,
+        emitEither.left,
+      );
+      emitted = "";
+    } else {
+      emitted = emitEither.right;
+    }
     const reparsed = yield* parseLandofile({ file: "lando.yml", content: emitted, cwd: "/" }).pipe(
       Effect.mapError((cause) =>
         configTranslatorContractFailure(
@@ -5703,8 +5717,7 @@ export const runConfigTranslatorContractSuite = (
     }
 
     // --- optional: translate performed no external mutation ---
-    if (harness.mutationProbe) {
-      const before = yield* harness.mutationProbe.snapshot;
+    if (harness.mutationProbe && mutationBaseline !== undefined) {
       yield* translator
         .translate(harness.matchingInput)
         .pipe(
@@ -5712,11 +5725,11 @@ export const runConfigTranslatorContractSuite = (
             configTranslatorContractFailure(`${label}: mutation-probe translate resolves`, cause),
           ),
         );
-      const unchanged = yield* harness.mutationProbe.assertUnchanged(before);
+      const unchanged = yield* harness.mutationProbe.assertUnchanged(mutationBaseline);
       yield* requireConfigTranslatorContract(
         unchanged,
         `${label}: translate did not mutate files / contact providers / install plugins`,
-        before,
+        mutationBaseline,
       );
     }
   });
@@ -5999,6 +6012,9 @@ export const runDoctorCheckContractSuite = (
       harness.check.id,
     );
 
+    const readOnlyBaseline =
+      harness.readOnlyProbe === undefined ? undefined : yield* harness.readOnlyProbe.snapshot;
+
     // --- default run returns issues carrying severity/context + a solution ---
     const result = yield* harness.check
       .run({ fix: false })
@@ -6061,8 +6077,7 @@ export const runDoctorCheckContractSuite = (
     }
 
     // --- optional: default run is read-only ---
-    if (harness.readOnlyProbe) {
-      const before = yield* harness.readOnlyProbe.snapshot;
+    if (harness.readOnlyProbe && readOnlyBaseline !== undefined) {
       yield* harness.check
         .run({ fix: false })
         .pipe(
@@ -6070,11 +6085,11 @@ export const runDoctorCheckContractSuite = (
             doctorCheckContractFailure(`${label}: read-only probe run resolves`, cause),
           ),
         );
-      const unchanged = yield* harness.readOnlyProbe.assertUnchanged(before);
+      const unchanged = yield* harness.readOnlyProbe.assertUnchanged(readOnlyBaseline);
       yield* requireDoctorCheckContract(
         unchanged,
         `${label}: default run({ fix: false }) performs no mutation`,
-        before,
+        readOnlyBaseline,
       );
     }
 
