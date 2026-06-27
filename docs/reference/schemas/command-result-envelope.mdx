@@ -1,0 +1,20 @@
+---
+title: Command Result Envelope
+description: Public Lando schema contract for Command Result Envelope.
+---
+
+# Command Result Envelope
+
+Public Lando schema contract for Command Result Envelope.
+
+[JSON Schema artifact](../../../dist/schemas/command-result-envelope.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `apiVersion` | Yes | `string` | — | — | `v4` | — | — |
+| `command` | Yes | `string` | a string | — | — | — | — |
+| `ok` | Yes | `boolean` | a boolean | — | — | — | — |
+| `result` | No | — | — | — | — | — | — |
+| `error` | No | `object` | — | — | — | — | — |
+| `warnings` | Yes | `array` | — | — | — | — | — |
+| `deprecations` | Yes | `array` | — | — | — | — | — |

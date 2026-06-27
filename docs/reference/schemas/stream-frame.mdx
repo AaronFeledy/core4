@@ -1,0 +1,19 @@
+---
+title: Stream Frame
+description: Public Lando schema contract for Stream Frame.
+---
+
+# Stream Frame
+
+Public Lando schema contract for Stream Frame.
+
+[JSON Schema artifact](../../../dist/schemas/stream-frame.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `stdout`, `stderr`, `event`, `result` | — | — |
+| `chunk` | No | `string` | a string | — | — | — | — |
+| `service` | No | `string` | — | — | — | — | — |
+| `event` | No | `string` | a string | — | — | — | — |
+| `payload` | No | — | — | — | — | — | — |
+| `envelope` | No | `object` | — | — | — | — | — |

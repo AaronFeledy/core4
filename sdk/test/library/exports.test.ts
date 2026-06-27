@@ -112,6 +112,10 @@ describe("@lando/sdk package exports", () => {
     expect(schema.PromptAnswer).toBeDefined();
     expect(schema.ChoicesFrom).toBeDefined();
     expect(schema.InteractionServiceContribution).toBeDefined();
+    expect(schema.CommandResultFormat).toBeDefined();
+    expect(schema.CommandWarning).toBeDefined();
+    expect(schema.CommandResultEnvelope).toBeDefined();
+    expect(schema.StreamFrame).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
     expect(schema.assertPublicSchemaAnnotations).toBeDefined();

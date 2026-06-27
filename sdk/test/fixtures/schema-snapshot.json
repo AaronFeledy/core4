@@ -2363,6 +2363,42 @@
       "jsonSchemaPath": "dist/schemas/interaction-service-contribution.json",
       "packageExport": "@lando/sdk/schema#InteractionServiceContribution",
       "title": "Interaction Service Contribution"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Command Result Format.",
+      "docsPath": "docs/reference/schemas/command-result-format.mdx",
+      "id": "CommandResultFormat",
+      "jsonSchemaPath": "dist/schemas/command-result-format.json",
+      "packageExport": "@lando/sdk/schema#CommandResultFormat",
+      "title": "Command Result Format"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Command Warning.",
+      "docsPath": "docs/reference/schemas/command-warning.mdx",
+      "id": "CommandWarning",
+      "jsonSchemaPath": "dist/schemas/command-warning.json",
+      "packageExport": "@lando/sdk/schema#CommandWarning",
+      "title": "Command Warning"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Command Result Envelope.",
+      "docsPath": "docs/reference/schemas/command-result-envelope.mdx",
+      "id": "CommandResultEnvelope",
+      "jsonSchemaPath": "dist/schemas/command-result-envelope.json",
+      "packageExport": "@lando/sdk/schema#CommandResultEnvelope",
+      "title": "Command Result Envelope"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Stream Frame.",
+      "docsPath": "docs/reference/schemas/stream-frame.mdx",
+      "id": "StreamFrame",
+      "jsonSchemaPath": "dist/schemas/stream-frame.json",
+      "packageExport": "@lando/sdk/schema#StreamFrame",
+      "title": "Stream Frame"
     }
   ],
   "scope": {
@@ -2612,7 +2648,11 @@
       "MessageErrorEvent",
       "PaintBannerEvent",
       "PromptSpec",
-      "InteractionServiceContribution"
+      "InteractionServiceContribution",
+      "CommandResultFormat",
+      "CommandWarning",
+      "CommandResultEnvelope",
+      "StreamFrame"
     ]
   },
   "sdkSchemas": {
@@ -3817,6 +3857,170 @@
       "required": ["_tag", "commandId", "timestamp"],
       "type": "object"
     },
+    "CommandResultEnvelope": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        },
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        },
+        "DeprecationUse": {
+          "additionalProperties": false,
+          "description": "A recorded runtime use of a deprecated public surface.",
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "callsite": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "command",
+                "flag",
+                "arg",
+                "tooling-task",
+                "recipe",
+                "recipe-prompt",
+                "landofile-key",
+                "config-key",
+                "env-override",
+                "schema",
+                "schema-field",
+                "event",
+                "event-field",
+                "render-event",
+                "service-type",
+                "service-feature",
+                "route-filter",
+                "provider-extension",
+                "manifest-field",
+                "manifest-contribution",
+                "plugin",
+                "export",
+                "tagged-error"
+              ],
+              "type": "string"
+            },
+            "notice": {
+              "$ref": "#/$defs/DeprecationNotice"
+            },
+            "plugin": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["kind", "id", "notice", "timestamp"],
+          "title": "Deprecation Use",
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "enum": ["v4"],
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "deprecations": {
+          "items": {
+            "$ref": "#/$defs/DeprecationUse"
+          },
+          "type": "array"
+        },
+        "error": {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "remediation": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "message"],
+          "type": "object"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "result": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "remediation": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["apiVersion", "command", "ok", "warnings", "deprecations"],
+      "type": "object"
+    },
+    "CommandResultFormat": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["text", "json", "table", "yaml", "ndjson"],
+      "type": "string"
+    },
     "CommandSpec": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "anyOf": [
@@ -3830,6 +4034,23 @@
           "type": "array"
         }
       ]
+    },
+    "CommandWarning": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": ["code", "message"],
+      "type": "object"
     },
     "ConfigLintResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -23112,6 +23333,232 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["service", "app", "global"],
       "type": "string"
+    },
+    "StreamFrame": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        },
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        },
+        "DeprecationUse": {
+          "additionalProperties": false,
+          "description": "A recorded runtime use of a deprecated public surface.",
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "callsite": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "command",
+                "flag",
+                "arg",
+                "tooling-task",
+                "recipe",
+                "recipe-prompt",
+                "landofile-key",
+                "config-key",
+                "env-override",
+                "schema",
+                "schema-field",
+                "event",
+                "event-field",
+                "render-event",
+                "service-type",
+                "service-feature",
+                "route-filter",
+                "provider-extension",
+                "manifest-field",
+                "manifest-contribution",
+                "plugin",
+                "export",
+                "tagged-error"
+              ],
+              "type": "string"
+            },
+            "notice": {
+              "$ref": "#/$defs/DeprecationNotice"
+            },
+            "plugin": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["kind", "id", "notice", "timestamp"],
+          "title": "Deprecation Use",
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["stdout"],
+              "type": "string"
+            },
+            "chunk": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "chunk"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["stderr"],
+              "type": "string"
+            },
+            "chunk": {
+              "type": "string"
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "chunk"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["event"],
+              "type": "string"
+            },
+            "event": {
+              "type": "string"
+            },
+            "payload": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            }
+          },
+          "required": ["_tag", "event", "payload"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["result"],
+              "type": "string"
+            },
+            "envelope": {
+              "additionalProperties": false,
+              "properties": {
+                "apiVersion": {
+                  "enum": ["v4"],
+                  "type": "string"
+                },
+                "command": {
+                  "type": "string"
+                },
+                "deprecations": {
+                  "items": {
+                    "$ref": "#/$defs/DeprecationUse"
+                  },
+                  "type": "array"
+                },
+                "error": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "remediation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "message"],
+                  "type": "object"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "result": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "warnings": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": "string"
+                      },
+                      "remediation": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["code", "message"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": ["apiVersion", "command", "ok", "warnings", "deprecations"],
+              "type": "object"
+            }
+          },
+          "required": ["_tag", "envelope"],
+          "type": "object"
+        }
+      ]
     },
     "SyncResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",

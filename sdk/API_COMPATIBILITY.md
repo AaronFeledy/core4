@@ -35,7 +35,10 @@
 - `BuildStep`
 - `BunShellScriptFrontMatter`
 - `CertificatePlan`
+- `CommandResultEnvelope`
+- `CommandResultFormat`
 - `CommandSpec`
+- `CommandWarning`
 - `COMPOSE_DEPRECATED_TOP_LEVEL_KEYS`
 - `COMPOSE_EXTENSION_TOP_LEVEL_PATTERN`
 - `COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY`
@@ -174,6 +177,7 @@
 - `StepProps`
 - `StorageInput`
 - `StorageScope`
+- `StreamFrame`
 - `TabProps`
 - `TabsProps`
 - `TelemetryConfig`

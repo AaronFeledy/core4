@@ -23,6 +23,7 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="featureHostFacts" value="host?: ServiceTypeHostFacts" display="Service feature handlers can read planner-supplied host identity facts from ServiceFeatureContext.host when filesystem ownership, home directory, or platform-specific behavior must match the target host" />
       <Variable name="landofileSdkSerializer" value="@lando/sdk/landofile" display="Plugin and library hosts can use the published SDK Landofile parser/emitter for byte-stable encoded round trips; invalid keys, cycles, and exotic values fail as tagged serializer errors" />
       <Variable name="landofileSerializer" value="@lando/core/landofile" display="Embedding hosts that already depend on @lando/core can import the canonical Landofile parse/emit helpers from @lando/core/landofile instead of reaching into core internals" />
+      <Variable name="machineOutputSchemas" value="CommandResultEnvelope|CommandWarning|CommandResultFormat|StreamFrame" display="Plugin, agent, and embedding hosts can validate future command JSON and NDJSON output with the published machine-output schemas from @lando/sdk/schema" />
     </Step>
   </Scenario>
 
