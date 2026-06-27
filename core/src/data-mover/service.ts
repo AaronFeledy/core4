@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, relative } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
@@ -336,8 +336,21 @@ const ensureInsideRoot = (path: string) =>
           path,
         }),
     });
+    const normalized = resolve(path);
+    const relativeNormalized = relative(root, normalized);
+    if (relativeNormalized.startsWith("..") || isAbsolute(relativeNormalized)) {
+      return yield* Effect.fail(
+        new DataSourceOutsideRootError({
+          message: "Host data endpoint escapes the permitted app root.",
+          path,
+          base: root,
+          remediation:
+            "Move the source/destination inside the app root or use an explicitly trusted endpoint.",
+        }),
+      );
+    }
     const existing = yield* Effect.tryPromise({
-      try: () => realpathNearestExisting(path),
+      try: () => realpathNearestExisting(normalized),
       catch: () =>
         new DataSourceOutsideRootError({
           message: "Failed to resolve host data endpoint.",

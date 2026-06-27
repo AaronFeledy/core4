@@ -713,6 +713,34 @@ describe("DataMoverLive", () => {
           expect(outsideExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
         }
 
+        const traversalTarget = `${dir}/missing/../../../host-root-bypass.txt`;
+        const escapedTarget = resolve(traversalTarget);
+        const traversalExit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(inside) },
+                to: { _tag: "hostPath", path: absolute(traversalTarget) },
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(traversalExit._tag).toBe("Failure");
+        if (traversalExit._tag === "Failure" && traversalExit.cause._tag === "Fail") {
+          expect(traversalExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        }
+        const escapedReadExit = await Effect.runPromiseExit(
+          Effect.tryPromise(() => readFile(escapedTarget, "utf8")),
+        );
+        expect(escapedReadExit._tag).toBe("Failure");
+
         const existsExit = await Effect.runPromiseExit(
           Effect.scoped(
             Effect.gen(function* () {
