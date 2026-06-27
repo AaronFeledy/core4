@@ -6054,26 +6054,18 @@ export const runDoctorCheckContractSuite = (
     }
 
     if (harness.expectedIssue) {
-      const match = result.issues.find((issue) => issue.severity === harness.expectedIssue?.severity);
+      const expected = harness.expectedIssue;
+      const match = result.issues.find(
+        (issue) =>
+          issue.severity === expected.severity &&
+          issue.solutionKind === expected.solutionKind &&
+          (expected.contextKey === undefined || expected.contextKey in issue.context),
+      );
       yield* requireDoctorCheckContract(
         match !== undefined,
-        `${label}: run reports an issue with the expected severity`,
-        { expected: harness.expectedIssue, issues: result.issues },
+        `${label}: run reports an issue matching the expected shape`,
+        { expected, issues: result.issues },
       );
-      if (match) {
-        yield* requireDoctorCheckContract(
-          match.solutionKind === harness.expectedIssue.solutionKind,
-          `${label}: the expected issue carries the expected solution kind`,
-          { expected: harness.expectedIssue, match },
-        );
-        if (harness.expectedIssue.contextKey) {
-          yield* requireDoctorCheckContract(
-            harness.expectedIssue.contextKey in match.context,
-            `${label}: the expected issue context carries the expected key`,
-            { key: harness.expectedIssue.contextKey, context: match.context },
-          );
-        }
-      }
     }
 
     // --- optional: default run is read-only ---

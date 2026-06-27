@@ -28,6 +28,40 @@ const manualWarningCheck = {
 };
 
 describe("Doctor check contract", () => {
+  test("expectedIssue matches by full shape when multiple issues share severity", async () => {
+    const multiWarningCheck = {
+      id: "multi-warning",
+      run: (): Effect.Effect<DoctorCheckResult, DoctorCheckError> =>
+        Effect.succeed({
+          id: "multi-warning",
+          issues: [
+            {
+              severity: "warning" as const,
+              context: { kind: "noise" },
+              solutionKind: "manual" as const,
+              solution: "Ignore.",
+            },
+            {
+              severity: "warning" as const,
+              context: { ca: "lando", trusted: "false" },
+              solutionKind: "manual" as const,
+              solution: "Trust the CA.",
+            },
+          ],
+        }),
+    };
+    const harness: DoctorCheckContractHarness = {
+      name: "multi-warning",
+      check: multiWarningCheck,
+      expectedIssue: { severity: "warning", contextKey: "ca", solutionKind: "manual" },
+    };
+    const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
+    if (exit._tag === "Failure") {
+      throw new Error(`Contract failure: ${JSON.stringify(exit.cause, null, 2)}`);
+    }
+    expect(exit._tag).toBe("Success");
+  });
+
   test("a reference check with a manual solution passes the contract", async () => {
     const harness: DoctorCheckContractHarness = {
       name: "ssl-cert",
