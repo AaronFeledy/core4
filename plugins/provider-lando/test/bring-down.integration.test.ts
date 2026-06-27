@@ -105,6 +105,12 @@ const makeFakeApi = () => {
           networks.add(requestedName);
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/volumes/create") {
+          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(requestedName);
+          volumes.add(requestedName);
+          return { status: existed ? 409 : 201, body: "{}" };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           const network = decodeURIComponent(request.path.slice("/networks/".length));
           const deleted = networks.delete(network);

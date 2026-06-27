@@ -592,3 +592,14 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:**
   - `storage[].kind` defaults decode onto every `DataStorePlan`, so exact typed fixtures that construct `AppPlan.stores` directly may need explicit `kind: "data"`.
 ---
+
+## 2026-06-27 14:31 CDT - US-341 Verify
+- Compiled binary built successfully with `cd core && bun run build`, but sandbox `./core/dist/lando setup` failed before scenario testing because the provider-lando runtime bundle could not be downloaded and no local `LANDO_RUNTIME_BUNDLE_MANIFEST`/staged runtime bundle artifacts were available in the worktree.
+- Blocker recorded: real compiled-binary setup and the end-to-end cache-volume scenario need a staged runtime bundle manifest (or reachable release bundle) before Verify can complete.
+---
+
+## 2026-06-27 14:45 CDT - US-341 Review
+- Review fixed cache-volume runtime materialization so direct Docker/provider-lando apply paths create planned volumes with `dev.lando.storage-kind: "cache"` labels and mount `service.storage` entries into containers.
+- Review notes (deferred/rejected): duplicate-authored-storage concern was not changed in this review pass; focused planner tests still cover cache storage normalization and no confirmed failing scenario was isolated.
+- Verification: typecheck and lint passed; focused container-runtime, provider-lando bring-up/bring-down, provider-docker contract, planner, destroy, and schema spot checks passed.
+---

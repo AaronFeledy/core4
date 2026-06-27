@@ -114,6 +114,12 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
           networks.add(requestedName);
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/volumes/create") {
+          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(requestedName);
+          volumes.add(requestedName);
+          return { status: existed ? 409 : 201, body: "{}" };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           const network = decodeURIComponent(request.path.slice("/networks/".length));
           const deleted = networks.delete(network);
@@ -257,6 +263,35 @@ describe("provider-lando bringUp", () => {
       { Name: "custom-app-net", Driver: "bridge" },
       { Name: "custom-shared-net", Driver: "bridge" },
     ]);
+  });
+
+  test("creates and mounts cache volumes with storage-kind labels", async () => {
+    const fake = makeFakeApi();
+    const cacheService: ServicePlan = {
+      ...node,
+      storage: [{ store: "lando-cache-npm", target: PortablePath.make("/home/node/.npm"), readOnly: false }],
+    };
+    const cachePlan: AppPlan = {
+      ...plan,
+      services: { [database.name]: database, [cacheService.name]: cacheService },
+      stores: [{ name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" }],
+    };
+
+    await Effect.runPromise(bringUp(cachePlan, { podmanApi: fake.api }));
+
+    const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
+    expect(volumeCreate?.body).toEqual({
+      Name: "lando-cache-npm",
+      Labels: { "dev.lando.storage-kind": "cache" },
+    });
+    const nodeCreate = fake.calls.find(
+      (call) =>
+        call.method === "POST" &&
+        call.path.startsWith("/containers/create") &&
+        new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
+    );
+    const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
+    expect(nodeCreateBody?.HostConfig?.Binds).toContain("lando-cache-npm:/home/node/.npm");
   });
 
   test("omits shared Podman network membership when typed shared membership is absent", async () => {

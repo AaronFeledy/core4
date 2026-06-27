@@ -710,6 +710,31 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
+const volumeLabels = (store: AppPlan["stores"][number]): Readonly<Record<string, string>> | undefined =>
+  store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+
+const ensureVolume = (api: DockerApiClient, store: AppPlan["stores"][number]) =>
+  request(api, "apply", {
+    method: "POST",
+    path: "/volumes/create",
+    body: {
+      Name: store.name,
+      ...(volumeLabels(store) === undefined ? {} : { Labels: volumeLabels(store) }),
+    },
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.status === 201 || response.status === 200 || response.status === 409
+        ? Effect.void
+        : Effect.fail(
+            unavailable(
+              "apply.volume",
+              `Docker volume create failed with HTTP ${response.status}.`,
+              response,
+            ),
+          ),
+    ),
+  );
+
 const inspectContainer = (api: DockerApiClient, name: string) =>
   Effect.gen(function* () {
     const response = yield* request(api, "inspect", {
@@ -843,6 +868,7 @@ const rollbackPartialApply = (
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
+    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, store), { discard: true });
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: string[] = [];
     let changed = false;
