@@ -59,6 +59,8 @@ const captureEventLayer = (events: LandoEvent[]) =>
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
   } satisfies EventService.Service);
 
 const capturingDownloaderEvents = (): {
@@ -71,6 +73,8 @@ const capturingDownloaderEvents = (): {
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
     waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
   } satisfies EventService.Service;
   return { events: makeLiveDownloaderEvents(Option.some(eventService)), captured };
 };

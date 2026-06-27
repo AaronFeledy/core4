@@ -86,6 +86,9 @@ describe("@lando/core/testing package export", () => {
     expect(testing.withScenarioContext).toBeFunction();
     expect(testing.ScenarioContextFactory).toBeDefined();
     expect(testing.makeTestInteractionService).toBeFunction();
+    expect(testing.expectEvent).toBeFunction();
+    expect(testing.waitForEvent).toBeFunction();
+    expect(testing.recordedEvents).toBeFunction();
     expect(testing.TestClock).toBeDefined();
     expect(testing.TestContext).toBeDefined();
     expect(testingTypeExportCheck.options).toEqual({});

@@ -100,7 +100,13 @@ import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
 import type { DataMoverShape } from "./data-transfer.ts";
 import type { DownloaderShape } from "./downloader.ts";
-import type { LandoEvent } from "./events.ts";
+import type {
+  EventFor,
+  EventWaitAnyOptions,
+  EventWaitOptions,
+  EventWaitSpecs,
+  LandoEvent,
+} from "./events.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
@@ -487,17 +493,20 @@ export declare class EventService extends Context.Tag("@lando/core/EventService"
   EventService,
   {
     readonly publish: (event: LandoEvent) => Effect.Effect<void, EventError>;
-    readonly subscribe: (name: string) => Stream.Stream<LandoEvent, EventError>;
-    /**
-     * Eagerly acquires a `PubSub` subscription queue in the caller's `Scope`
-     * so consumers that need the first event must use it instead of the lazy
-     * `subscribe` stream.
-     */
+    readonly subscribe: <Name extends string>(name: Name) => Stream.Stream<EventFor<Name>, EventError>;
     readonly subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>;
-    readonly waitFor: (
-      name: string,
-      filter?: (event: LandoEvent) => boolean,
-    ) => Effect.Effect<LandoEvent, EventError>;
+    readonly waitFor: <Name extends string>(
+      name: Name,
+      options?: EventWaitOptions<Name>,
+    ) => Effect.Effect<EventFor<Name>, EventError>;
+    readonly waitForAny: <const Names extends readonly string[]>(
+      specs: EventWaitSpecs<Names>,
+      options?: EventWaitAnyOptions,
+    ) => Effect.Effect<EventFor<Names[number] & string>, EventError>;
+    readonly query: <Name extends string>(
+      name: Name,
+      filter?: (event: EventFor<Name>) => boolean,
+    ) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>;
   }
 >() {}
 

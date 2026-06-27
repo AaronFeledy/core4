@@ -20,6 +20,8 @@ describe("redaction integration on emitting surfaces", () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
     } satisfies EventService.Service);
     const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
 
