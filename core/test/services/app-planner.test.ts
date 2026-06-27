@@ -1263,6 +1263,112 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("plans cache storage as cross-app lando-cache volumes with destination-derived keys", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "cacheapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            storage: [
+              {
+                store: "npm-cache",
+                target: "/home/node/.npm",
+                kind: "cache",
+              },
+              {
+                store: "composer-cache",
+                target: "/tmp/composer/cache",
+                kind: "cache",
+                key: "php-deps",
+              },
+            ],
+          },
+        },
+      });
+
+      expect(appPlan.services[ServiceName.make("web")]?.storage.map((mount) => mount.store)).toEqual(
+        expect.arrayContaining(["lando-cache-home-node-npm", "lando-cache-php-deps"]),
+      );
+      expect(appPlan.stores.filter((store) => store.kind === "cache")).toEqual([
+        { name: "lando-cache-home-node-npm", scope: "global", kind: "cache", key: "home-node-npm" },
+        { name: "lando-cache-php-deps", scope: "global", kind: "cache", key: "php-deps" },
+      ]);
+    });
+  });
+
+  test("skips authored storage mounts whose container path is already in the service plan", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "overlapapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            volumes: ["worker-cache:/var/cache"],
+            storage: [
+              {
+                store: "worker-cache",
+                target: "/var/cache",
+                kind: "cache",
+              },
+              {
+                store: "extra-data",
+                target: "/data/extra",
+              },
+            ],
+          },
+        },
+      });
+
+      const webStorage = appPlan.services[ServiceName.make("web")]?.storage ?? [];
+      expect(webStorage.filter((mount) => String(mount.target) === "/var/cache")).toEqual([
+        { store: "overlapapp-worker-cache", target: PortablePath.make("/var/cache"), readOnly: false },
+      ]);
+      expect(webStorage.map((mount) => mount.store)).toEqual(
+        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+      );
+      expect(appPlan.stores.map((store) => store.name)).toEqual(
+        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+      );
+      expect(appPlan.stores.some((store) => store.name === "lando-cache-var-cache")).toBe(false);
+    });
+  });
+
+  test("rejects service-scoped cache storage because cache volumes are global by nature", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "badcache",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "node:22",
+            storage: [
+              {
+                store: "npm-cache",
+                target: "/home/node/.npm",
+                scope: "service",
+                kind: "cache",
+              },
+            ],
+          },
+        },
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.message).toContain("kind: cache");
+        expect(failure.message).toContain("scope: service");
+        expect(failure.issues).toContain("services.web.storage[0].scope");
+      }
+    });
+  });
+
   test("fails before apply when service storage requires an unsupported provider capability", async () => {
     await withTempCwd(async () => {
       const exit = await planExit(

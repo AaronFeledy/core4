@@ -241,6 +241,7 @@ export interface RuntimeProviderShape {
 
 export interface DestroyOptions {
   readonly volumes: boolean;
+  readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }
 

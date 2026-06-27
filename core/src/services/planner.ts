@@ -15,6 +15,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  type DataStoreMountPlan,
   type FileSyncPlan,
   type FileSyncSessionSpec,
   type LandofileShape,
@@ -392,22 +393,81 @@ const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, L
 
 type AuthoredStorageInfo = {
   readonly scope: StorageScope;
+  readonly kind: "data" | "cache";
+  readonly key?: string;
 };
 
+const cacheStorageKey = (target: string, key: string | undefined): string => key ?? kebab(target);
+
+const cacheStoreName = (target: string, key: string | undefined): string =>
+  `lando-cache-${cacheStorageKey(target, key)}`;
+
 const authoredStorageScopes = (
+  appRoot: string,
+  serviceName: string,
   service: ServiceConfig,
-): { byStore: Map<string, AuthoredStorageInfo>; globalEntry?: { index: number; store?: string } } => {
+): {
+  byStore: Map<string, AuthoredStorageInfo>;
+  globalEntry?: { index: number; store?: string };
+  invalidCacheEntry?: LandofileValidationError;
+} => {
   const byStore = new Map<string, AuthoredStorageInfo>();
   const entries = service.storage ?? [];
   for (const [index, entry] of entries.entries()) {
     if (typeof entry === "string") continue;
+    if (entry.kind === "cache" && entry.scope === "service") {
+      return {
+        byStore,
+        invalidCacheEntry: new LandofileValidationError({
+          message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+          file: `${appRoot}/.lando.yml`,
+          issues: [`services.${serviceName}.storage[${index}].scope`],
+        }),
+      };
+    }
+    const kind = entry.kind ?? "data";
+    const key = kind === "cache" ? cacheStorageKey(entry.target, entry.key) : entry.key;
+    const storeName = kind === "cache" ? cacheStoreName(entry.target, entry.key) : entry.store;
     const scope = entry.scope ?? "service";
-    if (scope === "global") {
+    if (scope === "global" && kind !== "cache") {
       return { byStore, globalEntry: { index, store: entry.store } };
     }
-    byStore.set(entry.store, { scope });
+    byStore.set(storeName, {
+      scope: kind === "cache" ? "global" : scope,
+      kind,
+      ...(key === undefined ? {} : { key }),
+    });
   }
   return { byStore };
+};
+
+const storageMountTargetKey = (target: PortablePath): string => String(target);
+
+const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+  const authored = service.storage ?? [];
+  if (authored.length === 0) return servicePlan;
+  const occupiedTargets = new Set(servicePlan.storage.map((mount) => storageMountTargetKey(mount.target)));
+  const additions: DataStoreMountPlan[] = [];
+  for (const entry of authored) {
+    const target = typeof entry === "string" ? entry : entry.target;
+    const mountTarget = PortablePath.make(target);
+    const targetKey = storageMountTargetKey(mountTarget);
+    if (occupiedTargets.has(targetKey)) continue;
+    occupiedTargets.add(targetKey);
+    const store =
+      typeof entry === "string"
+        ? kebab(target)
+        : entry.kind === "cache"
+          ? cacheStoreName(target, entry.key)
+          : entry.store;
+    additions.push({
+      store,
+      target: mountTarget,
+      readOnly: typeof entry === "string" ? false : (entry.readOnly ?? false),
+    });
+  }
+  if (additions.length === 0) return servicePlan;
+  return { ...servicePlan, storage: [...servicePlan.storage, ...additions] };
 };
 
 const rejectGlobalScope = (
@@ -671,15 +731,25 @@ const planApp = (
   };
   const services: Record<string, unknown> = {};
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
-  const aggregatedStores: Array<{ name: string; scope: StorageScope }> = [];
+  const aggregatedStores: Array<{
+    name: string;
+    scope: StorageScope;
+    kind?: "data" | "cache";
+    key?: string;
+  }> = [];
   const fileSyncEntries: Array<FileSyncPlan> = [];
   const aggregatedRoutes: Array<RoutePlan> = [];
   const seenStoreNames = new Set<string>();
 
-  const pushStore = (name: string, scope: StorageScope): void => {
+  const pushStore = (
+    name: string,
+    scope: StorageScope,
+    kind: "data" | "cache" = "data",
+    key?: string,
+  ): void => {
     if (seenStoreNames.has(name)) return;
     seenStoreNames.add(name);
-    aggregatedStores.push({ name, scope });
+    aggregatedStores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
   };
 
   return Effect.gen(function* () {
@@ -746,7 +816,10 @@ const planApp = (
     // verbatim in phase B on a cache miss; resolve() is never called twice.
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
-      const authored = authoredStorageScopes(service);
+      const authored = authoredStorageScopes(appRoot, name, service);
+      if (authored.invalidCacheEntry !== undefined) {
+        yield* Effect.fail(authored.invalidCacheEntry);
+      }
       if (authored.globalEntry !== undefined) {
         yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
       }
@@ -898,8 +971,8 @@ const planApp = (
           features,
         }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       });
-      const servicePlan = applyAuthoredHealthcheck(
-        applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service),
+      const servicePlan = applyAuthoredStorage(
+        applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
         service,
       );
       plannedServiceDrafts.push({
@@ -1019,7 +1092,12 @@ const planApp = (
 
       for (const mount of servicePlanWithCapabilityRealization.storage) {
         const authoredInfo = authored.byStore.get(mount.store);
-        pushStore(mount.store, authoredInfo?.scope ?? "service");
+        pushStore(
+          mount.store,
+          authoredInfo?.scope ?? "service",
+          authoredInfo?.kind ?? "data",
+          authoredInfo?.key,
+        );
       }
 
       if (fileSyncEngineId !== undefined) {

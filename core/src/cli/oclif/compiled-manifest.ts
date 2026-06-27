@@ -178,6 +178,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "purge-caches": {
+          description: "Remove cache storage volumes.",
+          name: "purge-caches",
+          allowNo: false,
+          type: "boolean",
+        },
         yes: {
           char: "y",
           description: "Skip the confirmation prompt (no-op until interactive prompts land).",

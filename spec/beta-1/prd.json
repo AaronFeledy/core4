@@ -2547,8 +2547,8 @@
         "Lint passes."
       ],
       "priority": 142,
-      "passes": false,
-      "notes": "Data-movement primitive / storage-plane (spec \u00a76.5). Depends on US-337."
+      "passes": true,
+      "notes": "Cache-volume storage kind shipped: DataStorePlan and Landofile storage input carry kind/key, planner normalizes cache entries to lando-cache-<key> global stores and rejects scope: service, provider-lando labels cache volumes, and destroy removes cache stores only with --purge-caches."
     },
     {
       "id": "US-342",

@@ -1116,6 +1116,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DataStoreMountPlan.target",
   "DataStorePlan.driver",
   "DataStorePlan.driverOpts",
+  "DataStorePlan.key",
+  "DataStorePlan.kind",
   "DataStorePlan.name",
   "DataStorePlan.scope",
   "DependencyPlan.condition",

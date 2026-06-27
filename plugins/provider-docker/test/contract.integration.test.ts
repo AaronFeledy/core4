@@ -107,6 +107,7 @@ const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
+  const volumes = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -117,6 +118,12 @@ const makeFakeApi = () => {
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
+        }
+        if (request.path === "/volumes/create") {
+          const name = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(name);
+          volumes.add(name);
+          return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.path === "/networks/lando_bridge_network/connect") {
           return { status: 200, body: "{}" };
@@ -230,6 +237,12 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           return { status: 204, body: "" };
         }
+        if (request.path === "/volumes/create") {
+          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const existed = volumes.has(requestedName);
+          volumes.add(requestedName);
+          return { status: existed ? 409 : 201, body: "{}" };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
           const volName = decodeURIComponent(request.path.slice("/volumes/".length));
           const deleted = volumes.delete(volName);
@@ -333,7 +346,12 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   services: { [dbServiceName]: makeDbService(), [serviceName]: makeService() },
   routes: [],
   networks: [],
-  stores: opts.includeStores ? [{ name: "myapp_db_data", scope: "app" as const }] : [],
+  stores: opts.includeStores
+    ? [
+        { name: "myapp_db_data", scope: "app" as const },
+        { name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" },
+      ]
+    : [],
   metadata,
   extensions: {},
 });
@@ -678,6 +696,36 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(compose).toContain('name: "lando-myapp"');
   });
 
+  test("creates and mounts cache volumes with storage-kind labels", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const service = {
+      ...makeService(),
+      storage: [{ store: "lando-cache-npm", target: PortablePath.make("/home/node/.npm"), readOnly: false }],
+    };
+    const plan = {
+      ...makePlan(service),
+      stores: [{ name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" }],
+    };
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+
+    const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
+    expect(volumeCreate?.body).toEqual({
+      Name: "lando-cache-npm",
+      Labels: { "dev.lando.storage-kind": "cache" },
+    });
+    const containerCreate = fake.calls.find(
+      (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+    );
+    expect(
+      (containerCreate?.body as { HostConfig?: { Binds?: ReadonlyArray<string> } } | undefined)?.HostConfig
+        ?.Binds,
+    ).toContain("lando-cache-npm:/home/node/.npm");
+  });
+
   test("emits compose networks from typed NetworkingPlan", () => {
     const compose = renderCompose({
       ...makePlan(),
@@ -992,10 +1040,10 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError.message).toContain("APP_TOKEN=[redacted]");
   });
 
-  test("destroy with volumes:true removes app-scoped volumes; default preserves them", async () => {
+  test("destroy removes cache volumes only when purgeCaches is requested", async () => {
     const plan = makeMultiServicePlan({ includeStores: true });
 
-    const fake1 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const fake1 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
     const provider1 = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake1.api }))),
     );
@@ -1003,11 +1051,12 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider1.destroy({ app: appId }, { volumes: false }));
 
     expect(fake1.volumes.has("myapp_db_data")).toBe(true);
+    expect(fake1.volumes.has("lando-cache-npm")).toBe(true);
     expect(fake1.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
     );
 
-    const fake2 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const fake2 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
     const provider2 = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake2.api }))),
     );
@@ -1015,8 +1064,19 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(provider2.destroy({ app: appId }, { volumes: true }));
 
     expect(fake2.volumes.has("myapp_db_data")).toBe(false);
+    expect(fake2.volumes.has("lando-cache-npm")).toBe(true);
     expect(fake2.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       true,
     );
+
+    const fake3 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data", "lando-cache-npm"]) });
+    const provider3 = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake3.api }))),
+    );
+    await Effect.runPromise(Effect.scoped(provider3.apply(plan, { reconcile: true })));
+    await Effect.runPromise(provider3.destroy({ app: appId }, { volumes: false, purgeCaches: true }));
+
+    expect(fake3.volumes.has("myapp_db_data")).toBe(true);
+    expect(fake3.volumes.has("lando-cache-npm")).toBe(false);
   });
 });

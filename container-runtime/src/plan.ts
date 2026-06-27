@@ -80,7 +80,10 @@ export const bindMountStrings = (
         : mount.source;
     return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
-  return Array.from(new Set([...appMounts, ...binds]));
+  const storage = service.storage.map(
+    (storeMount) => `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`,
+  );
+  return Array.from(new Set([...appMounts, ...binds, ...storage]));
 };
 
 export const containerPortBindings = (
