@@ -192,7 +192,16 @@ const analyzeModuleBindings = (
     ) {
       const moduleName = node.moduleSpecifier.text;
       const exportClause = node.exportClause;
-      if (exportClause !== undefined && ts.isNamedExports(exportClause)) {
+      if (exportClause === undefined) {
+        if (moduleName.startsWith(".") || moduleName.startsWith("/")) {
+          const resolved = resolveRelativeExport(source.fileName, moduleName);
+          if (resolved !== undefined) {
+            for (const [exported, binding] of resolved.exports) {
+              registerExport(exported, binding);
+            }
+          }
+        }
+      } else if (ts.isNamedExports(exportClause)) {
         for (const element of exportClause.elements) {
           const exported = element.name.text;
           const imported = element.propertyName?.text ?? element.name.text;
@@ -236,6 +245,54 @@ const analyzeModuleBindings = (
   };
 };
 
+const bindingElementMemberName = (element: ts.BindingElement): string | undefined => {
+  if (element.dotDotDotToken !== undefined) return undefined;
+  if (element.propertyName !== undefined) {
+    if (ts.isIdentifier(element.propertyName)) return element.propertyName.text;
+    if (ts.isStringLiteral(element.propertyName)) return element.propertyName.text;
+    return undefined;
+  }
+  if (ts.isIdentifier(element.name)) return element.name.text;
+  return undefined;
+};
+
+const registerDestructuredNamespaceMembers = (
+  pattern: ts.ObjectBindingPattern,
+  namespaceKind: "effect" | "schedule",
+  effectLocal: Map<string, string>,
+  scheduleLocal: Map<string, string>,
+): void => {
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) continue;
+    const member = bindingElementMemberName(element);
+    if (member === undefined) continue;
+    const local = element.name.text;
+    if (namespaceKind === "effect") {
+      if (FORBIDDEN_EFFECT_MEMBERS.has(member)) effectLocal.set(local, member);
+      continue;
+    }
+    scheduleLocal.set(local, member);
+  }
+};
+
+const extendScopeFromVariableDeclaration = (
+  declaration: ts.VariableDeclaration,
+  effectAliases: ReadonlySet<string>,
+  scheduleAliases: ReadonlySet<string>,
+  effectLocal: Map<string, string>,
+  scheduleLocal: Map<string, string>,
+): void => {
+  const initializer = declaration.initializer;
+  if (initializer === undefined || !ts.isObjectBindingPattern(declaration.name)) return;
+  if (ts.isIdentifier(initializer) && effectAliases.has(initializer.text)) {
+    registerDestructuredNamespaceMembers(declaration.name, "effect", effectLocal, scheduleLocal);
+    return;
+  }
+  if (ts.isIdentifier(initializer) && scheduleAliases.has(initializer.text)) {
+    registerDestructuredNamespaceMembers(declaration.name, "schedule", effectLocal, scheduleLocal);
+  }
+};
+
 const scanFileWithBindings = (
   file: string,
   source: ts.SourceFile,
@@ -251,7 +308,45 @@ const scanFileWithBindings = (
 
   const isEffectAliasIdentifier = (node: ts.Identifier): boolean => effectAliases.has(node.text);
 
-  const visit = (node: ts.Node): void => {
+  const visitStatements = (
+    statements: ReadonlyArray<ts.Statement>,
+    effectLocal: Map<string, string>,
+    scheduleLocal: Map<string, string>,
+  ): void => {
+    const scopeEffectLocal = new Map(effectLocal);
+    const scopeScheduleLocal = new Map(scheduleLocal);
+    for (const statement of statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          extendScopeFromVariableDeclaration(
+            declaration,
+            effectAliases,
+            scheduleAliases,
+            scopeEffectLocal,
+            scopeScheduleLocal,
+          );
+        }
+        for (const declaration of statement.declarationList.declarations) {
+          if (declaration.initializer !== undefined) {
+            visit(declaration.initializer, scopeEffectLocal, scopeScheduleLocal);
+          }
+        }
+        continue;
+      }
+      visit(statement, scopeEffectLocal, scopeScheduleLocal);
+    }
+  };
+
+  const visit = (
+    node: ts.Node,
+    effectLocal: Map<string, string>,
+    scheduleLocal: Map<string, string>,
+  ): void => {
+    if (ts.isSourceFile(node) || ts.isBlock(node)) {
+      visitStatements(node.statements, effectLocal, scheduleLocal);
+      return;
+    }
+
     if (ts.isPropertyAccessExpression(node)) {
       const member = node.name.text;
 
@@ -278,17 +373,18 @@ const scanFileWithBindings = (
     }
 
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const effectMember = effectMemberAliases.get(node.expression.text);
+      const callee = node.expression.text;
+      const effectMember = effectMemberAliases.get(callee) ?? effectLocal.get(callee);
       if (effectMember !== undefined) record(node.expression, `Effect.${effectMember}`);
 
-      const scheduleMember = scheduleMemberAliases.get(node.expression.text);
+      const scheduleMember = scheduleMemberAliases.get(callee) ?? scheduleLocal.get(callee);
       if (scheduleMember !== undefined) record(node.expression, `Schedule.${scheduleMember}`);
     }
 
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, effectLocal, scheduleLocal));
   };
 
-  visit(source);
+  visit(source, new Map(), new Map());
   return offenders;
 };
 

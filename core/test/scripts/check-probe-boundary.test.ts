@@ -123,6 +123,62 @@ describe("probe boundary lint gate", () => {
     }
   });
 
+  test("reports destructured Effect.retry and Schedule members", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/x/destructure-effect.ts",
+        'import { Effect } from "effect"; const { retry } = Effect; export const r = retry(eff, sched);\n',
+      );
+      await write(
+        root,
+        "core/src/x/destructure-schedule.ts",
+        'import { Schedule } from "effect"; const { recurs } = Schedule; export const s = recurs(3);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/x/destructure-effect.ts:1:Effect.retry",
+        "core/src/x/destructure-schedule.ts:1:Schedule.recurs",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports export star barrel re-exports of forbidden bindings", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/x/inner.ts", 'export { retry } from "effect/Effect";\n');
+      await write(root, "core/src/x/star-barrel.ts", 'export * from "./inner";\n');
+      await write(
+        root,
+        "core/src/x/star-consumer.ts",
+        'import { retry } from "./star-barrel"; export const r = retry(eff, sched);\n',
+      );
+
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["core/src/x/star-consumer.ts:1:Effect.retry"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("reports barrel re-exports and Effect.Schedule chained access", async () => {
     const root = await makeFixtureRoot();
     try {
