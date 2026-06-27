@@ -7,6 +7,7 @@ import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   type DoctorCheckContractHarness,
+  DoctorCheckError,
   type DoctorCheckIssue,
   type DoctorCheckResult,
   runDoctorCheckContractSuite,
@@ -93,7 +94,14 @@ const selectedProviderCheck = (provider: RuntimeProviderShape) => ({
           }
           return toDoctorCheckResult(check);
         }),
-        Effect.orDie,
+        Effect.mapError(
+          (cause) =>
+            new DoctorCheckError({
+              message: "selected-provider doctor check failed",
+              check: "selected-provider",
+              cause,
+            }),
+        ),
       ),
 });
 

@@ -39,6 +39,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Architecture Boundaries
 
 - `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh schema snapshots with `bun run codegen:schema-snapshot`.
+- Each §4.2 plugin-abstraction contract suite from `@lando/sdk/test` must stay listed in `core/test/contract/plugin-abstraction-coverage.test.ts` and exercised by its documented core built-in invocation unless §4.2 says no built-in ships.
 - `@lando/core` owns runtime, planner, CLI, library API, generated bootstrap layers, and bundled-plugin wiring. CLI/runtime quirks live in `core/AGENTS.md`.
 - RemoteSource/Dataset contract freeze: keep the `Dataset` x `RemoteSource` split contract-only for Beta 1; it never syncs application code, and implementation belongs to the 4.1 feature wave.
 - Source CLI dispatch uses OCLIF; the compiled Bun `$bunfs` binary uses `runCompiledCli` in `core/src/cli/run.ts`. Keep behavior shared or updated in both paths and run parity tests when command routing changes.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import ts from "typescript";
 
 import * as sdkTest from "@lando/sdk/test";
 
@@ -113,8 +114,31 @@ const publishedMakeSuiteExports = (): ReadonlyArray<string> =>
     (name) => name.startsWith("make") && name.endsWith("ContractSuite"),
   );
 
+const kitMakeSuiteExports = (): ReadonlySet<string> =>
+  new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
+
 const readInvocationSource = (repoRelative: string): string =>
   readFileSync(resolve(REPO_ROOT, repoRelative), "utf8");
+
+const fileCallsExport = (repoRelative: string, exportName: string): boolean => {
+  const file = resolve(REPO_ROOT, repoRelative);
+  const source = ts.createSourceFile(file, readInvocationSource(repoRelative), ts.ScriptTarget.Latest, true);
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === exportName
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return found;
+};
 
 describe("§13.1 plugin-abstraction contract-kit layer coverage", () => {
   test("every manifest suite export exists on @lando/sdk/test", () => {
@@ -127,18 +151,7 @@ describe("§13.1 plugin-abstraction contract-kit layer coverage", () => {
 
   test("every published make*ContractSuite export is enumerated in the manifest", () => {
     const manifestMakeExports = new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
-    // The manifest tracks the SIX §4.2 plugin-abstraction suites. Other
-    // published suites (provider/file-sync/managed-file/downloader/etc.) are
-    // not §4.2 plugin-abstraction kit members and are covered elsewhere, so we
-    // assert manifest membership only for the six kit abstractions.
-    const KIT_MAKE_EXPORTS = new Set([
-      "makeToolingEngineContractSuite",
-      "makeRouteFilterContractSuite",
-      "makeSecretStoreContractSuite",
-      "makeConfigTranslatorContractSuite",
-      "makePluginSourceContractSuite",
-      "makeDoctorCheckContractSuite",
-    ]);
+    const KIT_MAKE_EXPORTS = kitMakeSuiteExports();
     const published = publishedMakeSuiteExports();
     for (const exportName of published) {
       if (KIT_MAKE_EXPORTS.has(exportName)) {
@@ -173,10 +186,9 @@ describe("§13.1 plugin-abstraction contract-kit layer coverage", () => {
         expect(file.startsWith("core/test/")).toBe(true);
         expect(file.startsWith("sdk/test/")).toBe(false);
         expect(existsSync(resolve(REPO_ROOT, file))).toBe(true);
-        const source = readInvocationSource(file);
-        // The file must actually call the suite (make or run form), so deleting
-        // the invocation body — not just the file — also fails the gate.
-        const callsSuite = source.includes(`${entry.makeExport}(`) || source.includes(`${entry.runExport}(`);
+        // The file must actually call the suite (make or run form), so a
+        // comment/string containing the name does not satisfy the gate.
+        const callsSuite = fileCallsExport(file, entry.makeExport) || fileCallsExport(file, entry.runExport);
         expect(callsSuite).toBe(true);
       }
     }

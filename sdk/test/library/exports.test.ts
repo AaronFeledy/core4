@@ -566,6 +566,18 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makePluginSourceContractSuite).toBeDefined();
   });
 
+  test("test entry point export gate lists every make*ContractSuite export", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+    const testSource = await readFile(import.meta.path, "utf8");
+    const exportedMakeSuites = Object.keys(sdkTest).filter(
+      (name) => name.startsWith("make") && name.endsWith("ContractSuite"),
+    );
+
+    for (const exportName of exportedMakeSuites) {
+      expect(testSource).toContain(`sdkTest.${exportName}`);
+    }
+  });
+
   test("test entry point exports the interaction contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 
