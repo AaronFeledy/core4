@@ -144,6 +144,14 @@
                 }
               ]
             },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
             "service": {
               "type": "string"
             }
@@ -318,6 +326,14 @@
                   "type": "array"
                 }
               ]
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
             },
             "service": {
               "type": "string"

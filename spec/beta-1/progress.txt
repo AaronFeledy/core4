@@ -437,6 +437,12 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck, lint, paths/share/tunnel/app-handle/dispatch focused tests passed; rebuilt compiled binary and reran sandbox no-provider share/list/stop smokes.
 ---
 
+## 2026-06-26 13:58 CDT - US-337
+- Implemented `DataMoverLive` as the provider-level byte-movement substrate: native service-path copies use the provider data plane, generic volume import/export uses the helper-container run/runStream path, host archive transfers now write/read real tar archives with verified SHA-256 persistence, and transfer/snapshot lifecycle events publish through the redacted EventService seam.
+- Added the in-memory `TestDataMover` for host/unit tests and wired DataMover into the generated provider bootstrap layer without adding a plugin contribution surface.
+- Verification: typecheck and lint passed; focused DataMover, runtime bootstrap, core testing export, SDK schema/export/backward-compat spot checks passed; reviewer gate returned unconditional approval.
+- **Learnings for future iterations:** Keep DataMover substrate stories split: US-337 owns dispatch/events/archive verification and the test double; the durable snapshot index remains US-338, and bundled-provider native implementations remain US-339. When adding new event union members, regenerate all LandoEvent schema artifacts together.
+---
 ## 2026-06-26 - US-316
 - Published `@lando/sdk/probe`, the pure §10.5.1 retry/backoff/timeout probe primitive: `RetryPolicy`/`ProbeOutcome`/`ProbeResult`/`ProbeSpecSchema` schemas, the `ProbeSpec`/`ClassifyFn` type contracts, and the pure `toSchedule(policy)` + `runProbe(spec, attempt)` helpers. `runProbe` stops at the first green, retries red/yellow per policy, and resolves with the last non-green `ProbeResult` on exhausted `maxAttempts` or elapsed `timeout` instead of failing the Effect; it performs no IO/logging/redaction and returns `lastError` verbatim for the consuming surface to redact. Exhaustion/timeout do not throw; a genuine defect surfaces a `ProbeError`.
 - Mirrored the `@lando/sdk/template` contracts-only pattern: `ProbeError` and its `ProbeTimeoutError` deadline sub-shape are tagged errors exported from the subpath, deliberately NOT on the frozen `@lando/sdk/errors` barrel, so no frozen error union widens and no JSON Schema is registered (schema-snapshot stays clean). The module imports only effect `Schema`/`Schedule`/`Effect`/`Clock`/`Duration`, constructs no `LandoRuntime`, and pulls no Layer — proven by an import-boundary test.
@@ -501,6 +507,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:**
   - A redaction dependency resolved with `Effect.serviceOption` must never fall back to emitting/retaining the raw value. For any buffer or sink that must stay redacted, use the dependency-free `createStandaloneRedactor(profile, options)` on the `None` branch so pattern + option-derived masking still applies; only exact secret-store values are unavailable without the service.
   - Keep the `None` and `Some` redaction branches reading one shared profile + options value, and centralize redactor-option construction in `core/src/redaction/service.ts` (`makeRedactorOptions`) so the service path and the standalone path cannot diverge in which env/proxy/token values they mask.
+---
+## 2026-06-26 23:55 CDT - US-337 Review
+- Review fixed DataMover acceptance blockers: `tar.zst` now uses Bun-native compression streams, `serviceCmd` dispatches through provider exec APIs with credentials carried in `env`, host containment uses cross-platform relative-path checks, and the RedactionService consumer list names DataMover.
+- Review notes (deferred/rejected): durable snapshot index/list/prune remains US-338; helper-image pinning and scratch migration remain US-340; provider-native bundled data-plane methods remain US-339.
+- Verification: typecheck and lint passed; focused DataMover, core testing export, public schema contract, and SDK backward-compatibility spot checks passed.
 ---
 ## [2026-06-27 00:31 CDT] - Babysit
 - PR: #473 https://github.com/AaronFeledy/core4/pull/473

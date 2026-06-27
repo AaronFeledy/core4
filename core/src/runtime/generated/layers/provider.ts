@@ -14,6 +14,7 @@
 import { Layer } from "effect";
 
 import { RuntimeProvider } from "@lando/sdk/services";
+import { DataMoverLive } from "../../../data-mover/service.ts";
 import { GlobalAppServiceLive } from "../../../global-app/service.ts";
 import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";
 import { RedactionServiceLive } from "../../../redaction/service.ts";
@@ -37,6 +38,15 @@ export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     pluginsRuntimeLive,
     eventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
+    DataMoverLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(RuntimeProvider, runtimeProviderService),
+          EventServiceLive,
+          RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
+        ),
+      ),
+    ),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );

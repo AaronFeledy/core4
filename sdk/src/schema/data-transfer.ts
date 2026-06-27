@@ -20,7 +20,12 @@ export const DataEndpoint = Schema.Union(
   Schema.TaggedStruct("stream", {}),
   Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
   Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }),
-  Schema.TaggedStruct("serviceCmd", { app: AppId, service: ServiceName, command: CommandSpec }),
+  Schema.TaggedStruct("serviceCmd", {
+    app: AppId,
+    service: ServiceName,
+    command: CommandSpec,
+    env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  }),
   Schema.TaggedStruct("artifact", { ref: Schema.String }),
 );
 export type DataEndpoint = typeof DataEndpoint.Type;
