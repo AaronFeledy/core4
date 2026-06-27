@@ -10,11 +10,14 @@ import {
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
   DataTargetExistsError,
+  ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
 import {
   DataMover,
+  type EventFor,
   EventService,
+  type EventWaitOptions,
   type ExecChunk,
   type LandoEvent,
   RuntimeProvider,
@@ -78,12 +81,23 @@ const captureEvents = () => {
       }),
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: (name, filter) =>
+    waitFor: <Name extends string>(name: Name, options?: EventWaitOptions<Name>) =>
       Effect.sync(() => {
-        const found = captured.find((event) => event.eventName === name && (filter?.(event) ?? true));
+        const found = captured.find(
+          (event): event is EventFor<Name> =>
+            event.eventName === name && (options?.filter?.(event as EventFor<Name>) ?? true),
+        );
         if (found === undefined) throw new Error(`missing event ${name}`);
         return found;
       }),
+    waitForAny: () => Effect.never,
+    query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
+      Effect.sync(() =>
+        captured.filter(
+          (event): event is EventFor<Name> =>
+            event.eventName === name && (filter?.(event as EventFor<Name>) ?? true),
+        ),
+      ),
   } satisfies Context.Tag.Service<typeof EventService>);
   return { layer: serviceLayer, events: () => [...captured] };
 };
@@ -221,6 +235,48 @@ describe("DataMoverLive", () => {
       expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
       expect(await readFile(restored, "utf8")).toBe("volume-payload");
       expect(result.exportResult.digest).toBeDefined();
+    });
+  });
+
+  test("imports to volumes when existence preflight is unavailable", async () => {
+    await withTempDir(async (dir) => {
+      const seed = join(dir, "seed.txt");
+      const restored = join(dir, "restored.txt");
+      await writeFile(seed, "unlisted-volume-payload");
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(seed) },
+              to: { _tag: "volume", app, store: "unlisted" },
+            });
+            yield* dataMover.transfer({
+              from: { _tag: "volume", app, store: "unlisted" },
+              to: { _tag: "hostPath", path: absolute(restored) },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              listVolumes: () =>
+                Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: "test",
+                    operation: "listVolumes",
+                    message: "volume listing unavailable",
+                  }),
+                ),
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(await readFile(restored, "utf8")).toBe("unlisted-volume-payload");
     });
   });
 
@@ -542,7 +598,13 @@ describe("DataMoverLive", () => {
           providerLayer({
             snapshotVolume: (spec) => {
               providerSnapshotId = spec.snapshotId;
-              return Effect.fail(new Error("snapshot failed"));
+              return Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "test",
+                  operation: "snapshotVolume",
+                  message: "snapshot failed",
+                }),
+              );
             },
           }),
         ),

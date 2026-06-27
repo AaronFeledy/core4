@@ -11,6 +11,7 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
+  ProviderUnavailableError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
 import {
@@ -599,9 +600,13 @@ const writeStreamToEndpoint = (
         return failUnsupported(spec.from, target, "ephemeral mounts are unavailable");
       return Effect.gen(function* () {
         if (spec.overwrite !== true) {
-          const volumes = yield* provider
-            .listVolumes({ app: target.app, store: target.store })
-            .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+          const volumes = yield* provider.listVolumes({ app: target.app, store: target.store }).pipe(
+            Effect.catchIf(
+              (cause) => cause instanceof ProviderUnavailableError,
+              () => Effect.succeed([]),
+            ),
+            Effect.mapError((cause) => providerFailure("listVolumes", cause)),
+          );
           if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
             return yield* Effect.fail(
               new DataTargetExistsError({
