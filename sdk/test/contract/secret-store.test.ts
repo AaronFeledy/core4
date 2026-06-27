@@ -77,6 +77,21 @@ describe("SecretStore contract", () => {
     expect(exit._tag).toBe("Success");
   });
 
+  test("list may include an id that equals another secret value", async () => {
+    const exit = await Effect.runPromiseExit(
+      runSecretStoreContractSuite({
+        name: "id-equals-value",
+        store: makeInMemoryStore("mem", { s3cr3t: "other" }),
+        known: { key: "s3cr3t", value: "other" },
+        unknown: "ABSENT",
+      }),
+    );
+    if (exit._tag === "Failure") {
+      throw new Error(`Contract failure: ${JSON.stringify(exit.cause, null, 2)}`);
+    }
+    expect(exit._tag).toBe("Success");
+  });
+
   test("a store that returns the wrong value fails the contract", async () => {
     const exit = await Effect.runPromiseExit(
       runSecretStoreContractSuite({

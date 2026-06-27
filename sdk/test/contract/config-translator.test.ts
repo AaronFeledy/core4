@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { AbsolutePath, type LandofileShape, PortablePath } from "@lando/sdk/schema";
@@ -67,11 +67,28 @@ describe("ConfigTranslator contract", () => {
   });
 
   test("optional options + mutation probes pass when supplied", async () => {
+    const optionsSchema = Schema.Struct({ engine: Schema.String });
+    const optionsAwareTranslator: ConfigTranslatorShape = {
+      ...mockTranslator,
+      translate: (input) => {
+        const decoded = Schema.decodeUnknownEither(optionsSchema)(input.options);
+        if (Either.isLeft(decoded)) {
+          return Effect.fail(
+            new ConfigTranslateError({
+              message: "invalid translator options",
+              translator: mockTranslator.id,
+            }),
+          );
+        }
+        return mockTranslator.translate(input);
+      },
+    };
+    const matchingWithOptions: ConfigTranslateInput = { ...matchingInput, options: { engine: "docker" } };
     const exit = await Effect.runPromiseExit(
       runConfigTranslatorContractSuite({
-        translator: mockTranslator,
-        matchingInput,
-        optionsSchema: Schema.Struct({ engine: Schema.String }),
+        translator: optionsAwareTranslator,
+        matchingInput: matchingWithOptions,
+        optionsSchema,
         invalidOptions: { engine: 42 },
         mutationProbe: {
           snapshot: Effect.succeed("clean"),
@@ -96,6 +113,18 @@ describe("ConfigTranslator contract", () => {
     };
     const exit = await Effect.runPromiseExit(
       runConfigTranslatorContractSuite({ translator: bad, matchingInput }),
+    );
+    expect(exit._tag).toBe("Failure");
+  });
+
+  test("a translator that accepts invalid options fails the contract", async () => {
+    const exit = await Effect.runPromiseExit(
+      runConfigTranslatorContractSuite({
+        translator: mockTranslator,
+        matchingInput,
+        optionsSchema: Schema.Struct({ engine: Schema.String }),
+        invalidOptions: { engine: 42 },
+      }),
     );
     expect(exit._tag).toBe("Failure");
   });

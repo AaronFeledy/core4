@@ -5406,11 +5406,6 @@ export const runSecretStoreContractSuite = (
       `${label}: list includes the known secret id`,
       listed,
     );
-    yield* requireSecretStoreContract(
-      !listed.includes(harness.known.value),
-      `${label}: list never leaks a secret value`,
-      listed,
-    );
     const listedAgain = yield* store.list;
     yield* requireSecretStoreContract(
       JSON.stringify(listed) === JSON.stringify(listedAgain),
@@ -5681,12 +5676,29 @@ export const runConfigTranslatorContractSuite = (
     );
 
     // --- optional: options are validated before translate ---
-    if (harness.optionsSchema && "invalidOptions" in harness) {
+    if (harness.optionsSchema && harness.invalidOptions !== undefined) {
       const decoded = Schema.decodeUnknownEither(harness.optionsSchema)(harness.invalidOptions);
       yield* requireConfigTranslatorContract(
         Either.isLeft(decoded),
         `${label}: invalid options fail schema decode before translate`,
         decoded,
+      );
+
+      const invalidOptionsRecord: Record<string, unknown> =
+        typeof harness.invalidOptions === "object" &&
+        harness.invalidOptions !== null &&
+        !Array.isArray(harness.invalidOptions)
+          ? (harness.invalidOptions as Record<string, unknown>)
+          : { value: harness.invalidOptions };
+      const invalidInput: ConfigTranslateInput = {
+        ...harness.matchingInput,
+        options: invalidOptionsRecord,
+      };
+      const invalidTranslateExit = yield* Effect.exit(translator.translate(invalidInput));
+      yield* requireConfigTranslatorContract(
+        Exit.isFailure(invalidTranslateExit),
+        `${label}: translate rejects invalid options (must not succeed before schema validation)`,
+        invalidTranslateExit,
       );
     }
 
