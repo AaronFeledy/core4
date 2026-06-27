@@ -15,7 +15,7 @@ export const expectEvent = <Name extends string>(
   options?: EventWaitOptions<Name>,
 ): Effect.Effect<EventFor<Name>, EventError, EventService> =>
   Effect.flatMap(EventService, (events) =>
-    events.waitFor(name, { timeout: DEFAULT_EXPECT_TIMEOUT, ...options }),
+    events.waitFor(name, { ...options, timeout: options?.timeout ?? DEFAULT_EXPECT_TIMEOUT }),
   );
 
 /**
