@@ -6,10 +6,10 @@ import ts from "typescript";
 import * as sdkTest from "@lando/sdk/test";
 
 /**
- * §13.1 plugin-SDK-contract layer-coverage gate.
+ * Plugin contract-kit layer-coverage gate.
  *
- * Each §4.2 plugin-abstraction that publishes a shared contract suite in
- * `@lando/sdk/test` must have at least one BUILT-IN invocation — a `core/test/**`
+ * Each plugin abstraction that publishes a shared contract suite in
+ * `@lando/sdk/test` must have at least one built-in invocation — a `core/test/**`
  * file that runs that suite against the shipped built-in implementation(s).
  *
  * This gate fails when:
@@ -21,9 +21,9 @@ import * as sdkTest from "@lando/sdk/test";
  *     of a real core built-in invocation.
  *
  * `defaultPolicy: "none-bundled"` is a principled exception, not a loophole:
- * §4.2 explicitly ships NO built-in for that abstraction (e.g. `ConfigTranslator`
- * — "None bundled by default"), so the SDK self-test is the only coverage that
- * can exist until a plugin ships one. The gate still requires its suite exports.
+ * core ships no bundled implementation for that abstraction (e.g. `ConfigTranslator`),
+ * so the SDK self-test is the only coverage that can exist until a plugin ships one.
+ * The gate still requires its suite exports.
  */
 
 type DefaultPolicy =
@@ -31,15 +31,15 @@ type DefaultPolicy =
   | "built-in"
   /**
    * The abstraction is schema-only in core today (no concrete pluggable class),
-   * so the built-in invocation runs the suite over the spec's documented
-   * reference transforms. Still a real `core/test/**` invocation.
+   * so the built-in invocation runs the suite over documented reference
+   * transforms. Still a real `core/test/**` invocation.
    */
   | "reference-mirror"
-  /** §4.2 ships NO built-in by default; only the SDK self-test can exist. */
+  /** No bundled built-in in core; only the SDK self-test can exist until a plugin contributes. */
   | "none-bundled";
 
 interface CoverageEntry {
-  /** The §4.2 abstraction name (matches the §13.1 / §4.2 row). */
+  /** Plugin-abstraction name (matches the contract-kit manifest row). */
   readonly abstraction: string;
   /** The `make*ContractSuite` export from `@lando/sdk/test`. */
   readonly makeExport: string;
@@ -57,9 +57,9 @@ interface CoverageEntry {
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
 
 /**
- * The canonical §4.2 plugin-abstraction contract-kit manifest. Adding a new
- * §4.2 abstraction with a published suite means adding a row here AND a built-in
- * invocation (unless §4.2 says "None bundled by default").
+ * Canonical plugin-abstraction contract-kit manifest. Adding a new abstraction
+ * with a published suite means adding a row here AND a built-in invocation
+ * (unless core ships none bundled by default).
  */
 const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
   {
@@ -87,8 +87,8 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "ConfigTranslator",
     makeExport: "makeConfigTranslatorContractSuite",
     runExport: "runConfigTranslatorContractSuite",
-    // §4.2: "None bundled by default" — core ships no ConfigTranslator; the SDK
-    // self-test is the only coverage until a plugin contributes one.
+    // None bundled by default — core ships no ConfigTranslator; the SDK self-test
+    // is the only coverage until a plugin contributes one.
     defaultPolicy: "none-bundled",
     invocationFiles: [],
   },
@@ -140,7 +140,7 @@ const fileCallsExport = (repoRelative: string, exportName: string): boolean => {
   return found;
 };
 
-describe("§13.1 plugin-abstraction contract-kit layer coverage", () => {
+describe("plugin-abstraction contract-kit layer coverage", () => {
   test("every manifest suite export exists on @lando/sdk/test", () => {
     const surface = sdkTest as Record<string, unknown>;
     for (const entry of COVERAGE_MANIFEST) {

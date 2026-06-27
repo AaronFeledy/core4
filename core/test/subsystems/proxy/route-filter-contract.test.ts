@@ -6,19 +6,19 @@ import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@l
 import { RouteFilterId } from "../../../src/subsystems/proxy/filter.ts";
 
 /**
- * §4.2 RouteFilter built-in invocation.
+ * RouteFilter built-in invocation.
  *
- * The `RouteFilter` abstraction ships SCHEMA-ONLY in core today
+ * The `RouteFilter` abstraction is schema-only in core today
  * (`core/src/subsystems/proxy/filter.ts` declares the `RouteFilterId` id enum and
  * a provider-neutral `RouteFilter` struct; a proxy plugin translates each filter
  * into its native middleware). The six documented built-ins —
  * `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`,
  * `addPrefix` — therefore have no concrete `apply` class in core. This file runs
- * the published RouteFilter contract suite over the spec's documented reference
- * transforms for those six built-ins, so the §13.1 layer-coverage gate has a real
- * built-in invocation and the contract guarantees (pure/deterministic/idempotent
- * transform, schema-validated options, stable ordering) are exercised against the
- * shipped id set rather than an arbitrary mock.
+ * the published RouteFilter contract suite over documented reference transforms
+ * for those six built-ins, so the layer-coverage gate has a real built-in
+ * invocation and the contract guarantees (pure/deterministic/idempotent transform,
+ * schema-validated options, stable ordering) are exercised against the shipped id
+ * set rather than an arbitrary mock.
  */
 
 const BUILT_IN_FILTER_IDS = [

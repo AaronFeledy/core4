@@ -16,13 +16,13 @@ import {
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 
 /**
- * §4.2 DoctorCheck built-in invocation.
+ * DoctorCheck built-in invocation.
  *
- * §4.2 ships "Built-in core checks for app config and selected-provider basics".
+ * Core ships built-in checks for app config and selected-provider basics.
  * Rather than fabricate a standalone `DoctorCheckShape`, this file adapts the
- * REAL `doctor()` command's `selected-provider` check (run against
+ * real `doctor()` command's `selected-provider` check (run against
  * `TestRuntimeProvider`) into the published `DoctorCheckContractHarness` shape,
- * so the §13.1 layer-coverage gate has a built-in invocation that exercises the
+ * so the layer-coverage gate has a built-in invocation that exercises the
  * actual shipped diagnostic rather than a mock.
  *
  * The core `DoctorCheck` severity vocabulary (`info` | `warn` | `error`) is
