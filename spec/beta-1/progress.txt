@@ -584,3 +584,21 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The core `DoctorCheck` severity vocabulary is `info|warn|error` and solution kind `automatic|manual`; the SDK `DoctorCheckContractHarness` uses `info|warning|error`. Map `warn -> warning` when adapting a real doctor check. `TestRuntimeProvider.getStatus` is `{running:true}`, so override it to `{running:false}` to exercise the selected-provider warning + manual remediation path.
   - GOTCHA: the Edit tool can corrupt a spec markdown file when `old_string` is anchored on a token containing `$` (e.g. `Bun.$`) — it truncated mid-token and injected a duplicate file header. Anchor spec-md edits on `$`-free prose; `git checkout <file>` cleanly reverts if it happens.
 ---
+
+## [2026-06-27 06:30:36 CDT] - Babysit
+- PR: #477 https://github.com/AaronFeledy/core4/pull/477
+- CI outcome: pass
+- Review feedback: fixed (Bugbot manifest gate issue fixed; every published `make*ContractSuite` now requires a coverage-manifest row, including TunnelService, RemoteSource, and Dataset)
+- Merge: merged (squash)
+---
+
+## 2026-06-27 - US-322
+- Published the four machine-output schemas in `@lando/sdk` (`sdk/src/schema/machine-output.ts`): `CommandResultFormat` (the `text|json|table|yaml|ndjson` literal), `CommandWarning` (advisory struct), `CommandResultEnvelope` (the universal `apiVersion:"v4"` result envelope reusing the existing `DeprecationUse` schema), and `StreamFrame` (the NDJSON `stdout|stderr|event|result` tagged union). Shapes match §8.11.1/§8.11.3 byte-for-byte.
+- Wired the full publication lockstep: barrel export from `@lando/sdk/schema`, transitive re-export through `@lando/core/schema`, registration in `rawPublicSchemaRegistry` + `PUBLIC_SCHEMA_DESCRIPTIONS` + `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` (`StreamFrame._tag` is the only union discriminant needing an exemption), `PUBLIC_SCHEMA_CONTRACT_FIXTURES`, `API_COMPATIBILITY.md` additive list, and the `exports`/round-trip test surfaces. Regenerated the schema snapshot and committed the new `dist/schemas/*.json` + `docs/reference/schemas/*.mdx` artifacts so the drift gate stays green.
+- Verification: typecheck, lint passed; spot checks passed for `machine-output`, `public-schema-contracts`, `library/exports`, `sdk-backward-compatibility`, `core/test/build/schema-snapshot` (drift gate), and `core/test/library/import-boundary`; `bun run codegen:schema-snapshot` re-run leaves `git diff --exit-code` clean on all generated paths.
+- **Learnings for future iterations:**
+  - This story is schema-only — it publishes the envelope/frame VOCABULARY but wires NONE of the consumers. `LandoCommandSpec.resultSchema` (US-323), the `encodeCommandResult` seam (US-324), the universal `--format`/`--json` flag (US-325), streaming emission (US-326), per-command result schemas (US-327), and the conformance/boundary gates (US-328) are all later stories. Do not add `resultSchema` to specs or migrate any `JSON.stringify` call site here.
+  - `CommandResultEnvelope` reuses the EXISTING `TaggedErrorJson` (defined privately inside `machine-output.ts`) and the published `DeprecationUse` schema — do not redefine either. `StreamFrame.result` recursively embeds `CommandResultEnvelope`; Effect's `Schema.Union` of `TaggedStruct`s handles this fine and the contract suite's auto-materialized fixture decodes it without a manual `fixtureOverride`.
+  - For a tagged-UNION public schema, the §13.2 annotation gate only flags the shared `_tag` discriminant once (not every member field); add a single `"<Schema>._tag"` entry to `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS`. A `Schema.Literal` schema (`CommandResultFormat`) has no fields and needs no exemption at all.
+  - The schema-snapshot drift gate (`core/test/build/schema-snapshot.test.ts`) asserts every `dist/schemas/<name>.json` is `git ls-files`-tracked, so newly generated artifacts MUST be `git add`ed or the gate fails even though the snapshot JSON itself matches.
+---

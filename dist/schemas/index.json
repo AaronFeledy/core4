@@ -2095,5 +2095,41 @@
     "jsonSchemaPath": "dist/schemas/interaction-service-contribution.json",
     "packageExport": "@lando/sdk/schema#InteractionServiceContribution",
     "title": "Interaction Service Contribution"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Command Result Format.",
+    "docsPath": "docs/reference/schemas/command-result-format.mdx",
+    "id": "CommandResultFormat",
+    "jsonSchemaPath": "dist/schemas/command-result-format.json",
+    "packageExport": "@lando/sdk/schema#CommandResultFormat",
+    "title": "Command Result Format"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Command Warning.",
+    "docsPath": "docs/reference/schemas/command-warning.mdx",
+    "id": "CommandWarning",
+    "jsonSchemaPath": "dist/schemas/command-warning.json",
+    "packageExport": "@lando/sdk/schema#CommandWarning",
+    "title": "Command Warning"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Command Result Envelope.",
+    "docsPath": "docs/reference/schemas/command-result-envelope.mdx",
+    "id": "CommandResultEnvelope",
+    "jsonSchemaPath": "dist/schemas/command-result-envelope.json",
+    "packageExport": "@lando/sdk/schema#CommandResultEnvelope",
+    "title": "Command Result Envelope"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Stream Frame.",
+    "docsPath": "docs/reference/schemas/stream-frame.mdx",
+    "id": "StreamFrame",
+    "jsonSchemaPath": "dist/schemas/stream-frame.json",
+    "packageExport": "@lando/sdk/schema#StreamFrame",
+    "title": "Stream Frame"
   }
 ]

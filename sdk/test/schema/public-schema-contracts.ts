@@ -251,6 +251,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PaintBannerEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PromptSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   InteractionServiceContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CommandResultFormat: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CommandWarning: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CommandResultEnvelope: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  StreamFrame: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
 } as const satisfies Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>;
 
 type JsonObject = Record<string, unknown>;

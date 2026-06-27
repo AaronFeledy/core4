@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "enum": [
+    "text",
+    "json",
+    "table",
+    "yaml",
+    "ndjson"
+  ],
+  "type": "string"
+}
