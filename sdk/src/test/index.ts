@@ -5310,7 +5310,7 @@ export const runRedactionContract = (
   });
 
 // ---------------------------------------------------------------------------
-// SecretStore contract suite (§13.1)
+// SecretStore contract suite
 // ---------------------------------------------------------------------------
 
 const secretStoreContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -5321,8 +5321,8 @@ const requireSecretStoreContract = (condition: boolean, assertion: string, detai
 
 /**
  * Drives any `SecretStore` implementation (the built-in env store, the
- * in-memory `TestSecretStore`, or a plugin-contributed store) through the §13.1
- * secret-store guarantees. `store`, `known`, and `unknown` are required; the
+ * in-memory `TestSecretStore`, or a plugin-contributed store) through the
+ * published secret-store contract guarantees. `store`, `known`, and `unknown` are required; the
  * remaining fields are optional capability probes that assert the fuller spec
  * guarantee only when the harness supplies the hook, so today's env store stays
  * conformant without backend/auth/offline machinery it does not yet implement.
@@ -5338,7 +5338,7 @@ export interface SecretStoreContractHarness {
   readonly unknown: string;
   /**
    * Optional: build a value redactor seeded from the resolved secret so the
-   * suite can prove resolved values never survive in rendered output (§3.7).
+   * suite can prove resolved values never survive in rendered output.
    * Accepts the canonical `Redactor` or any `{ redactString }`-shaped value
    * redactor.
    */
@@ -5350,7 +5350,7 @@ export interface SecretStoreContractHarness {
   readonly backendFailureStore?: SecretStoreShape;
   /**
    * Optional: a store backed only by an already-cached secret with no live
-   * backend. The suite asserts the known secret still resolves offline (§12.6).
+   * backend. The suite asserts the known secret still resolves offline.
    */
   readonly cachedOfflineStore?: {
     readonly store: SecretStoreShape;
@@ -5443,7 +5443,7 @@ export const runSecretStoreContractSuite = (
     const hasUnknown = yield* store.has(harness.unknown);
     yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
 
-    // --- optional: resolved values register with the canonical redactor (§3.7) ---
+    // --- optional: resolved values register with the canonical redactor ---
     if (harness.redactor) {
       const redactor = harness.redactor([harness.known.value]);
       const redacted = redactor.redactString(`token=${harness.known.value} trailing`);
@@ -5472,7 +5472,7 @@ export const runSecretStoreContractSuite = (
       }
     }
 
-    // --- optional: already-cached secrets resolve offline (§12.6) ---
+    // --- optional: already-cached secrets resolve offline ---
     if (harness.cachedOfflineStore) {
       const cached = yield* harness.cachedOfflineStore.store
         .get(harness.cachedOfflineStore.key)
@@ -5492,7 +5492,7 @@ export const runSecretStoreContractSuite = (
 export const makeSecretStoreContractSuite = runSecretStoreContractSuite;
 
 // ---------------------------------------------------------------------------
-// ConfigTranslator contract suite (§13.1)
+// ConfigTranslator contract suite
 // ---------------------------------------------------------------------------
 
 const configTranslatorContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -5502,12 +5502,12 @@ const requireConfigTranslatorContract = (condition: boolean, assertion: string, 
   condition ? Effect.void : Effect.fail(configTranslatorContractFailure(assertion, details));
 
 /**
- * Drives any `ConfigTranslator` through the §13.1 config-translator guarantees:
+ * Drives any `ConfigTranslator` through the published config-translator contract:
  * `detect()` is authoritative; `translate()` returns a schema-valid
  * `LandofileShape` fragment plus diagnostics (never an `AppPlan`, never a file
  * mutation/provider contact/plugin install); output is deterministic; and the
- * emitted fragment round-trips through the canonical Landofile serializer
- * (§7.8.1). `translator` and `matchingInput` are required; the remaining fields
+ * emitted fragment round-trips through the canonical Landofile serializer.
+ * `translator` and `matchingInput` are required; the remaining fields
  * are optional probes asserted only when the harness supplies the hook.
  */
 export interface ConfigTranslatorContractHarness {
@@ -5712,7 +5712,7 @@ export const runConfigTranslatorContractSuite = (
 export const makeConfigTranslatorContractSuite = runConfigTranslatorContractSuite;
 
 // ---------------------------------------------------------------------------
-// RouteFilter contract suite (§13.1)
+// RouteFilter contract suite
 // ---------------------------------------------------------------------------
 
 /**
@@ -5736,7 +5736,7 @@ const requireRouteFilterContract = (condition: boolean, assertion: string, detai
 /**
  * Drives any `RouteFilter` (the six built-ins `requestHeader` /
  * `responseHeader` / `redirect` / `rewritePath` / `stripPrefix` / `addPrefix`,
- * or a plugin-contributed filter) through the §13.1 route-filter guarantees:
+ * or a plugin-contributed filter) through the published route-filter contract:
  * the filter is provider-neutral (emits a declarative transform of the route
  * intent, never proxy-native middleware); `apply` is pure / deterministic /
  * idempotent; invalid options fail schema decode with a tagged error before the
@@ -5883,7 +5883,7 @@ export const runRouteFilterContractSuite = <Route, Options>(
 export const makeRouteFilterContractSuite = runRouteFilterContractSuite;
 
 // ---------------------------------------------------------------------------
-// Doctor check contract suite (§13.1)
+// Doctor check contract suite
 // ---------------------------------------------------------------------------
 
 /** A remediation a doctor issue carries — either an automatic command or manual steps. */
@@ -5913,7 +5913,7 @@ export interface DoctorCheckResult {
 
 /**
  * Raised by a doctor check `run` when the check cannot execute. SDK-test-local:
- * doctor checks are not a §4.2 contribution surface, so this tagged error lives
+ * doctor checks are not a published plugin contribution surface yet, so this tagged error lives
  * with the contract suite rather than `@lando/sdk/errors`.
  */
 export class DoctorCheckError extends Schema.TaggedError<DoctorCheckError>()("DoctorCheckError", {
@@ -5930,11 +5930,11 @@ const requireDoctorCheckContract = (condition: boolean, assertion: string, detai
 
 /**
  * Drives any doctor check (the built-in core checks or a `doctorChecks:`
- * contribution) through the §13.1 doctor-check guarantees: `run()` returns
+ * contribution) through the published doctor-check contract: `run()` returns
  * issues carrying severity / context and an automatic|manual solution; default
  * runs are read-only and only `--fix` executes automatic solutions; shell-shaped
  * probes route through `ShellRunner` (so they appear in the redacted doctor
- * transcript, §10.9); and secrets are redacted. `check` is required; the
+ * transcript); and secrets are redacted. `check` is required; the
  * remaining fields are optional probes asserted only when supplied.
  */
 export interface DoctorCheckContractHarness {
