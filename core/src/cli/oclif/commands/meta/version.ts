@@ -5,8 +5,6 @@
  * `core/src/cli/commands/version.ts` (so `@lando/core/cli` can re-export
  * it without pulling OCLIF).
  */
-import { Effect } from "effect";
-
 import { type VersionResult, version } from "../../../commands/version.ts";
 import {
   EmptyResultSchema,
@@ -23,6 +21,11 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   topLevelAlias: true,
   bootstrap: "none",
   run: () => version,
+  render: (result) => {
+    if (typeof result !== "object" || result === null || !("core" in result)) return undefined;
+    const { core, bun, platform } = result as VersionResult;
+    return `@lando/core ${core} (bun ${bun} on ${platform})`;
+  },
 };
 
 export default class VersionCommand extends LandoCommandBase {
@@ -33,9 +36,6 @@ export default class VersionCommand extends LandoCommandBase {
   static override bootstrap = versionSpec.bootstrap;
 
   override async run(): Promise<void> {
-    // Until LandoCommandBase.runEffect is implemented, run the Effect inline
-    // so the placeholder CLI smoke-tests print *something*.
-    const result = await Effect.runPromise(version);
-    this.log(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
+    await this.runEffect(versionSpec);
   }
 }
