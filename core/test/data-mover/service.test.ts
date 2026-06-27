@@ -335,6 +335,27 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("writes host targets under missing nested app-root directories", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "source.txt");
+      const target = join(dir, "missing", "nested", "target.txt");
+      await writeFile(source, "nested-target-payload");
+
+      await runDataMover(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(await readFile(target, "utf8")).toBe("nested-target-payload");
+    });
+  });
+
   test("dispatches serviceCmd through exec APIs while preserving env off argv", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "source.txt");
@@ -772,7 +793,10 @@ describe("DataMoverLive", () => {
     );
 
     expect(result.accelerated).toBe(false);
-    expect(Array.from(progress)).toEqual([{ phase: "completed", transferredBytes: 0 }]);
+    expect(Array.from(progress)).toEqual([
+      { phase: "started", transferredBytes: 0 },
+      { phase: "completed", transferredBytes: 0 },
+    ]);
     expect(await Effect.runPromise(handle.transfers())).toHaveLength(1);
     expect(await Effect.runPromise(handle.streams())).toHaveLength(1);
   });

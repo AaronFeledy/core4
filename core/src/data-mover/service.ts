@@ -303,6 +303,19 @@ const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) =>
   });
 };
 
+const realpathNearestExisting = async (path: string): Promise<string> => {
+  let candidate = path;
+  for (;;) {
+    try {
+      return await realpath(candidate);
+    } catch {
+      const parent = dirname(candidate);
+      if (parent === candidate) throw new Error(`No existing ancestor for ${path}`);
+      candidate = parent;
+    }
+  }
+};
+
 const ensureInsideRoot = (path: string) =>
   Effect.gen(function* () {
     const root = yield* Effect.tryPromise({
@@ -314,19 +327,13 @@ const ensureInsideRoot = (path: string) =>
         }),
     });
     const existing = yield* Effect.tryPromise({
-      try: async () => {
-        try {
-          return await realpath(path);
-        } catch {
-          return await realpath(dirname(path));
-        }
-      },
+      try: () => realpathNearestExisting(path),
       catch: () =>
         new DataSourceOutsideRootError({
           message: "Failed to resolve host data endpoint.",
           path,
           base: root,
-          remediation: "Create the parent directory inside the app root before retrying.",
+          remediation: "Use a host endpoint with an existing ancestor inside the app root.",
         }),
     });
     const relativeToRoot = relative(root, existing);

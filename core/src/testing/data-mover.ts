@@ -20,9 +20,12 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
         return { accelerated: false, sizeBytes: 0 };
       }),
     transferStream: (spec) =>
-      Stream.sync(() => {
+      Stream.suspend(() => {
         streams.push(spec);
-        return { phase: "completed" as const, transferredBytes: 0 };
+        return Stream.make(
+          { phase: "started" as const, transferredBytes: 0 },
+          { phase: "completed" as const, transferredBytes: 0 },
+        );
       }),
     snapshot: (store) => Effect.succeed({ id: `test-${store.store}`, store }),
     restore: () => Effect.void,
