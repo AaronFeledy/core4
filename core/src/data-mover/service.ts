@@ -602,7 +602,7 @@ const writeStreamToEndpoint = (
           const volumes = yield* provider
             .listVolumes({ app: target.app, store: target.store })
             .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
-          if (volumes.length > 0) {
+          if (volumes.some((volume) => volume.ref.app === target.app && volume.ref.store === target.store)) {
             return yield* Effect.fail(
               new DataTargetExistsError({
                 message: "Target volume already exists and overwrite was not requested.",
@@ -619,7 +619,6 @@ const writeStreamToEndpoint = (
             image: "lando-data-helper",
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
-            stdin: "ignore",
             stdinStream: asyncIterableFromBytes(payload),
             remove: true,
           })
@@ -661,7 +660,6 @@ const writeStreamToEndpoint = (
             { app: target.app, service: target.service },
             {
               ...providerCommandSpec(target.command, target.env),
-              stdin: "ignore",
               stdinStream: asyncIterableFromBytes(payload),
             },
           )

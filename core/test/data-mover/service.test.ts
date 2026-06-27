@@ -152,36 +152,52 @@ describe("DataMoverLive", () => {
       const seed = join(dir, "seed.txt");
       const restored = join(dir, "restored.txt");
       await writeFile(seed, "volume-payload");
+      let observedRunStdin: "inherit" | "ignore" | undefined;
 
-      const result = await runDataMover(
-        Effect.gen(function* () {
-          const dataMover = yield* DataMover;
-          const importResult = yield* dataMover.transfer({
-            from: { _tag: "hostPath", path: absolute(seed) },
-            to: { _tag: "volume", app, store: "data" },
-            overwrite: true,
-          });
-          const exportResult = yield* dataMover.transfer({
-            from: { _tag: "volume", app, store: "data" },
-            to: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
-            overwrite: true,
-          });
-          yield* dataMover.transfer({
-            from: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
-            to: { _tag: "volume", app, store: "restored" },
-            overwrite: true,
-          });
-          yield* dataMover.transfer({
-            from: { _tag: "volume", app, store: "restored" },
-            to: { _tag: "hostPath", path: absolute(restored) },
-            overwrite: true,
-          });
-          return { importResult, exportResult };
-        }),
+      const result = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            const importResult = yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(seed) },
+              to: { _tag: "volume", app, store: "data" },
+              overwrite: true,
+            });
+            const exportResult = yield* dataMover.transfer({
+              from: { _tag: "volume", app, store: "data" },
+              to: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
+              overwrite: true,
+            });
+            yield* dataMover.transfer({
+              from: { _tag: "hostArchive", path: absolute(archive), format: "tar" },
+              to: { _tag: "volume", app, store: "restored" },
+            });
+            yield* dataMover.transfer({
+              from: { _tag: "volume", app, store: "restored" },
+              to: { _tag: "hostPath", path: absolute(restored) },
+              overwrite: true,
+            });
+            return { importResult, exportResult };
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              listVolumes: ({ store }) =>
+                Effect.succeed([{ ref: { app, store: store === "restored" ? "other-store" : "data" } }]),
+              run: (spec) => {
+                observedRunStdin = spec.stdin;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
       );
 
       expect(result.importResult.accelerated).toBe(false);
       expect(result.exportResult.accelerated).toBe(false);
+      expect(observedRunStdin).toBeUndefined();
       expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
       expect(await readFile(restored, "utf8")).toBe("volume-payload");
       expect(result.exportResult.digest).toBeDefined();
@@ -223,6 +239,7 @@ describe("DataMoverLive", () => {
       let observedEnv: Readonly<Record<string, string>> | undefined;
       let observedCommand: ReadonlyArray<string> | undefined;
       let observedStdin = "";
+      let observedStdinMode: "inherit" | "ignore" | undefined;
 
       const execStreamChunks: ExecChunk[] = [
         { kind: "stdout", chunk: bytes("service-output") },
@@ -264,6 +281,7 @@ describe("DataMoverLive", () => {
                 Effect.promise(async () => {
                   observedEnv = command.env;
                   observedCommand = command.command;
+                  observedStdinMode = command.stdin;
                   for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
@@ -281,6 +299,7 @@ describe("DataMoverLive", () => {
       expect(observedEnv).toEqual({ DB_PASSWORD: "secret-token" });
       expect(observedCommand).toEqual(["export-db"]);
       expect(observedCommand?.join(" ")).not.toContain("secret-token");
+      expect(observedStdinMode).toBeUndefined();
       expect(observedStdin).toBe("service-input");
       expect(await readFile(target, "utf8")).toBe("service-output");
     });
