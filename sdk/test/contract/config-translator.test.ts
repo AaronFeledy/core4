@@ -129,6 +129,19 @@ describe("ConfigTranslator contract", () => {
     expect(exit._tag).toBe("Failure");
   });
 
+  test("expectedFragment compares by canonical key order, not raw JSON.stringify", async () => {
+    const reorderedHarness: ConfigTranslatorContractHarness = {
+      translator: mockTranslator,
+      matchingInput,
+      expectedFragment: { recipe: "lamp", name: "myapp" },
+    };
+    const exit = await Effect.runPromiseExit(runConfigTranslatorContractSuite(reorderedHarness));
+    if (exit._tag === "Failure") {
+      throw new Error(`Contract failure: ${JSON.stringify(exit.cause, null, 2)}`);
+    }
+    expect(exit._tag).toBe("Success");
+  });
+
   test("a non-deterministic translator fails the contract", async () => {
     let counter = 0;
     const flaky: ConfigTranslatorShape = {

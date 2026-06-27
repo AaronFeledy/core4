@@ -5642,7 +5642,7 @@ export const runConfigTranslatorContractSuite = (
 
     if (harness.expectedFragment) {
       yield* requireConfigTranslatorContract(
-        JSON.stringify(result.fragment) === JSON.stringify(harness.expectedFragment),
+        canonicalize(result.fragment) === canonicalize(harness.expectedFragment),
         `${label}: translate emits the expected fragment`,
         { actual: result.fragment, expected: harness.expectedFragment },
       );
@@ -5657,7 +5657,7 @@ export const runConfigTranslatorContractSuite = (
         ),
       );
     yield* requireConfigTranslatorContract(
-      JSON.stringify(result.fragment) === JSON.stringify(result2.fragment),
+      canonicalize(result.fragment) === canonicalize(result2.fragment),
       `${label}: translate is deterministic for identical input`,
       { first: result.fragment, second: result2.fragment },
     );
