@@ -82,6 +82,8 @@ describe("@lando/core/testing package export", () => {
     expect(testing.makeTestDataset).toBeFunction();
     expect(testing.TestTunnelService).toBeDefined();
     expect(testing.makeTestTunnelService).toBeFunction();
+    expect(testing.TestSecretStore).toBeDefined();
+    expect(testing.makeTestSecretStore).toBeFunction();
     expect(testing.ScenarioContext).toBeDefined();
     expect(testing.withScenarioContext).toBeFunction();
     expect(testing.ScenarioContextFactory).toBeDefined();

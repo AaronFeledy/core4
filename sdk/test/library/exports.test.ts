@@ -522,6 +522,36 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runStateStoreContract).toBeDefined();
   });
 
+  test("test entry point exports the secret store contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runSecretStoreContractSuite).toBeDefined();
+    expect(sdkTest.makeSecretStoreContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the config translator contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runConfigTranslatorContractSuite).toBeDefined();
+    expect(sdkTest.makeConfigTranslatorContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the route filter contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRouteFilterContractSuite).toBeDefined();
+    expect(sdkTest.makeRouteFilterContractSuite).toBeDefined();
+    expect(sdkTest.RouteFilterError).toBeDefined();
+  });
+
+  test("test entry point exports the doctor check contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runDoctorCheckContractSuite).toBeDefined();
+    expect(sdkTest.makeDoctorCheckContractSuite).toBeDefined();
+    expect(sdkTest.DoctorCheckError).toBeDefined();
+  });
+
   test("test entry point exports the interaction contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 
