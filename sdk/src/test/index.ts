@@ -5699,7 +5699,7 @@ export const runConfigTranslatorContractSuite = (
     }
 
     // --- optional: translate performed no external mutation ---
-    if (harness.mutationProbe && mutationBaseline !== undefined) {
+    if (harness.mutationProbe) {
       yield* translator
         .translate(harness.matchingInput)
         .pipe(
@@ -6051,7 +6051,7 @@ export const runDoctorCheckContractSuite = (
     }
 
     // --- optional: default run is read-only ---
-    if (harness.readOnlyProbe && readOnlyBaseline !== undefined) {
+    if (harness.readOnlyProbe) {
       yield* harness.check
         .run({ fix: false })
         .pipe(
