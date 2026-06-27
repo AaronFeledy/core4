@@ -429,3 +429,8 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck and lint passed; focused DataMover, runtime bootstrap, core testing export, SDK schema/export/backward-compat spot checks passed; reviewer gate returned unconditional approval.
 - **Learnings for future iterations:** Keep DataMover substrate stories split: US-337 owns dispatch/events/archive verification and the test double; the durable snapshot index remains US-338, and bundled-provider native implementations remain US-339. When adding new event union members, regenerate all LandoEvent schema artifacts together.
 ---
+## 2026-06-26 23:55 CDT - US-337 Review
+- Review fixed DataMover acceptance blockers: `tar.zst` now uses Bun-native compression streams, `serviceCmd` dispatches through provider exec APIs with credentials carried in `env`, host containment uses cross-platform relative-path checks, and the RedactionService consumer list names DataMover.
+- Review notes (deferred/rejected): durable snapshot index/list/prune remains US-338; helper-image pinning and scratch migration remain US-340; provider-native bundled data-plane methods remain US-339.
+- Verification: typecheck and lint passed; focused DataMover, core testing export, public schema contract, and SDK backward-compatibility spot checks passed.
+---

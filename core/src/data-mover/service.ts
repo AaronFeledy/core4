@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { dirname, isAbsolute, relative } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
@@ -193,18 +192,33 @@ const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
   return archive.slice(start, end);
 };
 
-const archivePayload = (payload: Uint8Array, format: "tar" | "tar.gz" | "tar.zst"): Uint8Array => {
+const webStreamBytes = async (stream: ReadableStream<Uint8Array>): Promise<Uint8Array> =>
+  new Uint8Array(await new Response(stream).arrayBuffer());
+
+const compressionFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
+
+const archivePayload = (
+  payload: Uint8Array,
+  format: "tar" | "tar.gz" | "tar.zst",
+): Effect.Effect<Uint8Array, ArchiveFormatError> => {
   const tar = packTar(payload);
   switch (format) {
     case "tar":
-      return tar;
+      return Effect.succeed(tar);
     case "tar.gz":
-      return gzipSync(tar);
     case "tar.zst":
-      throw new ArchiveFormatError({
-        message: "tar.zst archives are not supported by the current Bun runtime.",
-        format,
-        remediation: "Use tar or tar.gz until native zstd streams are available.",
+      return Effect.tryPromise({
+        try: () =>
+          webStreamBytes(
+            new Blob([tar]).stream().pipeThrough(new CompressionStream(compressionFormat(format))),
+          ),
+        catch: (cause) =>
+          new ArchiveFormatError({
+            message: "Failed to encode host archive endpoint.",
+            format,
+            cause,
+            remediation: "Retry the transfer or choose a different archive format.",
+          }),
       });
   }
 };
@@ -213,21 +227,59 @@ const unarchivePayload = (
   payload: Uint8Array,
   format: "tar" | "tar.gz" | "tar.zst",
   path: string,
-): Uint8Array => {
+): Effect.Effect<Uint8Array, ArchiveFormatError> => {
   switch (format) {
     case "tar":
-      return unpackTar(payload, path);
+      return Effect.try({
+        try: () => unpackTar(payload, path),
+        catch: (cause) =>
+          cause instanceof ArchiveFormatError
+            ? cause
+            : new ArchiveFormatError({
+                message: "Failed to decode host archive endpoint.",
+                format,
+                archivePath: path,
+                cause,
+              }),
+      });
     case "tar.gz":
-      return unpackTar(gunzipSync(payload), path);
     case "tar.zst":
-      throw new ArchiveFormatError({
-        message: "tar.zst archives are not supported by the current Bun runtime.",
-        format,
-        archivePath: path,
-        remediation: "Use tar or tar.gz until native zstd streams are available.",
+      return Effect.tryPromise({
+        try: async () =>
+          unpackTar(
+            await webStreamBytes(
+              new Blob([payload]).stream().pipeThrough(new DecompressionStream(compressionFormat(format))),
+            ),
+            path,
+          ),
+        catch: (cause) =>
+          cause instanceof ArchiveFormatError
+            ? cause
+            : new ArchiveFormatError({
+                message: "Failed to decode host archive endpoint.",
+                format,
+                archivePath: path,
+                cause,
+              }),
       });
   }
 };
+
+const serviceCommandFailure = (operation: string, cause: unknown): DataTransferError =>
+  new DataTransferError({
+    message: `Service command ${operation} failed during data transfer.`,
+    operation,
+    cause,
+    remediation: "Inspect the service command and retry after the service is healthy.",
+  });
+
+const providerCommandSpec = (
+  command: string | ReadonlyArray<string>,
+  env: Readonly<Record<string, string>> | undefined,
+): { readonly command: ReadonlyArray<string>; readonly env?: Readonly<Record<string, string>> } => ({
+  command: typeof command === "string" ? ["sh", "-lc", command] : command,
+  ...(env === undefined ? {} : { env }),
+});
 
 const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) => {
   if (error.reason === "checksum") {
@@ -276,7 +328,8 @@ const ensureInsideRoot = (path: string) =>
           remediation: "Create the parent directory inside the app root before retrying.",
         }),
     });
-    if (existing === root || existing.startsWith(`${root}/`)) return;
+    const relativeToRoot = relative(root, existing);
+    if (relativeToRoot === "" || (!relativeToRoot.startsWith("..") && !isAbsolute(relativeToRoot))) return;
     return yield* Effect.fail(
       new DataSourceOutsideRootError({
         message: "Host data endpoint escapes the permitted app root.",
@@ -326,20 +379,8 @@ const byteStreamFromArchive = (
           cause,
         }),
     }).pipe(
-      Effect.flatMap((payload) =>
-        Effect.try({
-          try: () => Stream.make(unarchivePayload(new Uint8Array(payload), format, path)),
-          catch: (cause) =>
-            cause instanceof ArchiveFormatError
-              ? cause
-              : new ArchiveFormatError({
-                  message: "Failed to decode host archive endpoint.",
-                  format,
-                  archivePath: path,
-                  cause,
-                }),
-        }),
-      ),
+      Effect.flatMap((payload) => unarchivePayload(new Uint8Array(payload), format, path)),
+      Effect.map((payload) => Stream.make(payload)),
     ),
   );
 
@@ -464,8 +505,21 @@ const streamFromEndpoint = (
       return provider
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
-    case "stream":
     case "serviceCmd":
+      return Stream.unwrap(
+        collectExecStdout(
+          provider.execStream(
+            { app: endpoint.app, service: endpoint.service },
+            providerCommandSpec(endpoint.command, endpoint.env),
+          ),
+        ).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
+          ),
+          Effect.map((payload) => Stream.make(payload)),
+        ),
+      );
+    case "stream":
       return Stream.fail(
         new DataEndpointUnsupportedError({
           message: `Endpoint ${endpoint._tag} cannot be used as an implicit transfer source.`,
@@ -501,7 +555,7 @@ const writeStreamToEndpoint = (
     case "hostArchive":
       return Effect.gen(function* () {
         const payload = yield* collectByteStream(body);
-        const archive = archivePayload(payload, target.format);
+        const archive = yield* archivePayload(payload, target.format);
         const result = yield* persistVerifiedStream({
           body: Stream.make(archive),
           destinationPath: target.path,
@@ -599,8 +653,29 @@ const writeStreamToEndpoint = (
         }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
-    case "stream":
     case "serviceCmd":
+      return Effect.gen(function* () {
+        const payload = yield* collectByteStream(body);
+        const result = yield* provider
+          .exec(
+            { app: target.app, service: target.service },
+            {
+              ...providerCommandSpec(target.command, target.env),
+              stdin: "ignore",
+              stdinStream: asyncIterableFromBytes(payload),
+            },
+          )
+          .pipe(Effect.mapError((cause) => serviceCommandFailure("exec", cause)));
+        if (result.exitCode !== 0) {
+          return yield* Effect.fail(serviceCommandFailure("exec", result));
+        }
+        const verified = yield* collectVerifiedStream({
+          body: Stream.make(payload),
+          expectedSha256: spec.expectedDigest,
+        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+      });
+    case "stream":
       return failUnsupported(
         spec.from,
         target,
@@ -698,18 +773,21 @@ export const makeDataMoverService = (
     );
   },
   transferStream: (spec) =>
-    Stream.unwrap(
-      makeDataMoverService(provider, events)
-        .transfer(spec)
-        .pipe(
-          Effect.map((result) =>
-            Stream.make({
-              phase: "completed" as const,
-              transferredBytes: result.sizeBytes ?? 0,
-              ...(result.digest === undefined ? {} : { digest: result.digest }),
-            }),
+    Stream.concat(
+      Stream.make({ phase: "started" as const, transferredBytes: 0 }),
+      Stream.unwrap(
+        makeDataMoverService(provider, events)
+          .transfer(spec)
+          .pipe(
+            Effect.map((result) =>
+              Stream.make({
+                phase: "completed" as const,
+                transferredBytes: result.sizeBytes ?? 0,
+                ...(result.digest === undefined ? {} : { digest: result.digest }),
+              }),
+            ),
           ),
-        ),
+      ),
     ),
   snapshot: (store, opts) =>
     Effect.gen(function* () {

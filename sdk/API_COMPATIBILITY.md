@@ -297,6 +297,7 @@
 - `PluginContribution.datasets` is a new additive optional field.
 - `PluginContribution.tunnelServices` is a new additive optional field.
 - `PluginContribution.appFeatures` is a new additive optional field.
+- `DataEndpoint.serviceCmd.env` is a new additive optional field.
 
 ## Additive Alpha errors
 

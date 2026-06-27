@@ -554,7 +554,7 @@ Redaction is a cross-cutting security invariant, not a per-surface convenience. 
 **Required behaviors.**
 
 - `RedactionService` is constructed eagerly at level `minimal` and MUST NOT touch the network, the provider, or any plugin module.
-- It is **not** a §4.2 pluggable abstraction. There is no `redactors:` contribution surface. Audited / sandboxed / mirror-aware `ShellRunner`, `BunSelfRunner`, `HostProxyService`, `FileSyncEngine`, `HttpClient`, `Downloader`, `TunnelService`, and `ManagedFileService` consumers MUST compose the canonical redactor and MUST NOT weaken it; the relevant contract suites (§13.1) check this.
+- It is **not** a §4.2 pluggable abstraction. There is no `redactors:` contribution surface. Audited / sandboxed / mirror-aware `ShellRunner`, `BunSelfRunner`, `HostProxyService`, `FileSyncEngine`, `HttpClient`, `Downloader`, `TunnelService`, `DataMover`, and `ManagedFileService` consumers MUST compose the canonical redactor and MUST NOT weaken it; the relevant contract suites (§13.1) check this.
 - The canonical sentinel is `[redacted]` (lowercase). The `transcript` profile's `<HOME>`/`<PORT>`/… placeholders are a separate normalizing vocabulary and are part of the published transcript redaction contract (§19.6); they are byte-stable and gated.
 - `redactValue` preserves structure (arrays, objects, `Error` shape) and never throws on cyclic or exotic input.
 - A merge-blocking lint gate (§13.4) forbids new `[redacted]`/`[REDACTED]` string literals and ad-hoc secret-matching regexes outside `@lando/sdk/secrets`, mirroring the §13.4 renderer-boundary gate; a fixture-based contract test asserts each profile redacts a canonical "secret soup" input byte-identically (§13.1).

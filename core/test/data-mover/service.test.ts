@@ -1,12 +1,24 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
-import { DataChecksumMismatchError, DataEndpointUnsupportedError } from "@lando/sdk/errors";
+import {
+  DataChecksumMismatchError,
+  DataEndpointUnsupportedError,
+  DataSourceOutsideRootError,
+  DataTargetExistsError,
+} from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
-import { DataMover, EventService, type LandoEvent, RuntimeProvider } from "@lando/sdk/services";
+import {
+  DataMover,
+  EventService,
+  type ExecChunk,
+  type LandoEvent,
+  RuntimeProvider,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
@@ -176,6 +188,104 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("round-trips tar.zst host archives with native compression streams", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "payload.txt");
+      const archive = join(dir, "payload.tar.zst");
+      const target = join(dir, "roundtrip.txt");
+      await writeFile(source, "zstd-payload");
+
+      await runDataMover(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostArchive", path: absolute(archive), format: "tar.zst" },
+            overwrite: true,
+          });
+          yield* dataMover.transfer({
+            from: { _tag: "hostArchive", path: absolute(archive), format: "tar.zst" },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(await readFile(target, "utf8")).toBe("zstd-payload");
+    });
+  });
+
+  test("dispatches serviceCmd through exec APIs while preserving env off argv", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "source.txt");
+      const target = join(dir, "target.txt");
+      await writeFile(source, "service-input");
+      let observedEnv: Readonly<Record<string, string>> | undefined;
+      let observedCommand: ReadonlyArray<string> | undefined;
+      let observedStdin = "";
+
+      const execStreamChunks: ExecChunk[] = [
+        { kind: "stdout", chunk: bytes("service-output") },
+        { exitCode: 0 },
+      ];
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: {
+                _tag: "serviceCmd",
+                app,
+                service,
+                command: ["import-db"],
+                env: { DB_PASSWORD: "secret-token" },
+              },
+              overwrite: true,
+            });
+            yield* dataMover.transfer({
+              from: {
+                _tag: "serviceCmd",
+                app,
+                service,
+                command: ["export-db"],
+                env: { DB_PASSWORD: "secret-token" },
+              },
+              to: { _tag: "hostPath", path: absolute(target) },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              exec: (_target, command) =>
+                Effect.promise(async () => {
+                  observedEnv = command.env;
+                  observedCommand = command.command;
+                  for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+              execStream: (_target, command) => {
+                observedEnv = command.env;
+                observedCommand = command.command;
+                return Stream.fromIterable(execStreamChunks);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(observedEnv).toEqual({ DB_PASSWORD: "secret-token" });
+      expect(observedCommand).toEqual(["export-db"]);
+      expect(observedCommand?.join(" ")).not.toContain("secret-token");
+      expect(observedStdin).toBe("service-input");
+      expect(await readFile(target, "utf8")).toBe("service-output");
+    });
+  });
+
   test("rejects unsupported pairs and checksum mismatches without clobbering the destination", async () => {
     await withTempDir(async (dir) => {
       const archive = join(dir, "volume.tar");
@@ -235,6 +345,67 @@ describe("DataMoverLive", () => {
         expect(unsupported.cause.error).toBeInstanceOf(DataEndpointUnsupportedError);
       }
     });
+  });
+
+  test("rejects host endpoints outside the app root and existing volumes without overwrite", async () => {
+    const outsideDir = await mkdtemp(join(tmpdir(), "lando-data-mover-outside-"));
+    try {
+      await withTempDir(async (dir) => {
+        const outside = join(outsideDir, "outside.txt");
+        const target = join(dir, "target.txt");
+        const inside = join(dir, "inside.txt");
+        await writeFile(outside, "outside");
+        await writeFile(inside, "inside");
+
+        const outsideExit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(outside) },
+                to: { _tag: "hostPath", path: absolute(target) },
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(outsideExit._tag).toBe("Failure");
+        if (outsideExit._tag === "Failure" && outsideExit.cause._tag === "Fail") {
+          expect(outsideExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        }
+
+        const existsExit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(inside) },
+                to: { _tag: "volume", app, store: "existing" },
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                listVolumes: () => Effect.succeed([{ ref: { app, store: "existing" } }]),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(existsExit._tag).toBe("Failure");
+        if (existsExit._tag === "Failure" && existsExit.cause._tag === "Fail") {
+          expect(existsExit.cause.error).toBeInstanceOf(DataTargetExistsError);
+        }
+      });
+    } finally {
+      await rm(outsideDir, { recursive: true, force: true });
+    }
   });
 
   test("publishes redacted Data lifecycle events", async () => {
