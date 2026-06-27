@@ -6135,12 +6135,14 @@ export interface ToolingEngineUnderTest {
 /**
  * Drives any `ToolingEngine` through the published execution contract: a
  * non-empty id, an `Effect`-typed `run`, ordered sequential command execution,
- * a first-non-zero-exit short-circuit, a deterministic aggregated result, and a
- * tagged `ToolingExecError` (carrying the failing task id) on a non-zero exit.
- * `engine`, `okScenario`, and `failScenario` are required; the remaining fields
- * are optional probes asserted only when the harness supplies the hook. The
- * harness owns the `AppPlan`/`RuntimeProviderShape` doubles so the suite never
- * contacts a real provider.
+ * a first-non-zero-exit short-circuit that returns an aggregated non-zero
+ * result, deterministic output for the same scenario, and a tagged
+ * `ToolingExecError` (carrying the failing task id) for launch/validation
+ * failures supplied by `execErrorScenario`. `engine`, `okScenario`, and
+ * `failScenario` are required; the remaining fields are optional probes asserted
+ * only when the harness supplies the hook. The harness owns the
+ * `AppPlan`/`RuntimeProviderShape` doubles so the suite never contacts a real
+ * provider.
  */
 export interface ToolingEngineContractHarness {
   /** Optional label woven into failure messages. */
