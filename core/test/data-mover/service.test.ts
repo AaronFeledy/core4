@@ -12,7 +12,14 @@ import {
   DataTargetExistsError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, type ProviderCapabilities, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  PortablePath,
+  type ProviderCapabilities,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import {
   DataMover,
   type EventFor,
@@ -399,6 +406,132 @@ describe("DataMoverLive", () => {
       expect(observedStdinMode).toBeUndefined();
       expect(observedStdin).toBe("service-input");
       expect(await readFile(target, "utf8")).toBe("service-output");
+    });
+  });
+
+  test("verifies target payload digests before mutating provider targets", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "source.txt");
+      await writeFile(source, "digest-guard");
+
+      let copyToServiceCalls = 0;
+      let runCalls = 0;
+      let importArtifactCalls = 0;
+      let execCalls = 0;
+
+      const exits = await Promise.all([
+        Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(source) },
+                to: { _tag: "servicePath", app, service, path: servicePath },
+                expectedDigest: "not-the-right-digest",
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }),
+                copyToService: () =>
+                  Effect.sync(() => {
+                    copyToServiceCalls += 1;
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        ),
+        Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(source) },
+                to: { _tag: "volume", app, store: "digest-guard" },
+                expectedDigest: "not-the-right-digest",
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                run: (spec) =>
+                  Effect.sync(() => {
+                    runCalls += 1;
+                    return TestRuntimeProvider.run(spec);
+                  }).pipe(Effect.flatten),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        ),
+        Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(source) },
+                to: { _tag: "artifact", ref: "digest-guard" },
+                expectedDigest: "not-the-right-digest",
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                importArtifact: () =>
+                  Effect.sync(() => {
+                    importArtifactCalls += 1;
+                    return { providerId: ProviderId.make("test"), ref: "digest-guard" };
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        ),
+        Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(source) },
+                to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
+                expectedDigest: "not-the-right-digest",
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                exec: () =>
+                  Effect.sync(() => {
+                    execCalls += 1;
+                    return { exitCode: 0, stdout: "", stderr: "" };
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        ),
+      ]);
+
+      for (const exit of exits) {
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        }
+      }
+      expect(copyToServiceCalls).toBe(0);
+      expect(runCalls).toBe(0);
+      expect(importArtifactCalls).toBe(0);
+      expect(execCalls).toBe(0);
     });
   });
 

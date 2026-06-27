@@ -569,6 +569,10 @@ const writeStreamToEndpoint = (
         return failUnsupported(spec.from, target, "native service file copy is unavailable");
       return Effect.gen(function* () {
         const payload = yield* collectByteStream(body);
+        const verified = yield* collectVerifiedStream({
+          body: Stream.make(payload),
+          expectedSha256: spec.expectedDigest,
+        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         const tempPath = `${process.cwd()}/.tmp-data-mover-service-${randomUUID()}`;
         yield* Effect.addFinalizer(() => Effect.promise(() => unlink(tempPath).catch(() => undefined)));
         yield* Effect.tryPromise({
@@ -589,10 +593,6 @@ const writeStreamToEndpoint = (
             { sourcePath: absolutePath(tempPath), targetPath: target.path, overwrite: spec.overwrite },
           )
           .pipe(Effect.mapError((cause) => providerFailure("copyToService", cause)));
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
     case "volume":
@@ -619,6 +619,10 @@ const writeStreamToEndpoint = (
           }
         }
         const payload = yield* collectByteStream(body);
+        const verified = yield* collectVerifiedStream({
+          body: Stream.make(payload),
+          expectedSha256: spec.expectedDigest,
+        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         const result = yield* provider
           .run({
             image: "lando-data-helper",
@@ -637,10 +641,6 @@ const writeStreamToEndpoint = (
             }),
           );
         }
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         return { accelerated: false, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
     case "artifact":
@@ -648,18 +648,22 @@ const writeStreamToEndpoint = (
         return failUnsupported(spec.from, target, "artifact import is unavailable");
       return Effect.gen(function* () {
         const payload = yield* collectByteStream(body);
-        yield* provider
-          .importArtifact(Stream.make(payload))
-          .pipe(Effect.mapError((cause) => providerFailure("importArtifact", cause)));
         const verified = yield* collectVerifiedStream({
           body: Stream.make(payload),
           expectedSha256: spec.expectedDigest,
         }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        yield* provider
+          .importArtifact(Stream.make(payload))
+          .pipe(Effect.mapError((cause) => providerFailure("importArtifact", cause)));
         return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
     case "serviceCmd":
       return Effect.gen(function* () {
         const payload = yield* collectByteStream(body);
+        const verified = yield* collectVerifiedStream({
+          body: Stream.make(payload),
+          expectedSha256: spec.expectedDigest,
+        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         const result = yield* provider
           .exec(
             { app: target.app, service: target.service },
@@ -672,10 +676,6 @@ const writeStreamToEndpoint = (
         if (result.exitCode !== 0) {
           return yield* Effect.fail(serviceCommandFailure("exec", result));
         }
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
         return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
       });
     case "stream":
