@@ -31,7 +31,7 @@ tags: [beta, docs, setup, readiness]
     </Step>
   </Scenario>
 
-  <Scenario id="managed-runtime-service-readiness" render={false} reason="Runtime-service status, self-heal, poweroff teardown, uninstall teardown, and doctor readiness context are covered by US-365 focused provider/core tests without launching a host runtime">
+  <Scenario id="managed-runtime-service-readiness" render={false} reason="Runtime-service status, self-heal, poweroff teardown, uninstall teardown, and doctor readiness context are covered by focused provider/core tests without launching a host runtime">
     <Step name="status-and-self-heal">
       <Variable name="statusProbe" value="runtime-service" display="Doctor reports the managed runtime-service check from a real socket/PID probe instead of a hardcoded running state" />
       <Variable name="selfHeal" value="ensureRuntime" display="The next runtime-needing command reruns ensureRuntime after a stopped or killed service and relaunches the private socket" />
