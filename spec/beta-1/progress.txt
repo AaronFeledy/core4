@@ -651,6 +651,19 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `init-hook`, `deferred-commands`, and `not-implemented`.
 ---
 
+## 2026-06-27 18:45 CDT - US-338
+- Implemented the durable snapshot store surface: snapshot/tool derived paths now come from the paths primitive, DataMover persists copy/native snapshot sidecars plus a StateStore-backed app index, restore/remove/prune resolve through that index, restore verifies recorded digests, and destructive app destroy removes the app snapshot subtree while plain destroy preserves it.
+- Verification: typecheck passed; lint passed; focused spot checks passed for paths, DataMover, and destroy; manual DataMover driver proved snapshot/list/restore/remove and CLI destroy dispatch smoke passed.
+- **Learnings for future iterations:**
+  - DataMover's user-supplied host endpoint containment guard should stay on public transfers; Lando-owned snapshot archives under userDataRoot use the internal stream/write primitives to avoid widening trusted host paths.
+  - Snapshot index buckets must create the app snapshot directory before opening StateStore with a `{ path }` root, because StateStore realpath containment checks the deepest existing ancestor.
+---
+## 2026-06-27 19:59 CDT - US-338 Review
+- Reviewed the snapshot-store implementation and fixed the confirmed blocker: `lando destroy --purge` is now accepted and drives the destructive app-data removal path that deletes the app snapshot subtree, while plain destroy and cache-only purge preserve snapshots.
+- Review notes (deferred/rejected): no confirmed review-work findings were rejected; direct `removeSnapshot` and corrupt snapshot digest tests remain nonblocking because existing store tests cover the acceptance path and the review blocker was the missing user-facing purge flag.
+- Verification: typecheck passed; lint passed; focused destroy scenario spot checks passed.
+---
+
 ## [2026-06-27 19:06:00 CDT] - Babysit
 - PR: #480 https://github.com/AaronFeledy/core4/pull/480
 - CI outcome: fail (static-checks-platform linux-x64 pending)

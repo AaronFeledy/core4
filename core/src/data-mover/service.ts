@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, realpath, unlink, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
@@ -12,7 +12,8 @@ import {
   DataTargetExistsError,
   DataTransferError,
   ProviderUnavailableError,
-  VolumeNotFoundError,
+  SnapshotAmbiguousError,
+  SnapshotNotFoundError,
 } from "@lando/sdk/errors";
 import {
   DataTransferProgressEvent,
@@ -30,13 +31,28 @@ import {
   type DataTransferSpec,
   PortablePath,
   ProviderId,
+  type PrunePolicy,
+  type SnapshotFilter,
+  type SnapshotId,
+  type SnapshotInfo,
+  SnapshotInfo as SnapshotInfoSchema,
+  type VolumeRef,
+  type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
-import { DataMover, EventService, type ExecChunk, RuntimeProvider } from "@lando/sdk/services";
+import {
+  DataMover,
+  EventService,
+  type ExecChunk,
+  PathsService,
+  RuntimeProvider,
+  StateStore,
+} from "@lando/sdk/services";
 import {
   type VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import type { LandoPaths } from "../config/paths.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
 
@@ -52,6 +68,13 @@ type DataMoverTransferError =
   | DataChecksumMismatchError
   | DataTargetExistsError;
 
+type SnapshotIndex = ReadonlyArray<SnapshotInfo>;
+
+interface SnapshotPersistence {
+  readonly paths: LandoPaths;
+  readonly stateStore: Context.Tag.Service<typeof StateStore>;
+}
+
 const noopEvents: DataMoverEvents = {
   redactText: (text) => text,
   publish: () => Effect.void,
@@ -60,9 +83,202 @@ const noopEvents: DataMoverEvents = {
 const helperTarget = Schema.decodeUnknownSync(PortablePath)("/data");
 const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
 const timestamp = () => DateTime.unsafeMake(Date.now());
+const snapshotIndexSchema = Schema.Array(SnapshotInfoSchema);
 
 const absolutePath = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 const providerId = (id: string) => Schema.decodeUnknownSync(ProviderId)(id);
+
+const stateFailure = (operation: string, cause: unknown): DataTransferError =>
+  new DataTransferError({
+    message: `Snapshot store ${operation} failed.`,
+    operation,
+    cause,
+    remediation: "Inspect the Lando snapshot store under the configured userDataRoot.",
+  });
+
+const snapshotMissing = (snapshotId: SnapshotId, store?: VolumeRef): SnapshotNotFoundError =>
+  new SnapshotNotFoundError({
+    message: `Snapshot ${snapshotId} was not found.`,
+    snapshotId,
+    ...(store === undefined ? {} : { store: store.store }),
+    remediation: "Run the snapshot list operation and retry with an existing snapshot id.",
+  });
+
+const snapshotAppDir = (persistence: SnapshotPersistence, app: string): string =>
+  persistence.paths.appSnapshotsDir(app);
+
+const snapshotStoreDir = (persistence: SnapshotPersistence, store: VolumeRef): string =>
+  join(snapshotAppDir(persistence, String(store.app)), store.store);
+
+const snapshotArchivePath = (persistence: SnapshotPersistence, info: SnapshotInfo): string =>
+  join(snapshotStoreDir(persistence, info.store), `${info.id}.${info.format ?? "tar"}`);
+
+const snapshotSidecarPath = (persistence: SnapshotPersistence, info: SnapshotInfo): string =>
+  join(snapshotStoreDir(persistence, info.store), `${info.id}.json`);
+
+const snapshotIndexEntryKey = (info: SnapshotInfo): string =>
+  `${String(info.store.app)}:${info.store.store}:${info.id}`;
+
+const openSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
+  Effect.tryPromise({
+    try: () => mkdir(snapshotAppDir(persistence, app), { recursive: true }),
+    catch: (cause) => stateFailure("open", cause),
+  }).pipe(
+    Effect.zipRight(
+      persistence.stateStore.open({
+        root: { path: absolutePath(snapshotAppDir(persistence, app)) },
+        key: "index.bin",
+        schema: snapshotIndexSchema,
+        version: 1,
+        codec: "json",
+        lock: "advisory",
+        onCorrupt: "quarantine",
+        default: [] as SnapshotIndex,
+      }),
+    ),
+    Effect.mapError((cause) => (cause instanceof DataTransferError ? cause : stateFailure("open", cause))),
+  );
+
+const snapshotApps = (
+  persistence: SnapshotPersistence,
+  filter: SnapshotFilter,
+): Effect.Effect<ReadonlyArray<string>> => {
+  if (filter.app !== undefined) return Effect.succeed([String(filter.app)]);
+  return Effect.tryPromise({
+    try: () => readdir(persistence.paths.snapshotsDir),
+    catch: (cause) => cause,
+  }).pipe(Effect.catchAll(() => Effect.succeed([])));
+};
+
+const readSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
+  openSnapshotIndex(persistence, app).pipe(
+    Effect.flatMap((bucket) => bucket.get),
+    Effect.map((entries) => entries ?? []),
+    Effect.mapError(
+      (cause): DataTransferError =>
+        cause instanceof DataTransferError ? cause : stateFailure("read-index", cause),
+    ),
+  );
+
+const snapshotMatches = (info: SnapshotInfo, filter: SnapshotFilter): boolean => {
+  if (filter.id !== undefined && info.id !== filter.id) return false;
+  if (filter.app !== undefined && String(info.store.app) !== String(filter.app)) return false;
+  if (filter.store !== undefined && info.store.store !== filter.store) return false;
+  if (filter.scope !== undefined && info.store.scope !== filter.scope) return false;
+  if (filter.label !== undefined && info.label !== filter.label) return false;
+  if (filter.labels !== undefined) {
+    for (const [key, value] of Object.entries(filter.labels)) {
+      if (info.labels?.[key] !== value) return false;
+    }
+  }
+  const created = Date.parse(DateTime.formatIso(info.createdAt));
+  if (filter.createdAfter !== undefined && created <= Date.parse(DateTime.formatIso(filter.createdAfter)))
+    return false;
+  if (filter.createdBefore !== undefined && created >= Date.parse(DateTime.formatIso(filter.createdBefore)))
+    return false;
+  return true;
+};
+
+const listSnapshotInfos = (persistence: SnapshotPersistence, filter: SnapshotFilter) =>
+  snapshotApps(persistence, filter).pipe(
+    Effect.flatMap((apps) => Effect.forEach(apps, (app) => readSnapshotIndex(persistence, app))),
+    Effect.map((groups) => groups.flat().filter((info) => snapshotMatches(info, filter))),
+  );
+
+const snapshotAmbiguous = (snapshotId: SnapshotId, matchCount: number): SnapshotAmbiguousError =>
+  new SnapshotAmbiguousError({
+    message: `Snapshot ${snapshotId} is ambiguous across ${matchCount} stores.`,
+    snapshotId,
+    matchCount,
+    remediation: "Pass the snapshot handle or disambiguate with app and store when removing or restoring.",
+  });
+
+const findSnapshotInfo = (
+  persistence: SnapshotPersistence,
+  id: SnapshotId,
+  store?: VolumeRef,
+): Effect.Effect<SnapshotInfo, SnapshotNotFoundError | SnapshotAmbiguousError | DataTransferError> =>
+  Effect.gen(function* () {
+    const matches = yield* listSnapshotInfos(persistence, {
+      id,
+      ...(store === undefined ? {} : { app: store.app, store: store.store }),
+    });
+    if (matches.length === 0) return yield* Effect.fail(snapshotMissing(id, store));
+    if (store === undefined && matches.length > 1) {
+      return yield* Effect.fail(snapshotAmbiguous(id, matches.length));
+    }
+    const match = matches[0];
+    if (match === undefined) return yield* Effect.fail(snapshotMissing(id, store));
+    return match;
+  });
+
+const writeSnapshotSidecar = (persistence: SnapshotPersistence, info: SnapshotInfo) =>
+  Schema.encodeUnknown(SnapshotInfoSchema)(info).pipe(
+    Effect.mapError((cause) => stateFailure("encode-sidecar", cause)),
+    Effect.flatMap((encoded) =>
+      Effect.tryPromise({
+        try: async () => {
+          const path = snapshotSidecarPath(persistence, info);
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(path, `${JSON.stringify(encoded, null, 2)}\n`);
+        },
+        catch: (cause) => stateFailure("write-sidecar", cause),
+      }),
+    ),
+  );
+
+const upsertSnapshotInfo = (persistence: SnapshotPersistence, info: SnapshotInfo) =>
+  openSnapshotIndex(persistence, String(info.store.app)).pipe(
+    Effect.flatMap((bucket) => {
+      const key = snapshotIndexEntryKey(info);
+      return bucket.update((current) => [
+        ...(current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
+        info,
+      ]);
+    }),
+    Effect.mapError(
+      (cause): DataTransferError =>
+        cause instanceof DataTransferError ? cause : stateFailure("update-index", cause),
+    ),
+    Effect.asVoid,
+  );
+
+const removeSnapshotArtifacts = (persistence: SnapshotPersistence, info: SnapshotInfo) =>
+  Effect.all(
+    [
+      Effect.tryPromise({
+        try: () => Bun.file(snapshotSidecarPath(persistence, info)).delete(),
+        catch: () => undefined,
+      }),
+      info.native === undefined
+        ? Effect.tryPromise({
+            try: () => Bun.file(snapshotArchivePath(persistence, info)).delete(),
+            catch: () => undefined,
+          })
+        : Effect.void,
+    ],
+    { discard: true },
+  );
+
+const rollbackSnapshotPersistence = (
+  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  persistence: SnapshotPersistence,
+  info: SnapshotInfo | undefined,
+  native: VolumeSnapshotRef | undefined,
+) =>
+  Effect.gen(function* () {
+    if (info !== undefined) {
+      yield* removeSnapshotArtifacts(persistence, info);
+    }
+    const removeNative = provider.removeVolumeSnapshot;
+    if (native !== undefined && removeNative !== undefined) {
+      yield* removeNative(native).pipe(
+        Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
+      );
+    }
+  });
+
+const hashText = (value: string): string => createHash("sha256").update(value).digest("hex");
 
 const endpointName = (endpoint: DataEndpoint): string => {
   switch (endpoint._tag) {
@@ -770,7 +986,8 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
 
 export const makeDataMoverService = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
-  events: DataMoverEvents = noopEvents,
+  events: DataMoverEvents,
+  persistence: SnapshotPersistence,
 ): Context.Tag.Service<typeof DataMover> => ({
   transfer: (spec) => {
     const startedAt = Date.now();
@@ -852,7 +1069,7 @@ export const makeDataMoverService = (
     Stream.concat(
       Stream.make({ phase: "started" as const, transferredBytes: 0 }),
       Stream.unwrap(
-        makeDataMoverService(provider, events)
+        makeDataMoverService(provider, events, persistence)
           .transfer(spec)
           .pipe(
             Effect.map((result) =>
@@ -865,77 +1082,192 @@ export const makeDataMoverService = (
           ),
       ),
     ),
-  snapshot: (store, opts) =>
-    Effect.gen(function* () {
-      const snapshotId = opts?.label ?? `${store.store}-${randomUUID()}`;
-      return yield* Effect.gen(function* () {
-        yield* events.publish(
-          PreVolumeSnapshotEvent.make({
-            eventName: "pre-volume-snapshot",
-            volume: store,
-            ...(opts?.format === undefined ? {} : { format: opts.format }),
-            timestamp: timestamp(),
-          }),
-        );
-        yield* provider
-          .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
-          .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)));
-        yield* events.publish(
+  snapshot: (store, opts) => {
+    const snapshotId = opts?.label ?? `${store.store}-${randomUUID()}`;
+    let rollbackInfo: SnapshotInfo | undefined;
+    let rollbackNative: VolumeSnapshotRef | undefined;
+    return Effect.gen(function* () {
+      yield* events.publish(
+        PreVolumeSnapshotEvent.make({
+          eventName: "pre-volume-snapshot",
+          volume: store,
+          ...(opts?.format === undefined ? {} : { format: opts.format }),
+          timestamp: timestamp(),
+        }),
+      );
+      const createdAt = timestamp();
+      const useNative =
+        opts?.volumeSnapshot === "native" ||
+        (opts?.volumeSnapshot !== "copy" && provider.capabilities.volumeSnapshot === "native");
+      const format = opts?.format ?? "tar";
+      const native: VolumeSnapshotRef | undefined = useNative
+        ? yield* provider
+            .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
+            .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)))
+        : undefined;
+      rollbackNative = native;
+      const copyResult =
+        native === undefined
+          ? yield* writeStreamToEndpoint(
+              provider,
+              {
+                from: { _tag: "volume", app: store.app, store: store.store },
+                to: {
+                  _tag: "hostArchive",
+                  path: absolutePath(join(snapshotStoreDir(persistence, store), `${snapshotId}.${format}`)),
+                  format,
+                },
+                overwrite: true,
+              },
+              streamFromEndpoint(provider, { _tag: "volume", app: store.app, store: store.store }),
+            )
+          : undefined;
+      const nativeDigest = native === undefined ? undefined : hashText(JSON.stringify(native));
+      const info: SnapshotInfo = {
+        id: snapshotId,
+        store,
+        digest: copyResult?.digest ?? nativeDigest ?? hashText(snapshotId),
+        sizeBytes: copyResult?.sizeBytes ?? 0,
+        createdAt,
+        ...(native === undefined ? { format } : { native }),
+        ...(opts?.label === undefined ? {} : { label: opts.label }),
+        ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+      };
+      rollbackInfo = info;
+      yield* writeSnapshotSidecar(persistence, info);
+      yield* upsertSnapshotInfo(persistence, info);
+      yield* events.publish(
+        PostVolumeSnapshotEvent.make({
+          eventName: "post-volume-snapshot",
+          volume: store,
+          snapshotId,
+          outcome: "success",
+          timestamp: timestamp(),
+        }),
+      );
+      return { id: snapshotId, store };
+    }).pipe(
+      Effect.tapError(() =>
+        rollbackInfo === undefined && rollbackNative === undefined
+          ? Effect.void
+          : rollbackSnapshotPersistence(provider, persistence, rollbackInfo, rollbackNative).pipe(
+              Effect.catchAll(() => Effect.void),
+            ),
+      ),
+      Effect.tapErrorCause((cause) =>
+        events.publish(
           PostVolumeSnapshotEvent.make({
             eventName: "post-volume-snapshot",
             volume: store,
             snapshotId,
-            outcome: "success",
+            outcome: "failure",
+            failureDetail: events.redactText(failureDetail(cause)),
             timestamp: timestamp(),
           }),
-        );
-        return { id: snapshotId, store };
-      }).pipe(
-        Effect.tapErrorCause((cause) =>
-          events.publish(
-            PostVolumeSnapshotEvent.make({
-              eventName: "post-volume-snapshot",
-              volume: store,
-              snapshotId,
-              outcome: "failure",
-              failureDetail: events.redactText(failureDetail(cause)),
-              timestamp: timestamp(),
-            }),
+        ),
+      ),
+    );
+  },
+  restore: (handle, store) =>
+    findSnapshotInfo(
+      persistence,
+      typeof handle === "string" ? handle : handle.id,
+      typeof handle === "string" ? store : handle.store,
+    ).pipe(
+      Effect.flatMap((info) =>
+        info.native === undefined
+          ? writeStreamToEndpoint(
+              provider,
+              {
+                from: {
+                  _tag: "hostArchive",
+                  path: absolutePath(snapshotArchivePath(persistence, info)),
+                  format: info.format ?? "tar",
+                },
+                to: { _tag: "volume", app: store.app, store: store.store },
+                expectedDigest: info.digest,
+                overwrite: true,
+              },
+              streamFromEndpoint(provider, {
+                _tag: "hostArchive",
+                path: absolutePath(snapshotArchivePath(persistence, info)),
+                format: info.format ?? "tar",
+              }),
+            ).pipe(Effect.asVoid)
+          : provider
+              .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
+              .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause))),
+      ),
+    ),
+  listSnapshots: (filter) => listSnapshotInfos(persistence, filter),
+  removeSnapshot: (id, store) =>
+    findSnapshotInfo(persistence, id, store).pipe(
+      Effect.flatMap((info) =>
+        openSnapshotIndex(persistence, String(info.store.app)).pipe(
+          Effect.flatMap((bucket) => {
+            const key = snapshotIndexEntryKey(info);
+            return bucket.update((current) =>
+              (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
+            );
+          }),
+          Effect.zipRight(removeSnapshotArtifacts(persistence, info)),
+          Effect.flatMap(() => {
+            const removeNative = provider.removeVolumeSnapshot;
+            if (info.native === undefined || removeNative === undefined) {
+              return Effect.void;
+            }
+            return Effect.scoped(
+              removeNative(info.native).pipe(
+                Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
+              ),
+            );
+          }),
+          Effect.mapError(
+            (cause): DataTransferError =>
+              cause instanceof DataTransferError ? cause : stateFailure("remove", cause),
           ),
         ),
-      );
-    }),
-  restore: (handle, store) =>
-    typeof handle === "string"
-      ? Effect.fail(
-          new VolumeNotFoundError({
-            message: "String snapshot handles require the durable snapshot store from the next story.",
-            store: store.store,
-            app: store.app,
-          }),
-        )
-      : provider
-          .restoreVolume({
-            snapshot: { provider: provider.id, id: handle.id },
-            target: store,
-            overwrite: true,
-          })
-          .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause))),
-  listSnapshots: () => Effect.succeed([]),
-  removeSnapshot: () => Effect.void,
-  pruneSnapshots: () => Effect.succeed([]),
+      ),
+    ),
+  pruneSnapshots: (policy: PrunePolicy) =>
+    listSnapshotInfos(persistence, policy.filter ?? {}).pipe(
+      Effect.map((infos) => {
+        if (policy.keepLatest === undefined) {
+          return [];
+        }
+        return [...infos]
+          .sort(
+            (left, right) =>
+              Date.parse(DateTime.formatIso(right.createdAt)) -
+              Date.parse(DateTime.formatIso(left.createdAt)),
+          )
+          .slice(policy.keepLatest);
+      }),
+      Effect.flatMap((remove) =>
+        Effect.forEach(remove, (info) =>
+          makeDataMoverService(provider, events, persistence)
+            .removeSnapshot(info.id, info.store)
+            .pipe(Effect.as(info.id)),
+        ),
+      ),
+    ),
 });
 
-export const DataMoverLive: Layer.Layer<DataMover, never, RuntimeProvider | EventService | RedactionService> =
-  Layer.suspend(() =>
-    Layer.effect(
-      DataMover,
-      Effect.gen(function* () {
-        const provider = yield* RuntimeProvider;
-        const eventService = yield* Effect.serviceOption(EventService);
-        const redaction = yield* Effect.serviceOption(RedactionService);
-        const events = yield* makeEvents(eventService, redaction);
-        return makeDataMoverService(provider, events);
-      }),
-    ),
-  );
+export const DataMoverLive: Layer.Layer<
+  DataMover,
+  never,
+  RuntimeProvider | PathsService | StateStore | EventService | RedactionService
+> = Layer.suspend(() =>
+  Layer.effect(
+    DataMover,
+    Effect.gen(function* () {
+      const provider = yield* RuntimeProvider;
+      const paths = yield* PathsService;
+      const stateStore = yield* StateStore;
+      const eventService = yield* Effect.serviceOption(EventService);
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const events = yield* makeEvents(eventService, redaction);
+      return makeDataMoverService(provider, events, { paths, stateStore });
+    }),
+  ),
+);

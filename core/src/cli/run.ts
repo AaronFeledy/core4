@@ -540,7 +540,7 @@ const runInfo = (): Promise<void> =>
   );
 
 const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
-  const volumes = argv.includes("--volumes");
+  const volumes = argv.includes("--volumes") || argv.includes("--purge");
   const purgeCaches = argv.includes("--purge-caches");
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(

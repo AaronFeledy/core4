@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -11,7 +12,7 @@ import {
   AppId,
   type AppPlan,
   type FileSyncSessionInfo,
-  type FileSyncSessionRef,
+  FileSyncSessionRef,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -23,6 +24,7 @@ import {
   EventService,
   FileSyncEngine,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type {
@@ -31,6 +33,8 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -120,7 +124,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [
-    { name: "test_destroy_database_data", scope: "app" },
+    { name: "test_destroy_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
   ],
   fileSync: [],
@@ -154,12 +158,13 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeDestroyLayer = () => {
+const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const volumes = new Set(plan.stores.map((store) => store.name));
   const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
@@ -221,6 +226,14 @@ const makeDestroyLayer = () => {
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -302,9 +315,77 @@ describe("lando destroy", () => {
     expect(renderDestroyAppResult(result)).toContain("volumes removed");
   });
 
+  test("still emits post-destroy when snapshot subtree removal fails after provider teardown", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-rm-fail-"));
+    const snapshotRoot = makeLandoPaths({
+      userDataRoot: dataRoot,
+      env: {},
+      platform: "linux",
+    }).appSnapshotsDir(String(plan.id));
+    await mkdir(join(snapshotRoot, "data"), { recursive: true });
+    await chmod(snapshotRoot, 0o000);
+
+    try {
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+      const result = await Effect.runPromise(
+        destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.events).toEqual(["pre-destroy", "post-destroy"]);
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(renderDestroyAppResult(result)).toContain("volumes removed");
+    } finally {
+      await chmod(snapshotRoot, 0o700).catch(() => undefined);
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("plain destroy preserves snapshots and purge removes the app snapshot subtree", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-"));
+    const snapshotRoot = makeLandoPaths({
+      userDataRoot: dataRoot,
+      env: {},
+      platform: "linux",
+    }).appSnapshotsDir(String(plan.id));
+    await mkdir(join(snapshotRoot, "data"), { recursive: true });
+
+    try {
+      await Effect.runPromise(
+        destroyApp().pipe(Effect.provide(makeDestroyLayer({ userDataRoot: dataRoot }).layer)),
+      );
+      expect(existsSync(snapshotRoot)).toBe(true);
+
+      await Effect.runPromise(
+        destroyApp({ purgeCaches: true }).pipe(
+          Effect.provide(makeDestroyLayer({ userDataRoot: dataRoot }).layer),
+        ),
+      );
+      expect(existsSync(snapshotRoot)).toBe(true);
+
+      await Effect.runPromise(
+        destroyApp({ volumes: true }).pipe(
+          Effect.provide(makeDestroyLayer({ userDataRoot: dataRoot }).layer),
+        ),
+      );
+      expect(existsSync(snapshotRoot)).toBe(false);
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("compiled CLI exposes lando destroy --volumes flag", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--volumes"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
+      expect(result.stderr).toContain("lando init");
+    });
+  });
+
+  test("compiled CLI exposes lando destroy --purge flag", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(["destroy", "--purge"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
@@ -346,7 +427,7 @@ describe("lando destroy", () => {
       },
       isAvailable: Effect.succeed(false),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -383,7 +464,7 @@ describe("lando destroy", () => {
       },
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -398,7 +479,7 @@ describe("lando destroy", () => {
             Effect.fail(
               new FileSyncStopError({
                 engineId: "mutagen",
-                sessionRef: "session-web-app-mount",
+                sessionRef: FileSyncSessionRef.make("session-web-app-mount"),
                 message: "daemon unavailable",
               }),
             ),
@@ -418,8 +499,8 @@ describe("lando destroy", () => {
 
   test("continues provider cleanup when file-sync session termination fails", async () => {
     const existingRefs: ReadonlyArray<FileSyncSessionRef> = [
-      "session-web-app-mount",
-      "session-web-cache-mount",
+      FileSyncSessionRef.make("session-web-app-mount"),
+      FileSyncSessionRef.make("session-web-cache-mount"),
     ];
     const existing: ReadonlyArray<FileSyncSessionInfo> = existingRefs.map((ref, index) => ({
       ref,
@@ -442,7 +523,7 @@ describe("lando destroy", () => {
       },
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
-      createSession: () => Effect.void,
+      createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -484,7 +565,7 @@ describe("lando destroy", () => {
   });
 
   test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
-    const existingRef = "session-web-app-mount" as FileSyncSessionRef;
+    const existingRef = FileSyncSessionRef.make("session-web-app-mount");
     const existing: FileSyncSessionInfo = {
       ref: existingRef,
       app: { kind: "user", id: plan.id, root: plan.root },

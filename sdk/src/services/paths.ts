@@ -46,6 +46,9 @@ export interface LandoPaths {
   readonly certsDir: string;
   readonly runtimeDir: string;
   readonly globalAppRoot: string;
+  readonly snapshotsDir: string;
+  readonly appSnapshotsDir: (appId: string) => string;
+  readonly toolDownloadsDir: (toolId: string) => string;
   // userCache-scoped
   readonly logsDir: string;
   readonly scratchDir: string;

@@ -7,6 +7,7 @@ import type {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
+  SnapshotAmbiguousError,
   SnapshotNotFoundError,
   VolumeNotFoundError,
 } from "../errors/index.ts";
@@ -29,6 +30,7 @@ export type DataMoverError =
   | DataChecksumMismatchError
   | DataSourceOutsideRootError
   | DataTargetExistsError
+  | SnapshotAmbiguousError
   | SnapshotNotFoundError
   | VolumeNotFoundError
   | ArchiveFormatError;
@@ -51,7 +53,7 @@ export interface DataMoverShape {
   readonly listSnapshots: (
     filter: SnapshotFilter,
   ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
-  readonly removeSnapshot: (id: SnapshotId) => Effect.Effect<void, DataMoverError>;
+  readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
   readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
 }
 
