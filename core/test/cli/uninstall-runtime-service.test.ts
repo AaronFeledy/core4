@@ -15,7 +15,7 @@ const makeRoots = () => {
 };
 
 describe("runtime-service uninstall execution", () => {
-  test("must terminate before removing runtime artifacts", async () => {
+  test("removes runtime artifacts when no owned runtime service is running", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
@@ -30,6 +30,39 @@ describe("runtime-service uninstall execution", () => {
           userCacheRoot,
           execPath: join(root, "lando"),
           teardownRuntimeService: async () => ({ terminated: false }),
+          remove: async (path: string) => {
+            removed.push(path);
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(removed).toContain(runtimeDir);
+      expect(existsSync(runtimeDir)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("must terminate a detected runtime service before removing runtime artifacts", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const removed: string[] = [];
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          teardownRuntimeService: async () => ({ terminated: false, pid: 1234 }),
           remove: async (path: string) => {
             removed.push(path);
             rmSync(path, { recursive: true, force: true });

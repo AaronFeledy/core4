@@ -284,7 +284,7 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
     try {
       if (step.id === "runtime-service") {
         const result = await teardownRuntimeService(userDataRoot);
-        if (!result.terminated) {
+        if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
       }
