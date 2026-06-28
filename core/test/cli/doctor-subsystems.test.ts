@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
+import { StreamFrame } from "@lando/sdk/schema";
 import { ProxyService } from "@lando/sdk/services";
 
 import {
@@ -19,6 +20,23 @@ const EXPECTED_SUBSYSTEMS = ["proxy", "certs", "ssh", "healthcheck", "scanner", 
 
 const runDefault = (): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
+
+const decodeFrames = (ndjson: string) =>
+  ndjson
+    .trimEnd()
+    .split("\n")
+    .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+
+const eventPayloads = (ndjson: string): ReadonlyArray<Record<string, unknown>> =>
+  decodeFrames(ndjson).flatMap((frame) =>
+    frame._tag === "event" ? [frame.payload as Record<string, unknown>] : [],
+  );
+
+const resultEnvelope = (ndjson: string) => {
+  const frame = decodeFrames(ndjson).at(-1);
+  if (frame?._tag !== "result") throw new Error("expected terminal result frame");
+  return frame.envelope;
+};
 
 describe("meta:doctor subsystem checks", () => {
   test("aggregates one check per subsystem with a {status, severity, context, solution} record", async () => {
@@ -116,19 +134,14 @@ describe("meta:doctor subsystem checks", () => {
     expect(actual).toBe(expected);
   });
 
-  test("ndjson stream emits doctor.start, one doctor.check per subsystem, and doctor.complete with counts", async () => {
+  test("ndjson stream emits one doctor.check event frame per subsystem and a terminal result frame", async () => {
     const result = await runDefault();
     const ndjson = renderSubsystemDoctorResultAsNdjson(result, {
       now: new Date("1970-01-01T00:00:00.000Z"),
     });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-
-    expect(lines[0]).toEqual({ _tag: "doctor.start", timestamp: "1970-01-01T00:00:00.000Z" });
-
-    const checks = lines.slice(1, -1);
+    const frames = decodeFrames(ndjson);
+    expect(frames.at(-1)?._tag).toBe("result");
+    const checks = eventPayloads(ndjson);
     expect(checks.map((check) => check.name)).toEqual([...EXPECTED_SUBSYSTEMS]);
     for (const check of checks) {
       expect(check._tag).toBe("doctor.check");
@@ -138,15 +151,17 @@ describe("meta:doctor subsystem checks", () => {
       expect(check).toHaveProperty("solutions");
     }
 
-    const complete = lines.at(-1) as Record<string, unknown>;
     const warned = result.checks.filter((check) => check.status === "warn").length;
     const failed = result.checks.filter((check) => check.status === "fail").length;
-    expect(complete).toEqual({
-      _tag: "doctor.complete",
-      timestamp: "1970-01-01T00:00:00.000Z",
-      checks: result.checks.length,
-      failed,
-      warned,
+    expect(resultEnvelope(ndjson)).toMatchObject({
+      command: "meta:doctor",
+      ok: true,
+      result: {
+        timestamp: "1970-01-01T00:00:00.000Z",
+        checks: result.checks.length,
+        failed,
+        warned,
+      },
     });
   });
 });
