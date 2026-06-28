@@ -2969,7 +2969,7 @@
         "Lint passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Idempotent detect/reap/launch now lives in US-364's ensureRuntime; this story owns real getStatus (replacing the hardcoded `{ running: true }` in plugins/provider-lando/src/index.ts), the self-heal proof (cross-process), and poweroff/uninstall teardown. Integrates US-204 readiness + US-205/US-206 uninstall plan."
     },
     {

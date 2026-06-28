@@ -81,6 +81,70 @@ describe("apps:poweroff command", () => {
     expect(result.appsPoweredOff).not.toContain("cached-only");
   });
 
+  test("stops runtime service once after the app loop", async () => {
+    const calls: string[] = [];
+    const result = await Effect.runPromise(
+      poweroff({
+        userDataRoot,
+        userCacheRoot,
+        stopApp: async (entry) => {
+          calls.push(`app:${entry.appId}`);
+        },
+        stopRuntimeService: async (root) => {
+          calls.push(`runtime:${root}`);
+          return { terminated: true, pid: 1234 };
+        },
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(calls.filter((call) => call.startsWith("runtime:"))).toEqual([`runtime:${userDataRoot}`]);
+    expect(calls.at(-1)).toBe(`runtime:${userDataRoot}`);
+    expect(calls.slice(0, -1).sort()).toEqual(["app:global", "app:scratch-1", "app:user-app"]);
+    expect(result.runtimeServiceStopped).toBe(true);
+    expect(result.runtimeServicePid).toBe(1234);
+  });
+
+  test("result records runtimeServiceStopped=true when seam terminated", async () => {
+    const result = await Effect.runPromise(
+      poweroff({
+        userDataRoot,
+        userCacheRoot,
+        stopApp: async () => {},
+        stopRuntimeService: async () => ({ terminated: true, pid: 1234 }),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.runtimeServiceStopped).toBe(true);
+    expect(result.runtimeServicePid).toBe(1234);
+  });
+
+  test("result records runtimeServiceStopped=false when seam reports not terminated", async () => {
+    const result = await Effect.runPromise(
+      poweroff({
+        userDataRoot,
+        userCacheRoot,
+        stopApp: async () => {},
+        stopRuntimeService: async () => ({ terminated: false }),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.runtimeServiceStopped).toBe(false);
+    expect(result.runtimeServicePid).toBeUndefined();
+  });
+
+  test("uses the default runtime service seam when none is injected", async () => {
+    const result = await Effect.runPromise(
+      poweroff({
+        userDataRoot,
+        userCacheRoot,
+        stopApp: async () => {},
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.runtimeServiceStopped).toBe(false);
+    expect(result.runtimeServicePid).toBeUndefined();
+  });
+
   test("does not power off cache-only cwd-map entries", async () => {
     const stopped: string[] = [];
     const result = await Effect.runPromise(
@@ -116,5 +180,25 @@ describe("apps:poweroff command", () => {
     const rendered = renderPoweroffResult(result);
     expect(rendered).toContain("kept global app running");
     expect(rendered).toContain("kept 1 scratch app running");
+  });
+
+  test("render shows runtime stop line only when runtime stopped", () => {
+    const stopped = renderPoweroffResult({
+      appsPoweredOff: ["user-app"],
+      keptGlobalApp: false,
+      keptScratchApps: 0,
+      runtimeServiceStopped: true,
+      runtimeServicePid: 1234,
+    });
+    expect(stopped).toContain("Stopped Lando runtime service");
+
+    const notStopped = renderPoweroffResult({
+      appsPoweredOff: ["user-app"],
+      keptGlobalApp: false,
+      keptScratchApps: 0,
+      runtimeServiceStopped: false,
+    });
+    expect(notStopped).not.toContain("Stopped Lando runtime service");
+    expect(notStopped).toBe("Powered off: user-app");
   });
 });

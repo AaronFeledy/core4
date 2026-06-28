@@ -26,7 +26,11 @@ import {
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
-import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness.ts";
+import {
+  type SetupReadinessRuntimeService,
+  type SetupReadinessSummary,
+  readSetupReadiness,
+} from "./setup-readiness.ts";
 
 export type DoctorError =
   | ConfigError
@@ -337,6 +341,89 @@ const buildSetupReadinessDoctorCheck = (
   };
 };
 
+interface RuntimeServiceStatusShape {
+  readonly running: boolean;
+  readonly socketReachable: boolean;
+  readonly pid?: number;
+  readonly ownedServiceProcess: boolean;
+  readonly orphanPids?: ReadonlyArray<number>;
+}
+
+interface RuntimeServiceCapableProvider {
+  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusShape>;
+}
+
+const runtimeServiceStatusFor = (provider: {
+  readonly getStatus: Effect.Effect<{ readonly running: boolean }, ProviderError>;
+}): Effect.Effect<RuntimeServiceStatusShape, ProviderError> => {
+  const candidate = (provider as RuntimeServiceCapableProvider).getRuntimeServiceStatus;
+  if (candidate !== undefined) return candidate;
+  return provider.getStatus.pipe(
+    Effect.map((status) => ({
+      running: status.running,
+      socketReachable: status.running,
+      ownedServiceProcess: false,
+    })),
+  );
+};
+
+const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution => ({
+  kind: "manual",
+  description: `Found orphaned runtime-service process(es) ${orphanPids.join(
+    ",",
+  )} not owned by Lando. Run \`lando doctor --fix\` to reap them, or terminate them manually before retrying.`,
+  command: "lando doctor --fix",
+});
+
+const buildRuntimeServiceDoctorCheck = (
+  status: RuntimeServiceStatusShape,
+  provider: { readonly id: string; readonly displayName: string; readonly version: string },
+  runtimeVersion: string | undefined,
+  readinessRuntimeService: SetupReadinessRuntimeService | undefined,
+  selection?: DoctorSelectionRecord,
+): DoctorCheck => {
+  const hasOrphans = status.orphanPids !== undefined && status.orphanPids.length > 0;
+  const checkStatus: DoctorStatus = status.running && !hasOrphans ? "pass" : "warn";
+  const severity: DoctorSeverity = checkStatus === "pass" ? "info" : "warn";
+  const context: Record<string, string> = {
+    providerId: provider.id,
+    providerKind: providerKindFor(provider.id),
+    providerVersion: provider.version,
+    runtimeRunning: String(status.running),
+    socketReachable: String(status.socketReachable),
+    ownedServiceProcess: String(status.ownedServiceProcess),
+  };
+  if (status.pid !== undefined) context.runtimePid = String(status.pid);
+  if (hasOrphans) context.orphanPids = (status.orphanPids ?? []).join(",");
+  if (readinessRuntimeService !== undefined) {
+    context.lastRecordedRunning = String(readinessRuntimeService.running);
+    context.lastRecordedSocketPath = readinessRuntimeService.socketPath;
+    if (readinessRuntimeService.pid !== undefined)
+      context.lastRecordedPid = String(readinessRuntimeService.pid);
+    if (readinessRuntimeService.runtimeVersion !== undefined)
+      context.lastRecordedRuntimeVersion = readinessRuntimeService.runtimeVersion;
+  }
+
+  return {
+    name: "runtime-service",
+    status: checkStatus,
+    severity,
+    providerId: provider.id,
+    providerName: provider.displayName,
+    providerVersion: provider.version,
+    providerKind: providerKindFor(provider.id),
+    runtimeStatus: status.running ? "running" : "stopped",
+    runtime: {
+      running: status.running,
+      ...(runtimeVersion === undefined ? {} : { version: runtimeVersion }),
+    },
+    capabilities: {},
+    context,
+    solutions: hasOrphans ? [orphanRemediation(status.orphanPids ?? [])] : [],
+    ...(selection === undefined ? {} : { selection }),
+  };
+};
+
 export const doctor = (
   options: DoctorOptions = {},
 ): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
@@ -451,7 +538,31 @@ export const doctor = (
         ? []
         : [buildSetupReadinessDoctorCheck(setupReadiness, provider, selection)];
 
-    return { checks: [primaryCheck, ...conflictChecks, ...fileSyncChecks, ...setupReadinessChecks] };
+    const runtimeServiceChecks: ReadonlyArray<DoctorCheck> =
+      providerKindFor(provider.id) === "managed"
+        ? yield* Effect.gen(function* () {
+            const runtimeServiceStatus = yield* runtimeServiceStatusFor(provider);
+            return [
+              buildRuntimeServiceDoctorCheck(
+                runtimeServiceStatus,
+                provider,
+                versions?.runtime,
+                setupReadiness?.runtimeService,
+                selection,
+              ),
+            ] as ReadonlyArray<DoctorCheck>;
+          })
+        : [];
+
+    return {
+      checks: [
+        primaryCheck,
+        ...conflictChecks,
+        ...fileSyncChecks,
+        ...setupReadinessChecks,
+        ...runtimeServiceChecks,
+      ],
+    };
   });
 
 const renderCapabilityValue = (value: unknown): string => {
@@ -488,7 +599,7 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
   ];
   if (check.runtime.version !== undefined) lines.push(`runtimeVersion: ${check.runtime.version}`);
   if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
-  if (check.name === "setup-readiness") {
+  if (check.name === "setup-readiness" || check.name === "runtime-service") {
     for (const [field, value] of Object.entries(check.context)) {
       if (field === "providerId" || field === "providerKind" || field === "providerVersion") continue;
       lines.push(`${field}: ${value}`);
@@ -537,6 +648,15 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "conflictKind",
   "socketPath",
   "providerLandoStatePath",
+  "runtimeRunning",
+  "socketReachable",
+  "ownedServiceProcess",
+  "runtimePid",
+  "orphanPids",
+  "lastRecordedRunning",
+  "lastRecordedSocketPath",
+  "lastRecordedPid",
+  "lastRecordedRuntimeVersion",
 ];
 
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>

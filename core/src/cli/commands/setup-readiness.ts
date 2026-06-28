@@ -21,11 +21,19 @@ export interface SetupReadinessStep {
   readonly remediation?: string;
 }
 
+export interface SetupReadinessRuntimeService {
+  readonly running: boolean;
+  readonly socketPath: string;
+  readonly pid?: number;
+  readonly runtimeVersion?: string;
+}
+
 export interface SetupReadinessSummary {
   readonly status: "deferred" | "failed" | "ready";
   readonly providerId: string;
   readonly updatedAt: string;
   readonly steps: ReadonlyArray<SetupReadinessStep>;
+  readonly runtimeService?: SetupReadinessRuntimeService;
 }
 
 export const setupReadinessPath = (userDataRoot: string): string =>
@@ -41,6 +49,7 @@ export const writeSetupReadiness = (
   userDataRoot: string | undefined,
   providerId: string,
   steps: ReadonlyArray<SetupReadinessStep>,
+  runtimeService?: SetupReadinessRuntimeService,
 ): Effect.Effect<void, never> => {
   if (userDataRoot === undefined) return Effect.void;
   const summary: SetupReadinessSummary = {
@@ -48,6 +57,7 @@ export const writeSetupReadiness = (
     providerId,
     updatedAt: new Date().toISOString(),
     steps,
+    ...(runtimeService === undefined ? {} : { runtimeService }),
   };
   return Effect.promise(() =>
     writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
@@ -69,6 +79,14 @@ export const readSetupReadiness = (
 
 const redactSetupReadinessSummary = (summary: SetupReadinessSummary): SetupReadinessSummary => ({
   ...summary,
+  ...(summary.runtimeService === undefined
+    ? {}
+    : {
+        runtimeService: {
+          ...summary.runtimeService,
+          socketPath: redactString(summary.runtimeService.socketPath),
+        },
+      }),
   steps: summary.steps.map((step) => ({
     ...step,
     evidence: redactString(step.evidence),

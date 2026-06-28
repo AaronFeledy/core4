@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
+import { buildUninstallPlan, formatUninstallResult, uninstall } from "../../src/cli/commands/uninstall.ts";
 import { metaUninstallSpec, uninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/uninstall.ts";
 
 const makeRoots = () => {
@@ -143,6 +143,154 @@ describe("meta:uninstall", () => {
       });
       expect(await Bun.file(userDataRoot).exists()).toBe(false);
       expect(await Bun.file(userCacheRoot).exists()).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("plan includes a runtime-service step targeting the runtime directory", () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      const plan = buildUninstallPlan({
+        userDataRoot,
+        userCacheRoot,
+        execPath: join(root, "lando"),
+        exists: (path: string) => path === runtimeDir,
+      });
+
+      expect(plan.find((step) => step.id === "runtime-service")).toMatchObject({
+        label: "managed runtime service",
+        target: runtimeDir,
+        destructive: true,
+        status: "owned",
+        detail:
+          "Terminate the Lando-managed runtime service and remove its socket, PID, and runtime directory.",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("runtime-service is removed under both keep-data and purge", () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      const options = {
+        userDataRoot,
+        userCacheRoot,
+        execPath: join(root, "lando"),
+        exists: (path: string) => path === runtimeDir,
+      };
+
+      expect(
+        buildUninstallPlan(options, "keep-data").find((step) => step.id === "runtime-service"),
+      ).toMatchObject({
+        target: runtimeDir,
+        status: "owned",
+      });
+      expect(
+        buildUninstallPlan(options, "purge").find((step) => step.id === "runtime-service"),
+      ).toMatchObject({
+        target: runtimeDir,
+        status: "owned",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("teardown runs before remove for runtime-service", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      const order: string[] = [];
+      const teardownRoots: string[] = [];
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          exists: (path: string) => path === runtimeDir,
+          teardownRuntimeService: async (rootPath: string) => {
+            teardownRoots.push(rootPath);
+            order.push("teardown");
+            return { terminated: true, pid: 1234 };
+          },
+          remove: async (path: string) => {
+            order.push(`remove:${path}`);
+          },
+        }),
+      );
+
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(teardownRoots).toEqual([userDataRoot]);
+      expect(order.slice(0, 2)).toEqual(["teardown", `remove:${runtimeDir}`]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("runtime-service is idempotent when runtime dir is absent", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      const order: string[] = [];
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          exists: () => false,
+          teardownRuntimeService: async () => {
+            order.push("teardown");
+            return { terminated: false };
+          },
+          remove: async (path: string) => {
+            order.push(`remove:${path}`);
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        target: runtimeDir,
+        status: "skipped",
+        outcome: "skipped",
+      });
+      expect(order).not.toContain("teardown");
+      expect(order).not.toContain(`remove:${runtimeDir}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("managed-provider-runtime remains distinct from runtime-service", () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtimeDir = join(userDataRoot, "runtime");
+      const providerRuntime = join(userDataRoot, "providers", "lando");
+      const plan = buildUninstallPlan({
+        userDataRoot,
+        userCacheRoot,
+        execPath: join(root, "lando"),
+        exists: (path: string) => path === runtimeDir || path === providerRuntime,
+      });
+
+      expect(plan.find((step) => step.id === "runtime-service")).toMatchObject({ target: runtimeDir });
+      expect(plan.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
+        target: providerRuntime,
+        status: "owned",
+        detail: "Remove Lando-managed runtime bundles when present.",
+      });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

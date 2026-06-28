@@ -727,3 +727,21 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Fixed a real verify blocker at the root cause: setup could report success immediately after spawning the detached service, before the socket was reachable. `ensureRuntime` now waits for post-launch `api.info` readiness through `@lando/sdk/probe`, and socket-backed provider read/teardown paths also run the cached ensure once a plan exists.
 - **Learnings for future iterations:** A managed runtime socket cannot be capability-probed at provider construction before it exists; use static MVP capabilities for the Paths-derived managed socket path, let `ensureRuntime` launch and poll readiness with `runProbe`, and reserve eager `introspectProviderCapabilities` for explicit external sockets or injected API clients.
 ---
+
+## [2026-06-28 02:34:32 CDT] - Babysit
+- PR: #483 https://github.com/AaronFeledy/core4/pull/483
+- CI outcome: pass
+- Review feedback: fixed (Bugbot/provider-runtime fixes for retryable ensure, safe stale-service handling, setup readiness/task tree, external-socket gating, and CI provider integration path)
+- Merge: merged (squash)
+---
+
+## 2026-06-28 - US-365
+- The Lando runtime service now reports real status, self-heals across processes, and is torn down by poweroff and uninstall. `RuntimeProvider.getStatus` for `lando` probes the socket reachability and owned PID instead of returning a constant, and a new `getRuntimeServiceStatus` control surface exposes socket/PID/orphan-PID detail. A reusable core `managed-runtime-service` module owns the spec/args builder and the owned-PID terminate (socket+PID unlink) used by both core CLI teardown and the provider plugin.
+- `lando doctor` gained a `runtime-service` check for the managed provider: it prefers `getRuntimeServiceStatus`, falls back to `getStatus`, warns with a `lando doctor --fix` remediation on orphan PIDs, and surfaces the US-204 readiness `runtimeService` block (running flag, socket path, PID, runtime version) as last-recorded context with the socket path redacted. `apps:poweroff` stops the runtime service once after the app loop, and `lando uninstall` enumerates and performs runtime-service teardown (terminate, unlink socket/PID, remove `<userDataRoot>/runtime/`) under both `--keep-data` and `--purge`.
+- A fakes-only cross-process integration test proves the self-heal: a fresh provider layer detects the killed managed runtime, reaps the dead PID, relaunches with the canonical args, and the healed PID differs from the original.
+- Verification: typecheck, lint passed; doctor/poweroff/uninstall/setup-readiness/managed-runtime-service/runtime-status/podman-service-args-parity/cross-process spot checks passed (136 tests). Real CLI run of `lando doctor` in the sandbox confirmed the `runtime-service: warn` check with `runtimeStatus: stopped` and the socket/PID context fields.
+- **Learnings for future iterations:**
+  - The `runtime-service` doctor check is emitted unconditionally for managed providers (id `lando`), preferring the optional `getRuntimeServiceStatus` (a non-SDK property duck-typed off the provider object) and falling back to `getStatus`. Adding it shifts every doctor check-count/NDJSON assertion: regenerate `core/test/cli/fixtures/meta-doctor.provider-status*.ndjson` by driving the real `doctor()`+`renderDoctorResultAsNdjson` from a throwaway in-repo script (workspace imports do not resolve from `/tmp`), and bump the `checks`/`warned` counts and the check-name arrays in `doctor.test.ts` and `doctor-report.test.ts` (the combined report inserts `runtime-service` right after `selected-provider`).
+  - Readiness `runtimeService.socketPath` is already redacted on read by `readSetupReadiness` (`redactSetupReadinessSummary`); do NOT redact it again in the doctor check or you double-mask (`[redacted]]`). The doctor renderer only prints `context` lines for checks named `setup-readiness` or `runtime-service`, so any new context-bearing check must be added to that branch.
+  - `PodmanServiceSpec.args` does NOT include the podman binary (the command is the separate `spec.command` field); a launch-args assertion must compare against args starting at `--root`, not a `<bin>/podman`-prefixed array.
+---

@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 
 import { Effect } from "effect";
 
+import { buildManagedRuntimeServiceArgs } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 export interface PodmanServiceSpec {
@@ -53,18 +54,12 @@ export const buildPodmanServiceArgs = (p: {
   readonly socketPath: string;
 }): PodmanServiceSpec => ({
   command: p.podmanBin,
-  args: [
-    "--root",
-    p.storageDir,
-    "--runroot",
-    p.runRoot,
-    "--config",
-    p.configDir,
-    "system",
-    "service",
-    "--time=0",
-    `unix://${p.socketPath}`,
-  ],
+  args: buildManagedRuntimeServiceArgs({
+    runtimeStorageDir: p.storageDir,
+    runtimeRunDir: p.runRoot,
+    runtimeConfigDir: p.configDir,
+    providerSocketPath: p.socketPath,
+  }),
   socketPath: p.socketPath,
 });
 

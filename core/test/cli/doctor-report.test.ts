@@ -146,6 +146,7 @@ describe("meta:doctor combined report", () => {
     expect(lines[0]).toEqual({ _tag: "doctor.start", timestamp: "1970-01-01T00:00:00.000Z" });
     expect(lines.slice(1, -1).map((line) => line.name)).toEqual([
       "selected-provider",
+      "runtime-service",
       "proxy",
       "certs",
       "ssh",
@@ -157,7 +158,7 @@ describe("meta:doctor combined report", () => {
     expect(lines.at(-1)).toEqual({
       _tag: "doctor.complete",
       timestamp: "1970-01-01T00:00:00.000Z",
-      checks: 8,
+      checks: 9,
       failed: 0,
       warned: 7,
     });
@@ -172,7 +173,7 @@ describe("meta:doctor combined report", () => {
     expect(rendered).toContain('"name":"selected-provider"');
     expect(rendered).toContain('"name":"host-proxy"');
     expect(rendered).toContain('"name":"global-app"');
-    expect(rendered).toContain('"checks":8');
+    expect(rendered).toContain('"checks":9');
   });
 
   test("doctorReport runs the shared app:config:lint pass and renders it under --app", async () => {
@@ -199,7 +200,7 @@ describe("meta:doctor combined report", () => {
         .split("\n")
         .map((line) => JSON.parse(line) as Record<string, unknown>);
       expect(lines.slice(1, -1).map((line) => line.name)).toContain("app-config-lint");
-      expect(lines.at(-1)).toMatchObject({ checks: 9, failed: 1 });
+      expect(lines.at(-1)).toMatchObject({ checks: 10, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -320,7 +321,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(lines.at(-1)).toMatchObject({ checks: 9 });
+      expect(lines.at(-1)).toMatchObject({ checks: 10 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }
