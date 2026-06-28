@@ -418,6 +418,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 })(),
                 ...(stateDir === undefined ? {} : { stateDir }),
                 ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+                ...(options.runtimeConfigDir === undefined
+                  ? {}
+                  : { runtimeConfigDir: options.runtimeConfigDir }),
                 ...(socketPath === undefined ? {} : { socketPath }),
                 ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
                 readinessCheck: ensureOnce,

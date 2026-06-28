@@ -700,14 +700,15 @@ const downloaderFor = (archiveBytes: Uint8Array, version = "0.0.0-test") => ({
 
 describe("provider-lando setup runtime bundle extraction", () => {
   test("extracts the verified runtime bundle into runtimeBinDir with executable bits", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
-    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-bin-")), "runtime", "bin");
+    const root = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
+    const stateDir = join(root, "providers");
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const runtimeConfigDir = join(root, "runtime", "config");
     try {
       const archiveBytes = buildTarGz([
         { path: "podman", bytes: new TextEncoder().encode("podman") },
         { path: "gvproxy", bytes: new TextEncoder().encode("gvproxy") },
       ]);
-
       const result = await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
@@ -716,11 +717,15 @@ describe("provider-lando setup runtime bundle extraction", () => {
           runtimeBundleDownloader: downloaderFor(archiveBytes),
           stateDir,
           runtimeBinDir,
+          runtimeConfigDir,
           socketPath: "/tmp/lando-extract.sock",
         }),
       );
 
       expect(result.runtimeBinDir).toBe(runtimeBinDir);
+      expect(await readFile(join(runtimeConfigDir, "containers.conf"), "utf8")).toContain(
+        `helper_binaries_dir = ["${runtimeBinDir}"]`,
+      );
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
       expect(existsSync(join(runtimeBinDir, "gvproxy"))).toBe(true);
       expect(statSync(join(runtimeBinDir, "podman")).mode & 0o111).not.toBe(0);
@@ -729,8 +734,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
       expect(state.runtimeBinDir).toBe(runtimeBinDir);
       expect(state.runtimeBundleVersion).toBe("0.0.0-test");
     } finally {
-      await rm(stateDir, { recursive: true, force: true });
-      await rm(runtimeBinDir, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 

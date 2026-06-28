@@ -16,6 +16,7 @@ import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
+import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
@@ -116,6 +117,7 @@ export interface SetupOptions {
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
+  readonly runtimeConfigDir?: string;
   readonly eventService?: EventPublisher;
 }
 
@@ -506,6 +508,7 @@ export const setupProviderLando = (
 
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
+      const runtimeConfigDir = options.runtimeConfigDir;
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -527,6 +530,10 @@ export const setupProviderLando = (
                 ),
               ),
             );
+
+      if (runtimeBinDir !== undefined && runtimeConfigDir !== undefined) {
+        yield* writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir });
+      }
 
       const podmanVersionOutput = yield* withStep(
         options.eventService,
