@@ -170,7 +170,7 @@ describe("meta:doctor command", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 1,
+        checks: 2,
         failed: 0,
         warned: 0,
       },
@@ -231,7 +231,7 @@ describe("meta:doctor command", () => {
     expect(setupSolution?.description).toContain("lando setup");
 
     const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
-    expect(complete.warned).toBe(1);
+    expect(complete.warned).toBe(2);
     expect(complete.failed).toBe(0);
 
     expect(text).toContain("selected-provider: warn");
@@ -605,8 +605,7 @@ describe("meta:doctor command", () => {
             ),
           ),
         );
-        expect(result.checks.length).toBe(1);
-        expect(result.checks[0]?.name).toBe("selected-provider");
+        expect(result.checks.map((check) => check.name)).toEqual(["selected-provider", "runtime-service"]);
       } finally {
         await rm(dataRoot, { recursive: true, force: true });
       }

@@ -761,6 +761,46 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:** A managed runtime socket cannot be capability-probed at provider construction before it exists; use static MVP capabilities for the Paths-derived managed socket path, let `ensureRuntime` launch and poll readiness with `runProbe`, and reserve eager `introspectProviderCapabilities` for explicit external sockets or injected API clients.
 ---
 
+## [2026-06-28 02:34:32 CDT] - Babysit
+- PR: #483 https://github.com/AaronFeledy/core4/pull/483
+- CI outcome: pass
+- Review feedback: fixed (Bugbot/provider-runtime fixes for retryable ensure, safe stale-service handling, setup readiness/task tree, external-socket gating, and CI provider integration path)
+- Merge: merged (squash)
+---
+
+## 2026-06-28 - US-365
+- The Lando runtime service now reports real status, self-heals across processes, and is torn down by poweroff and uninstall. `RuntimeProvider.getStatus` for `lando` probes the socket reachability and owned PID instead of returning a constant, and a new `getRuntimeServiceStatus` control surface exposes socket/PID/orphan-PID detail. A reusable core `managed-runtime-service` module owns the spec/args builder and the owned-PID terminate (socket+PID unlink) used by both core CLI teardown and the provider plugin.
+- `lando doctor` gained a `runtime-service` check for the managed provider: it prefers `getRuntimeServiceStatus`, falls back to `getStatus`, warns with a `lando doctor --fix` remediation on orphan PIDs, and surfaces the US-204 readiness `runtimeService` block (running flag, socket path, PID, runtime version) as last-recorded context with the socket path redacted. `apps:poweroff` stops the runtime service once after the app loop, and `lando uninstall` enumerates and performs runtime-service teardown (terminate, unlink socket/PID, remove `<userDataRoot>/runtime/`) under both `--keep-data` and `--purge`.
+- A fakes-only cross-process integration test proves the self-heal: a fresh provider layer detects the killed managed runtime, reaps the dead PID, relaunches with the canonical args, and the healed PID differs from the original.
+- Verification: typecheck, lint passed; doctor/poweroff/uninstall/setup-readiness/managed-runtime-service/runtime-status/podman-service-args-parity/cross-process spot checks passed (136 tests). Real CLI run of `lando doctor` in the sandbox confirmed the `runtime-service: warn` check with `runtimeStatus: stopped` and the socket/PID context fields.
+- **Learnings for future iterations:**
+  - The `runtime-service` doctor check is emitted unconditionally for managed providers (id `lando`), preferring the optional `getRuntimeServiceStatus` (a non-SDK property duck-typed off the provider object) and falling back to `getStatus`. Adding it shifts every doctor check-count/NDJSON assertion: regenerate `core/test/cli/fixtures/meta-doctor.provider-status*.ndjson` by driving the real `doctor()`+`renderDoctorResultAsNdjson` from a throwaway in-repo script (workspace imports do not resolve from `/tmp`), and bump the `checks`/`warned` counts and the check-name arrays in `doctor.test.ts` and `doctor-report.test.ts` (the combined report inserts `runtime-service` right after `selected-provider`).
+  - Readiness `runtimeService.socketPath` is already redacted on read by `readSetupReadiness` (`redactSetupReadinessSummary`); do NOT redact it again in the doctor check or you double-mask (`[redacted]]`). The doctor renderer only prints `context` lines for checks named `setup-readiness` or `runtime-service`, so any new context-bearing check must be added to that branch.
+  - `PodmanServiceSpec.args` does NOT include the podman binary (the command is the separate `spec.command` field); a launch-args assertion must compare against args starting at `--root`, not a `<bin>/podman`-prefixed array.
+---
+
+## 2026-06-28 04:26 CDT - US-365 Review
+- Reviewed the runtime-service story commit and fixed confirmed blockers: setup now persists runtime-service readiness state after provider setup, doctor no longer advertises an unsupported orphan-PID `--fix` path, default-root uninstall tears down the managed runtime service before removing its runtime directory, and the required first-run readiness guide now carries US-365 lifecycle coverage.
+- Review notes (deferred/rejected): live provider/container runtime checks were not run on the host per loop safety rules; guide drift skipped locally because the gate requires CI PR environment variables.
+- Verification: typecheck passed; lint passed; focused spot checks passed for setup, doctor runtime-service, uninstall, provider runtime status, and the first-run readiness guide; guide lint and guide coverage passed.
+---
+## 2026-06-28 04:33 CDT - US-365 Verify
+- Built the real compiled binary with `cd core && bun run build`; sandbox `./core/dist/lando setup --yes --no-interactive` reached provider-lando setup but failed before scenario testing because the runtime bundle could not be downloaded.
+- Confirmed the sandbox has no `LANDO_RUNTIME_BUNDLE_MANIFEST`, and `bun scripts/build-runtime-bundle.ts --local --platform linux-x64` cannot produce a manifest because `dist/cache/runtime-bundle` has no staged `lando-runtime-linux-x64.tar.gz` artifact.
+- **Learnings for future iterations:** US-365 real-world verification needs a staged current-commit runtime bundle plus `LANDO_RUNTIME_BUNDLE_MANIFEST`; without that artifact, runtime status/self-heal/poweroff/uninstall cannot be honestly exercised against the compiled binary.
+---
+## [2026-06-28 05:38 CDT] - Babysit
+- PR: #485 https://github.com/AaronFeledy/core4/pull/485
+- CI outcome: fail (Cursor Bugbot; static-checks-platform (linux-x64) still pending when deferred)
+- Review feedback: fixed runtime readiness preservation, raw readiness merge, runtime teardown artifact handling, and stopped-service uninstall cleanup; final Bugbot reported new Podman path teardown issue after five triage rounds.
+- Merge: deferred (triage round limit reached with open Cursor Bugbot finding on 6aab64ed)
+---
+## 2026-06-28 06:05 CDT - US-365 Build (finish in-flight)
+- Resolved the last open Cursor Bugbot finding ("Podman path breaks teardown") on the in-flight US-365 branch: the managed runtime service teardown/status match key was built independently from the launched binary string, so the `/proc/<pid>/cmdline` ownership check could drift from the spawned argv[0] (forward-slash `${runtimeBinDir}/podman` vs a `join`-normalized path on non-POSIX hosts), letting poweroff/uninstall remove the runtime tree without SIGTERMing a still-live owned process.
+- Introduced a single `managedRuntimePodmanArgv0(runtimeBinDir)` helper as the one source of truth for the spawned podman argv[0], used by both `buildManagedRuntimeServiceSpec` (core teardown/status match key) and the provider's launch wiring, so launch, status, and teardown can never disagree. Strengthened the provider parity test to assert full-argv identity against the production launch expression and added a source guard proving the provider derives its bin from the shared helper.
+- Verification: typecheck, lint passed; focused spot checks passed for poweroff, uninstall, uninstall-runtime-service, provider runtime-status, the managed-runtime-service unit suite, and the strengthened argv0 parity suite (49 tests). The /proc-based teardown is a Linux managed-runtime path that needs a live container runtime to exercise end-to-end (out of host scope); the launch/teardown argv0 invariant is locked by the unit parity + source-guard tests (RED->GREEN).
+- **Learnings for future iterations:** When a process is matched for ownership against `/proc/<pid>/cmdline`, the match key MUST be the exact string passed to the spawner, not a re-normalized path. Keep the spawned argv[0] and any teardown/status match key flowing from one shared helper; a path-aesthetics "cleanup" back to `join(...)` silently reintroduces the drift. The existing parity test masked the bug by re-deriving the bin with `join` on both sides — parity tests must mirror the real production expression, not a convenient equivalent.
+---
 ## 2026-06-28 05:09 CDT - US-366
 - Runtime provider registry construction now uses the already-injected PathsService as the source of truth for the Lando-managed runtime socket, PID file, runtime bin/run/storage/config directories, and provider state root, so provider-lando selection no longer needs `LANDO_TEST_PODMAN_SOCKET` in production.
 - Focused registry coverage now locks the PathsService dependency and the private runtime path wiring, and provider-lando has a no-env socket-resolution test that proves `providerSocketPath` becomes the default socket without touching a real Podman socket.

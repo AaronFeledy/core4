@@ -3,6 +3,7 @@
  */
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
+import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
@@ -20,9 +21,18 @@ import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
-import { type PodmanServiceRunner, makeSystemPodmanServiceRunner } from "./podman-service-runner.ts";
+import {
+  type PodmanServiceRunner,
+  buildPodmanServiceArgs,
+  makeSystemPodmanServiceRunner,
+} from "./podman-service-runner.ts";
 import type { RootlessProbes } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import {
+  type RuntimeServiceStatus,
+  probeRuntimeServiceStatus,
+  teardownRuntimeService as teardownManagedRuntimeService,
+} from "./runtime-status.ts";
 import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
@@ -118,6 +128,9 @@ export type {
   RuntimeBundleManifest,
 } from "./runtime-bundle.ts";
 
+export { probeRuntimeServiceStatus, teardownRuntimeService } from "./runtime-status.ts";
+export type { RuntimeServiceStatus, RuntimeStatusDeps } from "./runtime-status.ts";
+
 export {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
@@ -168,6 +181,33 @@ const unsupportedHostPlatformError = () =>
     remediation: "Run `lando setup` on Linux, macOS, or Windows, or select another runtime provider.",
   });
 
+const probeRuntimeSocketStatus = (podmanApi?: PodmanApiClient): Effect.Effect<RuntimeServiceStatus> => {
+  if (podmanApi === undefined) {
+    return Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false });
+  }
+
+  return podmanApi.info.pipe(
+    Effect.as({ running: true, socketReachable: true, ownedServiceProcess: false }),
+    Effect.catchAllCause(() =>
+      Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false }),
+    ),
+  );
+};
+
+const runtimeStatusMessage = (status: RuntimeServiceStatus): string => {
+  if (!status.socketReachable) return "runtime socket unreachable";
+
+  const pidSummary =
+    status.pid === undefined
+      ? "no owned pid"
+      : `pid ${status.pid} ${status.ownedServiceProcess ? "owned" : "not owned"}`;
+  const orphanSummary =
+    status.orphanPids === undefined || status.orphanPids.length === 0
+      ? ""
+      : `; orphan pids ${status.orphanPids.join(",")}`;
+  return `runtime socket reachable; ${pidSummary}${orphanSummary}`;
+};
+
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
@@ -189,6 +229,13 @@ export interface ProviderLayerOptions {
   readonly eventService?: BringUpOptions["eventService"];
 }
 
+interface RuntimeProviderServiceControls {
+  readonly getRuntimeServiceStatus: Effect.Effect<RuntimeServiceStatus>;
+  readonly teardownRuntimeService: Effect.Effect<{ readonly terminated: boolean; readonly pid?: number }>;
+}
+
+type RuntimeProviderWithServiceControls = RuntimeProviderShape & RuntimeProviderServiceControls;
+
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
   const externalSocketPath = options.socketPath;
@@ -201,7 +248,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const podmanBin = runtimeBinDir === undefined ? "podman" : `${runtimeBinDir}/podman`;
+  const podmanBin = runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
   const skipSetupSocketProbe =
     externalSocketPath === undefined && managedSocketPath !== undefined && options.podmanApi === undefined;
@@ -297,8 +344,49 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           Duration.infinity,
         );
         const ensureOnce = cachedEnsure.pipe(Effect.tapError(() => invalidateEnsure));
+        const managedRuntimeStatusDeps =
+          shouldManageRuntime &&
+          managedSocketPath !== undefined &&
+          options.runtimeStorageDir !== undefined &&
+          options.runtimeRunDir !== undefined &&
+          options.runtimeConfigDir !== undefined &&
+          options.providerPidPath !== undefined
+            ? {
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+                serviceRunner,
+                spec: buildPodmanServiceArgs({
+                  podmanBin,
+                  storageDir: options.runtimeStorageDir,
+                  runRoot: options.runtimeRunDir,
+                  configDir: options.runtimeConfigDir,
+                  socketPath: managedSocketPath,
+                }),
+                pidPath: options.providerPidPath,
+              }
+            : undefined;
+        const runtimeServiceStatus =
+          managedRuntimeStatusDeps === undefined
+            ? probeRuntimeSocketStatus(podmanApi)
+            : probeRuntimeServiceStatus(managedRuntimeStatusDeps);
+        const managedRuntimeServicePaths =
+          shouldManageRuntime &&
+          runtimeBinDir !== undefined &&
+          managedSocketPath !== undefined &&
+          options.runtimeStorageDir !== undefined &&
+          options.runtimeRunDir !== undefined &&
+          options.runtimeConfigDir !== undefined &&
+          options.providerPidPath !== undefined
+            ? {
+                runtimeBinDir,
+                runtimeStorageDir: options.runtimeStorageDir,
+                runtimeRunDir: options.runtimeRunDir,
+                runtimeConfigDir: options.runtimeConfigDir,
+                providerSocketPath: managedSocketPath,
+                providerPidPath: options.providerPidPath,
+              }
+            : undefined;
 
-        return {
+        const provider: RuntimeProviderWithServiceControls = {
           id: "lando",
           displayName: "Lando Runtime Provider",
           version: "0.0.0",
@@ -338,7 +426,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               runtimeVersion = result.podmanVersion;
               bundleVersion = result.runtimeBundleVersion;
             }),
-          getStatus: Effect.succeed({ running: true, message: "ready" }),
+          getStatus:
+            podmanApi === undefined
+              ? Effect.succeed({ running: false, message: "Lando runtime service is not configured." })
+              : runtimeServiceStatus.pipe(
+                  Effect.map((status) => ({
+                    running: status.running,
+                    message: runtimeStatusMessage(status),
+                  })),
+                ),
+          getRuntimeServiceStatus: runtimeServiceStatus,
+          teardownRuntimeService:
+            managedRuntimeServicePaths === undefined
+              ? Effect.succeed({ terminated: false })
+              : teardownManagedRuntimeService({ paths: managedRuntimeServicePaths }),
           getVersions: Effect.sync(() => ({
             provider: "0.0.0",
             ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
@@ -457,7 +558,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
           exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
           importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
-        } satisfies RuntimeProviderShape;
+        };
+
+        return provider satisfies RuntimeProviderShape;
       }),
     ),
   );

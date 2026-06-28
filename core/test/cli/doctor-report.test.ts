@@ -159,6 +159,7 @@ describe("meta:doctor combined report", () => {
     const checks = eventPayloads(ndjson);
     expect(checks.map((line) => line.name)).toEqual([
       "selected-provider",
+      "runtime-service",
       "proxy",
       "certs",
       "ssh",
@@ -172,7 +173,7 @@ describe("meta:doctor combined report", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 8,
+        checks: 9,
         failed: 0,
         warned: 7,
       },
@@ -195,7 +196,7 @@ describe("meta:doctor combined report", () => {
     expect(rendered).toContain('"name":"host-proxy"');
     expect(rendered).toContain('"name":"global-app"');
     expect(rendered).toContain('"result":{"timestamp"');
-    expect(rendered).toContain('"checks":8');
+    expect(rendered).toContain('"checks":9');
   });
 
   test("doctorReport runs the shared app:config:lint pass and renders it under --app", async () => {
@@ -218,7 +219,7 @@ describe("meta:doctor combined report", () => {
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-config-lint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 10, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -335,7 +336,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 10 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }

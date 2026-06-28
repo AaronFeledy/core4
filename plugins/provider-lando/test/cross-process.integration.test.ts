@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -17,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
+import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");
@@ -83,6 +85,71 @@ const fileExists = async (path: string): Promise<boolean> => {
     return false;
   }
 };
+
+type RuntimeServiceCall =
+  | ["launch", string]
+  | ["isAlive", number]
+  | ["isServiceProcess", number, string]
+  | ["terminate", number];
+
+const unavailable = () =>
+  new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "podman-api",
+    message: "unreachable",
+    remediation: "test remediation",
+  });
+
+const runtimePaths = (dir: string) => ({
+  runtimeBinDir: join(dir, "bin"),
+  runtimeStorageDir: join(dir, "storage"),
+  runtimeRunDir: join(dir, "run"),
+  runtimeConfigDir: join(dir, "config"),
+  providerSocketPath: join(dir, "podman.sock"),
+  providerPidPath: join(dir, "podman.pid"),
+});
+
+const canonicalRuntimeArgs = (paths: ReturnType<typeof runtimePaths>) =>
+  JSON.stringify([
+    "--root",
+    paths.runtimeStorageDir,
+    "--runroot",
+    paths.runtimeRunDir,
+    "--config",
+    paths.runtimeConfigDir,
+    "system",
+    "service",
+    "--time=0",
+    `unix://${paths.providerSocketPath}`,
+  ]);
+
+const fakeServiceRunner = (
+  calls: RuntimeServiceCall[],
+  isAlive: (pid: number) => boolean,
+  onLaunch: (pid: number) => void,
+): PodmanServiceRunner => ({
+  launch: (spec) =>
+    Effect.sync(() => {
+      calls.push(["launch", JSON.stringify(spec.args)]);
+      const pid = 9999 + calls.filter((call) => call[0] === "launch").length;
+      onLaunch(pid);
+      return pid;
+    }),
+  isAlive: (pid) =>
+    Effect.sync(() => {
+      calls.push(["isAlive", pid]);
+      return isAlive(pid);
+    }),
+  isServiceProcess: (pid, spec) =>
+    Effect.sync(() => {
+      calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
+      return isAlive(pid);
+    }),
+  terminate: (pid) =>
+    Effect.sync(() => {
+      calls.push(["terminate", pid]);
+    }),
+});
 
 const makeFakePodmanState = () => {
   const running = new Set<string>();
@@ -264,6 +331,87 @@ describe("provider-lando cross-process state", () => {
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);
       expect(snapshot.state).toBe("stopped");
+    });
+  });
+
+  test("a fresh provider layer self-heals a killed managed runtime before inspect", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakePodmanState();
+      const paths = runtimePaths(stateDir);
+      const serviceCalls: RuntimeServiceCall[] = [];
+      const livePids = new Set<number>();
+      const launchCount = () => serviceCalls.filter((call) => call[0] === "launch").length;
+      const serviceRunner = fakeServiceRunner(
+        serviceCalls,
+        (pid) => livePids.has(pid),
+        (pid) => livePids.add(pid),
+      );
+      let forceUnreachableUntilNextLaunch = false;
+      let allowLayerConstructionProbe = false;
+      let launchBaseline = 0;
+      const infoObservations: string[] = [];
+      const podmanApi: PodmanApiClient = {
+        ...fake.api,
+        info: Effect.gen(function* () {
+          if (allowLayerConstructionProbe) {
+            allowLayerConstructionProbe = false;
+            infoObservations.push("reachable-for-layer-construction");
+            return {};
+          }
+          if (!forceUnreachableUntilNextLaunch || launchCount() > launchBaseline) {
+            infoObservations.push("reachable");
+            return {};
+          }
+          infoObservations.push("unreachable-after-kill");
+          return yield* Effect.fail(unavailable());
+        }),
+      };
+
+      const makeFreshProvider = () =>
+        runOnce(
+          RuntimeProvider.pipe(
+            Effect.provide(
+              makeProviderLayer({
+                podmanApi,
+                podmanService: serviceRunner,
+                stateDir,
+                platform: "linux",
+                ...paths,
+              }),
+            ),
+          ),
+        );
+
+      const providerA = await makeFreshProvider();
+      await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
+
+      const firstLaunches = launchCount();
+      expect(firstLaunches).toBe(1);
+      expect(serviceCalls).toContainEqual(["launch", canonicalRuntimeArgs(paths)]);
+      const firstPid = Number(await readFile(paths.providerPidPath, "utf8"));
+      expect(livePids.has(firstPid)).toBe(true);
+
+      launchBaseline = firstLaunches;
+      forceUnreachableUntilNextLaunch = true;
+      allowLayerConstructionProbe = true;
+      livePids.delete(firstPid);
+
+      const providerB = await makeFreshProvider();
+      const snapshot = await runOnce(providerB.inspect({ app: plan.id, service: web.name }));
+
+      expect(snapshot.app).toBe(plan.id);
+      expect(snapshot.service).toBe(web.name);
+      expect(snapshot.state).toBe("running");
+      expect(launchCount()).toBe(firstLaunches + 1);
+      expect(serviceCalls.slice(-2)).toEqual([
+        ["isAlive", firstPid],
+        ["launch", canonicalRuntimeArgs(paths)],
+      ]);
+      const healedPid = Number(await readFile(paths.providerPidPath, "utf8"));
+      expect(healedPid).not.toBe(firstPid);
+      expect(livePids.has(healedPid)).toBe(true);
+      expect(infoObservations).toContain("unreachable-after-kill");
+      expect(infoObservations.at(-1)).toBe("reachable");
     });
   });
 

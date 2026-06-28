@@ -46,6 +46,7 @@ import {
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
 import {
+  type SetupReadinessRuntimeService,
   type SetupReadinessStep,
   setupFailureEvidence,
   setupFailureRemediation,
@@ -69,6 +70,36 @@ interface SetupResult {
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
 }
+
+interface RuntimeServiceStatusForReadiness {
+  readonly running: boolean;
+  readonly socketPath?: string;
+  readonly pid?: number;
+}
+
+interface RuntimeServiceReadinessProvider {
+  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusForReadiness, unknown>;
+}
+
+const runtimeServiceReadinessFor = (provider: {
+  readonly getVersions: Effect.Effect<{ readonly runtime?: string }, unknown>;
+}): Effect.Effect<SetupReadinessRuntimeService | null | undefined, never> => {
+  const statusEffect = (provider as RuntimeServiceReadinessProvider).getRuntimeServiceStatus;
+  if (statusEffect === undefined) return Effect.succeed(undefined);
+
+  return Effect.gen(function* () {
+    const status = yield* statusEffect;
+    if (status.socketPath === undefined || status.socketPath.length === 0) return null;
+
+    const versions = yield* provider.getVersions.pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
+    return {
+      running: status.running,
+      socketPath: status.socketPath,
+      ...(status.pid === undefined ? {} : { pid: status.pid }),
+      ...(versions?.runtime === undefined ? {} : { runtimeVersion: versions.runtime }),
+    };
+  }).pipe(Effect.catchAllCause(() => Effect.succeed(null)));
+};
 
 export class ShellProfileIntegrationError extends Data.TaggedError("ShellProfileIntegrationError")<{
   readonly message: string;
@@ -287,11 +318,12 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const userDataRoot =
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
       const readinessSteps: SetupReadinessStep[] = [];
+      let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
       const recordReadiness = (step: SetupReadinessStep): Effect.Effect<void, never> => {
         const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
         if (existingIndex === -1) readinessSteps.push(step);
         else readinessSteps[existingIndex] = step;
-        return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps);
+        return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps, runtimeServiceReadiness);
       };
       const recordFailure = (id: string, cause: unknown): Effect.Effect<void, never> =>
         recordReadiness({
@@ -335,6 +367,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
           Effect.tapError((cause) => recordFailure("provider", cause)),
         );
+        runtimeServiceReadiness = yield* runtimeServiceReadinessFor(provider);
         yield* recordReadiness({
           id: "provider",
           status: "satisfied",

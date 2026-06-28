@@ -8,6 +8,10 @@ import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
+import {
+  buildManagedRuntimeServiceSpec,
+  terminateOwnedRuntimeService,
+} from "../../runtime/managed-runtime-service.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
 
@@ -36,6 +40,9 @@ export interface UninstallOptions {
   readonly execPath?: string;
   readonly exists?: (path: string) => boolean;
   readonly remove?: (path: string) => Promise<void>;
+  readonly teardownRuntimeService?: (
+    userDataRoot: string,
+  ) => Promise<{ readonly terminated: boolean; readonly pid?: number }>;
 }
 
 export interface UninstallResult {
@@ -100,6 +107,13 @@ const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot,
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
+const defaultTeardownRuntimeService = (
+  userDataRoot: string,
+): Promise<{ readonly terminated: boolean; readonly pid?: number }> => {
+  const spec = buildManagedRuntimeServiceSpec(makeLandoPaths({ userDataRoot }));
+  return Effect.runPromise(terminateOwnedRuntimeService(spec));
+};
+
 const outcomeForSkippedStep = (step: UninstallPlanStep): UninstallStepOutcome => {
   if (step.status === "manual" || step.status === "user-owned") return "manual";
   return "skipped";
@@ -131,12 +145,22 @@ export const buildUninstallPlan = (
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
   const paths = makeLandoPaths({ userDataRoot });
+  const runtimeDir = paths.runtimeDir;
   const managedProviderRuntime = join(userDataRoot, "providers", "lando");
   const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
 
   const steps: ReadonlyArray<UninstallPlanStep> = [
+    {
+      id: "runtime-service",
+      label: "managed runtime service",
+      target: runtimeDir,
+      destructive: true,
+      status: pathStatus(runtimeDir, exists),
+      detail:
+        "Terminate the Lando-managed runtime service and remove its socket, PID, and runtime directory.",
+    },
     {
       id: "managed-provider-runtime",
       label: "managed provider runtime",
@@ -229,7 +253,7 @@ export const buildUninstallPlan = (
   return mode === undefined ? steps : steps.map((step) => stepWithMode(step, mode));
 };
 
-const writeUninstallReport = (
+const writeUninstallReport = async (
   userDataRoot: string,
   mode: UninstallMode,
   steps: ReadonlyArray<UninstallPlanStep>,
@@ -241,12 +265,14 @@ const writeUninstallReport = (
     updatedAt: new Date().toISOString(),
     steps,
   };
-  return writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`).then(() => reportPath);
+  await writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  return reportPath;
 };
 
 const executeUninstall = async (options: UninstallOptions, mode: UninstallMode): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const remove = options.remove ?? defaultRemove;
+  const teardownRuntimeService = options.teardownRuntimeService ?? defaultTeardownRuntimeService;
   const steps = buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
@@ -256,6 +282,12 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
       continue;
     }
     try {
+      if (step.id === "runtime-service") {
+        const result = await teardownRuntimeService(userDataRoot);
+        if (!result.terminated && result.pid !== undefined) {
+          throw new Error("managed runtime service was not terminated");
+        }
+      }
       await remove(step.target);
       executed.push({ ...step, outcome: "completed" });
     } catch (cause) {

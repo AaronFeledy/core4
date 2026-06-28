@@ -21,11 +21,19 @@ export interface SetupReadinessStep {
   readonly remediation?: string;
 }
 
+export interface SetupReadinessRuntimeService {
+  readonly running: boolean;
+  readonly socketPath: string;
+  readonly pid?: number;
+  readonly runtimeVersion?: string;
+}
+
 export interface SetupReadinessSummary {
   readonly status: "deferred" | "failed" | "ready";
   readonly providerId: string;
   readonly updatedAt: string;
   readonly steps: ReadonlyArray<SetupReadinessStep>;
+  readonly runtimeService?: SetupReadinessRuntimeService;
 }
 
 export const setupReadinessPath = (userDataRoot: string): string =>
@@ -41,34 +49,61 @@ export const writeSetupReadiness = (
   userDataRoot: string | undefined,
   providerId: string,
   steps: ReadonlyArray<SetupReadinessStep>,
-): Effect.Effect<void, never> => {
-  if (userDataRoot === undefined) return Effect.void;
-  const summary: SetupReadinessSummary = {
-    status: summaryStatus(steps),
-    providerId,
-    updatedAt: new Date().toISOString(),
-    steps,
-  };
-  return Effect.promise(() =>
-    writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
-  ).pipe(Effect.catchAll(() => Effect.void));
-};
+  runtimeService?: SetupReadinessRuntimeService | null,
+): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    if (userDataRoot === undefined) return;
+    const existing = yield* readSetupReadinessRaw(userDataRoot);
+    const runtimeServiceBlock =
+      runtimeService === undefined
+        ? existing?.runtimeService === undefined
+          ? {}
+          : { runtimeService: existing.runtimeService }
+        : runtimeService === null
+          ? {}
+          : { runtimeService };
+    const summary: SetupReadinessSummary = {
+      status: summaryStatus(steps),
+      providerId,
+      updatedAt: new Date().toISOString(),
+      steps,
+      ...runtimeServiceBlock,
+    };
+    yield* Effect.promise(() =>
+      writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
+    ).pipe(Effect.catchAll(() => Effect.void));
+  });
 
 export const readSetupReadiness = (
   userDataRoot: string | undefined,
 ): Effect.Effect<SetupReadinessSummary | undefined, never> => {
   if (userDataRoot === undefined) return Effect.succeed(undefined);
+  return readSetupReadinessRaw(userDataRoot).pipe(
+    Effect.map((summary) => (summary === undefined ? undefined : redactSetupReadinessSummary(summary))),
+  );
+};
+
+const readSetupReadinessRaw = (
+  userDataRoot: string | undefined,
+): Effect.Effect<SetupReadinessSummary | undefined, never> => {
+  if (userDataRoot === undefined) return Effect.succeed(undefined);
   return Effect.tryPromise({
     try: async () =>
-      redactSetupReadinessSummary(
-        JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
-      ),
+      JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
     catch: () => undefined,
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 };
 
 const redactSetupReadinessSummary = (summary: SetupReadinessSummary): SetupReadinessSummary => ({
   ...summary,
+  ...(summary.runtimeService === undefined
+    ? {}
+    : {
+        runtimeService: {
+          ...summary.runtimeService,
+          socketPath: redactString(summary.runtimeService.socketPath),
+        },
+      }),
   steps: summary.steps.map((step) => ({
     ...step,
     evidence: redactString(step.evidence),
