@@ -360,7 +360,7 @@ ${linuxGuideE2eProviderSetupSteps}
       - name: Run e2e smoke guide scenarios
         env:
           LANDO_GUIDE_E2E: "1"
-        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --test-name-pattern="@smoke.*\\[e2e\\]"
+        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
 
       - name: Teardown guide e2e provider
         if: always()
