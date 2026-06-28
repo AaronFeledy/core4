@@ -2,6 +2,7 @@ import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
+import { StreamFrame } from "@lando/sdk/schema";
 
 import { type LogsAppResult, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
 import {
@@ -65,7 +66,16 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  streaming: StreamFrame,
   run: () => logsApp(),
+  streamFrames: (value) => {
+    const result = value as LogsAppResult;
+    return result.lines.map((line) => ({
+      _tag: line.stream,
+      service: line.service,
+      chunk: `${line.line}\n`,
+    }));
+  },
   render: (result) => renderLogsAppResult(result as LogsAppResult),
 };
 

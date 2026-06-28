@@ -10,6 +10,8 @@ import {
   resolveTopLevelAliases,
 } from "../../command-base.ts";
 
+import { StreamFrame } from "@lando/sdk/schema";
+
 export const startSpec: LandoCommandSpec<StartAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:start",
@@ -17,6 +19,7 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  streaming: StreamFrame,
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
     return startApp(signal === undefined ? {} : { signal });
