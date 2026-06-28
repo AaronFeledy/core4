@@ -599,6 +599,12 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("          sudo apt-get install -y uidmap fuse-overlayfs");
     expect(providerIntegration).toContain('grep -q "^$(id -un):" /etc/subuid');
     expect(providerIntegration).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
+    expect(providerIntegration).toContain(
+      "          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then",
+    );
+    expect(providerIntegration).toContain(
+      "            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0",
+    );
     expect(providerIntegration).toContain("systemd.unified_cgroup_hierarchy");
 
     expect(providerIntegration).toContain("      - name: Stage current-commit runtime bundle");

@@ -241,6 +241,9 @@ const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prere
             echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
           fi
           sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
           if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
             echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via ubuntu-24.04 default (systemd.unified_cgroup_hierarchy)"
           fi
