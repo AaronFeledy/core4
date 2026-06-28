@@ -13,6 +13,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { renderJsonLine, renderPlainLine } from "../../src/cli/renderer/format.ts";
@@ -34,6 +35,13 @@ const parseNdjson = (content: string): ReadonlyArray<LandoEvent> => {
 };
 
 const fixtureEvents = parseNdjson(fixtureContent);
+
+const decodeEventFrame = (line: string) => {
+  const frame = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+  expect(frame._tag).toBe("event");
+  if (frame._tag !== "event") throw new Error("expected event frame");
+  return frame;
+};
 
 const decodeFixtureEvents = (): ReadonlyArray<LandoEvent> => {
   const decoded: LandoEvent[] = [];
@@ -141,10 +149,11 @@ describe("json renderer", () => {
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
       if (line === undefined) throw new Error("missing rendered line");
-      const parsed = JSON.parse(line) as LandoEvent;
+      const parsed = decodeEventFrame(line);
       const expectedEvent = fixtureEvents[index];
       if (expectedEvent === undefined) throw new Error("missing fixture event");
-      expect(parsed._tag).toBe(expectedEvent._tag);
+      expect(parsed.event).toBe(expectedEvent._tag);
+      expect((parsed.payload as LandoEvent)._tag).toBe(expectedEvent._tag);
     }
   });
 
@@ -180,7 +189,7 @@ describe("snapshot: renderer.task-tree.concurrent.ndjson", () => {
     renderJson(io, events);
     const lines = io.stderrLines();
     const tags: ReadonlyArray<LandoEvent["_tag"]> = lines.map(
-      (line) => (JSON.parse(line) as LandoEvent)._tag,
+      (line) => decodeEventFrame(line).event as LandoEvent["_tag"],
     );
 
     expect(tags[0]).toBe("task.tree.start");
@@ -285,9 +294,9 @@ describe("cold-start regression: no events dropped before first task.tree.start"
     const lines = io.stderrLines();
     expect(lines.length).toBe(5);
     for (let index = 0; index < 5; index += 1) {
-      const parsed = JSON.parse(lines[index] ?? "null") as LandoEvent;
-      expect(parsed._tag).toBe("task.start");
-      expect((parsed as Record<string, unknown>).taskId).toBe(`task-${index}`);
+      const parsed = decodeEventFrame(lines[index] ?? "null");
+      expect(parsed.event).toBe("task.start");
+      expect((parsed.payload as Record<string, unknown>).taskId).toBe(`task-${index}`);
     }
   });
 });

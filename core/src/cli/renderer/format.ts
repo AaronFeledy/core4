@@ -128,9 +128,11 @@ const stableStringify = (event: LandoEvent): string => {
   return JSON.stringify(result);
 };
 
+const stablePayload = (event: LandoEvent): Record<string, unknown> => JSON.parse(stableStringify(event));
+
 export const renderJsonLine = (event: LandoEvent): string | null => {
   if (!isRenderableEvent(event)) return null;
-  return stableStringify(event);
+  return JSON.stringify({ _tag: "event", event: event._tag, payload: stablePayload(event) });
 };
 
 /**
