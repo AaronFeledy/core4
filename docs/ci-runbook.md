@@ -102,6 +102,17 @@ Provider integration tests intentionally stay serial because they share Docker/P
 To reproduce the setup-driven provider preparation locally:
 
 ```bash
+mkdir -p dist/cache/runtime-bundle
+STAGE="$(mktemp -d)"
+mkdir -p "$STAGE/bin"
+cp "$(command -v podman)" "$STAGE/bin/podman"
+for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
+  src="$(command -v "$helper" || true)"
+  if test -n "$src"; then cp "$src" "$STAGE/bin/$helper"; fi
+done
+tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
+rm -rf "$STAGE"
+
 MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
 LANDO_MVP_BINARY_PATH="$PWD/dist/lando" bun test core/test/scenario
