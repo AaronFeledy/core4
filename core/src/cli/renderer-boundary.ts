@@ -1,12 +1,13 @@
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
-import type { DeprecationUse } from "@lando/sdk/schema";
-import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
+import type { DeprecationUse, StreamFrameSchema } from "@lando/sdk/schema";
+import { ConfigService, DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { SecretStoreLive } from "../services/secret-store.ts";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
 import {
   type RendererMode,
   type ResolveRendererModeResult,
@@ -23,6 +24,13 @@ import {
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime.ts";
+import {
+  encodeCommandResult,
+  encodeStreamEventFrame,
+  encodeStreamResultFrame,
+  encodeStreamStderrFrame,
+  encodeStreamStdoutFrame,
+} from "./result-encode.ts";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -94,6 +102,7 @@ export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
 
 export interface RenderContext {
   readonly mode: RendererMode;
+  readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
 }
@@ -105,6 +114,11 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
 export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
   readonly rendererMode: RendererMode;
+  readonly resultFormat?: ResultFormat;
+  readonly command?: string;
+  readonly resultSchema?: Schema.Schema.AnyNoContext;
+  readonly streaming?: StreamFrameSchema;
+  readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
@@ -114,6 +128,14 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
 }
+
+export interface StreamOutputFrame {
+  readonly _tag: "stdout" | "stderr";
+  readonly chunk: string;
+  readonly service?: string;
+}
+
+const EmptyCommandResultSchema = Schema.Struct({});
 
 export interface ResolveCliDeprecationWarningsOptions {
   readonly argv: ReadonlyArray<string>;
@@ -172,9 +194,19 @@ const infoSummaryText = (entries: ReadonlyArray<DeprecationUse & { readonly coun
   return `Deprecated surfaces used: ${surfaces.join(", ")}.`;
 };
 
-const jsonDeprecationEventLine = (entry: DeprecationUse & { readonly count: number }): string => {
+const jsonDeprecationEventLine = (
+  entry: DeprecationUse & { readonly count: number },
+): Effect.Effect<string, never, RedactionService> => {
   const { count: _count, ...use } = entry;
-  return JSON.stringify({ _tag: "deprecation-used", use });
+  return Effect.gen(function* () {
+    const redaction = yield* RedactionService;
+    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+    return yield* encodeStreamEventFrame({
+      event: "deprecation-used",
+      payload: { _tag: "deprecation-used", use },
+      redactor,
+    });
+  });
 };
 
 type DeprecationServiceShape = typeof DeprecationService.Service;
@@ -185,7 +217,9 @@ const optionalDeprecationService = Effect.serviceOption(DeprecationService) as E
   never
 >;
 
-const renderDeprecationDiagnostics = (enabled: boolean): Effect.Effect<void, never, Renderer> =>
+const renderDeprecationDiagnostics = (
+  enabled: boolean,
+): Effect.Effect<void, never, Renderer | RedactionService> =>
   Effect.gen(function* () {
     const deprecations = yield* optionalDeprecationService;
     if (Option.isNone(deprecations)) return;
@@ -195,7 +229,8 @@ const renderDeprecationDiagnostics = (enabled: boolean): Effect.Effect<void, nev
 
     if (renderer.id === "json") {
       for (const entry of summary) {
-        yield* renderer.output.stderr(`${jsonDeprecationEventLine(entry)}\n`);
+        const line = yield* jsonDeprecationEventLine(entry);
+        yield* renderer.output.stderr(`${line}\n`);
       }
       return;
     }
@@ -221,6 +256,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const io = options.io ?? createStdioRendererIO();
   const renderContext: RenderContext = {
     mode: options.rendererMode,
+    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
     columns: io.terminalColumns,
     isTTY: io.isTTY === true,
   };
@@ -229,6 +265,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     rendererLayer,
     RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
   );
+  const streamingJson = options.streaming !== undefined && renderContext.format === "json";
   const commandLayer = (
     options.renderEvents === true
       ? Layer.mergeAll(
@@ -241,12 +278,83 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           ),
           rendererLayer,
         )
-      : Layer.merge(options.runtime, rendererLayer)
+      : streamingJson
+        ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer)
+        : Layer.merge(options.runtime, rendererLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
+    const command = options.command ?? "cli:unknown";
+    const resultSchema = options.resultSchema ?? EmptyCommandResultSchema;
+    const jsonRedactor = Effect.gen(function* () {
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      if (redaction._tag === "Some")
+        return yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+      return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
+    });
+    const emitJsonResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor });
+        yield* writeResultLine(line);
+      });
+    const emitStreamResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        const line = yield* encodeStreamResultFrame({ command, resultSchema, outcome, redactor });
+        yield* writeResultLine(line);
+      });
+    const emitStreamingSuccess = (value: A) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        for (const frame of options.streamFrames?.(value) ?? []) {
+          const line =
+            frame._tag === "stdout"
+              ? yield* encodeStreamStdoutFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor,
+                })
+              : yield* encodeStreamStderrFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor,
+                });
+          yield* writeResultLine(line);
+        }
+        const events = yield* Effect.serviceOption(EventService).pipe(
+          Effect.flatMap((service) =>
+            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
+          ),
+        );
+        for (const event of events) {
+          const tag = (event as { readonly _tag?: unknown })._tag;
+          if (typeof tag !== "string") continue;
+          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
+          yield* writeResultLine(line);
+        }
+        yield* emitStreamResult({ _tag: "success", value });
+      });
+    const setFailureExitCode = Effect.sync(() => {
+      (
+        options.setExitCode ??
+        ((code) => {
+          process.exitCode = code;
+        })
+      )(1);
+    });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
+        if (renderContext.format === "json") {
+          const outcome = {
+            _tag: "failure",
+            error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
+          } as const;
+          if (options.streaming !== undefined) yield* emitStreamResult(outcome);
+          else yield* emitJsonResult(outcome);
+          yield* setFailureExitCode;
+          return;
+        }
         let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
         const redaction = yield* Effect.serviceOption(RedactionService);
         if (redaction._tag === "Some") {
@@ -254,14 +362,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           message = redactor.redactString(message);
         }
         yield* writeDiagnosticLine(message);
-        yield* Effect.sync(() => {
-          (
-            options.setExitCode ??
-            ((code) => {
-              process.exitCode = code;
-            })
-          )(1);
-        });
+        yield* setFailureExitCode;
       });
     const commandOutcome = yield* Effect.exit(
       Effect.gen(function* () {
@@ -273,6 +374,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           yield* renderFailure(commandExit.cause);
           return { _tag: "handled-failure" } as const;
         }
+        if (streamingJson) {
+          yield* emitStreamingSuccess(commandExit.value);
+          return { _tag: "handled-success" } as const;
+        }
         return { _tag: "success", value: commandExit.value } as const;
       }).pipe(Effect.provide(commandLayer)),
     );
@@ -281,6 +386,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       return;
     }
     if (commandOutcome.value._tag === "handled-failure") {
+      return;
+    }
+    if (commandOutcome.value._tag === "handled-success") {
+      return;
+    }
+    if (renderContext.format === "json") {
+      yield* emitJsonResult({ _tag: "success", value: commandOutcome.value.value });
       return;
     }
     const rendered = options.render?.(commandOutcome.value.value, renderContext);

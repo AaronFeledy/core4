@@ -1,11 +1,7 @@
 import { Flags } from "@oclif/core";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
-import {
-  type AppConfigLintFormat,
-  appConfigLint,
-  renderConfigLintResult,
-} from "../../../../commands/app-config-lint.ts";
+import { appConfigLint, renderConfigLintResult } from "../../../../commands/app-config-lint.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -21,10 +17,9 @@ export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
   topLevelAlias: false,
   bootstrap: "minimal",
   run: () => appConfigLint(),
-  render: (result) => renderConfigLintResult(result as ConfigLintResult),
+  render: (result, _input, ctx) =>
+    renderConfigLintResult(result as ConfigLintResult, ctx?.format === "json" ? "json" : "text"),
 };
-
-const formatFromFlag = (value: unknown): AppConfigLintFormat => (value === "json" ? "json" : "text");
 
 export default class AppConfigLintCommand extends LandoCommandBase {
   static override description = appConfigLintSpec.summary;
@@ -40,13 +35,6 @@ export default class AppConfigLintCommand extends LandoCommandBase {
   static override bootstrap = appConfigLintSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppConfigLintCommand)) as {
-      readonly flags: { readonly format?: string };
-    };
-    const format = formatFromFlag(parsed.flags.format);
-    await this.runEffect({
-      ...appConfigLintSpec,
-      render: (result) => renderConfigLintResult(result as ConfigLintResult, format),
-    });
+    await this.runEffect(appConfigLintSpec);
   }
 }

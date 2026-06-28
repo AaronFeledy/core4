@@ -62,6 +62,9 @@ const normalizeRendererError = (stderr: string): string =>
     )
     .join("\n");
 
+const parseCommandEnvelope = (stdout: string): { readonly ok?: boolean; readonly result?: unknown } =>
+  JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+
 let stateDir = "";
 let confDir = "";
 
@@ -81,14 +84,16 @@ const isolationEnv = (): Record<string, string> => ({
 });
 
 describe("--renderer flag (source CLI)", () => {
-  test("accepts --renderer=json on apps:list without affecting output", async () => {
+  test("accepts --renderer=json on apps:list and emits a result envelope", async () => {
     const baseline = await runCommand([process.execPath, sourceCliPath, "apps:list"], isolationEnv());
     const withFlag = await runCommand(
       [process.execPath, sourceCliPath, "apps:list", "--renderer=json"],
       isolationEnv(),
     );
     expect(withFlag.exitCode).toBe(baseline.exitCode);
-    expect(withFlag.stdout).toBe(baseline.stdout);
+    const envelope = parseCommandEnvelope(withFlag.stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result).toEqual({ apps: [] });
   }, 30_000);
 
   test("accepts --renderer plain (space-separated form)", async () => {
@@ -199,12 +204,14 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       expect(compiledError.length).toBeGreaterThan(0);
     }, 180_000);
 
-    test("compiled CLI accepts --renderer=json and runs the command normally", async () => {
+    test("compiled CLI accepts --renderer=json and emits a result envelope", async () => {
       const env = isolationEnv();
       const baseline = await runCommand([compiledBinaryPath, "apps:list"], env);
       const withFlag = await runCommand([compiledBinaryPath, "apps:list", "--renderer=json"], env);
       expect(withFlag.exitCode).toBe(baseline.exitCode);
-      expect(withFlag.stdout).toBe(baseline.stdout);
+      const envelope = parseCommandEnvelope(withFlag.stdout);
+      expect(envelope.ok).toBe(true);
+      expect(envelope.result).toEqual({ apps: [] });
     }, 60_000);
 
     test("compiled CLI rejects LANDO_RENDERER=tui env value with RendererSelectionError source=env", async () => {

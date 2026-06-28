@@ -1,5 +1,6 @@
 import { Args, Flags } from "@oclif/core";
 
+import { StreamFrame } from "@lando/sdk/schema";
 import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
 import {
   EmptyResultSchema,
@@ -21,7 +22,17 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  streaming: StreamFrame,
   run: () => execApp({ command: [] }),
+  streamFrames: (value) => {
+    const result = value as ExecAppResult;
+    const frames = [];
+    if (result.stdout.length > 0)
+      frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
+    if (result.stderr.length > 0)
+      frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
+    return frames;
+  },
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };
 

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
-import { Cause, Effect, Exit, type Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
   type LandoRuntimeBootstrapError,
@@ -26,11 +26,7 @@ import { makeLandoRuntime } from "../runtime/layer.ts";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
-import {
-  type AppConfigLintFormat,
-  appConfigLint,
-  renderConfigLintResult,
-} from "./commands/app-config-lint.ts";
+import { appConfigLint, renderConfigLintResult } from "./commands/app-config-lint.ts";
 import {
   type AppConfigTranslateFormat,
   appConfigTranslate,
@@ -42,11 +38,7 @@ import {
   appIncludesUpdate,
   renderIncludesUpdateResult,
 } from "./commands/app-includes-update.ts";
-import {
-  type AppIncludesVerifyFormat,
-  appIncludesVerify,
-  renderIncludesVerifyResult,
-} from "./commands/app-includes-verify.ts";
+import { appIncludesVerify, renderIncludesVerifyResult } from "./commands/app-includes-verify.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
@@ -54,7 +46,6 @@ import {
   doctorReport,
   renderDoctorReport,
   renderDoctorReportAsJson,
-  renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
@@ -146,7 +137,12 @@ import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
 import { renderUninstallResult, uninstall } from "./commands/uninstall.ts";
 import { update } from "./commands/update.ts";
 import { version as versionOperation } from "./commands/version.ts";
-import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat, resolveResultFormat } from "./format-flags.ts";
+import {
+  EmptyResultSchema,
+  type LandoCommandSpec,
+  notImplementedErrorForCommand,
+} from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
 import {
   remoteAddOptionsFromInput,
@@ -217,6 +213,7 @@ interface CompiledCommandInput {
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
   readonly rendererMode?: RendererMode;
+  readonly resultFormat?: ResultFormat;
   readonly signal?: AbortSignal;
 }
 
@@ -232,6 +229,9 @@ type OclifArgDefinition = Record<string, unknown>;
 
 const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
   (compiledCommands as Readonly<Record<string, CompiledCommand>>)[commandId];
+
+const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
+  (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;
 
 const flagDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifFlagDefinition>> =>
   (command as { flags?: Readonly<Record<string, OclifFlagDefinition>> }).flags ?? {};
@@ -276,14 +276,40 @@ const setParsedFlag = (
   flags[name] = parsed;
 };
 
+const hasUniversalFormatFlag = (argv: ReadonlyArray<string>): boolean => {
+  for (const arg of argv) {
+    if (arg === "--") return false;
+    if (arg === "--format" || arg.startsWith("--format=") || arg === "--json" || arg === "-j") return true;
+  }
+  return false;
+};
+
 export const compiledCommandInputFromArgv = (
   commandId: string,
   argv: ReadonlyArray<string>,
-  options: { readonly rendererMode?: RendererMode; readonly signal?: AbortSignal } = {},
+  options: {
+    readonly rendererMode?: RendererMode;
+    readonly resultFormat?: ResultFormat;
+    readonly signal?: AbortSignal;
+  } = {},
 ): CompiledCommandInput => {
+  const formatResolution =
+    options.resultFormat === undefined && hasUniversalFormatFlag(argv)
+      ? resolveResultFormat({ argv, rendererMode: options.rendererMode ?? activeRendererMode })
+      : undefined;
+  const effectiveResultFormat = options.resultFormat ?? formatResolution?.format ?? activeResultFormat;
   const command = commandSpecForId(commandId);
-  if (command === undefined) return { argv, flags: {}, args: {}, ...options };
-  const normalizedArgv = commandId === "apps:scratch:start" ? normalizeScratchStartArgv(argv) : argv;
+  if (command === undefined) {
+    const flags: Record<string, unknown> = {};
+    flags.format = effectiveResultFormat;
+    if (effectiveResultFormat === "json") flags.json = true;
+    return { argv, flags, args: {}, ...options, resultFormat: effectiveResultFormat };
+  }
+  const argvWithoutUniversalFormat = formatResolution?.remainingArgv ?? argv;
+  const normalizedArgv =
+    commandId === "apps:scratch:start"
+      ? normalizeScratchStartArgv(argvWithoutUniversalFormat)
+      : argvWithoutUniversalFormat;
   const flagDefinitions = flagDefinitionsForCommand(command);
   const flagTokens = flagNameByToken(flagDefinitions);
   const argNames = Object.keys(argDefinitionsForCommand(command));
@@ -324,7 +350,10 @@ export const compiledCommandInputFromArgv = (
     if (value !== undefined) args[name] = value;
   }
 
-  return { argv: normalizedArgv, flags, args, ...options };
+  flags.format = effectiveResultFormat;
+  if (effectiveResultFormat === "json") flags.json = true;
+
+  return { argv: normalizedArgv, flags, args, ...options, resultFormat: effectiveResultFormat };
 };
 
 const printRootHelp = (): void => {
@@ -364,11 +393,16 @@ ALIASES
 };
 
 let activeRendererMode: RendererMode = "lando";
+let activeResultFormat: ResultFormat = DEFAULT_RESULT_FORMAT;
 let activeDeprecationWarnings = true;
 let activeCommandId = "cli:unknown";
 
 const setActiveRendererMode = (mode: RendererMode): void => {
   activeRendererMode = mode;
+};
+
+const setActiveResultFormat = (format: ResultFormat): void => {
+  activeResultFormat = format;
 };
 
 const setActiveDeprecationWarnings = (enabled: boolean): void => {
@@ -480,17 +514,25 @@ const runCompiledCommand = <A, E, R, RE>(
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
   } = {},
-): Promise<void> =>
-  runWithRendererHandling(operation, {
+): Promise<void> => {
+  const spec = landoSpecForId(activeCommandId);
+  const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+    command: activeCommandId,
+    resultSchema: spec?.resultSchema ?? EmptyResultSchema,
+    ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+    ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     render,
-    formatError: (error) => commandErrorMessage(error),
-  });
+    formatError: (error: unknown) => commandErrorMessage(error),
+  };
+  return runWithRendererHandling(operation, rendererOptions);
+};
 
 const runWithProcessAbortSignal = async (run: (signal: AbortSignal) => Promise<void>): Promise<void> => {
   const controller = new AbortController();
@@ -586,6 +628,7 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
         cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
       ),
       rendererMode: activeRendererMode,
+      resultFormat: activeResultFormat,
       deprecationWarnings: activeDeprecationWarnings,
       renderEvents: process.stdout.isTTY === true,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
@@ -633,8 +676,17 @@ const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
 const appRuntimeLayer = () =>
   makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
 
-const compiledFormat = (input: CompiledCommandInput): "text" | "json" =>
-  input.flags.format === "json" || input.rendererMode === "json" ? "json" : "text";
+const compiledFormat = (_input: CompiledCommandInput): "text" | "json" =>
+  activeResultFormat === "json" ? "json" : "text";
+
+const activeTableJsonFormat = (): "json" | "table" => (activeResultFormat === "json" ? "json" : "table");
+
+const activeTextJsonFormat = (): "text" | "json" => (activeResultFormat === "json" ? "json" : "text");
+
+const activeTextJsonYamlFormat = (): "text" | "json" | "yaml" => {
+  if (activeResultFormat === "json" || activeResultFormat === "yaml") return activeResultFormat;
+  return "text";
+};
 
 const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
@@ -734,28 +786,8 @@ const runRemoteEnvList = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const parseAppConfigArgv = (argv: ReadonlyArray<string>): { readonly format: "json" | "table" } => {
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === undefined) {
-      i += 1;
-      continue;
-    }
-    const formatMatch = parseStringFlag(argv, i, "format");
-    if (formatMatch !== undefined) {
-      const value = formatMatch.value;
-      if (value === "json" || value === "table") return { format: value };
-      i += formatMatch.consumed;
-      continue;
-    }
-    i += 1;
-  }
-  return { format: "table" };
-};
-
-const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { format } = parseAppConfigArgv(argv);
+const runAppConfig = (_argv: ReadonlyArray<string>): Promise<void> => {
+  const format = activeTableJsonFormat();
   return runCompiledCommand(
     appConfig(),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
@@ -763,28 +795,8 @@ const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const parseAppConfigLintArgv = (argv: ReadonlyArray<string>): { readonly format: AppConfigLintFormat } => {
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === undefined) {
-      i += 1;
-      continue;
-    }
-    const formatMatch = parseStringFlag(argv, i, "format");
-    if (formatMatch !== undefined) {
-      const value = formatMatch.value;
-      if (value === "json" || value === "text") return { format: value };
-      i += formatMatch.consumed;
-      continue;
-    }
-    i += 1;
-  }
-  return { format: "text" };
-};
-
-const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { format } = parseAppConfigLintArgv(argv);
+const runAppConfigLint = (_argv: ReadonlyArray<string>): Promise<void> => {
+  const format = activeTextJsonFormat();
   return runCompiledCommand(
     appConfigLint(),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
@@ -821,7 +833,8 @@ const parseAppConfigTranslateArgv = (
 };
 
 const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { write, format } = parseAppConfigTranslateArgv(argv);
+  const { write } = parseAppConfigTranslateArgv(argv);
+  const format = activeTextJsonFormat();
   return runCompiledCommand(
     appConfigTranslate({ write }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
@@ -850,7 +863,8 @@ const parseAppIncludesUpdateArgv = (
 };
 
 const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { check, format } = parseAppIncludesUpdateArgv(argv);
+  const { check } = parseAppIncludesUpdateArgv(argv);
+  const format = activeTextJsonFormat();
   return runCompiledCommand(
     appIncludesUpdate({ check }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
@@ -858,27 +872,8 @@ const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const parseAppIncludesVerifyArgv = (
-  argv: ReadonlyArray<string>,
-): { readonly format: AppIncludesVerifyFormat } => {
-  let format: AppIncludesVerifyFormat = "text";
-  let i = 0;
-  while (i < argv.length) {
-    const match = parseStringFlag(argv, i, "format");
-    if (match !== undefined) {
-      if (match.value === "json" || match.value === "text") {
-        format = match.value;
-      }
-      i += match.consumed;
-      continue;
-    }
-    i += 1;
-  }
-  return { format };
-};
-
-const runAppIncludesVerify = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { format } = parseAppIncludesVerifyArgv(argv);
+const runAppIncludesVerify = (_argv: ReadonlyArray<string>): Promise<void> => {
+  const format = activeTextJsonFormat();
   return runCompiledCommand(
     appIncludesVerify(),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
@@ -898,37 +893,25 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const fix = parseFixFlag(argv);
   const app = argv.some((arg) => arg === "--app");
   const deprecations = argv.some((arg) => arg === "--deprecations");
-  const format = parseDoctorFormatFlag(argv);
+  const format = activeTextJsonYamlFormat();
   await runCompiledCommand(
     doctorReport({
       ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
       ...(fix ? { fix: true } : {}),
       ...(app ? { app: true } : {}),
       ...(deprecations ? { deprecations: true } : {}),
-      ...(format === undefined ? {} : { format }),
+      format,
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
     (value, ctx) => {
       if (format === "json") return renderDoctorReportAsJson(value);
       if (format === "yaml") return renderDoctorReportAsYaml(value);
-      return activeRendererMode === "json"
-        ? renderDoctorReportAsNdjson(value)
-        : renderDoctorReport(value, ctx);
+      return renderDoctorReport(value, ctx);
     },
     {
       suppressDeprecationDiagnostics: format === "json" || format === "yaml",
     },
   );
-};
-
-const parseDoctorFormatFlag = (argv: ReadonlyArray<string>): "text" | "json" | "yaml" | undefined => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const match = parseStringFlag(argv, index, "format");
-    if (match === undefined) continue;
-    if (match.value === "text" || match.value === "json" || match.value === "yaml") return match.value;
-    index += match.consumed - 1;
-  }
-  return undefined;
 };
 
 interface ParsedExecArgv {
@@ -1180,15 +1163,8 @@ const runShell = (
   );
 };
 
-const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
-  let format: "json" | "table" = "table";
-  for (let i = 0; i < argv.length; i += 1) {
-    const m = parseStringFlag(argv, i, "format");
-    if (m !== undefined && (m.value === "json" || m.value === "table")) {
-      format = m.value;
-      i += m.consumed - 1;
-    }
-  }
+const runAppsList = async (_argv: ReadonlyArray<string>): Promise<void> => {
+  const format = activeTableJsonFormat();
   return runCompiledCommand(
     listServices(),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
@@ -1208,20 +1184,13 @@ const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
-  let format: "json" | "yaml" | "table" = "table";
+  const format: "json" | "yaml" | "table" =
+    activeResultFormat === "json" || activeResultFormat === "yaml" ? activeResultFormat : "table";
   let path: string | undefined;
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === undefined) continue;
-    const fmtMatch = parseStringFlag(argv, i, "format");
-    if (fmtMatch !== undefined) {
-      if (fmtMatch.value === "json" || fmtMatch.value === "yaml" || fmtMatch.value === "table") {
-        format = fmtMatch.value;
-      }
-      i += fmtMatch.consumed - 1;
-      continue;
-    }
     const pathMatch = parseStringFlag(argv, i, "path");
     if (pathMatch !== undefined) {
       path = pathMatch.value;
@@ -1263,6 +1232,7 @@ const runScratchEffect = <A>(
   runWithRendererHandling(operation, {
     runtime: scratchRuntimeLayer(),
     rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
     deprecationWarnings: activeDeprecationWarnings,
     render,
     formatError: (error) => commandErrorMessage(error),
@@ -1276,7 +1246,11 @@ const scratchCommandInput = (
   argv: ReadonlyArray<string>,
   options: { readonly rendererMode?: RendererMode; readonly signal?: AbortSignal } = {},
 ): CompiledCommandInput =>
-  compiledCommandInputFromArgv(commandId, argv, { rendererMode: activeRendererMode, ...options });
+  compiledCommandInputFromArgv(commandId, argv, {
+    rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+    ...options,
+  });
 
 const runAppsScratchStart = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) => {
@@ -1700,13 +1674,16 @@ const resolveCanonicalCommandId = (token: string | undefined): string => {
 };
 
 const runMetaVersion = async (): Promise<void> => {
-  const result = await Effect.runPromise(versionOperation);
-  emitResultLine(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
+  await runCompiledCommand(
+    versionOperation,
+    Layer.empty,
+    (result) => `@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`,
+  );
 };
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
-const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
+const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> => {
   if (rejectInvalidInvocation("meta:shellenv", argv)) return;
   const input = compiledCommandInputFromArgv("meta:shellenv", argv);
   const shell = input.flags.shell;
@@ -1720,7 +1697,9 @@ const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
     process.exitCode = 2;
     return;
   }
-  emitResultLine(renderShellenv(shellenvShellFromInput(input)));
+  await runCompiledCommand(Effect.succeed(shellenvShellFromInput(input)), Layer.empty, (value) =>
+    renderShellenv(value),
+  );
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
@@ -1746,6 +1725,21 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const deprecationWarnings = resolveCliDeprecationWarnings({ argv, env: process.env });
     argv = deprecationWarnings.remainingArgv;
     setActiveDeprecationWarnings(deprecationWarnings.enabled);
+    try {
+      const formatResolution = resolveResultFormat({ argv, rendererMode: activeRendererMode });
+      argv = formatResolution.remainingArgv;
+      setActiveResultFormat(formatResolution.format);
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        setActiveCommandId("cli:format-selection");
+        emitDiagnosticLine(commandErrorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+  } else {
+    setActiveResultFormat(DEFAULT_RESULT_FORMAT);
   }
 
   setActiveCommandId(resolveCanonicalCommandId(argv[0]));
@@ -1775,7 +1769,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if ((dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) && !isBunOrX) {
-    emitResultLine(`${version} ${process.platform}-${process.arch} node-${process.version}`);
+    await runMetaVersion();
     return;
   }
 
@@ -2053,7 +2047,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "shellenv" || argv[0] === "meta:shellenv") {
-    runMetaShellenv(argv.slice(1));
+    await runMetaShellenv(argv.slice(1));
     return;
   }
 
@@ -2178,7 +2172,13 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
-  emitDiagnosticLine(commandErrorMessage(notImplementedErrorForCommand(found[0])));
+  const error = notImplementedErrorForCommand(found[0]);
+  if (activeResultFormat === "json") {
+    setActiveCommandId(found[0]);
+    await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
+    return;
+  }
+  emitDiagnosticLine(commandErrorMessage(error));
   process.exitCode = 1;
 };
 

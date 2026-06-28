@@ -22,6 +22,12 @@ import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
+const parseEnvelopeResult = <A>(stdout: string): A => {
+  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+  expect(envelope.ok).toBe(true);
+  return envelope.result as A;
+};
+
 let cacheRoot = "";
 let dataRoot = "";
 let confRoot = "";
@@ -136,9 +142,9 @@ describe("apps:scratch:* source CLI routing", () => {
     const canonical = await runSource(["apps:scratch:list", "--format", "json"]);
     const alias = await runSource(["scratch:list", "--format", "json"]);
     expect(canonical.exitCode).toBe(0);
-    expect(canonical.stdout).toBe("[]\n");
+    expect(parseEnvelopeResult<ReadonlyArray<unknown>>(canonical.stdout)).toEqual([]);
     expect(alias.exitCode).toBe(canonical.exitCode);
-    expect(alias.stdout).toBe(canonical.stdout);
+    expect(parseEnvelopeResult<ReadonlyArray<unknown>>(alias.stdout)).toEqual([]);
   }, 30_000);
 
   test("scratch gc alias routes to the real orphan-reap seam", async () => {

@@ -1,6 +1,6 @@
 import { Command } from "@oclif/core";
 
-import { Effect, type Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
@@ -11,13 +11,13 @@ import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
+import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
   type RenderContext,
-  makeRendererServiceLiveForMode,
+  type StreamOutputFrame,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
-  writeDiagnosticLine,
 } from "../renderer-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
@@ -80,6 +80,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly resultSchema: Schema.Schema.AnyNoContext;
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
+  readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
@@ -237,6 +238,8 @@ export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<st
  * to subclasses of this via `compileCommandSpec()`.
  */
 export abstract class LandoCommandBase extends Command {
+  static override baseFlags = universalFormatFlagDefs;
+
   /**
    * The Lando-specific spec backing this command. Subclasses set this as a
    * static field; the base reads it to drive bootstrap and Effect execution.
@@ -274,17 +277,43 @@ export abstract class LandoCommandBase extends Command {
     this.argv.length = 0;
     this.argv.push(...deprecationWarnings.remainingArgv);
 
+    let resultFormat: ResultFormat = "text";
+    try {
+      const resolution = resolveResultFormat({ argv: this.argv, rendererMode });
+      resultFormat = resolution.format;
+      this.argv.length = 0;
+      this.argv.push(...resolution.remainingArgv);
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        throw new Error(formatRendererSelectionError(error));
+      }
+      throw error;
+    }
+
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
+      const error = notImplementedErrorForCommand(spec.id);
       const text = formatCommandError({
-        error: notImplementedErrorForCommand(spec.id),
+        error,
         commandId: spec.id,
         rendererMode,
       });
-      if (rendererMode === "json") {
-        await Effect.runPromise(
-          writeDiagnosticLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
-        );
-        process.exitCode = 1;
+      if (resultFormat === "json") {
+        await runWithRendererHandling(Effect.fail(error), {
+          runtime: Layer.empty,
+          rendererMode,
+          resultFormat,
+          command: spec.id,
+          resultSchema: spec.resultSchema,
+          ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
+          ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+          deprecationWarnings: deprecationWarnings.enabled,
+          formatError: (failure) =>
+            formatCommandError({
+              error: failure,
+              commandId: spec.id,
+              rendererMode,
+            }),
+        });
         return;
       }
       throw new Error(text);
@@ -318,9 +347,17 @@ export abstract class LandoCommandBase extends Command {
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},
       rendererMode,
     };
+    const flags = input.flags as Record<string, unknown>;
+    flags.format = resultFormat;
+    if (resultFormat === "json") flags.json = true;
     await runWithRendererHandling(spec.run(input), {
       runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
       rendererMode,
+      resultFormat,
+      command: spec.id,
+      resultSchema: spec.resultSchema,
+      ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
+      ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
       render: (value, ctx) => spec.render?.(value, input, ctx),

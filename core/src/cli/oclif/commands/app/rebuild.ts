@@ -7,6 +7,8 @@ import {
   resolveTopLevelAliases,
 } from "../../command-base.ts";
 
+import { StreamFrame } from "@lando/sdk/schema";
+
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:rebuild",
@@ -14,6 +16,7 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
+  streaming: StreamFrame,
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
     return rebuildApp(signal === undefined ? {} : { signal });

@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { type GlobalConfig, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import { type GlobalConfig, ProviderCapabilities, ProviderId, StreamFrame } from "@lando/sdk/schema";
 import {
   type DoctorCheck,
   doctor,
@@ -18,6 +18,29 @@ import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");
+
+const decodeFrames = (ndjson: string) =>
+  ndjson
+    .trimEnd()
+    .split("\n")
+    .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+
+const eventPayloads = (ndjson: string): ReadonlyArray<Record<string, unknown>> =>
+  decodeFrames(ndjson).flatMap((frame) =>
+    frame._tag === "event" ? [frame.payload as Record<string, unknown>] : [],
+  );
+
+const firstCheckPayload = (ndjson: string): Record<string, unknown> => {
+  const first = eventPayloads(ndjson)[0];
+  if (first === undefined) throw new Error("expected doctor.check frame");
+  return first;
+};
+
+const resultEnvelope = (ndjson: string) => {
+  const frame = decodeFrames(ndjson).at(-1);
+  if (frame?._tag !== "result") throw new Error("expected terminal result frame");
+  return frame.envelope;
+};
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -67,7 +90,7 @@ describe("meta:doctor command", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const check = JSON.parse(ndjson.trimEnd().split("\n")[1] ?? "{}") as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
 
     expect(text).toContain("providerKind: managed");
     expect(check.providerKind).toBe("managed");
@@ -80,7 +103,7 @@ describe("meta:doctor command", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const check = JSON.parse(ndjson.trimEnd().split("\n")[1] ?? "{}") as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
 
     expect(text).toContain("providerKind: user-installed");
     expect(check.providerKind).toBe("user-installed");
@@ -141,21 +164,19 @@ describe("meta:doctor command", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-
-    expect(lines[0]).toEqual({ _tag: "doctor.start", timestamp: "1970-01-01T00:00:00.000Z" });
-    expect(lines.at(-1)).toEqual({
-      _tag: "doctor.complete",
-      timestamp: "1970-01-01T00:00:00.000Z",
-      checks: 2,
-      failed: 0,
-      warned: 0,
+    expect(decodeFrames(ndjson).at(-1)?._tag).toBe("result");
+    expect(resultEnvelope(ndjson)).toMatchObject({
+      command: "meta:doctor",
+      ok: true,
+      result: {
+        timestamp: "1970-01-01T00:00:00.000Z",
+        checks: 2,
+        failed: 0,
+        warned: 0,
+      },
     });
 
-    const check = lines[1] as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
     expect(check._tag).toBe("doctor.check");
     expect(check.name).toBe("selected-provider");
     expect(check.status).toBe("pass");
@@ -193,11 +214,7 @@ describe("meta:doctor command", () => {
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    const check = lines[1] as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
 
     expect(text).not.toContain("engineId: mutagen");
 
@@ -213,7 +230,7 @@ describe("meta:doctor command", () => {
     expect(setupSolution?.kind).toBe("manual");
     expect(setupSolution?.description).toContain("lando setup");
 
-    const complete = lines.at(-1) as Record<string, unknown>;
+    const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
     expect(complete.warned).toBe(2);
     expect(complete.failed).toBe(0);
 
@@ -267,11 +284,7 @@ describe("meta:doctor command", () => {
       expect(ndjson).toContain("[redacted]");
       expect(ndjson).not.toContain("super-secret");
 
-      const payloads = ndjson
-        .trimEnd()
-        .split("\n")
-        .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(payloads.some((payload) => payload.name === "setup-readiness")).toBe(true);
+      expect(eventPayloads(ndjson).some((payload) => payload.name === "setup-readiness")).toBe(true);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }
@@ -285,11 +298,7 @@ describe("meta:doctor command", () => {
     };
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    const check = lines[1] as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
 
     const runtime = check.runtime as Record<string, unknown>;
     expect(runtime.running).toBe(true);
@@ -334,11 +343,7 @@ describe("meta:doctor command", () => {
     };
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    const check = lines[1] as Record<string, unknown>;
+    const check = firstCheckPayload(ndjson);
 
     const capabilities = check.capabilities as Record<string, unknown>;
     expect(capabilities.bindMountPerformance).toBe("slow");
@@ -471,7 +476,7 @@ describe("meta:doctor command", () => {
         doctor({ env: { LANDO_PROVIDER: "podman" } }).pipe(Effect.provide(buildLayers(provider))),
       );
       const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-      const check = JSON.parse(ndjson.trimEnd().split("\n")[1] ?? "{}") as Record<string, unknown>;
+      const check = firstCheckPayload(ndjson);
       const selection = check.selection as Record<string, unknown>;
       expect(selection).toBeDefined();
       expect(selection.source).toBe("env");
@@ -534,10 +539,10 @@ describe("meta:doctor command", () => {
         expect(text).toContain("lando setup --provider=");
 
         const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
-        const lines = ndjson.trimEnd().split("\n");
-        const conflictPayload = JSON.parse(lines[2] ?? "{}") as Record<string, unknown>;
+        const conflictPayload = eventPayloads(ndjson).find((payload) => payload.name === "provider-conflict");
+        if (conflictPayload === undefined) throw new Error("expected provider-conflict frame");
         expect(conflictPayload.name).toBe("provider-conflict");
-        const complete = JSON.parse(lines[3] ?? "{}") as Record<string, unknown>;
+        const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
         expect(complete.warned).toBe(1);
         expect(complete.failed).toBe(0);
         expect(complete.checks).toBe(2);

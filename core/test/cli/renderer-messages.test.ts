@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
@@ -36,6 +37,13 @@ const errorEventWithoutRemediation = Schema.decodeUnknownSync(MessageErrorEvent)
   body: "Plugin trust check failed",
   timestamp: fixedTimestamp,
 });
+
+const decodeEventFrame = (line: string) => {
+  const frame = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+  expect(frame._tag).toBe("event");
+  if (frame._tag !== "event") throw new Error("expected event frame");
+  return frame;
+};
 
 describe("plain renderer: message events", () => {
   test("renders message.info with info glyph and body", () => {
@@ -72,40 +80,48 @@ describe("json renderer: message events", () => {
     const line = renderJsonLine(infoEvent);
     expect(line).not.toBeNull();
     if (line === null) throw new Error("expected JSON line");
-    const parsed = JSON.parse(line) as { _tag: string; body: string; timestamp: string };
-    expect(parsed._tag).toBe("message.info");
-    expect(parsed.body).toBe("fetched 3 plugins");
-    expect(parsed.timestamp).toBe(fixedTimestamp);
-    expect(line.startsWith('{"_tag":"message.info"')).toBe(true);
+    const frame = decodeEventFrame(line);
+    const payload = frame.payload as { _tag: string; body: string; timestamp: string };
+    expect(frame.event).toBe("message.info");
+    expect(payload._tag).toBe("message.info");
+    expect(payload.body).toBe("fetched 3 plugins");
+    expect(payload.timestamp).toBe(fixedTimestamp);
+    expect(line.startsWith('{"_tag":"event"')).toBe(true);
   });
 
   test("renders message.warn as stable JSON", () => {
     const line = renderJsonLine(warnEvent);
     expect(line).not.toBeNull();
     if (line === null) throw new Error("expected JSON line");
-    const parsed = JSON.parse(line) as { _tag: string; body: string };
-    expect(parsed._tag).toBe("message.warn");
-    expect(parsed.body).toContain("Deprecated");
+    const frame = decodeEventFrame(line);
+    const payload = frame.payload as { _tag: string; body: string };
+    expect(frame.event).toBe("message.warn");
+    expect(payload._tag).toBe("message.warn");
+    expect(payload.body).toContain("Deprecated");
   });
 
   test("renders message.error with remediation field preserved", () => {
     const line = renderJsonLine(errorEventWithRemediation);
     expect(line).not.toBeNull();
     if (line === null) throw new Error("expected JSON line");
-    const parsed = JSON.parse(line) as { _tag: string; body: string; remediation: string };
-    expect(parsed._tag).toBe("message.error");
-    expect(parsed.body).toBe("Failed to load Landofile");
-    expect(parsed.remediation).toBe("Run `lando config` to see the parsed config.");
+    const frame = decodeEventFrame(line);
+    const payload = frame.payload as { _tag: string; body: string; remediation: string };
+    expect(frame.event).toBe("message.error");
+    expect(payload._tag).toBe("message.error");
+    expect(payload.body).toBe("Failed to load Landofile");
+    expect(payload.remediation).toBe("Run `lando config` to see the parsed config.");
   });
 
   test("renders message.error without remediation as JSON missing the field", () => {
     const line = renderJsonLine(errorEventWithoutRemediation);
     expect(line).not.toBeNull();
     if (line === null) throw new Error("expected JSON line");
-    const parsed = JSON.parse(line) as { _tag: string; body: string; remediation?: string };
-    expect(parsed._tag).toBe("message.error");
-    expect(parsed.body).toBe("Plugin trust check failed");
-    expect(Object.hasOwn(parsed, "remediation")).toBe(false);
+    const frame = decodeEventFrame(line);
+    const payload = frame.payload as { _tag: string; body: string; remediation?: string };
+    expect(frame.event).toBe("message.error");
+    expect(payload._tag).toBe("message.error");
+    expect(payload.body).toBe("Plugin trust check failed");
+    expect(Object.hasOwn(payload, "remediation")).toBe(false);
   });
 });
 
@@ -171,16 +187,14 @@ describe("json renderer Layer: message events through EventService", () => {
     expect(io.stdout()).toBe("");
     const lines = io.stderrLines();
     expect(lines.length).toBe(3);
-    const tags = lines.map((line) => (JSON.parse(line) as { _tag: string })._tag);
+    const tags = lines.map((line) => decodeEventFrame(line).event);
     expect(tags).toEqual(["message.info", "message.warn", "message.error"]);
     const errorLine = lines[2];
     if (errorLine === undefined) throw new Error("missing error line");
-    const parsed = JSON.parse(errorLine) as {
-      _tag: string;
-      body: string;
-      remediation: string;
-    };
-    expect(parsed.remediation).toBe("Run `lando config` to see the parsed config.");
+    const frame = decodeEventFrame(errorLine);
+    expect((frame.payload as { readonly remediation?: string }).remediation).toBe(
+      "Run `lando config` to see the parsed config.",
+    );
   });
 });
 

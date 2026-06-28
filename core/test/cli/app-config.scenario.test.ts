@@ -16,6 +16,12 @@ interface RunResult {
   readonly stderr: string;
 }
 
+const parseEnvelopeResult = <A>(stdout: string): A => {
+  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+  expect(envelope.ok).toBe(true);
+  return envelope.result as A;
+};
+
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-app-config-scenario-")));
   try {
@@ -85,9 +91,11 @@ describe("lando app:config", () => {
       const result = await runCli(["app:config", "--format", "json"], dir);
 
       expect(result.exitCode).toBe(0);
-      const parsed = JSON.parse(result.stdout) as { readonly name?: string; readonly recipe?: string };
-      expect(parsed.name).toBe("test-app-config-json");
-      expect(parsed.recipe).toBe("node");
+      const parsed = parseEnvelopeResult<{
+        readonly landofile?: { readonly name?: string; readonly recipe?: string };
+      }>(result.stdout);
+      expect(parsed.landofile?.name).toBe("test-app-config-json");
+      expect(parsed.landofile?.recipe).toBe("node");
     });
   });
 });
