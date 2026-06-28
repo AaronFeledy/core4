@@ -156,7 +156,7 @@ describe("terminateOwnedRuntimeService", () => {
 
     const result = await run(terminateOwnedRuntimeService(baseSpec, { process: processSeam, fs: fsSeam }));
 
-    expect(result).toEqual({ terminated: false });
+    expect(result).toEqual({ terminated: false, pid: 123 });
     expect(unlinkedPaths).toEqual([]);
   });
 

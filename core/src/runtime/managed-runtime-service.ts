@@ -167,7 +167,7 @@ export const terminateOwnedRuntimeService = (
         Effect.as(true),
         Effect.catchAll(() => Effect.succeed(false)),
       );
-      return terminated ? { terminated: true, pid } : { terminated: false };
+      return terminated ? { terminated: true, pid } : { terminated: false, pid };
     });
 
     if (result.terminated) {
