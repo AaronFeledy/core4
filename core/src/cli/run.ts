@@ -514,20 +514,25 @@ const runCompiledCommand = <A, E, R, RE>(
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
   } = {},
-): Promise<void> =>
-  runWithRendererHandling(operation, {
+): Promise<void> => {
+  const spec = landoSpecForId(activeCommandId);
+  const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,
-    resultSchema: landoSpecForId(activeCommandId)?.resultSchema ?? EmptyResultSchema,
+    resultSchema: spec?.resultSchema ?? EmptyResultSchema,
+    ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+    ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     render,
-    formatError: (error) => commandErrorMessage(error),
-  });
+    formatError: (error: unknown) => commandErrorMessage(error),
+  };
+  return runWithRendererHandling(operation, rendererOptions);
+};
 
 const runWithProcessAbortSignal = async (run: (signal: AbortSignal) => Promise<void>): Promise<void> => {
   const controller = new AbortController();
