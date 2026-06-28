@@ -64,6 +64,30 @@ describe("setup readiness persistence", () => {
     });
   });
 
+  test("write without runtimeService preserves existing runtimeService block", async () => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      const runtimeService = {
+        running: true,
+        socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
+        pid: 1234,
+        runtimeVersion: "5.0.0",
+      };
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps, runtimeService));
+
+      const caStep = {
+        id: "ca",
+        status: "satisfied" as const,
+        evidence: "Certificate authority setup completed.",
+      };
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", [...steps, caStep]));
+
+      const summary = await Effect.runPromise(readSetupReadiness(userDataRoot));
+
+      expect(summary?.runtimeService).toEqual(runtimeService);
+      expect(summary?.steps).toEqual([...steps, caStep]);
+    });
+  });
+
   test("read redacts runtimeService.socketPath", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
       await Effect.runPromise(

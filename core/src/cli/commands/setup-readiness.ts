@@ -50,19 +50,27 @@ export const writeSetupReadiness = (
   providerId: string,
   steps: ReadonlyArray<SetupReadinessStep>,
   runtimeService?: SetupReadinessRuntimeService,
-): Effect.Effect<void, never> => {
-  if (userDataRoot === undefined) return Effect.void;
-  const summary: SetupReadinessSummary = {
-    status: summaryStatus(steps),
-    providerId,
-    updatedAt: new Date().toISOString(),
-    steps,
-    ...(runtimeService === undefined ? {} : { runtimeService }),
-  };
-  return Effect.promise(() =>
-    writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
-  ).pipe(Effect.catchAll(() => Effect.void));
-};
+): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    if (userDataRoot === undefined) return;
+    const existing = yield* readSetupReadiness(userDataRoot);
+    const runtimeServiceBlock =
+      runtimeService === undefined
+        ? existing?.runtimeService === undefined
+          ? {}
+          : { runtimeService: existing.runtimeService }
+        : { runtimeService };
+    const summary: SetupReadinessSummary = {
+      status: summaryStatus(steps),
+      providerId,
+      updatedAt: new Date().toISOString(),
+      steps,
+      ...runtimeServiceBlock,
+    };
+    yield* Effect.promise(() =>
+      writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
+    ).pipe(Effect.catchAll(() => Effect.void));
+  });
 
 export const readSetupReadiness = (
   userDataRoot: string | undefined,
