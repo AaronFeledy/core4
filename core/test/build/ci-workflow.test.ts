@@ -690,6 +690,12 @@ describe("ci workflow", () => {
 
     expect(providerIntegration).toContain("      - name: Teardown Lando runtime");
     expect(providerIntegration).toContain("          dist/lando poweroff");
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true',
+    );
+    expect(providerIntegration).not.toMatch(
+      /Teardown Lando runtime[\s\S]*?podman ps -aq --filter "name=lando-" \| xargs -r podman rm/,
+    );
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("      - name: Collect provider diagnostics");
     expect(providerIntegration).toContain("        if: failure()");

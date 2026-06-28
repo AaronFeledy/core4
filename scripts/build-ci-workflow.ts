@@ -215,6 +215,11 @@ const podmanTeardownCommands = `          podman ps -aq --filter "name=lando-" |
           if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
           rm -f /tmp/podman.sock /tmp/podman-service.pid`;
 
+const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
+          "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
+
 const contractProviderTestSteps = `      - name: Run provider contract tests
         run: |
           bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
@@ -314,8 +319,7 @@ const landoRuntimeLiveTestSteps = (
         if: always()
         run: |
           dist/lando poweroff || true
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+${landoManagedPodmanTeardownCommands}
 
       - name: Collect provider diagnostics
         if: failure()
