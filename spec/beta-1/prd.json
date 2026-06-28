@@ -2916,6 +2916,96 @@
       "priority": 8,
       "passes": true,
       "notes": "Completed the three shared composition contract suites to their harness-provable assertion set (service-feature determinism/idempotency + storage/endpoint realization-leak + requires-shape; app-feature no-activation no-op via expectNoActivation; composition replay-stability of base+normalizedConfig). Wired catalog runAppFeatureContract for the mailpit-style feature and per-type lando.env env-split assertions (lando->lando.env, compose/l337->no lando.env). Added scripts/check-env-helper-boundary.ts (AST gate over plugins/service-lando/src/services/** forbidding imports of features/env.ts or named landoEnvFeature/applyEnv), wired into CI static checks + runbook with a negative mkdtemp fixture. API_COMPATIBILITY needed no new entry: the only additive change is an optional field on the already-listed type-only AppFeatureContractHarness."
+    },
+    {
+      "id": "US-363",
+      "title": "`lando setup` extracts and installs the verified runtime bundle into a private bin directory",
+      "description": "As a user running setup, the verified Lando runtime bundle is unpacked into a private runtime bin directory so the Lando-managed Podman and its helper binaries are present and executable on my host.",
+      "acceptanceCriteria": [
+        "`@lando/core/paths` (`makeLandoPaths`) and `PathsService` expose `runtimeBinDir` (`<userDataRoot>/runtime/bin`), `runtimeRunDir` (`<userDataRoot>/runtime/run`), `providerSocketPath` (`<userDataRoot>/runtime/run/podman.sock`), and `providerPidPath` (`<userDataRoot>/runtime/run/podman.pid`) per \u00a712.4, and pass `check:paths-boundary` (no hand-spelled joins).",
+        "After `verifyRuntimeBundle` passes, `lando setup` extracts the bundle archive into `runtimeBinDir` and sets the executable bit on `podman` and the helper binaries (e.g. `gvproxy`, `conmon`, `crun`/`runc`, `netavark`, `aardvark-dns`); no file is written when the checksum does not match.",
+        "Extraction supports the manifest filenames for `.tar.gz` (Linux/macOS) and `.zip` (Windows); archive entries that escape `runtimeBinDir` (path traversal, absolute paths, unsafe symlinks) are rejected with remediation.",
+        "Extraction is version-idempotent: a re-run whose installed `runtimeVersion` already matches reports the step as already satisfied and does not re-extract; a version change replaces the bin tree atomically (temp dir + rename).",
+        "The installed runtime bin directory and `runtimeVersion` are recorded in the provider setup state so `lando doctor` and the provider can resolve the binaries without re-downloading.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Remediation story (socket autosetup). Extends the PRD-13 Paths primitive with runtime bin/run/socket/pid helpers and adds the missing extraction step: today `runtime-bundle.ts` downloads + checksum-verifies the tarball but never unpacks it (verified in plugins/provider-lando/src/runtime-bundle.ts)."
+    },
+    {
+      "id": "US-364",
+      "title": "`@lando/provider-lando` owns an idempotent `ensureRuntime` that starts the private Podman API socket on demand",
+      "description": "As a user, the Lando provider brings its private Podman API socket up whenever a command needs it (`lando start`, `exec`, tooling) and keeps it up across reboots, so I never run `podman system service` or re-run setup to get a working runtime.",
+      "acceptanceCriteria": [
+        "`@lando/provider-lando` exposes a provider-owned idempotent `ensureRuntime` primitive (\u00a75.2 principle 8): a reachable socket is a no-op; a stale PID or unreachable socket is reaped (PID terminated if alive, socket/PID files unlinked) and relaunched; an absent socket is launched.",
+        "`ensureRuntime` launches the extracted `podman system service` bound to `providerSocketPath`, pinned to private roots via `--root`/`--runroot`/`--config` under `<userDataRoot>/runtime/` so it never reads or writes system-wide Podman or Docker state, spawned detached so it outlives the CLI process, with its PID written to `providerPidPath` (\u00a75.8.1, \u00a712.4).",
+        "The launch is an injectable `PodmanServiceRunner` seam (mirroring `PodmanCommandRunner`/`PodmanMachineRunner` in setup.ts) with a real detached default and a test fake; unit tests assert the argv, private-root flags, socket path, and PID write, plus the no-op / reap / launch branches, without spawning Podman.",
+        "`lando start`, `exec`, and runtime-needing tooling call `ensureRuntime` before `apply`/exec; the cheap reachability probe rides the cold path (not the tooling hot path) and the actual launch happens at most once per boot. After it runs, the `api.info` probe succeeds with no `LANDO_TEST_PODMAN_SOCKET`.",
+        "`lando setup` calls the same `ensureRuntime` as its final readiness step (setup does not own the socket); rootless launch prerequisites are classified with actionable, per-prerequisite remediation (missing `/etc/subuid`+`/etc/subgid`, missing `newuidmap`/`newgidmap`, cgroups v2 delegation, missing `XDG_RUNTIME_DIR`), distinct from a generic launch failure, extending the \u00a710.8 setup preflight remediation contract.",
+        "On macOS and Windows the socket is provided by the managed Podman machine created in US-200; `ensureRuntime` resolves and (re)starts the machine connection socket (using the bundled Podman with a Lando-private connection) instead of launching a host service, and records it identically.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Reframed to a provider-owned `ensureRuntime` (not a setup-only launcher) so reboots/kills/crashes self-heal: setup is one-time but the socket is a process. `lando start`/exec/tooling trigger it lazily; setup calls it eagerly as a readiness step. Mirrors the spec ProxyService.setup -> GlobalAppService.ensureRunning precedent (\u00a710.8). Today setupProviderLando only probes `options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET` and fails with PodmanSocketUnreachableError; nothing launches the service. macOS/Windows reuse the US-200 machine."
+    },
+    {
+      "id": "US-365",
+      "title": "Lando runtime service reports real status, self-heals, and is torn down by poweroff and uninstall",
+      "description": "As a support engineer, the Lando runtime service reports accurate status to doctor, comes back automatically after a stop/reboot/kill, and is cleaned up by poweroff and uninstall.",
+      "acceptanceCriteria": [
+        "`RuntimeProvider.getStatus` for `lando` probes the socket/PID instead of returning a hardcoded `running: true`, and `lando doctor` surfaces runtime-service health plus orphan-PID detection (\u00a710.9).",
+        "`apps:poweroff` stops the Lando runtime service after stopping apps and honors the existing `--keep-global`/`--keep-scratch` flags.",
+        "After a stop, reboot, or manual kill, the next `lando start` / `exec` / `lando setup` transparently re-runs `ensureRuntime` (US-364) and the runtime comes back with no user action; a cross-process test proves the self-heal.",
+        "`lando uninstall` enumerates and performs runtime-service teardown (terminate PID, unlink socket/PID, remove `<userDataRoot>/runtime/`) under the chosen `--keep-data`/`--purge` retention mode (US-205/US-206 plan lists these steps).",
+        "The US-204 readiness summary includes runtime-service state (running flag, socket path, PID, runtime version) consumed by `lando doctor`.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Idempotent detect/reap/launch now lives in US-364's ensureRuntime; this story owns real getStatus (replacing the hardcoded `{ running: true }` in plugins/provider-lando/src/index.ts), the self-heal proof (cross-process), and poweroff/uninstall teardown. Integrates US-204 readiness + US-205/US-206 uninstall plan."
+    },
+    {
+      "id": "US-366",
+      "title": "Provider registry resolves the Lando socket from Paths so production never depends on `LANDO_TEST_PODMAN_SOCKET`",
+      "description": "As a developer, every command resolves the Lando-managed socket and runtime binaries from the Paths primitive injected by the provider registry, so production no longer falls back to the `LANDO_TEST_PODMAN_SOCKET` test variable.",
+      "acceptanceCriteria": [
+        "`core/src/providers/registry.ts` constructs `@lando/provider-lando` with the `PathsService`-resolved `socketPath` (and runtime bin dir), so `apply`/`exec`/`logs`/`inspect`/`destroy` reach the Lando-owned socket in a fresh CLI process with no environment variable.",
+        "`provider-lando` derives its default socket path from the injected paths; resolution precedence is explicit option > `LANDO_TEST_PODMAN_SOCKET` (documented test/CI override only) > Paths default, and the default-from-Paths path is covered by a test with no env var set.",
+        "`makeRuntimeProvider` no longer treats a missing `LANDO_TEST_PODMAN_SOCKET` as \"no socket\" in production; a test asserts a runtime built without the env var still resolves a socket path.",
+        "The Podman API client continues to reach the private socket (curl `--unix-socket` and the native socket transport) using the Paths-derived path; no production behavior depends on a socket outside `<userDataRoot>/runtime/run/`.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Closes the wiring gap: registry.ts currently passes stateDir/eventService/artifactDownload but not socketPath, so makeRuntimeProvider falls back to LANDO_TEST_PODMAN_SOCKET. Demote the env var to a test/CI-only override."
+    },
+    {
+      "id": "US-367",
+      "title": "CI prepares the Lando provider via `lando setup` with no manual socket bring-up",
+      "description": "As a maintainer, CI proves the default Lando-managed runtime end-to-end by running `lando setup` to prepare the environment, with no manually started `podman system service` and no `LANDO_TEST_PODMAN_SOCKET` export.",
+      "acceptanceCriteria": [
+        "The generated `provider-integration-linux-*` CI job no longer runs `podman system service ... unix:///tmp/podman.sock` and no longer exports `LANDO_TEST_PODMAN_SOCKET`; it runs the compiled `lando setup --yes` with a current-commit local bundle (`scripts/build-runtime-bundle.ts --local` + `LANDO_RUNTIME_BUNDLE_MANIFEST`) to provision the runtime, and the socket is brought up by `ensureRuntime` (via setup's readiness step and/or the suites' `lando start`), never a manual service.",
+        "The provider integration and contract suites run against the Lando-managed socket brought up by `ensureRuntime` (US-364) and resolved from setup state / Paths rather than the removed env var.",
+        "The CI change is made in the generator `scripts/build-ci-workflow.ts` (hand-edits to `.github/workflows/ci.yml` are forbidden); `bun run codegen` is run and `git diff --exit-code` on the generated workflow shows only the intended change; `core/test/build/ci-workflow.test.ts` is updated.",
+        "The runner provisions only the host prerequisites the Lando rootless runtime needs (subuid/subgid, uidmap, cgroups v2 delegation); a documented `LANDO_TEST_PODMAN_SOCKET` rehearsal fallback remains for local/sandbox environments where rootless service launch is unavailable.",
+        "`docs/ci-runbook.md` is updated to describe the setup-driven provider preparation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Directly answers the requirement that CI use the Lando provider with no manual setup. Replaces the manual `Start Podman socket` step in .github/workflows/ci.yml (generated by scripts/build-ci-workflow.ts) with a `lando setup`-driven preparation."
     }
   ]
 }
