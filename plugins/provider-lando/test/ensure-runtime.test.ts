@@ -159,7 +159,7 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
-  test("reachable socket with no managed service process is reused", async () => {
+  test("reachable socket without owned argv match relaunches managed service", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];
@@ -174,8 +174,11 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([["findMatching", canonicalArgs(p)]]);
-      await expectMissingFile(p.pidPath);
+      expect(calls).toEqual([
+        ["findMatching", canonicalArgs(p)],
+        ["launch", canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

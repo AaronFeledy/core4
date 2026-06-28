@@ -193,12 +193,12 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
         const matchingPids = yield* findAliveMatchingServicePids(deps);
         if (matchingPids.length === 0) {
           const stalePid = yield* readStalePid(deps.pidPath);
-          if (stalePid === undefined) return;
-
-          const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
-          if (!staleAlive) return;
-
-          yield* deps.serviceRunner.terminate(stalePid);
+          if (stalePid !== undefined) {
+            const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
+            if (staleAlive) {
+              yield* deps.serviceRunner.terminate(stalePid);
+            }
+          }
         } else {
           for (const pid of matchingPids) {
             yield* deps.serviceRunner.terminate(pid);
