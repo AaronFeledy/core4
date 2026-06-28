@@ -46,22 +46,31 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
   }
 }
 
+const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
+  const separator = podmanBin.lastIndexOf("/");
+  return separator > 0 ? podmanBin.slice(0, separator) : undefined;
+};
+
 export const buildPodmanServiceArgs = (p: {
   readonly podmanBin: string;
   readonly storageDir: string;
   readonly runRoot: string;
   readonly configDir: string;
   readonly socketPath: string;
-}): PodmanServiceSpec => ({
-  command: p.podmanBin,
-  args: buildManagedRuntimeServiceArgs({
-    runtimeStorageDir: p.storageDir,
-    runtimeRunDir: p.runRoot,
-    runtimeConfigDir: p.configDir,
-    providerSocketPath: p.socketPath,
-  }),
-  socketPath: p.socketPath,
-});
+}): PodmanServiceSpec => {
+  const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
+  return {
+    command: p.podmanBin,
+    args: buildManagedRuntimeServiceArgs({
+      runtimeStorageDir: p.storageDir,
+      runtimeRunDir: p.runRoot,
+      runtimeConfigDir: p.configDir,
+      ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+      providerSocketPath: p.socketPath,
+    }),
+    socketPath: p.socketPath,
+  };
+};
 
 export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;

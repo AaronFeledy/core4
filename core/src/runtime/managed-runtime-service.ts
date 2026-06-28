@@ -22,6 +22,7 @@ export interface ManagedRuntimeServiceArgsParts {
   readonly runtimeStorageDir: string;
   readonly runtimeRunDir: string;
   readonly runtimeConfigDir: string;
+  readonly runtimeBinDir?: string;
   readonly providerSocketPath: string;
 }
 
@@ -123,18 +124,26 @@ const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>
 
 export const buildManagedRuntimeServiceArgs = (
   parts: ManagedRuntimeServiceArgsParts,
-): ReadonlyArray<string> => [
-  "--root",
-  parts.runtimeStorageDir,
-  "--runroot",
-  parts.runtimeRunDir,
-  "--config",
-  parts.runtimeConfigDir,
-  "system",
-  "service",
-  "--time=0",
-  `unix://${parts.providerSocketPath}`,
-];
+): ReadonlyArray<string> => {
+  const storageOptions =
+    parts.runtimeBinDir === undefined
+      ? []
+      : ["--storage-opt", `overlay.mount_program=${parts.runtimeBinDir}/fuse-overlayfs`];
+
+  return [
+    "--root",
+    parts.runtimeStorageDir,
+    "--runroot",
+    parts.runtimeRunDir,
+    "--config",
+    parts.runtimeConfigDir,
+    ...storageOptions,
+    "system",
+    "service",
+    "--time=0",
+    `unix://${parts.providerSocketPath}`,
+  ];
+};
 
 // Forward slash is intentional: this is the exact argv[0] the provider spawns and
 // the same string matched against `/proc/<pid>/cmdline`, so it must not be re-normalized.
