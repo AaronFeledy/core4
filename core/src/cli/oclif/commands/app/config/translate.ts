@@ -1,7 +1,6 @@
 import { Flags } from "@oclif/core";
 
 import {
-  type AppConfigTranslateFormat,
   type AppConfigTranslateResult,
   appConfigTranslate,
   renderConfigTranslateResult,
@@ -21,10 +20,9 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   topLevelAlias: false,
   bootstrap: "minimal",
   run: () => appConfigTranslate(),
-  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult),
+  render: (result, _input, ctx) =>
+    renderConfigTranslateResult(result as AppConfigTranslateResult, ctx?.format === "json" ? "json" : "text"),
 };
-
-const formatFromFlag = (value: unknown): AppConfigTranslateFormat => (value === "json" ? "json" : "text");
 
 export default class AppConfigTranslateCommand extends LandoCommandBase {
   static override description = appConfigTranslateSpec.summary;
@@ -48,11 +46,9 @@ export default class AppConfigTranslateCommand extends LandoCommandBase {
       readonly flags: { readonly write?: boolean; readonly format?: string };
     };
     const write = parsed.flags.write === true;
-    const format = formatFromFlag(parsed.flags.format);
     await this.runEffect({
       ...appConfigTranslateSpec,
       run: () => appConfigTranslate({ write }),
-      render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, format),
     });
   }
 }
