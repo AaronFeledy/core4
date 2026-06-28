@@ -2285,8 +2285,8 @@
         "Lint passes."
       ],
       "priority": 127,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added StreamFrame encoders for stdout/stderr/event/result frames, migrated streaming JSON emission through renderer-boundary, and marked app:logs, app:exec, app:start, and app:rebuild as streaming surfaces. Doctor NDJSON, json renderer event lines, and deprecation-used diagnostics now emit StreamFrame event/result frames. Tests cover frame ordering, terminal result frames, event-history reuse, and redaction."
     },
     {
       "id": "US-327",

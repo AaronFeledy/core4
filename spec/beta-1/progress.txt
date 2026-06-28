@@ -703,3 +703,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Regenerated `core/oclif.manifest.json` and `core/src/cli/oclif/compiled-manifest.ts` so every command advertises the universal `format` and `json` flags.
 - Kept US-326/US-327 boundaries intact: streaming/event NDJSON is not migrated here, and existing per-command JSON producers remain until concrete result schemas land in US-327.
 - Verification: `bun run typecheck` passed; `bun run lint` passed; focused format/routing tests passed; manual smokes passed for `version --json`, `version -j`, `apps:list --json`, `app:config --json` failure envelopes, invalid `--format xml`, and `apps:list --renderer=json --format table` explicit-format override.
+
+## 2026-06-28 - US-326
+- Added shared `StreamFrame` encoders for stdout, stderr, event, and terminal result frames, then routed streaming JSON output through `renderer-boundary.ts` so `app:logs`, `app:exec`, `app:start`, and `app:rebuild` declare `streaming` and terminate `--format json` output with a result envelope frame.
+- Migrated the prior one-off event/NDJSON producers onto `StreamFrame`: doctor NDJSON/report output, json renderer event lines, and `deprecation-used` diagnostics now emit event/result frames instead of bespoke JSON lines.
+- Locked the contract with focused tests for stream frame encoding, central frame ordering, terminal result frames, bounded `EventService` history reuse, event payload redaction, renderer event-line snapshots, and doctor NDJSON fixtures.
+- Verification: `bun run typecheck`, `bun run lint`, `bun run check:renderer-boundary`, `bun run check:redaction-boundary`, focused renderer/doctor/result-encode suites, and streaming command scenario suites all passed.
