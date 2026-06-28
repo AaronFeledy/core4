@@ -279,6 +279,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       : makeDefaultRuntimeBundleDownloader({
           stateDir,
           platform,
+          ...(url === undefined ? {} : { env: {} }),
           ...(url === undefined ? {} : { url }),
           ...(sha256 === undefined ? {} : { sha256 }),
           artifactDownload: options.artifactDownload ?? missingArtifactDownload,
