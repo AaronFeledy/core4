@@ -110,6 +110,20 @@ const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> 
       Effect.succeed(false);
   });
 
+const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+  Effect.gen(function* () {
+    const find = deps.serviceRunner.findMatchingServicePids;
+    if (find === undefined) return [];
+
+    const spec = buildPodmanServiceArgs(deps);
+    const pids = yield* find(spec);
+    const alive: number[] = [];
+    for (const pid of pids) {
+      if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
+    }
+    return alive;
+  });
+
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const spec = buildPodmanServiceArgs({
@@ -174,6 +188,15 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
     if (reachable._tag === "Right") {
       const owned = yield* currentRuntimeIsOwned(deps);
       if (owned) return;
+
+      if (deps.serviceRunner.findMatchingServicePids !== undefined) {
+        const matchingPids = yield* findAliveMatchingServicePids(deps);
+        if (matchingPids.length === 0) return;
+
+        for (const pid of matchingPids) {
+          yield* deps.serviceRunner.terminate(pid);
+        }
+      }
     }
 
     yield* reapStaleRuntime(deps);

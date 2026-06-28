@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
 import { Effect } from "effect";
 
@@ -72,6 +72,7 @@ export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
+  readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
 }
 
@@ -86,6 +87,27 @@ const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
 
 const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
   actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
+
+const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
+  Effect.tryPromise({
+    try: async () => {
+      const entries = await readdir("/proc");
+      return entries.filter((entry) => /^\d+$/u.test(entry)).map((entry) => Number(entry));
+    },
+    catch: () => [] as number[],
+  }).pipe(Effect.catchAll(() => Effect.succeed([] as number[])));
+
+const findMatchingServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
+  Effect.gen(function* () {
+    const expected = [spec.command, ...spec.args];
+    const pids = yield* listProcPids();
+    const matching: number[] = [];
+    for (const pid of pids) {
+      const argv = yield* readProcessArgv(pid);
+      if (sameArgv(argv, expected)) matching.push(pid);
+    }
+    return matching;
+  });
 
 export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
   launch: (spec) =>
@@ -116,6 +138,7 @@ export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
     }),
   isServiceProcess: (pid, spec) =>
     readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
+  findMatchingServicePids: findMatchingServicePidsOnHost,
   terminate: (pid) =>
     Effect.sync(() => {
       try {

@@ -42,6 +42,7 @@ type Call =
   | ["launch", string]
   | ["isAlive", number]
   | ["isServiceProcess", number, string]
+  | ["findMatching", string]
   | ["terminate", number];
 
 const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
@@ -51,7 +52,12 @@ const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
   }),
 });
 
-const serviceRunner = (calls: Call[], alive: boolean, serviceProcess = alive): PodmanServiceRunner => ({
+const serviceRunner = (
+  calls: Call[],
+  alive: boolean,
+  serviceProcess = alive,
+  options?: { readonly findMatchingPids?: ReadonlyArray<number> },
+): PodmanServiceRunner => ({
   launch: (spec) =>
     Effect.sync(() => {
       calls.push(["launch", JSON.stringify(spec.args)]);
@@ -67,6 +73,15 @@ const serviceRunner = (calls: Call[], alive: boolean, serviceProcess = alive): P
       calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
       return serviceProcess;
     }),
+  ...(options?.findMatchingPids === undefined
+    ? {}
+    : {
+        findMatchingServicePids: (spec) =>
+          Effect.sync(() => {
+            calls.push(["findMatching", JSON.stringify(spec.args)]);
+            return options.findMatchingPids ?? [];
+          }),
+      }),
   terminate: (pid) =>
     Effect.sync(() => {
       calls.push(["terminate", pid]);
@@ -142,6 +157,28 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
+  test("reachable socket with no managed service process is reused", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [] }),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([["findMatching", canonicalArgs(p)]]);
+      await expectMissingFile(p.pidPath);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("reachable socket without matching pid metadata is restarted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -190,7 +227,7 @@ describe("ensureRuntime", () => {
     }
   });
 
-  test("reachable socket with mismatched pid metadata is restarted", async () => {
+  test("reachable socket with mismatched pid metadata stops live service before relaunch", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];
@@ -201,7 +238,7 @@ describe("ensureRuntime", () => {
         ensureRuntime({
           platform: "linux",
           podmanApi: reachableApi(),
-          serviceRunner: serviceRunner(calls, true, false),
+          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [7777] }),
           ...p,
         }),
       );
@@ -209,6 +246,9 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["findMatching", canonicalArgs(p)],
+        ["isAlive", 7777],
+        ["terminate", 7777],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
