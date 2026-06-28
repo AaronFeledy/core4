@@ -253,7 +253,7 @@ export const buildUninstallPlan = (
   return mode === undefined ? steps : steps.map((step) => stepWithMode(step, mode));
 };
 
-const writeUninstallReport = (
+const writeUninstallReport = async (
   userDataRoot: string,
   mode: UninstallMode,
   steps: ReadonlyArray<UninstallPlanStep>,
@@ -265,7 +265,8 @@ const writeUninstallReport = (
     updatedAt: new Date().toISOString(),
     steps,
   };
-  return writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`).then(() => reportPath);
+  await writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  return reportPath;
 };
 
 const executeUninstall = async (options: UninstallOptions, mode: UninstallMode): Promise<UninstallResult> => {
@@ -282,7 +283,10 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
     }
     try {
       if (step.id === "runtime-service") {
-        await teardownRuntimeService(userDataRoot);
+        const result = await teardownRuntimeService(userDataRoot);
+        if (!result.terminated) {
+          throw new Error("managed runtime service was not terminated");
+        }
       }
       await remove(step.target);
       executed.push({ ...step, outcome: "completed" });
