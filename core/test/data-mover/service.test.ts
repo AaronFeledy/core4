@@ -1055,6 +1055,55 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("pruneSnapshots with filter only and omitted keepLatest removes nothing", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      await writeFile(join(dir, "seed.txt"), "seed-payload");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const first = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "snap-a" },
+              );
+              const second = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "snap-b" },
+              );
+              const pruned = yield* dataMover.pruneSnapshots({
+                filter: { app, store: "data" },
+              });
+              const listed = yield* dataMover.listSnapshots({ app, store: "data" });
+              return { first, second, pruned, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(result.pruned).toEqual([]);
+        expect(result.listed.map((entry) => entry.id).sort()).toEqual(
+          [result.first.id, result.second.id].sort(),
+        );
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
   test("persists native snapshot refs in the sidecar without writing an archive", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");

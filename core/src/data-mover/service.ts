@@ -1165,15 +1165,18 @@ export const makeDataMoverService = (
     ),
   pruneSnapshots: (policy: PrunePolicy) =>
     listSnapshotInfos(persistence, policy.filter ?? {}).pipe(
-      Effect.map((infos) =>
-        [...infos]
+      Effect.map((infos) => {
+        if (policy.keepLatest === undefined) {
+          return [];
+        }
+        return [...infos]
           .sort(
             (left, right) =>
               Date.parse(DateTime.formatIso(right.createdAt)) -
               Date.parse(DateTime.formatIso(left.createdAt)),
           )
-          .slice(policy.keepLatest ?? 0),
-      ),
+          .slice(policy.keepLatest);
+      }),
       Effect.flatMap((remove) =>
         Effect.forEach(remove, (info) =>
           makeDataMoverService(provider, events, persistence)
