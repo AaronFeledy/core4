@@ -358,6 +358,16 @@ describe("lando destroy", () => {
     });
   });
 
+  test("compiled CLI exposes lando destroy --purge flag", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(["destroy", "--purge"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
+      expect(result.stderr).toContain("lando init");
+    });
+  });
+
   test("compiled CLI exposes lando destroy --purge-caches flag", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--purge-caches"], dir);

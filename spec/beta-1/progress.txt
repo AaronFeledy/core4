@@ -634,3 +634,8 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - DataMover's user-supplied host endpoint containment guard should stay on public transfers; Lando-owned snapshot archives under userDataRoot use the internal stream/write primitives to avoid widening trusted host paths.
   - Snapshot index buckets must create the app snapshot directory before opening StateStore with a `{ path }` root, because StateStore realpath containment checks the deepest existing ancestor.
 ---
+## 2026-06-27 19:59 CDT - US-338 Review
+- Reviewed the snapshot-store implementation and fixed the confirmed blocker: `lando destroy --purge` is now accepted and drives the destructive app-data removal path that deletes the app snapshot subtree, while plain destroy and cache-only purge preserve snapshots.
+- Review notes (deferred/rejected): no confirmed review-work findings were rejected; direct `removeSnapshot` and corrupt snapshot digest tests remain nonblocking because existing store tests cover the acceptance path and the review blocker was the missing user-facing purge flag.
+- Verification: typecheck passed; lint passed; focused destroy scenario spot checks passed.
+---
