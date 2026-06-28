@@ -1013,31 +1013,54 @@ jobs:
       - name: Restore binary executable bit
         run: chmod +x dist/lando
 
-      - name: Run provider contract tests
-        run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
-
-      - name: Install Podman
+      - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y podman
-
-      - name: Start Podman socket
-        run: |
+          sudo apt-get install -y uidmap
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
           sudo sysctl net.ipv4.ip_unprivileged_port_start=0
-          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
-          echo "$!" > /tmp/podman-service.pid
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via ubuntu-24.04 default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Stage current-commit runtime bundle
+        run: |
+          sudo apt-get install -y podman
+          mkdir -p dist/cache/runtime-bundle
+          STAGE="$(mktemp -d)"
+          mkdir -p "$STAGE/bin"
+          cp "$(command -v podman)" "$STAGE/bin/podman"
+          for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
+            src="$(command -v "$helper" || true)"
+            if test -n "$src"; then cp "$src" "$STAGE/bin/$helper"; fi
+          done
+          tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
+          rm -rf "$STAGE"
+
+      - name: Build local runtime bundle manifest
+        run: |
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
+      - name: Prepare provider via lando setup
+        run: |
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+
+      - name: Verify managed runtime socket
+        run: |
           for _ in {1..30}; do
-            test -S /tmp/podman.sock && break
+            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S /tmp/podman.sock
-          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
-          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
 
       - name: Configure Docker socket
         run: |
@@ -1063,6 +1086,14 @@ jobs:
           podman pull valkey/valkey:8
           docker pull node:22-alpine
 
+      - name: Run provider contract tests
+        run: |
+          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
+          bun test plugins/provider-lando/test/contract.integration.test.ts
+          bun test plugins/provider-docker/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/capabilities.test.ts
+
       - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
@@ -1072,20 +1103,18 @@ jobs:
           bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
           bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
 
-      - name: Teardown Podman
+      - name: Teardown Lando runtime
         if: always()
         run: |
+          dist/lando poweroff || true
           podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
           podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
 
       - name: Collect provider diagnostics
         if: failure()
         run: |
           mkdir -p provider-diagnostics/test-logs
-          cp /tmp/podman-service.log provider-diagnostics/podman-service.log || true
-          cp dist/lando provider-diagnostics/lando || true
+          dist/lando doctor --format json > provider-diagnostics/doctor.json 2>&1 || true
           journalctl --no-pager --since "-30 minutes" > provider-diagnostics/journalctl.log 2>&1 || true
           for log in /tmp/lando-provider-test-logs/*.log; do
             test -f "$log" || continue

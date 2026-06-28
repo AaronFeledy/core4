@@ -97,25 +97,30 @@ Before publishing, CI runs dry-runs for every release package with the same `--t
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
-Use the same Podman socket pattern as CI:
+`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. The job provisions only the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+
+To reproduce the setup-driven provider preparation locally:
+
+```bash
+MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
+LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
+LANDO_MVP_BINARY_PATH="$PWD/dist/lando" bun test core/test/scenario
+bun test plugins/provider-lando/test --filter=integration
+bun test plugins/provider-docker/test --filter=integration
+bun test plugins/service-lando/test --filter=integration
+```
+
+`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback: in local or sandbox environments where rootless service launch is unavailable, point an existing Podman socket at the suites with the documented override; it takes precedence over the Paths-resolved managed socket:
 
 ```bash
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
-```
-
-To reproduce the provider integration job:
-
-```bash
 LANDO_MVP_BINARY_PATH="$PWD/dist/lando" LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario
-bun test plugins/provider-lando/test --filter=integration
-bun test plugins/provider-docker/test --filter=integration
-bun test plugins/service-lando/test --filter=integration
 ```
 
-Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer first; `provider-integration-linux-x64` then runs the live Podman/Docker integration path above, while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
+Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
 ## Guide e2e smoke subset
 

@@ -3,6 +3,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -78,10 +79,10 @@ const waitForMemcached = async (port: number, timeoutMs: number): Promise<void> 
 };
 
 describe("memcached service type — live integration: text protocol set/get", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots Memcached and sets/gets a key through the exposed text protocol endpoint",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const appRootStr = await mkdtemp(join(tmpdir(), "lando-memcached-int-"));

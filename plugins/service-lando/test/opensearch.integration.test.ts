@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -46,10 +47,10 @@ const waitForOpenSearch = async (port: number, timeoutMs: number): Promise<void>
 };
 
 describe("opensearch service type — live integration: cluster health endpoint", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots OpenSearch 2 (single-node, security-disabled) and verifies green/yellow cluster health",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       if (socketPath === undefined || socketPath.length === 0) {
         throw new Error("LANDO_TEST_PODMAN_SOCKET is required for the OpenSearch integration test");
       }

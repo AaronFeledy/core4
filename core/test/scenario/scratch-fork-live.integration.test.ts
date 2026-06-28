@@ -1,5 +1,6 @@
 import { DateTime, Effect } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -149,10 +150,10 @@ const inspectContainers = async (plan: AppPlan, api: ReturnType<typeof makePodma
 };
 
 describe("scratch fork app resources — live integration", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "runs a source Node+Postgres app and its scratch fork at the same time",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);

@@ -808,3 +808,20 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - **Learnings for future iterations:**
   - RuntimeProviderRegistryLive is part of the provider bootstrap and can consume PathsService from the already-provided minimal/plugins layer; direct unit layers for the registry must provide PathsService explicitly.
 ---
+
+## [2026-06-28 08:04:51 CDT] - Babysit
+- PR: #485 https://github.com/AaronFeledy/core4/pull/485
+- CI outcome: pass
+- Review feedback: fixed (Bugbot stale-readiness and doctor status-failure issues fixed; merge conflict resolved; guide drift cleared with PR-body skip rationale)
+- Merge: merged (squash)
+---
+
+## 2026-06-28 - US-367
+- CI now prepares the default Lando provider through `lando setup` instead of a manually started `podman system service`. The generated `provider-integration-linux-x64` job (authored in `scripts/build-ci-workflow.ts`) provisions only the rootless runtime prerequisites (subuid/subgid ranges, the `uidmap` package, cgroups v2 delegation, unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest via `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, runs `lando setup --yes --provider=lando`, and lets `ensureRuntime` bring up the managed socket. Contract suites now run after setup so their live cases can resolve the managed socket, and teardown is `lando poweroff`. The job no longer runs `podman system service` or exports `LANDO_TEST_PODMAN_SOCKET`; the Docker socket configuration stays for provider-docker coverage. The guide-scenarios job is intentionally untouched.
+- Added a shared `@lando/core/testing` helper (`resolveLiveProviderSocket`/`hasLiveProviderSocket`) that resolves the live Podman socket from the `LANDO_TEST_PODMAN_SOCKET` rehearsal override first, then the Paths-managed `providerSocketPath`, requiring a real socket on disk. Every live integration/contract skip-gate the job runs (provider-lando, provider-podman, service-lando, core scenario, provider-gate, start scenario) migrated to it; the env-var-as-input unit tests were left untouched, and the `mvp-exit-criteria` subprocess still forwards the override env var.
+- `docs/ci-runbook.md` now documents the setup-driven provider preparation plus the explicit `LANDO_TEST_PODMAN_SOCKET` rehearsal fallback for local/sandbox use.
+- Verification: typecheck, lint passed; generator/runbook/codegen-ci drift tests, the new helper unit test, and migrated provider/service spot checks passed; do-not-touch suites stayed green; `bun run codegen` left drift scoped to the intended `.github/workflows/ci.yml` change. The live container path itself only runs in real CI (host cannot launch a container runtime or stage real runtime bytes).
+- **Learnings for future iterations:**
+  - `scripts/build-runtime-bundle.ts --local` only hashes already-staged bytes under `dist/cache/runtime-bundle/`; it has no producer, so any setup-driven CI job must stage `lando-runtime-<platform>.tar.gz` (upstream podman + rootless helpers per §17.3) inline before invoking `--local`.
+  - `linuxProviderSetupSteps`/`podmanTeardownCommands` in the CI generator are shared with the guide-scenarios e2e job; add new provider-integration-only constants rather than editing the shared ones.
+  - The cross-package live-socket helper belongs in `@lando/core/testing` (importable by core and every plugin test, including provider-podman transitively); its export surface has a frozen-list test but new exports are additive-safe.

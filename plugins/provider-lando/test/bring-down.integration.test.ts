@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime, Effect } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -209,10 +210,10 @@ describe("provider-lando bringDown", () => {
     expect(fake.volumes.has("lando-cache-npm")).toBe(false);
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "stops and removes live Podman containers and network while preserving volumes",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
       const liveRequest = api.request;

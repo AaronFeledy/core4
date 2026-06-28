@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Stream } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -139,10 +140,10 @@ describe("provider-lando RuntimeProvider contract", () => {
     }
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "passes the SDK provider contract suite against a live Podman socket",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
 
       const provider = await Effect.runPromise(

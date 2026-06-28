@@ -34,6 +34,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -690,7 +691,7 @@ describe("lando start", () => {
     });
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "scaffolds an app and starts it against the live Podman socket",
     async () => {
       await withTempCwd(async (dir) => {

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -52,10 +53,10 @@ const waitForMeilisearch = async (port: number, timeoutMs: number): Promise<void
 };
 
 describe("meilisearch service type — live integration: index create + document add + search", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots Meilisearch v1 and exercises index create + document add + search",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       if (socketPath === undefined || socketPath.length === 0) {
         throw new Error("LANDO_TEST_PODMAN_SOCKET is required for the Meilisearch integration test");
       }
