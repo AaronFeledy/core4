@@ -27,6 +27,7 @@ import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
   type RuntimeBundleDownloader,
+  makeSystemPodmanMachineRunner,
   setupProviderLando,
 } from "./setup.ts";
 
@@ -207,6 +208,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
+  const machineRunner =
+    options.podmanMachine ??
+    (platform === "linux" ? undefined : makeSystemPodmanMachineRunner(undefined, undefined, platform));
   const artifactDownloadMissing = (): ProviderUnavailableError =>
     new ProviderUnavailableError({
       providerId: "lando",
@@ -274,7 +278,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               platform,
               podmanApi,
               serviceRunner,
-              ...(options.podmanMachine === undefined ? {} : { machineRunner: options.podmanMachine }),
+              ...(machineRunner === undefined ? {} : { machineRunner }),
               podmanBin,
               storageDir: options.runtimeStorageDir,
               runRoot: options.runtimeRunDir,
@@ -302,7 +306,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               const result = yield* setupProviderLando({
                 ...(podmanApi === undefined ? {} : { podmanApi }),
                 ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
-                ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
+                ...(machineRunner === undefined ? {} : { podmanMachine: machineRunner }),
                 ...(options.artifactDownload === undefined
                   ? {}
                   : { artifactDownload: options.artifactDownload }),

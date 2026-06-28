@@ -170,13 +170,13 @@ export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Prov
   if (deps.platform === "darwin") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("darwin"))
-      : ensureMacOSPodmanMachine(deps.machineRunner);
+      : ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
   }
 
   if (deps.platform === "win32") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("win32"))
-      : ensureWindowsPodmanMachine(deps.machineRunner);
+      : ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
   }
 
   return ensureLinuxRuntime(deps);

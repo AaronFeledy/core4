@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +22,21 @@ const unavailable = () =>
 
 const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}) });
 const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()) });
+
+const expectMissingFile = async (path: string) => {
+  await readFile(path, "utf8").then(
+    () => {
+      throw new Error(`Expected ${path} to be missing`);
+    },
+    () => undefined,
+  );
+};
+const apiReachableAfterMachineAction = (calls: string[]): PodmanApiClient => ({
+  info: Effect.gen(function* () {
+    if (calls.includes("start")) return {};
+    return yield* Effect.fail(unavailable());
+  }),
+});
 
 type Call =
   | ["launch", string]
@@ -142,7 +158,7 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual([]);
-      await expect(readFile(p.pidPath, "utf8")).rejects.toThrow();
+      await expectMissingFile(p.pidPath);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -193,7 +209,7 @@ describe("ensureRuntime", () => {
         ["terminate", 4321],
         ["launch", canonicalArgs(p)],
       ]);
-      await expect(readFile(p.socketPath, "utf8")).rejects.toThrow();
+      await expectMissingFile(p.socketPath);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -283,7 +299,8 @@ describe("ensureRuntime", () => {
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(RootlessPrerequisiteError);
-          expect(failure.value.prerequisite).toBe("subid");
+          const rootlessError = failure.value as RootlessPrerequisiteError;
+          expect(rootlessError.prerequisite).toBe("subid");
         }
       }
     } finally {
@@ -358,6 +375,28 @@ describe("ensureRuntime", () => {
       await Effect.runPromise(
         ensureRuntime({
           platform: "darwin",
+          podmanApi: apiReachableAfterMachineAction(calls),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("missing", calls),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual(["inspect", "create", "start"]);
+      await expectMissingFile(p.pidPath);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("darwin fails when the machine starts but the API socket stays unreachable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: string[] = [];
+      const p = paths(dir);
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "darwin",
           podmanApi: unreachableApi(),
           serviceRunner: throwingLaunchRunner(),
           machineRunner: machineRunner("missing", calls),
@@ -366,7 +405,15 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual(["inspect", "create", "start"]);
-      await expect(readFile(p.pidPath, "utf8")).rejects.toThrow();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure.value.message).toContain("did not become reachable");
+        }
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -381,7 +428,7 @@ describe("ensureRuntime", () => {
       await Effect.runPromise(
         ensureRuntime({
           platform: "win32",
-          podmanApi: unreachableApi(),
+          podmanApi: reachableApi(),
           serviceRunner: throwingLaunchRunner(),
           machineRunner: machineRunner("running", calls),
           ...p,
