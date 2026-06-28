@@ -190,9 +190,9 @@ export interface ProviderLayerOptions {
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
-  const externalSocketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
+  const externalSocketPath = options.socketPath;
   const managedSocketPath = options.providerSocketPath;
-  const socketPath = externalSocketPath ?? managedSocketPath;
+  const socketPath = externalSocketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
