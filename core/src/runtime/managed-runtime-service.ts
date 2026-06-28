@@ -1,5 +1,4 @@
 import { readFile, rm } from "node:fs/promises";
-import { join } from "node:path";
 
 import { Effect } from "effect";
 
@@ -137,10 +136,14 @@ export const buildManagedRuntimeServiceArgs = (
   `unix://${parts.providerSocketPath}`,
 ];
 
+// Forward slash is intentional: this is the exact argv[0] the provider spawns and
+// the same string matched against `/proc/<pid>/cmdline`, so it must not be re-normalized.
+export const managedRuntimePodmanArgv0 = (runtimeBinDir: string): string => `${runtimeBinDir}/podman`;
+
 export const buildManagedRuntimeServiceSpec = (
   paths: ManagedRuntimeServicePaths,
 ): ManagedRuntimeServiceSpec => ({
-  command: join(paths.runtimeBinDir, "podman"),
+  command: managedRuntimePodmanArgv0(paths.runtimeBinDir),
   args: buildManagedRuntimeServiceArgs(paths),
   socketPath: paths.providerSocketPath,
   pidPath: paths.providerPidPath,

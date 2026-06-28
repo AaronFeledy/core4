@@ -3,6 +3,7 @@
  */
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
+import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
@@ -245,7 +246,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const podmanBin = runtimeBinDir === undefined ? "podman" : `${runtimeBinDir}/podman`;
+  const podmanBin = runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
   const skipSetupSocketProbe =
     externalSocketPath === undefined && managedSocketPath !== undefined && options.podmanApi === undefined;
