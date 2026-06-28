@@ -197,7 +197,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
-  const ensureSocketPath = socketPath;
+  const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
+  const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
   const podmanBin = runtimeBinDir === undefined ? "podman" : `${runtimeBinDir}/podman`;
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
   const skipSetupSocketProbe =
@@ -268,6 +269,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       Effect.gen(function* () {
         const canEnsure =
           podmanApi !== undefined &&
+          shouldManageRuntime &&
           ensureSocketPath !== undefined &&
           options.runtimeStorageDir !== undefined &&
           options.runtimeRunDir !== undefined &&

@@ -179,7 +179,7 @@ const withRuntimeProvider = async <A>(
         podmanApi: makeFakePodmanApi(events, infoSuccessesBeforeEnsureFailure, launchesBeforeInfoSuccess),
         podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
         podmanService: makeFakeServiceRunner(events),
-        socketPath: join(tempDir, "podman.sock"),
+        providerSocketPath: join(tempDir, "podman.sock"),
         runtimeBinDir: join(tempDir, "bin"),
         runtimeStorageDir: join(tempDir, "storage"),
         runtimeRunDir: join(tempDir, "run"),
@@ -305,6 +305,34 @@ describe("provider-lando ensureRuntime factory wiring", () => {
 
       expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
       expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("external socketPath reuses the caller-managed runtime without launching one", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const events: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          podmanApi: makeFakePodmanApi(events),
+          podmanService: makeFakeServiceRunner(events),
+          socketPath: join(tempDir, "external-podman.sock"),
+          providerSocketPath: join(tempDir, "run", "podman.sock"),
+          providerPidPath: join(tempDir, "run", "podman.pid"),
+          runtimeBinDir: join(tempDir, "bin"),
+          runtimeStorageDir: join(tempDir, "storage"),
+          runtimeRunDir: join(tempDir, "run"),
+          runtimeConfigDir: join(tempDir, "config"),
+        }),
+      );
+
+      await Effect.runPromise(provider.apply(plan, {}));
+
+      expect(events).not.toContain("service.launch");
+      expect(events.some((event) => event.startsWith("api.request"))).toBe(true);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
