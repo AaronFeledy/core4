@@ -18,7 +18,10 @@ describe("lando runtime registry wiring", () => {
     expect(paths.providerPidPath).toBe("/data/runtime/run/podman.pid");
   });
 
-  test("registry passes every private runtime path from makeLandoPaths into makeLandoRuntimeProvider", () => {
+  test("registry resolves private runtime paths from PathsService", () => {
+    expect(registrySource).toContain("const landoPaths = yield* PathsService");
+    expect(registrySource).not.toContain("makeLandoPaths({ userDataRoot })");
+
     const requiredWiring = [
       "runtimeBinDir: landoPaths.runtimeBinDir",
       "runtimeRunDir: landoPaths.runtimeRunDir",

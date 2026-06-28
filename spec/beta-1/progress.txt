@@ -760,3 +760,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Fixed a real verify blocker at the root cause: setup could report success immediately after spawning the detached service, before the socket was reachable. `ensureRuntime` now waits for post-launch `api.info` readiness through `@lando/sdk/probe`, and socket-backed provider read/teardown paths also run the cached ensure once a plan exists.
 - **Learnings for future iterations:** A managed runtime socket cannot be capability-probed at provider construction before it exists; use static MVP capabilities for the Paths-derived managed socket path, let `ensureRuntime` launch and poll readiness with `runProbe`, and reserve eager `introspectProviderCapabilities` for explicit external sockets or injected API clients.
 ---
+
+## 2026-06-28 05:09 CDT - US-366
+- Runtime provider registry construction now uses the already-injected PathsService as the source of truth for the Lando-managed runtime socket, PID file, runtime bin/run/storage/config directories, and provider state root, so provider-lando selection no longer needs `LANDO_TEST_PODMAN_SOCKET` in production.
+- Focused registry coverage now locks the PathsService dependency and the private runtime path wiring, and provider-lando has a no-env socket-resolution test that proves `providerSocketPath` becomes the default socket without touching a real Podman socket.
+- Verification: typecheck and lint passed; focused spot checks passed for lando runtime registry wiring, runtime provider registry, provider-lando runtime path resolution, and provider-lando ensureRuntime; manual provider-bootstrap driver selected provider-lando with an isolated `<userDataRoot>/runtime/run/podman.sock` and `envSocket:null`.
+- **Learnings for future iterations:**
+  - RuntimeProviderRegistryLive is part of the provider bootstrap and can consume PathsService from the already-provided minimal/plugins layer; direct unit layers for the registry must provide PathsService explicitly.
+---
