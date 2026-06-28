@@ -596,7 +596,7 @@ describe("ci workflow", () => {
     );
 
     expect(providerIntegration).toContain("      - name: Provision rootless runtime prerequisites");
-    expect(providerIntegration).toContain("          sudo apt-get install -y uidmap");
+    expect(providerIntegration).toContain("          sudo apt-get install -y uidmap fuse-overlayfs");
     expect(providerIntegration).toContain('grep -q "^$(id -un):" /etc/subuid');
     expect(providerIntegration).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerIntegration).toContain("systemd.unified_cgroup_hierarchy");
@@ -604,8 +604,12 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Stage current-commit runtime bundle");
     expect(providerIntegration).toContain("          mkdir -p dist/cache/runtime-bundle");
     expect(providerIntegration).toContain('          cp "$(command -v podman)" "$STAGE/podman"');
-    expect(providerIntegration).toContain('          if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi');
+    expect(providerIntegration).toContain(
+      '          if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi',
+    );
     expect(providerIntegration).toContain("netavark aardvark-dns gvproxy");
+    expect(providerIntegration).toContain('export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"');
+    expect(providerIntegration).toContain('mkdir -p "$XDG_RUNTIME_DIR"');
     expect(providerIntegration).not.toContain('          mkdir -p "$STAGE/bin"');
     expect(providerIntegration).not.toContain('          "$STAGE/bin/podman"');
     expect(providerIntegration).toContain("      - name: Build local runtime bundle manifest");

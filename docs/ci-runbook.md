@@ -97,7 +97,7 @@ Before publishing, CI runs dry-runs for every release package with the same `--t
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
-`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. The job provisions only the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. The job provisions only the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation locally:
 
@@ -105,14 +105,17 @@ To reproduce the setup-driven provider preparation locally:
 mkdir -p dist/cache/runtime-bundle
 STAGE="$(mktemp -d)"
 cp "$(command -v podman)" "$STAGE/podman"
-for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
-  src="$(command -v "$helper" || true)"
+for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
+  src="$(command -v "$helper" 2>/dev/null || true)"
+  if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
   if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
 done
 tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
 rm -rf "$STAGE"
 
 MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "$XDG_RUNTIME_DIR"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
 LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")

@@ -233,7 +233,7 @@ const landoRuntimeSocketPath = '"$HOME/.local/share/lando/runtime/run/podman.soc
 const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y uidmap
+          sudo apt-get install -y uidmap fuse-overlayfs
           if ! grep -q "^$(id -un):" /etc/subuid; then
             echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
           fi
@@ -254,7 +254,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime
           STAGE="$(mktemp -d)"
           cp "$(command -v podman)" "$STAGE/podman"
           for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
-            src="$(command -v "$helper" || true)"
+            src="$(command -v "$helper" 2>/dev/null || true)"
+            if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
             if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done
           tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
@@ -267,8 +268,10 @@ const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime
 
       - name: Prepare provider via lando setup
         run: |
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          mkdir -p "\$XDG_RUNTIME_DIR"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
-          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "\$GITHUB_ENV"
 
       - name: Verify managed runtime socket
         run: |
