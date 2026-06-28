@@ -7,6 +7,7 @@ import { RedactionService, RedactionServiceLive } from "../redaction/service.ts"
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { SecretStoreLive } from "../services/secret-store.ts";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
 import {
   type RendererMode,
   type ResolveRendererModeResult,
@@ -95,6 +96,7 @@ export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
 
 export interface RenderContext {
   readonly mode: RendererMode;
+  readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
 }
@@ -106,6 +108,7 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
 export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
   readonly rendererMode: RendererMode;
+  readonly resultFormat?: ResultFormat;
   readonly command?: string;
   readonly resultSchema?: Schema.Schema.AnyNoContext;
   readonly io?: RendererIO;
@@ -226,6 +229,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const io = options.io ?? createStdioRendererIO();
   const renderContext: RenderContext = {
     mode: options.rendererMode,
+    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
     columns: io.terminalColumns,
     isTTY: io.isTTY === true,
   };
@@ -274,7 +278,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
-        if (options.rendererMode === "json") {
+        if (renderContext.format === "json") {
           yield* emitJsonResult({
             _tag: "failure",
             error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
@@ -311,7 +315,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     if (commandOutcome.value._tag === "handled-failure") {
       return;
     }
-    if (options.rendererMode === "json") {
+    if (renderContext.format === "json") {
       yield* emitJsonResult({ _tag: "success", value: commandOutcome.value.value });
       return;
     }

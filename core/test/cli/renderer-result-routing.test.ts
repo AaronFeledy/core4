@@ -24,6 +24,7 @@ describe("command result vs message routing under --renderer=json", () => {
     await runWithRendererHandling(Effect.succeed({ name: "demo" }), {
       runtime: Layer.empty,
       rendererMode: "json",
+      resultFormat: "json",
       command: "app:info",
       resultSchema: Schema.Struct({ name: Schema.String }),
       io,
@@ -45,6 +46,22 @@ describe("command result vs message routing under --renderer=json", () => {
     expect(renderCalled).toBe(false);
   });
 
+  test("an explicit text result format uses the command renderer even when renderer mode is json", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed({ name: "demo" }), {
+      runtime: Layer.empty,
+      rendererMode: "json",
+      resultFormat: "text",
+      command: "app:info",
+      resultSchema: Schema.Struct({ name: Schema.String }),
+      io,
+      render: (value) => `text:${(value as { name: string }).name}`,
+      formatError: () => "unexpected",
+    });
+    expect(io.stdout()).toBe("text:demo\n");
+    expect(io.stderr()).toBe("");
+  });
+
   test("a renderer message stays on stderr under json mode", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(
@@ -63,6 +80,7 @@ describe("command result vs message routing under --renderer=json", () => {
     await runWithRendererHandling(Effect.fail("nope"), {
       runtime: Layer.empty,
       rendererMode: "json",
+      resultFormat: "json",
       command: "app:start",
       io,
       formatError: (error) => `diagnostic: ${String(error)}`,
