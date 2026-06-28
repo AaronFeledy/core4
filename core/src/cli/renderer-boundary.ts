@@ -1,7 +1,7 @@
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
-import type { DeprecationUse } from "@lando/sdk/schema";
-import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
+import type { DeprecationUse, StreamFrameSchema } from "@lando/sdk/schema";
+import { ConfigService, DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
@@ -24,7 +24,13 @@ import {
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime.ts";
-import { encodeCommandResult } from "./result-encode.ts";
+import {
+  encodeCommandResult,
+  encodeStreamEventFrame,
+  encodeStreamResultFrame,
+  encodeStreamStderrFrame,
+  encodeStreamStdoutFrame,
+} from "./result-encode.ts";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -111,6 +117,8 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
   readonly resultSchema?: Schema.Schema.AnyNoContext;
+  readonly streaming?: StreamFrameSchema;
+  readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
@@ -119,6 +127,12 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
+}
+
+export interface StreamOutputFrame {
+  readonly _tag: "stdout" | "stderr";
+  readonly chunk: string;
+  readonly service?: string;
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
@@ -180,9 +194,19 @@ const infoSummaryText = (entries: ReadonlyArray<DeprecationUse & { readonly coun
   return `Deprecated surfaces used: ${surfaces.join(", ")}.`;
 };
 
-const jsonDeprecationEventLine = (entry: DeprecationUse & { readonly count: number }): string => {
+const jsonDeprecationEventLine = (
+  entry: DeprecationUse & { readonly count: number },
+): Effect.Effect<string, never, RedactionService> => {
   const { count: _count, ...use } = entry;
-  return JSON.stringify({ _tag: "deprecation-used", use });
+  return Effect.gen(function* () {
+    const redaction = yield* RedactionService;
+    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+    return yield* encodeStreamEventFrame({
+      event: "deprecation-used",
+      payload: { _tag: "deprecation-used", use },
+      redactor,
+    });
+  });
 };
 
 type DeprecationServiceShape = typeof DeprecationService.Service;
@@ -193,7 +217,9 @@ const optionalDeprecationService = Effect.serviceOption(DeprecationService) as E
   never
 >;
 
-const renderDeprecationDiagnostics = (enabled: boolean): Effect.Effect<void, never, Renderer> =>
+const renderDeprecationDiagnostics = (
+  enabled: boolean,
+): Effect.Effect<void, never, Renderer | RedactionService> =>
   Effect.gen(function* () {
     const deprecations = yield* optionalDeprecationService;
     if (Option.isNone(deprecations)) return;
@@ -203,7 +229,8 @@ const renderDeprecationDiagnostics = (enabled: boolean): Effect.Effect<void, nev
 
     if (renderer.id === "json") {
       for (const entry of summary) {
-        yield* renderer.output.stderr(`${jsonDeprecationEventLine(entry)}\n`);
+        const line = yield* jsonDeprecationEventLine(entry);
+        yield* renderer.output.stderr(`${line}\n`);
       }
       return;
     }
@@ -238,6 +265,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     rendererLayer,
     RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
   );
+  const streamingJson = options.streaming !== undefined && renderContext.format === "json";
   const commandLayer = (
     options.renderEvents === true
       ? Layer.mergeAll(
@@ -250,7 +278,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           ),
           rendererLayer,
         )
-      : Layer.merge(options.runtime, rendererLayer)
+      : streamingJson
+        ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer)
+        : Layer.merge(options.runtime, rendererLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
     const command = options.command ?? "cli:unknown";
@@ -267,6 +297,43 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor });
         yield* writeResultLine(line);
       });
+    const emitStreamResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        const line = yield* encodeStreamResultFrame({ command, resultSchema, outcome, redactor });
+        yield* writeResultLine(line);
+      });
+    const emitStreamingSuccess = (value: A) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        for (const frame of options.streamFrames?.(value) ?? []) {
+          const line =
+            frame._tag === "stdout"
+              ? yield* encodeStreamStdoutFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor,
+                })
+              : yield* encodeStreamStderrFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor,
+                });
+          yield* writeResultLine(line);
+        }
+        const events = yield* Effect.serviceOption(EventService).pipe(
+          Effect.flatMap((service) =>
+            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
+          ),
+        );
+        for (const event of events) {
+          const tag = (event as { readonly _tag?: unknown })._tag;
+          if (typeof tag !== "string") continue;
+          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
+          yield* writeResultLine(line);
+        }
+        yield* emitStreamResult({ _tag: "success", value });
+      });
     const setFailureExitCode = Effect.sync(() => {
       (
         options.setExitCode ??
@@ -279,10 +346,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
         if (renderContext.format === "json") {
-          yield* emitJsonResult({
+          const outcome = {
             _tag: "failure",
             error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
-          });
+          } as const;
+          if (options.streaming !== undefined) yield* emitStreamResult(outcome);
+          else yield* emitJsonResult(outcome);
           yield* setFailureExitCode;
           return;
         }
@@ -305,6 +374,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           yield* renderFailure(commandExit.cause);
           return { _tag: "handled-failure" } as const;
         }
+        if (streamingJson) {
+          yield* emitStreamingSuccess(commandExit.value);
+          return { _tag: "handled-success" } as const;
+        }
         return { _tag: "success", value: commandExit.value } as const;
       }).pipe(Effect.provide(commandLayer)),
     );
@@ -313,6 +386,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       return;
     }
     if (commandOutcome.value._tag === "handled-failure") {
+      return;
+    }
+    if (commandOutcome.value._tag === "handled-success") {
       return;
     }
     if (renderContext.format === "json") {
