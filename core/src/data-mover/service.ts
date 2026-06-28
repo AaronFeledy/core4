@@ -1101,11 +1101,9 @@ export const makeDataMoverService = (
         (opts?.volumeSnapshot !== "copy" && provider.capabilities.volumeSnapshot === "native");
       const format = opts?.format ?? "tar";
       const native: VolumeSnapshotRef | undefined = useNative
-        ? yield* Effect.scoped(
-            provider
-              .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
-              .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause))),
-          )
+        ? yield* provider
+            .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
+            .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)))
         : undefined;
       rollbackNative = native;
       const copyResult =
@@ -1213,6 +1211,17 @@ export const makeDataMoverService = (
             );
           }),
           Effect.zipRight(removeSnapshotArtifacts(persistence, info)),
+          Effect.flatMap(() => {
+            const removeNative = provider.removeVolumeSnapshot;
+            if (info.native === undefined || removeNative === undefined) {
+              return Effect.void;
+            }
+            return Effect.scoped(
+              removeNative(info.native).pipe(
+                Effect.mapError((cause) => providerFailure("removeVolumeSnapshot", cause)),
+              ),
+            );
+          }),
           Effect.mapError(
             (cause): DataTransferError =>
               cause instanceof DataTransferError ? cause : stateFailure("remove", cause),

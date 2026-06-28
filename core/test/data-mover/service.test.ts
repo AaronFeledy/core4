@@ -1281,6 +1281,109 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("keeps native provider snapshot alive until persistence finishes", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "payload.txt"), "native-persist-payload");
+
+      try {
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "payload.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const handle = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { volumeSnapshot: "native", label: "scope-hold" },
+              );
+              yield* dataMover.restore(handle, { app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                snapshotVolume: (spec) =>
+                  Effect.gen(function* () {
+                    const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
+                    yield* Effect.addFinalizer(() =>
+                      (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
+                        Effect.catchAll(() => Effect.void),
+                      ),
+                    );
+                    return ref;
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("removeSnapshot calls removeVolumeSnapshot for native snapshots", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      let removeNativeCalls = 0;
+      const removedIds: string[] = [];
+
+      try {
+        const listed = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.snapshot(
+                { app, store: "data" },
+                { volumeSnapshot: "native", label: "native-remove" },
+              );
+              yield* dataMover.removeSnapshot("native-remove", { app, store: "data" });
+              return yield* dataMover.listSnapshots({ app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                removeVolumeSnapshot: (snapshot) =>
+                  (TestRuntimeProvider.removeVolumeSnapshot?.(snapshot) ?? Effect.void).pipe(
+                    Effect.tap(() =>
+                      Effect.sync(() => {
+                        removeNativeCalls += 1;
+                        removedIds.push(snapshot.id);
+                      }),
+                    ),
+                  ),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(listed).toHaveLength(0);
+        expect(removeNativeCalls).toBe(1);
+        expect(removedIds).toEqual(["native-remove"]);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-remove.json")).exists(),
+        ).toBe(false);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
   test("rolls back native provider snapshots when snapshot index persistence fails", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
