@@ -266,6 +266,17 @@ const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime
           MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
 
+      - name: Configure rootless overlay storage
+        run: |
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
+
       - name: Prepare provider via lando setup
         run: |
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"

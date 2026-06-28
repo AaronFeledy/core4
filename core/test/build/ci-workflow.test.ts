@@ -619,6 +619,14 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       '          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"',
     );
+    expect(providerIntegration).toContain("      - name: Configure rootless overlay storage");
+    expect(providerIntegration).toContain("          cat > dist/cache/runtime-bundle/storage.conf <<EOF");
+    expect(providerIntegration).toContain(
+      '          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"',
+    );
+    expect(providerIntegration).toContain(
+      '          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"',
+    );
     expect(providerIntegration).toContain("      - name: Prepare provider via lando setup");
     expect(providerIntegration).toContain("          dist/lando setup --yes --provider=lando");
     expect(providerIntegration).toContain(
