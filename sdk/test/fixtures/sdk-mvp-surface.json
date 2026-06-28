@@ -99,6 +99,7 @@
       "pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>",
       "removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>",
       "removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>",
+      "removeVolumeSnapshot?: (snapshot: VolumeSnapshotRef) => Effect.Effect<void, ProviderError, Scope.Scope>",
       "restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>",
       "runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>",

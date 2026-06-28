@@ -170,11 +170,17 @@ export const COMPILED_OCLIF_MANIFEST = {
     "app:destroy": {
       aliases: ["destroy"],
       args: {},
-      description: "Destroy the current Lando app (preserves volumes unless --volumes).",
+      description: "Destroy the current Lando app (preserves volumes unless --purge or --volumes).",
       flags: {
         volumes: {
           description: "Also remove app/service-scoped storage volumes.",
           name: "volumes",
+          allowNo: false,
+          type: "boolean",
+        },
+        purge: {
+          description: "Also remove app/service-scoped storage volumes and snapshots.",
+          name: "purge",
           allowNo: false,
           type: "boolean",
         },
@@ -203,7 +209,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:destroy",
-        summary: "Destroy the current Lando app (preserves volumes unless --volumes).",
+        summary: "Destroy the current Lando app (preserves volumes unless --purge or --volumes).",
         namespace: "app",
         topLevelAlias: true,
         bootstrap: "app",

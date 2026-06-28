@@ -40,11 +40,7 @@ export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     DataMoverLive.pipe(
       Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(RuntimeProvider, runtimeProviderService),
-          EventServiceLive,
-          RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
-        ),
+        Layer.mergeAll(Layer.succeed(RuntimeProvider, runtimeProviderService), pluginsRuntimeLive),
       ),
     ),
     providerRegistryLive,

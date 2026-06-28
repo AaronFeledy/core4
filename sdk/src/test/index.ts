@@ -78,6 +78,7 @@ import {
   type TunnelTarget,
   type VolumeInfo,
   type VolumeRef,
+  type VolumeSnapshotRef,
 } from "../schema/index.ts";
 import type {
   CreateRedactorOptions,
@@ -1306,6 +1307,10 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
       testSnapshotBytes.set(id, cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8("")));
       return { provider: TEST_PROVIDER_ID, id };
+    }),
+  removeVolumeSnapshot: (snapshot: VolumeSnapshotRef) =>
+    Effect.sync(() => {
+      testSnapshotBytes.delete(snapshot.id);
     }),
   restoreVolume: (spec) =>
     Effect.sync(() => {

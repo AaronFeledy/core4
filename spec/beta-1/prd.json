@@ -2493,8 +2493,8 @@
         "Lint passes."
       ],
       "priority": 139,
-      "passes": false,
-      "notes": "Data-movement primitive (spec \u00a710.11.3, \u00a77.5.1, \u00a712.4, \u00a712.7). Depends on US-337, PRD-13 (PathsService + StateStore)."
+      "passes": true,
+      "notes": "Snapshot paths now derive from PathsService, DataMover persists copy/native snapshots with StateStore index + sidecars, restore/remove/prune resolve through the index with digest verification, and destructive destroy removes app snapshot subtrees while plain destroy preserves them."
     },
     {
       "id": "US-339",
