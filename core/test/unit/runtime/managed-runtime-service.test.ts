@@ -118,7 +118,7 @@ describe("terminateOwnedRuntimeService", () => {
     expect(unlinkedPaths).toEqual([baseSpec.socketPath, baseSpec.pidPath]);
   });
 
-  test("does not SIGTERM when the pid is not owned but still unlinks", async () => {
+  test("does not SIGTERM or unlink when the pid is not owned", async () => {
     const terminatedPids: number[] = [];
     const unlinkedPaths: string[] = [];
     const processSeam = makeProcessSeam({
@@ -139,7 +139,25 @@ describe("terminateOwnedRuntimeService", () => {
 
     expect(result).toEqual({ terminated: false });
     expect(terminatedPids).toEqual([]);
-    expect(unlinkedPaths).toEqual([baseSpec.socketPath, baseSpec.pidPath]);
+    expect(unlinkedPaths).toEqual([]);
+  });
+
+  test("does not unlink when SIGTERM fails", async () => {
+    const unlinkedPaths: string[] = [];
+    const processSeam = makeProcessSeam({
+      terminate: () => Effect.fail(new Error("EPERM")),
+    });
+    const fsSeam: FsSeam = {
+      unlink: (path) =>
+        Effect.sync(() => {
+          unlinkedPaths.push(path);
+        }),
+    };
+
+    const result = await run(terminateOwnedRuntimeService(baseSpec, { process: processSeam, fs: fsSeam }));
+
+    expect(result).toEqual({ terminated: false });
+    expect(unlinkedPaths).toEqual([]);
   });
 
   test("is idempotent when pid and socket files are already missing", async () => {

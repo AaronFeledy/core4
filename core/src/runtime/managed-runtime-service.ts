@@ -170,8 +170,10 @@ export const terminateOwnedRuntimeService = (
       return terminated ? { terminated: true, pid } : { terminated: false };
     });
 
-    yield* bestEffortUnlink(fsSeam, spec.socketPath);
-    yield* bestEffortUnlink(fsSeam, spec.pidPath);
+    if (result.terminated) {
+      yield* bestEffortUnlink(fsSeam, spec.socketPath);
+      yield* bestEffortUnlink(fsSeam, spec.pidPath);
+    }
 
     return result;
   });
