@@ -154,6 +154,7 @@ export interface ProviderLayerOptions {
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
+  readonly runtimeBinDir?: string;
   readonly socketPath?: string;
   readonly eventService?: BringUpOptions["eventService"];
 }
@@ -164,6 +165,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
+  const runtimeBinDir = options.runtimeBinDir;
   let runtimeVersion: string | undefined;
   let bundleVersion: string | undefined;
   const platform = options.platform ?? currentHostPlatform();
@@ -251,6 +253,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 : { runtimeBundleDownloader: setupRuntimeBundleDownloader };
             })(),
             ...(stateDir === undefined ? {} : { stateDir }),
+            ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(
