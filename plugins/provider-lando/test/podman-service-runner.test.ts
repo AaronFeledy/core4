@@ -21,6 +21,8 @@ describe("PodmanServiceRunner", () => {
       "/data/runtime/run",
       "--config",
       "/data/runtime/config",
+      "--storage-opt",
+      "overlay.mount_program=/data/runtime/bin/fuse-overlayfs",
       "system",
       "service",
       "--time=0",
