@@ -104,17 +104,19 @@ To reproduce the setup-driven provider preparation locally:
 ```bash
 mkdir -p dist/cache/runtime-bundle
 STAGE="$(mktemp -d)"
-mkdir -p "$STAGE/bin"
-cp "$(command -v podman)" "$STAGE/bin/podman"
+cp "$(command -v podman)" "$STAGE/podman"
 for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
   src="$(command -v "$helper" || true)"
-  if test -n "$src"; then cp "$src" "$STAGE/bin/$helper"; fi
+  if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
 done
 tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
 rm -rf "$STAGE"
 
 MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
+LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
+LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+"$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
 LANDO_MVP_BINARY_PATH="$PWD/dist/lando" bun test core/test/scenario
 bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration

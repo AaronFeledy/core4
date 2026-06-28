@@ -81,7 +81,7 @@ jobs:
       - name: Static scope notice for portable-only platforms
         if: ${{ matrix.platform != 'linux-x64' }}
         run: |
-          echo "::notice title=static-checks-scope::${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability is tracked separately by US-189."
+          echo "::notice title=static-checks-scope::${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability remains a follow-up portability effort."
 
       - name: Unit test layer (linux-x64 full static scope)
         if: ${{ matrix.platform == 'linux-x64' }}
@@ -1035,11 +1035,10 @@ jobs:
           sudo apt-get install -y podman
           mkdir -p dist/cache/runtime-bundle
           STAGE="$(mktemp -d)"
-          mkdir -p "$STAGE/bin"
-          cp "$(command -v podman)" "$STAGE/bin/podman"
+          cp "$(command -v podman)" "$STAGE/podman"
           for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
             src="$(command -v "$helper" || true)"
-            if test -n "$src"; then cp "$src" "$STAGE/bin/$helper"; fi
+            if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done
           tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
           rm -rf "$STAGE"
@@ -1069,21 +1068,23 @@ jobs:
 
       - name: Pre-pull container images
         run: |
-          podman pull docker.io/library/alpine:3.21
-          podman pull node:lts
-          podman pull node:22-alpine
-          podman pull postgres:16
-          podman pull postgres:16-alpine
-          podman pull golang:1.22
-          podman pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
-          podman pull getmeili/meilisearch:v1.11
-          podman pull docker.io/axllent/mailpit:v1.30.1
-          podman pull memcached:1.6
-          podman pull nginx:1.27
-          podman pull opensearchproject/opensearch:2
-          podman pull solr:9
-          podman pull traefik:v3.3
-          podman pull valkey/valkey:8
+          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/library/alpine:3.21
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:lts
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16-alpine
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull golang:1.22
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull getmeili/meilisearch:v1.11
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/axllent/mailpit:v1.30.1
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull memcached:1.6
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull nginx:1.27
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull opensearchproject/opensearch:2
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull solr:9
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull traefik:v3.3
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull valkey/valkey:8
           docker pull node:22-alpine
 
       - name: Run provider contract tests

@@ -1,18 +1,3 @@
-// Resolves the live Podman socket that provider/service integration suites use
-// when exercising the default Lando-managed runtime.
-//
-// Production resolution is owned by `core/src/providers/registry.ts`
-// (PathsService-injected `providerSocketPath`); this helper mirrors that
-// precedence for tests so the live suites no longer hard-depend on the
-// `LANDO_TEST_PODMAN_SOCKET` environment variable. Precedence:
-//
-//   1. `LANDO_TEST_PODMAN_SOCKET` — documented local/CI rehearsal override.
-//   2. The Lando-managed socket at `makeLandoPaths().providerSocketPath`,
-//      brought up by `lando setup` / `ensureRuntime`.
-//
-// A candidate is only returned when the path is an existing socket on disk, so
-// suites self-skip cleanly when no runtime has been provisioned.
-
 import { statSync } from "node:fs";
 
 import { makeLandoPaths } from "../config/paths.ts";

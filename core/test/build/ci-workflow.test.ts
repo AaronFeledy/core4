@@ -603,6 +603,10 @@ describe("ci workflow", () => {
 
     expect(providerIntegration).toContain("      - name: Stage current-commit runtime bundle");
     expect(providerIntegration).toContain("          mkdir -p dist/cache/runtime-bundle");
+    expect(providerIntegration).toContain('          cp "$(command -v podman)" "$STAGE/podman"');
+    expect(providerIntegration).toContain('          if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi');
+    expect(providerIntegration).not.toContain('          mkdir -p "$STAGE/bin"');
+    expect(providerIntegration).not.toContain('          "$STAGE/bin/podman"');
     expect(providerIntegration).toContain("      - name: Build local runtime bundle manifest");
     expect(providerIntegration).toContain(
       '          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"',
@@ -619,6 +623,15 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Verify managed runtime socket");
     expect(providerIntegration).toContain(
       '          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"',
+    );
+    expect(providerIntegration).toContain(
+      '          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"',
+    );
+    expect(providerIntegration).toContain(
+      '          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine',
     );
     expect(providerIntegration).not.toContain("podman system service");
     expect(providerIntegration).not.toContain("LANDO_TEST_PODMAN_SOCKET");
@@ -649,14 +662,30 @@ describe("ci workflow", () => {
       "          bun test plugins/service-lando/test/*.integration.test.ts",
     );
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
-    expect(providerIntegration).toContain("          podman pull node:lts");
-    expect(providerIntegration).toContain("          podman pull node:22-alpine");
-    expect(providerIntegration).toContain("          podman pull postgres:16");
-    expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
-    expect(providerIntegration).toContain("          podman pull golang:1.22");
-    expect(providerIntegration).toContain("          podman pull docker.io/library/alpine:3.21");
-    expect(providerIntegration).toContain("          podman pull docker.io/axllent/mailpit:v1.30.1");
-    expect(providerIntegration).toContain("          podman pull memcached:1.6");
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:lts',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16-alpine',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull golang:1.22',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/library/alpine:3.21',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/axllent/mailpit:v1.30.1',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull memcached:1.6',
+    );
     expect(providerIntegration).toContain("          docker pull node:22-alpine");
 
     expect(providerIntegration).toContain("      - name: Teardown Lando runtime");
