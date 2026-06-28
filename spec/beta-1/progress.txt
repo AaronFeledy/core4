@@ -626,3 +626,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Rebuilt the compiled binary after review fix `07368c96`; sandbox `./core/dist/lando setup` still failed before scenario testing because the provider-lando runtime bundle could not be downloaded and no local `LANDO_RUNTIME_BUNDLE_MANIFEST`/staged runtime bundle artifacts were available.
 - Blocker remains environmental: Verify needs a staged runtime bundle manifest or reachable release bundle before the compiled setup and cache-volume end-to-end scenario can complete.
 ---
+
+## 2026-06-27 18:45 CDT - US-338
+- Implemented the durable snapshot store surface: snapshot/tool derived paths now come from the paths primitive, DataMover persists copy/native snapshot sidecars plus a StateStore-backed app index, restore/remove/prune resolve through that index, restore verifies recorded digests, and destructive app destroy removes the app snapshot subtree while plain destroy preserves it.
+- Verification: typecheck passed; lint passed; focused spot checks passed for paths, DataMover, and destroy; manual DataMover driver proved snapshot/list/restore/remove and CLI destroy dispatch smoke passed.
+- **Learnings for future iterations:**
+  - DataMover's user-supplied host endpoint containment guard should stay on public transfers; Lando-owned snapshot archives under userDataRoot use the internal stream/write primitives to avoid widening trusted host paths.
+  - Snapshot index buckets must create the app snapshot directory before opening StateStore with a `{ path }` root, because StateStore realpath containment checks the deepest existing ancestor.
+---
