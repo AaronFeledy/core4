@@ -7,7 +7,12 @@ import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
 import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const shellenvShellFromInput = (input: unknown) => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
@@ -18,6 +23,7 @@ export const shellenvShellFromInput = (input: unknown) => {
 };
 
 export const shellenvSpec: LandoCommandSpec<string> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:shellenv",
   summary: "Print shell-profile snippets to integrate Lando into your PATH.",
   namespace: "meta",

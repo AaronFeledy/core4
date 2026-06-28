@@ -7,7 +7,12 @@ import {
   renderGlobalInstallResult,
 } from "../../../../commands/meta/global-install.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const globalInstallOptionsFromInput = (input: unknown): GlobalInstallOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -16,6 +21,7 @@ export const globalInstallOptionsFromInput = (input: unknown): GlobalInstallOpti
 };
 
 export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:global:install",
   summary: "Materialize the host-level global Lando app Landofile stack.",
   namespace: "meta",

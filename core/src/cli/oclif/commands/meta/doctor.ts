@@ -13,7 +13,12 @@ import {
 import type { DoctorOptions } from "../../../commands/doctor.ts";
 import type { RenderContext } from "../../../renderer-boundary.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -57,6 +62,7 @@ export const metaDoctorSpec: LandoCommandSpec<
   unknown,
   ConfigService | RuntimeProviderRegistry
 > = {
+  resultSchema: EmptyResultSchema,
   id: "meta:doctor",
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",

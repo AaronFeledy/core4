@@ -4,7 +4,12 @@ import { Effect } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 interface SshFlags {
   readonly service?: string;
@@ -16,6 +21,7 @@ interface SshFlags {
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
 export const sshSpec: LandoCommandSpec<ExecAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:ssh",
   summary: "Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).",
   namespace: "app",

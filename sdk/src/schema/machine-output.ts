@@ -39,3 +39,6 @@ export const StreamFrame = Schema.Union(
   Schema.TaggedStruct("result", { envelope: CommandResultEnvelope }),
 );
 export type StreamFrame = typeof StreamFrame.Type;
+
+/** Schema type a streaming command declares for its per-line `StreamFrame`s. */
+export type StreamFrameSchema = typeof StreamFrame;

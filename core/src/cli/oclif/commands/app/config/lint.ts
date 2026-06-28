@@ -6,9 +6,15 @@ import {
   appConfigLint,
   renderConfigLintResult,
 } from "../../../../commands/app-config-lint.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:config:lint",
   summary: "Validate the current app's Landofile against the canonical schema.",
   namespace: "app",

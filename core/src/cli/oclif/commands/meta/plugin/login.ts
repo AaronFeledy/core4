@@ -8,9 +8,15 @@
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const pluginLoginSpec: LandoCommandSpec<never> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:login",
   summary: "Authenticate with a plugin source.",
   namespace: "meta",

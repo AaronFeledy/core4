@@ -6,7 +6,12 @@ import {
   renderPluginUnlinkResult,
 } from "../../../../commands/plugin-unlink.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 const extractName = (input: unknown): string => {
   if (typeof input !== "object" || input === null) return "";
@@ -15,6 +20,7 @@ const extractName = (input: unknown): string => {
 };
 
 export const pluginUnlinkSpec: LandoCommandSpec<PluginUnlinkResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:unlink",
   summary: "Remove a previously linked plugin (authoring command).",
   namespace: "meta",

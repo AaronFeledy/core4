@@ -1,6 +1,11 @@
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandNamespace, type LandoCommandSpec } from "./command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandNamespace,
+  type LandoCommandSpec,
+} from "./command-base.ts";
 
 interface DeferredStubInput {
   readonly id: string;
@@ -19,6 +24,7 @@ export const makeDeferredStubCommand = (input: DeferredStubInput): typeof LandoC
     summary: input.summary,
     namespace: namespaceFor(input.id),
     bootstrap: "minimal",
+    resultSchema: EmptyResultSchema,
     run: () => Effect.die(`not yet implemented: ${input.id}`),
   };
 

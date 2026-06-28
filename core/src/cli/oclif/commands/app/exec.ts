@@ -1,7 +1,12 @@
 import { Args, Flags } from "@oclif/core";
 
 import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 interface ExecFlags {
   readonly service?: string;
@@ -10,6 +15,7 @@ interface ExecFlags {
 }
 
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:exec",
   summary: "Run a command in a Lando service.",
   namespace: "app",

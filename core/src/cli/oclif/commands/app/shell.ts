@@ -2,6 +2,7 @@ import { Flags } from "@oclif/core";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../../commands/shell.ts";
 import {
+  EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
@@ -14,6 +15,7 @@ interface ShellFlags {
 }
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:shell",
   summary: "Open an interactive shell in a Lando service.",
   namespace: "app",

@@ -7,9 +7,15 @@ import {
   scratchStart,
   scratchStartOptionsFromInput,
 } from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
+  resultSchema: EmptyResultSchema,
   id: "apps:scratch:start",
   summary: "Start a scratch Lando app.",
   namespace: "apps",

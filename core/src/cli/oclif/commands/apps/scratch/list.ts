@@ -6,9 +6,15 @@ import {
   scratchList,
   scratchListFormatFromInput,
 } from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
+  resultSchema: EmptyResultSchema,
   id: "apps:scratch:list",
   summary: "List scratch Lando apps.",
   namespace: "apps",

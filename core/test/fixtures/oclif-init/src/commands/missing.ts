@@ -1,12 +1,17 @@
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandSpec } from "../../../../../src/cli/oclif/command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+} from "../../../../../src/cli/oclif/command-base.ts";
 
 const missingSpec: LandoCommandSpec<void> = {
   id: "missing",
   summary: "Missing bootstrap fixture.",
   namespace: "meta",
   bootstrap: "minimal",
+  resultSchema: EmptyResultSchema,
   run: () => Effect.void,
 };
 

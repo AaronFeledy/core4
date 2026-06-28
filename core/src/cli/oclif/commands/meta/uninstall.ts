@@ -6,7 +6,12 @@ import {
   renderUninstallResult,
   uninstall,
 } from "../../../commands/uninstall.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -35,6 +40,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
 };
 
 export const metaUninstallSpec: LandoCommandSpec<UninstallResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:uninstall",
   summary: "Remove Lando-owned installed files after confirmation.",
   namespace: "meta",

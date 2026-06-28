@@ -3,7 +3,11 @@ import { Effect } from "effect";
 import type { BootstrapLevel } from "@lando/sdk/schema";
 import { CommandRegistry, RuntimeProvider } from "@lando/sdk/services";
 
-import { LandoCommandBase, type LandoCommandSpec } from "../../../../../src/cli/oclif/command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+} from "../../../../../src/cli/oclif/command-base.ts";
 import { events } from "../events.ts";
 
 const toolingSpec: LandoCommandSpec<void> = {
@@ -11,6 +15,7 @@ const toolingSpec: LandoCommandSpec<void> = {
   summary: "Tooling bootstrap fixture.",
   namespace: "meta",
   bootstrap: "tooling",
+  resultSchema: EmptyResultSchema,
   run: () =>
     Effect.gen(function* () {
       events.push("tooling-effect");

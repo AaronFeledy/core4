@@ -6,9 +6,15 @@ import {
   scratchIdFromInput,
   scratchLogs,
 } from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
+  resultSchema: EmptyResultSchema,
   id: "apps:scratch:logs",
   summary: "Show logs for a scratch Lando app.",
   namespace: "apps",

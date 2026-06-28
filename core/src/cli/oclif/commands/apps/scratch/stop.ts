@@ -2,9 +2,15 @@ import { Args } from "@oclif/core";
 
 import type { ScratchHandle } from "@lando/sdk/services";
 import { renderScratchStopResult, scratchIdFromInput, scratchStop } from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
+  resultSchema: EmptyResultSchema,
   id: "apps:scratch:stop",
   summary: "Stop a scratch Lando app.",
   namespace: "apps",

@@ -6,7 +6,12 @@ import {
   globalStatus,
   renderGlobalStatusResult,
 } from "../../../../commands/meta/global-status.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
@@ -30,6 +35,7 @@ export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOption
 };
 
 export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:global:status",
   summary: "Show runtime status for the host-level global Lando app.",
   namespace: "meta",
