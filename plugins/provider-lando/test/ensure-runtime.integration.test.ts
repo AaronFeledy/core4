@@ -84,7 +84,11 @@ const makeFrame = (text: string): Uint8Array => {
   return output;
 };
 
-const makeFakePodmanApi = (events: string[], infoSuccessesBeforeEnsureFailure = 1): PodmanApiClient => {
+const makeFakePodmanApi = (
+  events: string[],
+  infoSuccessesBeforeEnsureFailure = 1,
+  launchesBeforeInfoSuccess = 1,
+): PodmanApiClient => {
   let infoCalls = 0;
   const existing = new Set<string>();
   const running = new Set<string>();
@@ -95,7 +99,8 @@ const makeFakePodmanApi = (events: string[], infoSuccessesBeforeEnsureFailure = 
     info: Effect.gen(function* () {
       infoCalls += 1;
       events.push("api.info");
-      if (infoCalls <= infoSuccessesBeforeEnsureFailure || events.includes("service.launch")) {
+      const launchCount = events.filter((event) => event === "service.launch").length;
+      if (infoCalls <= infoSuccessesBeforeEnsureFailure || launchCount >= launchesBeforeInfoSuccess) {
         return { version: { Version: "5.2.0" } };
       }
       return yield* Effect.fail(
@@ -156,6 +161,7 @@ const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => ({
       return 42;
     }),
   isAlive: () => Effect.succeed(false),
+  isServiceProcess: () => Effect.succeed(false),
   terminate: () => Effect.void,
 });
 
@@ -163,13 +169,14 @@ const withRuntimeProvider = async <A>(
   events: string[],
   use: (provider: RuntimeProviderShape) => Promise<A>,
   infoSuccessesBeforeEnsureFailure = 1,
+  launchesBeforeInfoSuccess = 1,
 ): Promise<A> => {
   const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
   try {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
-        podmanApi: makeFakePodmanApi(events, infoSuccessesBeforeEnsureFailure),
+        podmanApi: makeFakePodmanApi(events, infoSuccessesBeforeEnsureFailure, launchesBeforeInfoSuccess),
         podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
         podmanService: makeFakeServiceRunner(events),
         socketPath: join(tempDir, "podman.sock"),
@@ -217,6 +224,21 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     });
 
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
+  });
+
+  test("failed ensureRuntime attempt is retried by the next provider operation", async () => {
+    const events: string[] = [];
+    await withRuntimeProvider(
+      events,
+      async (provider) => {
+        await Effect.runPromiseExit(provider.apply(plan, {}));
+        await Effect.runPromise(provider.apply(plan, {}));
+      },
+      1,
+      2,
+    );
+
+    expect(events.filter((event) => event === "service.launch")).toHaveLength(2);
   });
 
   test("exec triggers ensureRuntime before exec", async () => {

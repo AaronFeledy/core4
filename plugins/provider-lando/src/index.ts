@@ -1,7 +1,7 @@
 /**
  * `@lando/provider-lando` — Lando-managed RuntimeProvider.
  */
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
@@ -284,7 +284,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               ...(options.rootlessProbes === undefined ? {} : { rootlessProbes: options.rootlessProbes }),
             })
           : Effect.void;
-        const ensureOnce = yield* Effect.cached(ensureEffect);
+        const [cachedEnsure, invalidateEnsure] = yield* Effect.cachedInvalidateWithTTL(
+          ensureEffect,
+          Duration.infinity,
+        );
+        const ensureOnce = cachedEnsure.pipe(Effect.tapError(() => invalidateEnsure));
 
         return {
           id: "lando",
