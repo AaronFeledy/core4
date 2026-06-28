@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   RootlessPrerequisiteError,
   type RootlessProbeResults,
   classifyRootlessFailure,
+  hasCgroupsV2Delegation,
 } from "../src/rootless-preflight.ts";
 
 const allSatisfied: RootlessProbeResults = {
@@ -67,5 +71,21 @@ describe("rootless preflight", () => {
     expect(error).toBeInstanceOf(RootlessPrerequisiteError);
     expect(error._tag).toEqual(expect.any(String));
     expect(error._tag.length).toBeGreaterThan(0);
+  });
+
+  test("cgroups v2 delegation requires controllers on the user service cgroup", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-cgroups-"));
+    try {
+      await writeFile(join(dir, "cgroup.controllers"), "cpu memory pids\n");
+      expect(hasCgroupsV2Delegation(dir, "1000")).toBe(false);
+
+      const userServiceDir = join(dir, "user.slice", "user-1000.slice", "user@1000.service");
+      await mkdir(userServiceDir, { recursive: true });
+      await writeFile(join(userServiceDir, "cgroup.controllers"), "cpu memory pids\n");
+
+      expect(hasCgroupsV2Delegation(dir, "1000")).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

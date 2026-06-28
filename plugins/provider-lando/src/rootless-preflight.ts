@@ -90,6 +90,29 @@ const hasExecutableOnPath = (binary: string, pathValue: string | undefined): boo
     .some((directory) => directory.length > 0 && existsSync(join(directory, binary)));
 };
 
+const uidFromRuntimeDir = (runtimeDir: string | undefined): string | undefined => {
+  if (runtimeDir === undefined) return undefined;
+  return runtimeDir.match(/(?:^|\/)run\/user\/(\d+)(?:\/|$)/u)?.[1];
+};
+
+export const hasCgroupsV2Delegation = (
+  cgroupRoot = "/sys/fs/cgroup",
+  uid = uidFromRuntimeDir(process.env.XDG_RUNTIME_DIR) ?? process.getuid?.().toString(),
+): boolean => {
+  if (uid === undefined || uid.length === 0) return false;
+
+  try {
+    return (
+      readFileSync(
+        join(cgroupRoot, "user.slice", `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
+        "utf8",
+      ).trim().length > 0
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const makeSystemRootlessProbes = (env: Environment = process.env): RootlessProbes => ({
   probe: () => {
     const user = env.USER;
@@ -103,7 +126,7 @@ export const makeSystemRootlessProbes = (env: Environment = process.env): Rootle
       subidConfigured,
       hasUidmapTools:
         hasExecutableOnPath("newuidmap", env.PATH) && hasExecutableOnPath("newgidmap", env.PATH),
-      cgroupsV2Delegated: existsSync("/sys/fs/cgroup/cgroup.controllers"),
+      cgroupsV2Delegated: hasCgroupsV2Delegation("/sys/fs/cgroup", uidFromRuntimeDir(env.XDG_RUNTIME_DIR)),
       hasXdgRuntimeDir: typeof env.XDG_RUNTIME_DIR === "string" && env.XDG_RUNTIME_DIR.length > 0,
     };
   },
