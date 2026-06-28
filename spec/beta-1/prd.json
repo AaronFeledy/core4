@@ -2268,8 +2268,8 @@
         "Lint passes."
       ],
       "priority": 126,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added shared format-flags resolver for --format, --json, and -j, wired source OCLIF and compiled dispatch through the same precedence rule, and regenerated the OCLIF manifest so every command exposes the universal flags. The --renderer json bridge now defaults result format to json while explicit --format text/table/yaml wins. Existing per-command JSON producer migration remains US-327; streaming NDJSON remains US-326."
     },
     {
       "id": "US-326",

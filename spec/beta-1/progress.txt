@@ -695,3 +695,11 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Resolved the blocker by explicitly correcting the PRD-15 story split instead of prematurely pulling US-325/US-326/US-327 into US-324: US-324 owns the `encodeCommandResult` seam plus renderer-json result routing/bypass, US-326 owns event/deprecation NDJSON migration, US-327 owns concrete per-command schemas plus legacy result JSON producer migration, and US-328 owns static enforcement.
 - Updated both `spec/beta-1/prd-beta-1-15-universal-json-output.md` and `spec/beta-1/prd.json` so the remaining JSON producers are preserved as explicit downstream acceptance criteria rather than treated as hidden debt.
 - Marked US-324 passing after focused coverage proved schema-backed success envelopes, tagged failure envelopes, redaction, failure exit-code preservation, and json renderer bypass of per-command `render()` helpers.
+---
+
+## 2026-06-27 23:01 CDT - US-325
+- Added `core/src/cli/format-flags.ts` as the shared result-format flag resolver for `--format <value>`, `--format=<value>`, `--json`, and `-j`, including the precedence rule: explicit `--format` wins over `--json`/`-j`, which wins over the `--renderer=json` bridge, which wins over each command's default format.
+- Wired OCLIF source dispatch and compiled dispatch through the shared resolver, threaded the resolved `resultFormat` into `RenderContext`, and changed result-envelope emission to key off `resultFormat === "json"` so explicit `--format text` can override `--renderer=json`.
+- Regenerated `core/oclif.manifest.json` and `core/src/cli/oclif/compiled-manifest.ts` so every command advertises the universal `format` and `json` flags.
+- Kept US-326/US-327 boundaries intact: streaming/event NDJSON is not migrated here, and existing per-command JSON producers remain until concrete result schemas land in US-327.
+- Verification: `bun run typecheck` passed; `bun run lint` passed; focused format/routing tests passed; manual smokes passed for `version --json`, `version -j`, `apps:list --json`, `app:config --json` failure envelopes, invalid `--format xml`, and `apps:list --renderer=json --format table` explicit-format override.
