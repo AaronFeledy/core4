@@ -7,12 +7,20 @@
  *
  * Bootstrap level: `app`.
  */
+import { rm } from "node:fs/promises";
+
 import { DateTime, Effect } from "effect";
 
 import type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  PathsService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
@@ -20,7 +28,12 @@ import { terminateFileSyncSessions } from "../file-sync.ts";
 
 export type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
-type DestroyAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
+type DestroyAppServices =
+  | AppPlanner
+  | EventService
+  | LandofileService
+  | PathsService
+  | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -42,6 +55,7 @@ export const destroyApp = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
     const events = yield* EventService;
+    const paths = yield* PathsService;
 
     const plan =
       target?.plan ??
@@ -72,6 +86,12 @@ export const destroyApp = (
         removeState: true,
       },
     );
+
+    if (volumes) {
+      yield* Effect.promise(() =>
+        rm(paths.appSnapshotsDir(String(plan.id)), { recursive: true, force: true }),
+      );
+    }
 
     yield* events.publish(
       PostDestroyEvent.make({
