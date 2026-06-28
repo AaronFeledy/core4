@@ -7,6 +7,7 @@ import {
   renderGlobalStartResult,
 } from "../../../../commands/meta/global-start.ts";
 import {
+  EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
@@ -30,6 +31,7 @@ export const globalStartOptionsFromInput = (input: unknown): GlobalStartOptions 
 };
 
 export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:global:start",
   summary: "Start the host-level global Lando app.",
   namespace: "meta",

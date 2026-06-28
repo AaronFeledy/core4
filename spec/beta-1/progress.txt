@@ -627,6 +627,30 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Blocker remains environmental: Verify needs a staged runtime bundle manifest or reachable release bundle before the compiled setup and cache-volume end-to-end scenario can complete.
 ---
 
+## [2026-06-27 16:18:59 CDT] - Babysit
+- PR: #479 https://github.com/AaronFeledy/core4/pull/479
+- CI outcome: pass
+- Review feedback: fixed (added SDK compatibility guide coverage for machine-output schemas after guide-scenarios drift failed)
+- Merge: merged (squash)
+---
+
+## 2026-06-27 17:56 CDT - US-323
+- Made `LandoCommandSpec.resultSchema` a required field (was `resultSchema?: unknown`) typed `Schema.Schema.AnyNoContext`, added optional `streaming?: StreamFrameSchema`, and published a type-only `StreamFrameSchema = typeof StreamFrame` alias from `@lando/sdk/schema`. Added a shared `EmptyResultSchema` (`Schema.Struct({})`) placeholder, a core-private tagged `CommandRegistrationError`, and `validateCommandSpec()` that rejects a spec lacking `resultSchema`; wired the check into `LandoCommandBase.runEffect` so registration/dispatch rejects a missing schema.
+- Declared `resultSchema: EmptyResultSchema` on every built-in command spec (56 files) and on the shared deferred-stub factory (covers all deferred-command stubs in one place). Added a registry-level test that enumerates the `compiled-commands` registry and fails if any canonical command lacks a `resultSchema`, plus unit coverage for `validateCommandSpec`/`CommandRegistrationError`.
+- Verification: typecheck, lint passed; spot checks passed for the new registry test, deferred-commands, not-implemented, remote-sync/share skeletons, import-boundary, and the SDK backward-compat/exports/machine-output schema tests (no schema-snapshot drift). Manual QA: `lando version` runs cleanly through the new `validateCommandSpec` gate; deferred stubs covered end-to-end by `deferred-commands.test`.
+- **Learnings for future iterations:**
+  - `LandoCommandSpec` lives in `core/src/cli/oclif/command-base.ts` (NOT the SDK); the authoritative enumeration of ALL canonical commands (built-ins + deferred stubs) is the default `Record<id, CommandClass>` export of `core/src/cli/oclif/compiled-commands.ts`, each class exposing a static `landoSpec`. Use it for any "drive/validate every command" registry test.
+  - Type `resultSchema` as `Schema.Schema.AnyNoContext`, NOT `Schema.Schema<A>`. Most specs are declared as bare `LandoCommandSpec` (A=void) with `run` returning a real value and `render` casting `result as never`, so a strict `Schema.Schema<A>` would force accurate per-command schemas now (that is US-327) and cascade type errors across ~67 files. `AnyNoContext` decouples the field from the `A` generic so both `EmptyResultSchema` and concrete schemas assign. Accurate per-command shapes + the `--format json` encode seam are US-324/US-327.
+  - All built-in spec files import `LandoCommandBase` from a relative `command-base.ts`, so exporting `EmptyResultSchema` from there lets each spec add the placeholder by extending an import it already has (no new `Schema` import per file) and gives US-327 a single grep target to replace. Deferred stubs all flow through `makeDeferredStubCommand` (`deferred-stub.ts`), so one edit there covers every stub.
+  - `validateCommandSpec`'s param is typed `{ id; resultSchema?: unknown }` (looser than `LandoCommandSpec`) so the runtime `=== undefined` guard does not trip TS "no-overlap" on the now-required field; the guard exists for JS/plugin-compiled specs that bypass the type.
+---
+
+## 2026-06-27 18:10 CDT - US-323 Review
+- Reviewed the required `resultSchema` command-spec work and fixed a confirmed blocker: the OCLIF init-hook fixture commands now declare `EmptyResultSchema`, so the new `validateCommandSpec` gate no longer breaks the bootstrap hook spot test.
+- Review notes (deferred/rejected): accurate per-command result schemas are intentionally deferred to US-327; `encodeCommandResult`/schema-backed JSON emission is US-324; `check:machine-output` is US-328; dispatch-time `validateCommandSpec` is accepted for this story because built-ins are compile-time typed and covered by the registry test.
+- Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `init-hook`, `deferred-commands`, and `not-implemented`.
+---
+
 ## 2026-06-27 18:45 CDT - US-338
 - Implemented the durable snapshot store surface: snapshot/tool derived paths now come from the paths primitive, DataMover persists copy/native snapshot sidecars plus a StateStore-backed app index, restore/remove/prune resolve through that index, restore verifies recorded digests, and destructive app destroy removes the app snapshot subtree while plain destroy preserves it.
 - Verification: typecheck passed; lint passed; focused spot checks passed for paths, DataMover, and destroy; manual DataMover driver proved snapshot/list/restore/remove and CLI destroy dispatch smoke passed.
@@ -638,4 +662,17 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Reviewed the snapshot-store implementation and fixed the confirmed blocker: `lando destroy --purge` is now accepted and drives the destructive app-data removal path that deletes the app snapshot subtree, while plain destroy and cache-only purge preserve snapshots.
 - Review notes (deferred/rejected): no confirmed review-work findings were rejected; direct `removeSnapshot` and corrupt snapshot digest tests remain nonblocking because existing store tests cover the acceptance path and the review blocker was the missing user-facing purge flag.
 - Verification: typecheck passed; lint passed; focused destroy scenario spot checks passed.
+---
+
+## [2026-06-27 19:06:00 CDT] - Babysit
+- PR: #480 https://github.com/AaronFeledy/core4/pull/480
+- CI outcome: fail (static-checks-platform linux-x64 pending)
+- Review feedback: fixed (merged main and resolved the progress-log conflict while preserving both entries)
+- Merge: deferred (required linux-x64 check still pending after re-watch)
+---
+
+## 2026-06-27 - US-323 Build (verify in-flight)
+- Story reached Build with unmerged work on `us-323-command-result-schema` (PR #480 open, 3 commits ahead of main). Assessed against acceptance criteria: required `resultSchema` plus optional `streaming` on `LandoCommandSpec`, registration rejection of specs missing `resultSchema`, empty-payload commands registering `Schema.Struct({})`, every built-in/deferred stub declaring a `resultSchema`, and a registry-level test enumerating canonical ids — all present and covered.
+- No implementation remained; confirmed complete without new code. Committed only the in-flight babysit progress entry left in the working tree by a prior loop step so the branch tree is clean.
+- Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `deferred-commands`, `init-hook`, and `not-implemented`.
 ---

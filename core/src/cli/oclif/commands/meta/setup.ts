@@ -55,7 +55,12 @@ import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
 import { isDecoratedContext } from "../../../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../../../renderer/summary.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 type FileSyncStatus = "deferred" | "installed" | "satisfied" | "unavailable";
 
@@ -239,6 +244,7 @@ const buildSetupSummary = (providerId: string, installDir: string, status: strin
 });
 
 export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",

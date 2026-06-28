@@ -3,6 +3,7 @@ import { type StartAppResult, renderStartAppResult, startApp } from "../../../co
  * `lando app:start` — OCLIF wrapper.
  */
 import {
+  EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
@@ -10,6 +11,7 @@ import {
 } from "../../command-base.ts";
 
 export const startSpec: LandoCommandSpec<StartAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:start",
   summary: "Start the current Lando app.",
   namespace: "app",

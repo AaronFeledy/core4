@@ -1,9 +1,15 @@
 import { Flags } from "@oclif/core";
 
 import { type AppConfigResult, appConfig, renderAppConfigResult } from "../../../../commands/app-config.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:config",
   summary: "Read the current app's Landofile.",
   namespace: "app",

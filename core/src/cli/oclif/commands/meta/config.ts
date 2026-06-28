@@ -7,7 +7,12 @@ import {
   renderConfigResult,
 } from "../../../commands/config.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 const isSubcommand = (s: unknown): s is ConfigOptions["subcommand"] =>
   s === "view" ||
@@ -43,6 +48,7 @@ const extractOptions = (input: unknown): ConfigOptions => {
 };
 
 export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:config",
   summary: "Read or write the global Lando config (view/get; write ops are deferred to Beta).",
   namespace: "meta",

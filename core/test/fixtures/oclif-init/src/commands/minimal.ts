@@ -3,7 +3,11 @@ import { Effect } from "effect";
 import type { BootstrapLevel } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
-import { LandoCommandBase, type LandoCommandSpec } from "../../../../../src/cli/oclif/command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+} from "../../../../../src/cli/oclif/command-base.ts";
 import { events } from "../events.ts";
 
 const minimalSpec: LandoCommandSpec<void> = {
@@ -11,6 +15,7 @@ const minimalSpec: LandoCommandSpec<void> = {
   summary: "Minimal bootstrap fixture.",
   namespace: "meta",
   bootstrap: "minimal",
+  resultSchema: EmptyResultSchema,
   run: () =>
     Effect.gen(function* () {
       events.push("minimal-effect");

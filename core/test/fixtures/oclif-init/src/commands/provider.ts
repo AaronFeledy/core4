@@ -3,7 +3,11 @@ import { Effect } from "effect";
 import type { BootstrapLevel } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
-import { LandoCommandBase, type LandoCommandSpec } from "../../../../../src/cli/oclif/command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+} from "../../../../../src/cli/oclif/command-base.ts";
 import { events } from "../events.ts";
 
 const providerSpec: LandoCommandSpec<void> = {
@@ -11,6 +15,7 @@ const providerSpec: LandoCommandSpec<void> = {
   summary: "Provider bootstrap fixture.",
   namespace: "meta",
   bootstrap: "provider",
+  resultSchema: EmptyResultSchema,
   run: () =>
     Effect.gen(function* () {
       events.push("provider-effect");

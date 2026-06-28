@@ -6,9 +6,15 @@ import {
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../../../commands/app-config-translate.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:config:translate",
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",

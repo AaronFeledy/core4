@@ -1,9 +1,9 @@
 import { Command } from "@oclif/core";
 
-import { Effect, type Layer } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
-import type { DeprecationNotice } from "@lando/sdk/schema";
+import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
@@ -76,10 +76,37 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
-  readonly resultSchema?: unknown;
+  /** Required machine shape of this command's result; commands with no payload declare {@link EmptyResultSchema}. */
+  readonly resultSchema: Schema.Schema.AnyNoContext;
+  /** Present only for commands that stream incremental output (logs/exec/build). */
+  readonly streaming?: StreamFrameSchema;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
+
+/** Result schema for a command with no machine-readable payload. */
+export const EmptyResultSchema = Schema.Struct({});
+
+/** Raised at registration when a command spec violates a structural rule (e.g. a missing `resultSchema`). */
+export class CommandRegistrationError extends Schema.TaggedError<CommandRegistrationError>()(
+  "CommandRegistrationError",
+  {
+    message: Schema.String,
+    commandId: Schema.optional(Schema.String),
+    remediation: Schema.optional(Schema.String),
+  },
+) {}
+
+/** Reject a command spec that does not declare the required `resultSchema`. */
+export const validateCommandSpec = (spec: { readonly id: string; readonly resultSchema?: unknown }): void => {
+  if (spec.resultSchema === undefined || spec.resultSchema === null) {
+    throw new CommandRegistrationError({
+      message: `Command ${spec.id} does not declare a resultSchema. Every command must declare the machine-readable shape of its result; use EmptyResultSchema for a command with no payload.`,
+      commandId: spec.id,
+      remediation: "Add a `resultSchema` to the command spec.",
+    });
+  }
+};
 
 const MVP_COMMAND_IDS = new Set([
   "app:cache:refresh",
@@ -226,6 +253,7 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
+    validateCommandSpec(spec);
     let rendererMode: RendererMode;
     try {
       const resolution = await resolveCliRendererMode({

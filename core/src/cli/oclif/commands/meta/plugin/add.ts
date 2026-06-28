@@ -6,7 +6,12 @@ import { NotImplementedError } from "@lando/sdk/errors";
 import { type PluginAddResult, pluginAdd, renderPluginAddResult } from "../../../../commands/plugin-add.ts";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 const extractInput = (input: unknown): { spec: string; trust: boolean; force: boolean; yes: boolean } => {
   if (typeof input !== "object" || input === null) {
@@ -30,6 +35,7 @@ const missingSpecError = (): NotImplementedError =>
   });
 
 export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:add",
   summary: "Install a plugin (npm source) with manifest validation and trust prompt.",
   namespace: "meta",

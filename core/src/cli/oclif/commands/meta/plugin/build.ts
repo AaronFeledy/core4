@@ -5,9 +5,15 @@ import {
   pluginBuild,
   renderPluginBuildResult,
 } from "../../../../commands/plugin-build.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:plugin:build",
   summary: "Build the current plugin source (authoring command).",
   namespace: "meta",

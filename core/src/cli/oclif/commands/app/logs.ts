@@ -4,7 +4,12 @@ import { Effect } from "effect";
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { type LogsAppResult, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export interface LogsFlags {
   readonly service?: string;
@@ -54,6 +59,7 @@ export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>
 };
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:logs",
   summary: "Stream logs from the current app.",
   namespace: "app",

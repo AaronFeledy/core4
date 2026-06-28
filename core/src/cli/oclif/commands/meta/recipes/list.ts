@@ -2,9 +2,15 @@
  */
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const metaRecipesListSpec: LandoCommandSpec<never> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:recipes:list",
   summary: "List canonical recipes shipped with the binary.",
   namespace: "meta",

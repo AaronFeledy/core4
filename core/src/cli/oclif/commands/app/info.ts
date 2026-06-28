@@ -2,9 +2,15 @@ import { type InfoAppResult, infoApp, renderInfoAppResult } from "../../../comma
 /**
  * `lando app:info` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
+  resultSchema: EmptyResultSchema,
   id: "app:info",
   summary: "Print provider-neutral runtime info for the current app.",
   namespace: "app",

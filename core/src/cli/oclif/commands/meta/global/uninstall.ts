@@ -6,7 +6,12 @@ import {
   globalUninstall,
   renderGlobalUninstallResult,
 } from "../../../../commands/meta/global-uninstall.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -19,6 +24,7 @@ export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstall
 };
 
 export const metaGlobalUninstallSpec: LandoCommandSpec<GlobalUninstallResult> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:global:uninstall",
   summary: "Clear generated services from the host-level global Lando app.",
   namespace: "meta",

@@ -2,9 +2,15 @@
  */
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import {
+  EmptyResultSchema,
+  LandoCommandBase,
+  type LandoCommandSpec,
+  resolveTopLevelAliases,
+} from "../../../command-base.ts";
 
 export const metaEventsFollowSpec: LandoCommandSpec<never> = {
+  resultSchema: EmptyResultSchema,
   id: "meta:events:follow",
   summary: "Follow the lifecycle event trace stream for diagnostics and e2e tests.",
   namespace: "meta",
