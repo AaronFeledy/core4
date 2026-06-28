@@ -238,6 +238,9 @@ export interface RuntimeProviderShape {
   readonly snapshotVolume: (
     spec: VolumeSnapshotSpec,
   ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+  readonly removeVolumeSnapshot?: (
+    snapshot: VolumeSnapshotRef,
+  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
   readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;

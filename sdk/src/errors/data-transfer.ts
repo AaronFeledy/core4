@@ -84,6 +84,16 @@ export class SnapshotNotFoundError extends Schema.TaggedError<SnapshotNotFoundEr
   },
 ) {}
 
+export class SnapshotAmbiguousError extends Schema.TaggedError<SnapshotAmbiguousError>()(
+  "SnapshotAmbiguousError",
+  {
+    message: Schema.String,
+    snapshotId: Schema.String,
+    matchCount: Schema.Number,
+    remediation: Schema.optional(Schema.String),
+  },
+) {}
+
 /**
  * The named volume does not exist on the active provider.
  */

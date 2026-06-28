@@ -477,7 +477,7 @@ export const makeTestDataset = () =>
       snapshot: (store) => Effect.succeed({ id: "remote-sync-contract-snapshot", store }),
       restore: () => Effect.void,
       listSnapshots: () => Effect.succeed([]),
-      removeSnapshot: () => Effect.void,
+      removeSnapshot: (_id, _store?) => Effect.void,
       pruneSnapshots: () => Effect.succeed([]),
     };
     const rejectCodeTree = (ctx: DatasetContext) =>
