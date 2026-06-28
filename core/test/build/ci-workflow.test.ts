@@ -474,16 +474,23 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
     expect(guideScenarios).toContain("          name: lando-linux-x64");
     expect(guideScenarios).toContain("        run: chmod +x dist/lando");
-    expect(guideScenarios).toContain("      - name: Install Podman");
-    expect(guideScenarios).toContain(
+    expect(guideScenarios).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(guideScenarios).toContain("      - name: Prepare provider via lando setup");
+    expect(guideScenarios).toContain("          dist/lando setup --yes --provider=lando");
+    expect(guideScenarios).toContain("      - name: Verify managed runtime socket");
+    expect(guideScenarios).not.toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
+    expect(guideScenarios).not.toContain("      - name: Install Podman");
+    expect(guideScenarios).not.toContain("podman system service");
     expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
     expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(guideScenarios).toContain(
       `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --test-name-pattern="@smoke.*\\[e2e\\]"`,
     );
     expect(guideScenarios).toContain("      - name: Teardown guide e2e provider");
+    expect(guideScenarios).toContain("          dist/lando poweroff || true");
+    expect(guideScenarios).toContain('          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"');
     expect(guideScenarios).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideScenarios).toContain("        if: failure()");
     expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");

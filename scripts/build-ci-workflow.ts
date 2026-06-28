@@ -168,53 +168,6 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-const linuxProviderSetupSteps = `      - name: Install Podman
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
-
-      - name: Start Podman socket
-        run: |
-          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
-          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
-          echo "$!" > /tmp/podman-service.pid
-          for _ in {1..30}; do
-            test -S /tmp/podman.sock && break
-            sleep 1
-          done
-          test -S /tmp/podman.sock
-          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
-          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
-
-      - name: Configure Docker socket
-        run: |
-          test -S /var/run/docker.sock
-          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
-
-      - name: Pre-pull container images
-        run: |
-          podman pull docker.io/library/alpine:3.21
-          podman pull node:lts
-          podman pull node:22-alpine
-          podman pull postgres:16
-          podman pull postgres:16-alpine
-          podman pull golang:1.22
-          podman pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
-          podman pull getmeili/meilisearch:v1.11
-          podman pull docker.io/axllent/mailpit:v1.30.1
-          podman pull memcached:1.6
-          podman pull nginx:1.27
-          podman pull opensearchproject/opensearch:2
-          podman pull solr:9
-          podman pull traefik:v3.3
-          podman pull valkey/valkey:8
-          docker pull node:22-alpine`;
-
-const podmanTeardownCommands = `          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid`;
-
 const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
@@ -389,6 +342,10 @@ ${timingNoticeStep(`provider-integration-${platform.id}`, platform.providerTimeo
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 
+const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
+
+${landoRuntimeBundleSetupSteps}`;
+
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
         uses: actions/download-artifact@v4
         with:
@@ -398,7 +355,7 @@ const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary arti
       - name: Restore binary executable bit
         run: chmod +x dist/lando
 
-${linuxProviderSetupSteps}
+${linuxGuideE2eProviderSetupSteps}
 
       - name: Run e2e smoke guide scenarios
         env:
@@ -408,13 +365,14 @@ ${linuxProviderSetupSteps}
       - name: Teardown guide e2e provider
         if: always()
         run: |
-${podmanTeardownCommands}
+          dist/lando poweroff || true
+${landoManagedPodmanTeardownCommands}
 
       - name: Collect guide e2e provider diagnostics
         if: failure()
         run: |
           mkdir -p guide-e2e-provider-diagnostics
-          cp /tmp/podman-service.log guide-e2e-provider-diagnostics/podman-service.log || true
+          dist/lando doctor --format json > guide-e2e-provider-diagnostics/doctor.json 2>&1 || true
           journalctl --no-pager --since "-30 minutes" > guide-e2e-provider-diagnostics/journalctl.log 2>&1 || true
 
       - name: Upload guide scenario transcripts

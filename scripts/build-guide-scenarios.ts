@@ -595,7 +595,7 @@ export const renderScenarioTest = (
     platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
   );
   const skippedE2eTestName = quote(
-    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
+    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1 and LANDO_SCENARIO_E2E_BINARY to run e2e guide scenarios)`,
   );
   const e2eForcedSkip = usesE2eRuntime && forcedSkip;
   const testNameExpression =
@@ -633,7 +633,7 @@ ${
 
 ${
   usesE2eRuntime
-    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && process.env.LANDO_TEST_PODMAN_SOCKET !== undefined;'
+    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined;'
     : ""
 }
 

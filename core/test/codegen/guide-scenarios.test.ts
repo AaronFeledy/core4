@@ -254,13 +254,13 @@ describe("build-guide-scenarios MDX walker", () => {
       );
       expect(content).toContain('import { ScenarioContextFactory } from "@lando/core/testing";');
       expect(content).toContain(
-        'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && process.env.LANDO_TEST_PODMAN_SOCKET !== undefined;',
+        'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined;',
       );
       expect(content).toContain(
         '(e2eGateEnabled ? test : test.skip)((e2eGateEnabled ? "@smoke e2e-smoke:provider-path [e2e]"',
       );
       expect(content).toContain(
-        '"@smoke e2e-smoke:provider-path [e2e] (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)"',
+        '"@smoke e2e-smoke:provider-path [e2e] (skipped: set LANDO_GUIDE_E2E=1 and LANDO_SCENARIO_E2E_BINARY to run e2e guide scenarios)"',
       );
       expect(content).toContain(
         'ScenarioContextFactory.e2e({ guideId: "e2e-smoke", scenarioId: "provider-path", render: true }',
