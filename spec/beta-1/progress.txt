@@ -650,3 +650,16 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): accurate per-command result schemas are intentionally deferred to US-327; `encodeCommandResult`/schema-backed JSON emission is US-324; `check:machine-output` is US-328; dispatch-time `validateCommandSpec` is accepted for this story because built-ins are compile-time typed and covered by the registry test.
 - Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `init-hook`, `deferred-commands`, and `not-implemented`.
 ---
+
+## [2026-06-27 19:06:00 CDT] - Babysit
+- PR: #480 https://github.com/AaronFeledy/core4/pull/480
+- CI outcome: fail (static-checks-platform linux-x64 pending)
+- Review feedback: fixed (merged main and resolved the progress-log conflict while preserving both entries)
+- Merge: deferred (required linux-x64 check still pending after re-watch)
+---
+
+## 2026-06-27 - US-323 Build (verify in-flight)
+- Story reached Build with unmerged work on `us-323-command-result-schema` (PR #480 open, 3 commits ahead of main). Assessed against acceptance criteria: required `resultSchema` plus optional `streaming` on `LandoCommandSpec`, registration rejection of specs missing `resultSchema`, empty-payload commands registering `Schema.Struct({})`, every built-in/deferred stub declaring a `resultSchema`, and a registry-level test enumerating canonical ids — all present and covered.
+- No implementation remained; confirmed complete without new code. Committed only the in-flight babysit progress entry left in the working tree by a prior loop step so the branch tree is clean.
+- Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `deferred-commands`, `init-hook`, and `not-implemented`.
+---
