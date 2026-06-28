@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -313,6 +313,31 @@ describe("lando destroy", () => {
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(false);
     expect(renderDestroyAppResult(result)).toContain("volumes removed");
+  });
+
+  test("still emits post-destroy when snapshot subtree removal fails after provider teardown", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-rm-fail-"));
+    const snapshotRoot = makeLandoPaths({
+      userDataRoot: dataRoot,
+      env: {},
+      platform: "linux",
+    }).appSnapshotsDir(String(plan.id));
+    await mkdir(join(snapshotRoot, "data"), { recursive: true });
+    await chmod(snapshotRoot, 0o000);
+
+    try {
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+      const result = await Effect.runPromise(
+        destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.events).toEqual(["pre-destroy", "post-destroy"]);
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(renderDestroyAppResult(result)).toContain("volumes removed");
+    } finally {
+      await chmod(snapshotRoot, 0o700).catch(() => undefined);
+      await rm(dataRoot, { recursive: true, force: true });
+    }
   });
 
   test("plain destroy preserves snapshots and purge removes the app snapshot subtree", async () => {

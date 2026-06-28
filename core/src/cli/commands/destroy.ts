@@ -89,7 +89,7 @@ export const destroyApp = (
 
     if (volumes) {
       yield* Effect.promise(() =>
-        rm(paths.appSnapshotsDir(String(plan.id)), { recursive: true, force: true }),
+        rm(paths.appSnapshotsDir(String(plan.id)), { recursive: true, force: true }).catch(() => undefined),
       );
     }
 
