@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import { Effect } from "effect";
 import {
   type SetupReadinessStep,
   readSetupReadiness,
+  setupReadinessPath,
   writeSetupReadiness,
 } from "../../../src/cli/commands/setup-readiness.ts";
 
@@ -85,6 +86,26 @@ describe("setup readiness persistence", () => {
 
       expect(summary?.runtimeService).toEqual(runtimeService);
       expect(summary?.steps).toEqual([...steps, caStep]);
+    });
+  });
+
+  test("write without runtimeService preserves the unredacted existing runtimeService block", async () => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      const socketPath =
+        "/home/u/.local/share/lando/runtime/run/podman.sock?token=ABC123&X-Amz-Signature=deadbeef";
+      await Effect.runPromise(
+        writeSetupReadiness(userDataRoot, "lando", steps, {
+          running: true,
+          socketPath,
+          pid: 1234,
+          runtimeVersion: "5.0.0",
+        }),
+      );
+
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps));
+
+      const persisted = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8"));
+      expect(persisted.runtimeService.socketPath).toBe(socketPath);
     });
   });
 

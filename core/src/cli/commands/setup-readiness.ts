@@ -53,7 +53,7 @@ export const writeSetupReadiness = (
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     if (userDataRoot === undefined) return;
-    const existing = yield* readSetupReadiness(userDataRoot);
+    const existing = yield* readSetupReadinessRaw(userDataRoot);
     const runtimeServiceBlock =
       runtimeService === undefined
         ? existing?.runtimeService === undefined
@@ -78,11 +78,18 @@ export const readSetupReadiness = (
   userDataRoot: string | undefined,
 ): Effect.Effect<SetupReadinessSummary | undefined, never> => {
   if (userDataRoot === undefined) return Effect.succeed(undefined);
+  return readSetupReadinessRaw(userDataRoot).pipe(
+    Effect.map((summary) => (summary === undefined ? undefined : redactSetupReadinessSummary(summary))),
+  );
+};
+
+const readSetupReadinessRaw = (
+  userDataRoot: string | undefined,
+): Effect.Effect<SetupReadinessSummary | undefined, never> => {
+  if (userDataRoot === undefined) return Effect.succeed(undefined);
   return Effect.tryPromise({
     try: async () =>
-      redactSetupReadinessSummary(
-        JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
-      ),
+      JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
     catch: () => undefined,
   }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 };
