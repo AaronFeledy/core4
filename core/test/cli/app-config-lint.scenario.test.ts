@@ -16,6 +16,12 @@ interface RunResult {
   readonly stderr: string;
 }
 
+const parseEnvelopeResult = <A>(stdout: string): A => {
+  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+  expect(envelope.ok).toBe(true);
+  return envelope.result as A;
+};
+
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-config-lint-")));
   try {
@@ -105,7 +111,7 @@ describe("lando app:config:lint (source dispatch)", () => {
       await writeFile(join(dir, ".lando.yml"), "name: json-app\nrecipe: lamp\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       expect(result.exitCode).toBe(0);
-      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       expect(parsed.valid).toBe(true);
       expect(parsed.app).toBe("json-app");
       expect(parsed.violations).toHaveLength(0);
@@ -125,8 +131,8 @@ describe("lando app:config:lint (source dispatch)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: bad-app\nbogusKey: nope\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).not.toBe(0);
-      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       expect(parsed.valid).toBe(false);
       const violation = parsed.violations.find((entry) => entry.path.includes("bogusKey"));
       expect(violation).toBeDefined();
@@ -139,8 +145,8 @@ describe("lando app:config:lint (source dispatch)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: bad-app\nprofiles: [dev]\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).not.toBe(0);
-      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       const violation = parsed.violations.find((entry) => entry.path === "profiles");
       expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
       expect(violation?.suggestedFix).toContain("includes:");
@@ -151,8 +157,8 @@ describe("lando app:config:lint (source dispatch)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "template: definitely-missing\nname: bad-app\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).not.toBe(0);
-      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       const violation = parsed.violations[0];
       expect(violation?.path).toBe("");
       expect(violation?.line).toBe(1);

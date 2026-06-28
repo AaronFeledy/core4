@@ -18,6 +18,12 @@ interface RunResult {
   readonly stderr: string;
 }
 
+const parseEnvelopeResult = <A>(stdout: string): A => {
+  const envelope = JSON.parse(stdout) as { readonly ok?: boolean; readonly result?: unknown };
+  expect(envelope.ok).toBe(true);
+  return envelope.result as A;
+};
+
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-includes-verify-cli-")));
   try {
@@ -184,7 +190,7 @@ describe("lando app:includes:verify (source dispatch)", () => {
       await writeFile(join(dir, ".lando.yml"), "name: demo\nrecipe: lamp\n");
       const result = await runCli(["app:includes:verify", "--format=json"], dir);
       expect(result.exitCode).toBe(0);
-      const parsed = JSON.parse(result.stdout) as IncludeVerifyReport;
+      const parsed = parseEnvelopeResult<IncludeVerifyReport>(result.stdout);
       expect(parsed.ok).toBe(true);
       expect(parsed.entries).toEqual([]);
       expect(parsed.mismatches).toEqual([]);
