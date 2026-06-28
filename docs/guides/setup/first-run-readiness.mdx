@@ -30,4 +30,17 @@ tags: [beta, docs, setup, readiness]
       <Variable name="executables" value="podman, gvproxy, conmon, crun/runc, netavark, aardvark-dns" display="Runtime binaries and helpers are installed with executable bits on POSIX hosts" />
     </Step>
   </Scenario>
+
+  <Scenario id="managed-runtime-service-readiness" render={false} reason="Runtime-service status, self-heal, poweroff teardown, uninstall teardown, and doctor readiness context are covered by US-365 focused provider/core tests without launching a host runtime">
+    <Step name="status-and-self-heal">
+      <Variable name="statusProbe" value="runtime-service" display="Doctor reports the managed runtime-service check from a real socket/PID probe instead of a hardcoded running state" />
+      <Variable name="selfHeal" value="ensureRuntime" display="The next runtime-needing command reruns ensureRuntime after a stopped or killed service and relaunches the private socket" />
+      <Variable name="readiness" value="setup/readiness.json runtimeService" display="Setup records running state, socket path, PID, and runtime version for doctor to show as last-recorded readiness context" />
+    </Step>
+    <Step name="teardown">
+      <Variable name="poweroff" value="apps:poweroff" display="Poweroff stops the managed runtime service after app shutdown while preserving keep-global and keep-scratch app filtering" />
+      <Variable name="uninstall" value="runtime-service" display="Uninstall plans and executes runtime-service teardown before removing the private runtime directory under keep-data and purge modes" />
+      <Variable name="orphans" value="manual remediation" display="Doctor surfaces orphaned runtime-service PIDs with manual remediation instead of promising an unsupported doctor --fix path" />
+    </Step>
+  </Scenario>
 </Guide>

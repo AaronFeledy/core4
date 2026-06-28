@@ -281,8 +281,8 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
       continue;
     }
     try {
-      if (step.id === "runtime-service" && options.userDataRoot !== undefined) {
-        await teardownRuntimeService(options.userDataRoot);
+      if (step.id === "runtime-service") {
+        await teardownRuntimeService(userDataRoot);
       }
       await remove(step.target);
       executed.push({ ...step, outcome: "completed" });

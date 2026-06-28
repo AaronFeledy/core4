@@ -371,8 +371,7 @@ const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution =>
   kind: "manual",
   description: `Found orphaned runtime-service process(es) ${orphanPids.join(
     ",",
-  )} not owned by Lando. Run \`lando doctor --fix\` to reap them, or terminate them manually before retrying.`,
-  command: "lando doctor --fix",
+  )} not owned by Lando. Terminate them manually before retrying.`,
 });
 
 const buildRuntimeServiceDoctorCheck = (

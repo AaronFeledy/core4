@@ -13,6 +13,7 @@ import type { PodmanServiceRunner, PodmanServiceSpec } from "./podman-service-ru
 export interface RuntimeServiceStatus {
   readonly running: boolean;
   readonly socketReachable: boolean;
+  readonly socketPath?: string;
   readonly pid?: number;
   readonly ownedServiceProcess: boolean;
   readonly orphanPids?: ReadonlyArray<number>;
@@ -82,6 +83,7 @@ export const probeRuntimeServiceStatus = (deps: RuntimeStatusDeps): Effect.Effec
     return {
       running: reachable,
       socketReachable: reachable,
+      socketPath: deps.spec.socketPath,
       ownedServiceProcess,
       ...(pid === undefined ? {} : { pid }),
       ...(orphanPids.length === 0 ? {} : { orphanPids }),

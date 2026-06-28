@@ -129,7 +129,8 @@ describe("meta:doctor runtime-service check", () => {
     expect(check.context.orphanPids).toContain("9999");
     expect(check.solutions[0]?.kind).toBe("manual");
     expect(check.solutions[0]?.description).toContain("9999");
-    expect(check.solutions[0]?.description).toContain("lando doctor --fix");
+    expect(check.solutions[0]?.description).toContain("Terminate them manually");
+    expect(check.solutions[0]?.command).toBeUndefined();
   });
 
   test("surfaces readiness runtimeService as last-recorded context", async () => {

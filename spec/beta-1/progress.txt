@@ -745,3 +745,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - Readiness `runtimeService.socketPath` is already redacted on read by `readSetupReadiness` (`redactSetupReadinessSummary`); do NOT redact it again in the doctor check or you double-mask (`[redacted]]`). The doctor renderer only prints `context` lines for checks named `setup-readiness` or `runtime-service`, so any new context-bearing check must be added to that branch.
   - `PodmanServiceSpec.args` does NOT include the podman binary (the command is the separate `spec.command` field); a launch-args assertion must compare against args starting at `--root`, not a `<bin>/podman`-prefixed array.
 ---
+
+## 2026-06-28 04:26 CDT - US-365 Review
+- Reviewed the runtime-service story commit and fixed confirmed blockers: setup now persists runtime-service readiness state after provider setup, doctor no longer advertises an unsupported orphan-PID `--fix` path, default-root uninstall tears down the managed runtime service before removing its runtime directory, and the required first-run readiness guide now carries US-365 lifecycle coverage.
+- Review notes (deferred/rejected): live provider/container runtime checks were not run on the host per loop safety rules; guide drift skipped locally because the gate requires CI PR environment variables.
+- Verification: typecheck passed; lint passed; focused spot checks passed for setup, doctor runtime-service, uninstall, provider runtime status, and the first-run readiness guide; guide lint and guide coverage passed.
+---

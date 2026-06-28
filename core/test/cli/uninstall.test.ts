@@ -236,6 +236,43 @@ describe("meta:uninstall", () => {
     }
   });
 
+  test("runtime-service teardown uses the resolved default data root", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+    try {
+      process.env.LANDO_USER_DATA_ROOT = userDataRoot;
+      process.env.LANDO_USER_CACHE_ROOT = userCacheRoot;
+      const runtimeDir = join(userDataRoot, "runtime");
+      const teardownRoots: string[] = [];
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          execPath: join(root, "lando"),
+          exists: (path: string) => path === runtimeDir,
+          teardownRuntimeService: async (rootPath: string) => {
+            teardownRoots.push(rootPath);
+            return { terminated: true, pid: 1234 };
+          },
+          remove: async () => {},
+        }),
+      );
+
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(teardownRoots).toEqual([userDataRoot]);
+    } finally {
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+      else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("runtime-service is idempotent when runtime dir is absent", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {

@@ -445,6 +445,66 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("records runtime-service state in setup readiness after provider setup", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-runtime-service-"));
+    try {
+      const socketPath = join(userDataRoot, "runtime", "run", "podman.sock");
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+        getRuntimeServiceStatus: Effect.succeed({
+          running: true,
+          socketReachable: true,
+          socketPath,
+          pid: 2468,
+          ownedServiceProcess: true,
+        }),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly runtimeService?: {
+          readonly running: boolean;
+          readonly socketPath: string;
+          readonly pid?: number;
+          readonly runtimeVersion?: string;
+        };
+      };
+
+      expect(readiness.runtimeService).toEqual({
+        running: true,
+        socketPath,
+        pid: 2468,
+        runtimeVersion: "0.0.0-test",
+      });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("records unavailable evidence when host integration services are absent", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-unavailable-"));
     try {
