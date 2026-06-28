@@ -1,3 +1,7 @@
+import { Schema } from "effect";
+
+import { StreamFrame } from "@lando/sdk/schema";
+
 export type DoctorNdjsonStatus = "pass" | "warn" | "fail";
 
 export interface DoctorNdjsonCheck {
@@ -5,9 +9,17 @@ export interface DoctorNdjsonCheck {
 }
 
 export interface DoctorNdjsonRenderOptions<Check extends DoctorNdjsonCheck> {
+  readonly command?: string;
   readonly checks: ReadonlyArray<Check>;
   readonly now?: Date | undefined;
   readonly checkEventPayload: (check: Check) => Record<string, unknown>;
+}
+
+export interface DoctorNdjsonSummary {
+  readonly timestamp: string;
+  readonly checks: number;
+  readonly failed: number;
+  readonly warned: number;
 }
 
 export const orderKnownKeys = <Value>(
@@ -25,15 +37,23 @@ export const orderKnownKeys = <Value>(
 };
 
 export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
+  command = "meta:doctor",
   checks,
   now,
   checkEventPayload,
 }: DoctorNdjsonRenderOptions<Check>): string => {
   const timestamp = (now ?? new Date()).toISOString();
   const lines: string[] = [];
-  lines.push(JSON.stringify({ _tag: "doctor.start", timestamp }));
   for (const check of checks) {
-    lines.push(JSON.stringify(checkEventPayload(check)));
+    lines.push(
+      JSON.stringify(
+        Schema.encodeSync(StreamFrame)({
+          _tag: "event",
+          event: "doctor.check",
+          payload: checkEventPayload(check),
+        }),
+      ),
+    );
   }
   let failed = 0;
   let warned = 0;
@@ -41,14 +61,27 @@ export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
     if (check.status === "fail") failed += 1;
     else if (check.status === "warn") warned += 1;
   }
+  const summary: DoctorNdjsonSummary = {
+    timestamp,
+    checks: checks.length,
+    failed,
+    warned,
+  };
+  const envelope = {
+    apiVersion: "v4",
+    command,
+    ok: true,
+    result: summary,
+    warnings: [],
+    deprecations: [],
+  };
   lines.push(
-    JSON.stringify({
-      _tag: "doctor.complete",
-      timestamp,
-      checks: checks.length,
-      failed,
-      warned,
-    }),
+    JSON.stringify(
+      Schema.encodeSync(StreamFrame)({
+        _tag: "result",
+        envelope,
+      } as never),
+    ),
   );
   return `${lines.join("\n")}\n`;
 };

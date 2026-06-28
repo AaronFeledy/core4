@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Layer } from "effect";
+import { type Context, DateTime, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -12,6 +12,7 @@ import {
   type DeprecationSurfaceKind,
   type GlobalConfig,
   ProviderId,
+  StreamFrame,
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
 
@@ -27,6 +28,23 @@ import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
+
+const decodeFrames = (ndjson: string) =>
+  ndjson
+    .trimEnd()
+    .split("\n")
+    .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+
+const eventPayloads = (ndjson: string): ReadonlyArray<Record<string, unknown>> =>
+  decodeFrames(ndjson).flatMap((frame) =>
+    frame._tag === "event" ? [frame.payload as Record<string, unknown>] : [],
+  );
+
+const resultEnvelope = (ndjson: string) => {
+  const frame = decodeFrames(ndjson).at(-1);
+  if (frame?._tag !== "result") throw new Error("expected terminal result frame");
+  return frame.envelope;
+};
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -138,13 +156,8 @@ describe("meta:doctor combined report", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
-    const lines = ndjson
-      .trimEnd()
-      .split("\n")
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
-
-    expect(lines[0]).toEqual({ _tag: "doctor.start", timestamp: "1970-01-01T00:00:00.000Z" });
-    expect(lines.slice(1, -1).map((line) => line.name)).toEqual([
+    const checks = eventPayloads(ndjson);
+    expect(checks.map((line) => line.name)).toEqual([
       "selected-provider",
       "proxy",
       "certs",
@@ -154,24 +167,34 @@ describe("meta:doctor combined report", () => {
       "host-proxy",
       "global-app",
     ]);
-    expect(lines.at(-1)).toEqual({
-      _tag: "doctor.complete",
-      timestamp: "1970-01-01T00:00:00.000Z",
-      checks: 8,
-      failed: 0,
-      warned: 7,
+    expect(resultEnvelope(ndjson)).toMatchObject({
+      command: "meta:doctor",
+      ok: true,
+      result: {
+        timestamp: "1970-01-01T00:00:00.000Z",
+        checks: 8,
+        failed: 0,
+        warned: 7,
+      },
     });
   });
 
   test("meta:doctor render path honors json renderer mode for the combined report", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    const rendered = metaDoctorSpec.render?.(report, { rendererMode: "json" });
+    const rendered = metaDoctorSpec.render?.(report, undefined, {
+      mode: "json",
+      format: "ndjson",
+      columns: undefined,
+      isTTY: false,
+    });
 
-    expect(rendered).toStartWith('{"_tag":"doctor.start"');
+    expect(rendered).toStartWith('{"_tag":"event"');
+    expect(rendered).toContain('"event":"doctor.check"');
     expect(rendered).toContain('"name":"selected-provider"');
     expect(rendered).toContain('"name":"host-proxy"');
     expect(rendered).toContain('"name":"global-app"');
+    expect(rendered).toContain('"result":{"timestamp"');
     expect(rendered).toContain('"checks":8');
   });
 
@@ -194,12 +217,8 @@ describe("meta:doctor combined report", () => {
       expect(text).toContain("app-config-lint: fail");
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
-      const lines = ndjson
-        .trimEnd()
-        .split("\n")
-        .map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(lines.slice(1, -1).map((line) => line.name)).toContain("app-config-lint");
-      expect(lines.at(-1)).toMatchObject({ checks: 9, failed: 1 });
+      expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-config-lint");
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -300,11 +319,7 @@ describe("meta:doctor combined report", () => {
       expect(yaml).toContain("id: LANDO_LEGACY");
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
-      const lines = ndjson
-        .trimEnd()
-        .split("\n")
-        .map((line) => JSON.parse(line) as Record<string, unknown>);
-      const deprecations = lines.slice(1, -1).find((line) => line.name === "deprecations");
+      const deprecations = eventPayloads(ndjson).find((line) => line.name === "deprecations");
       expect(deprecations).toMatchObject({
         _tag: "doctor.check",
         name: "deprecations",
@@ -320,7 +335,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(lines.at(-1)).toMatchObject({ checks: 9 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 9 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }

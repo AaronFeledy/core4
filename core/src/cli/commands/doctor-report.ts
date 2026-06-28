@@ -286,8 +286,11 @@ const renderAppConfigSection = (result: ConfigLintResult): string => {
   return lines.join("\n");
 };
 
+const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
+  JSON.stringify({ _tag: "event", event: "doctor.check", payload });
+
 const appConfigCheckLine = (result: ConfigLintResult): string =>
-  JSON.stringify({
+  doctorCheckFrameLine({
     _tag: "doctor.check",
     name: "app-config-lint",
     status: result.valid ? "pass" : "fail",
@@ -301,7 +304,7 @@ const appConfigCheckLine = (result: ConfigLintResult): string =>
   });
 
 const deprecationsCheckLine = (result: DoctorDeprecationReport): string =>
-  JSON.stringify({
+  doctorCheckFrameLine({
     _tag: "doctor.check",
     name: "deprecations",
     status: "pass",
@@ -315,7 +318,10 @@ export interface DoctorReportNdjsonOptions {
 }
 
 const checkLinesFromNdjson = (ndjson: string): ReadonlyArray<string> =>
-  ndjson.trimEnd().split("\n").slice(1, -1);
+  ndjson
+    .trimEnd()
+    .split("\n")
+    .filter((line) => (JSON.parse(line) as { readonly _tag?: unknown })._tag === "event");
 
 export const renderDoctorReportAsNdjson = (
   report: DoctorReport,
@@ -323,7 +329,7 @@ export const renderDoctorReportAsNdjson = (
 ): string => {
   const timestamp = (options.now ?? new Date()).toISOString();
   const now = new Date(timestamp);
-  const lines: string[] = [JSON.stringify({ _tag: "doctor.start", timestamp })];
+  const lines: string[] = [];
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
@@ -336,11 +342,20 @@ export const renderDoctorReportAsNdjson = (
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   lines.push(
     JSON.stringify({
-      _tag: "doctor.complete",
-      timestamp,
-      checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
-      failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
-      warned: checks.filter((check) => check.status === "warn").length,
+      _tag: "result",
+      envelope: {
+        apiVersion: "v4",
+        command: "meta:doctor",
+        ok: true,
+        result: {
+          timestamp,
+          checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
+          failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
+          warned: checks.filter((check) => check.status === "warn").length,
+        },
+        warnings: [],
+        deprecations: [],
+      },
     }),
   );
   return `${lines.join("\n")}\n`;

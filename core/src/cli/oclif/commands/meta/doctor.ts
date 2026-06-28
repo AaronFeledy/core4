@@ -7,6 +7,7 @@ import {
   doctorReport,
   renderDoctorReport,
   renderDoctorReportAsJson,
+  renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../../commands/doctor-report.ts";
 import type { DoctorOptions } from "../../../commands/doctor.ts";
@@ -47,6 +48,7 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
   const options = inputDoctorOptions(input);
   const format = ctx?.format ?? options.format;
   if (format === "json") return renderDoctorReportAsJson(report);
+  if (format === "ndjson") return renderDoctorReportAsNdjson(report);
   if (format === "yaml") return renderDoctorReportAsYaml(report);
   return renderDoctorReport(report, ctx);
 };
