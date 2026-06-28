@@ -328,11 +328,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
                 ...(socketPath === undefined ? {} : { socketPath }),
                 ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
+                readinessCheck: ensureOnce,
                 ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
               });
               runtimeVersion = result.podmanVersion;
               bundleVersion = result.runtimeBundleVersion;
-              yield* ensureOnce;
             }),
           getStatus: Effect.succeed({ running: true, message: "ready" }),
           getVersions: Effect.sync(() => ({
