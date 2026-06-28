@@ -1,9 +1,10 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Duration, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { runProbe } from "@lando/sdk/probe";
 import type { HostPlatform } from "@lando/sdk/schema";
 
 import type { PodmanApiClient } from "./capabilities.ts";
@@ -114,6 +115,43 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
     yield* writePidFile(deps.pidPath, pid);
   });
 
+const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
+  runProbe(
+    {
+      id: "provider-lando-runtime-ready",
+      policy: { maxAttempts: 10, delay: Duration.millis(100), timeout: Duration.seconds(5) },
+    },
+    deps.podmanApi.info,
+  ).pipe(
+    Effect.flatMap((result) =>
+      result.outcome === "green"
+        ? Effect.void
+        : Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "setup",
+              message: "The Lando runtime service did not become reachable after launch.",
+              remediation:
+                "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
+              details: { attempts: result.attempts },
+              cause: result.lastError,
+            }),
+          ),
+    ),
+    Effect.mapError((cause) =>
+      cause instanceof ProviderUnavailableError
+        ? cause
+        : new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "setup",
+            message: "Failed to probe the Lando runtime service after launch.",
+            remediation:
+              "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
+            cause,
+          }),
+    ),
+  );
+
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const reachable = yield* Effect.either(deps.podmanApi.info);
@@ -121,6 +159,7 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
 
     yield* reapStaleRuntime(deps);
     yield* launchRuntime(deps);
+    yield* verifyRuntimeReachable(deps);
   });
 
 export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {

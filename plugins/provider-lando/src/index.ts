@@ -189,14 +189,18 @@ export interface ProviderLayerOptions {
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
-  const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
+  const externalSocketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
+  const managedSocketPath = options.providerSocketPath;
+  const socketPath = externalSocketPath ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
-  const ensureSocketPath = options.providerSocketPath ?? socketPath;
+  const ensureSocketPath = socketPath;
   const podmanBin = runtimeBinDir === undefined ? "podman" : `${runtimeBinDir}/podman`;
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
+  const skipSetupSocketProbe =
+    externalSocketPath === undefined && managedSocketPath !== undefined && options.podmanApi === undefined;
   let runtimeVersion: string | undefined;
   let bundleVersion: string | undefined;
   const platform = options.platform ?? currentHostPlatform();
@@ -225,10 +229,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ...(sha256 === undefined ? {} : { sha256 }),
           artifactDownload: options.artifactDownload ?? missingArtifactDownload,
         });
+  const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
   const capabilities =
-    podmanApi === undefined
-      ? Effect.succeed(mvpProviderCapabilities(platform))
-      : introspectProviderCapabilities(podmanApi, platform);
+    shouldProbeCapabilities && podmanApi !== undefined
+      ? introspectProviderCapabilities(podmanApi, platform)
+      : Effect.succeed(mvpProviderCapabilities(platform));
 
   const resolvePlan = (target: AppSelector): Effect.Effect<AppPlan | undefined, never> => {
     if (target.plan !== undefined) return Effect.succeed(target.plan);
@@ -314,6 +319,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 ...(stateDir === undefined ? {} : { stateDir }),
                 ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
                 ...(socketPath === undefined ? {} : { socketPath }),
+                ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
                 ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
               });
               runtimeVersion = result.podmanVersion;
@@ -347,6 +353,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             Effect.gen(function* () {
               const plan = yield* resolvePlan(target);
               if (plan === undefined) return;
+              yield* ensureOnce;
               yield* bringDown(plan, {
                 ...(podmanApi === undefined ? {} : { podmanApi }),
                 volumes: destroyOptions.volumes,
@@ -388,12 +395,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           logs: (target, logOptions) =>
             Stream.unwrap(
               resolvePlan(target).pipe(
-                Effect.map((plan) =>
+                Effect.flatMap((plan) =>
                   plan === undefined
-                    ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                    : logs(plan, target, logOptions, {
-                        ...(podmanApi === undefined ? {} : { podmanApi }),
-                      }),
+                    ? Effect.succeed(Stream.fail(makeNoPlanError(target.app, "logs")))
+                    : ensureOnce.pipe(
+                        Effect.as(
+                          logs(plan, target, logOptions, {
+                            ...(podmanApi === undefined ? {} : { podmanApi }),
+                          }),
+                        ),
+                      ),
                 ),
               ),
             ),
@@ -401,20 +412,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             Effect.gen(function* () {
               const plan = yield* resolvePlan(target);
               if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
+              yield* ensureOnce;
               return yield* inspect(plan, target, {
                 ...(podmanApi === undefined ? {} : { podmanApi }),
               });
             }),
           list: (filter) =>
-            Effect.forEach(Array.from(plans.values()), (plan) =>
-              Effect.forEach(Object.values(plan.services), (service) =>
-                inspect(
-                  plan,
-                  { app: plan.id, service: service.name },
-                  { ...(podmanApi === undefined ? {} : { podmanApi }) },
+            ensureOnce.pipe(
+              Effect.zipRight(
+                Effect.forEach(Array.from(plans.values()), (plan) =>
+                  Effect.forEach(Object.values(plan.services), (service) =>
+                    inspect(
+                      plan,
+                      { app: plan.id, service: service.name },
+                      { ...(podmanApi === undefined ? {} : { podmanApi }) },
+                    ),
+                  ),
                 ),
               ),
-            ).pipe(
               Effect.map((snapshots) => snapshots.flat()),
               Effect.map((snapshots) =>
                 filter.app === undefined

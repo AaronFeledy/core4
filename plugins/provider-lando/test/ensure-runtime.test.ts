@@ -24,6 +24,13 @@ const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()
 
 type Call = ["launch", string] | ["isAlive", number] | ["terminate", number];
 
+const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
+  info: Effect.gen(function* () {
+    if (calls.some((call) => call[0] === "launch")) return {};
+    return yield* Effect.fail(unavailable());
+  }),
+});
+
 const serviceRunner = (calls: Call[], alive: boolean): PodmanServiceRunner => ({
   launch: (spec) =>
     Effect.sync(() => {
@@ -136,7 +143,7 @@ describe("ensureRuntime", () => {
       await Effect.runPromise(
         ensureRuntime({
           platform: "linux",
-          podmanApi: unreachableApi(),
+          podmanApi: apiReachableAfterLaunch(calls),
           serviceRunner: serviceRunner(calls, true),
           ...p,
         }),
@@ -160,7 +167,7 @@ describe("ensureRuntime", () => {
       await Effect.runPromise(
         ensureRuntime({
           platform: "linux",
-          podmanApi: unreachableApi(),
+          podmanApi: apiReachableAfterLaunch(calls),
           serviceRunner: serviceRunner(calls, true),
           ...p,
         }),
@@ -188,7 +195,7 @@ describe("ensureRuntime", () => {
       await Effect.runPromise(
         ensureRuntime({
           platform: "linux",
-          podmanApi: unreachableApi(),
+          podmanApi: apiReachableAfterLaunch(calls),
           serviceRunner: serviceRunner(calls, false),
           ...p,
         }),
@@ -265,6 +272,35 @@ describe("ensureRuntime", () => {
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(RuntimeLaunchError);
           expect(failure.value).not.toBeInstanceOf(RootlessPrerequisiteError);
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("launch success still fails if the socket never becomes reachable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: unreachableApi(),
+          serviceRunner: serviceRunner(calls, false),
+          ...p,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure.value.message).toContain("did not become reachable");
         }
       }
     } finally {

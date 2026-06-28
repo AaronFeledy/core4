@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect, Stream } from "effect";
@@ -95,7 +95,7 @@ const makeFakePodmanApi = (events: string[], infoSuccessesBeforeEnsureFailure = 
     info: Effect.gen(function* () {
       infoCalls += 1;
       events.push("api.info");
-      if (infoCalls <= infoSuccessesBeforeEnsureFailure) {
+      if (infoCalls <= infoSuccessesBeforeEnsureFailure || events.includes("service.launch")) {
         return { version: { Version: "5.2.0" } };
       }
       return yield* Effect.fail(
@@ -245,6 +245,46 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     );
 
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
-    expect(events.indexOf("service.launch")).toBeGreaterThan(events.lastIndexOf("api.info") - 1);
+    const launchIndex = events.indexOf("service.launch");
+    expect(
+      events.slice(0, launchIndex).filter((event) => event === "api.info").length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(events.at(launchIndex + 1)).toBe("api.info");
+  });
+
+  test("providerSocketPath alone constructs the runtime API client and triggers ensureRuntime", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const events: string[] = [];
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          podmanService: makeFakeServiceRunner(events),
+          runtimeBinDir: join(tempDir, "bin"),
+          runtimeStorageDir: join(tempDir, "storage"),
+          runtimeRunDir: join(tempDir, "run"),
+          runtimeConfigDir: join(tempDir, "config"),
+          providerSocketPath: join(tempDir, "run", "podman.sock"),
+          providerPidPath: join(tempDir, "run", "podman.pid"),
+          rootlessProbes: {
+            probe: () => ({
+              subidConfigured: true,
+              hasUidmapTools: true,
+              cgroupsV2Delegated: true,
+              hasXdgRuntimeDir: true,
+            }),
+          },
+        }),
+      );
+
+      await Effect.runPromiseExit(
+        provider.exec({ app: appId, service: serviceName }, { command: ["echo", "hi"] }),
+      );
+
+      expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
+      expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

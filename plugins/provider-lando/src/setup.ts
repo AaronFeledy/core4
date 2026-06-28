@@ -110,6 +110,7 @@ export interface SetupOptions {
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
   readonly socketPath?: string;
+  readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
@@ -557,14 +558,16 @@ export const setupProviderLando = (
       const api =
         options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
-      const info = yield* withStep(
-        options.eventService,
-        socketStep,
-        counter,
-        api === undefined
-          ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
-          : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
-      );
+      const info = options.skipSocketProbe
+        ? undefined
+        : yield* withStep(
+            options.eventService,
+            socketStep,
+            counter,
+            api === undefined
+              ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
+              : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
+          );
 
       const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
       const statePath =
