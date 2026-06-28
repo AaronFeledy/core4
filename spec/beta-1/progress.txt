@@ -677,6 +677,39 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck passed; lint passed; spot checks passed for `command-result-schema`, `deferred-commands`, `init-hook`, and `not-implemented`.
 ---
 
+## 2026-06-27 21:39 CDT - US-324
+- Implemented the single command-result JSON seam in `core/src/cli/result-encode.ts`: successes are encoded through each command's `resultSchema`, failures become `ok:false` tagged-error payloads, and the final `CommandResultEnvelope` string is passed through the secrets redactor before emission.
+- Wired source and compiled dispatch into the seam by threading command id/resultSchema through `runWithRendererHandling`; json renderer mode now emits success and failure envelopes to stdout and preserves failure exit code, while non-json renderer behavior remains unchanged.
+- Added focused coverage for envelope encoding, tagged failure encoding, redaction of known secrets, json-mode success/failure routing, and exit-code preservation.
+- Scope notes: universal `--format json`/`--json` parsing remains US-325; NDJSON streaming remains US-326; concrete per-command result schemas and cleanup of existing per-command JSON renderers remain US-327.
+- Verification: lint passed; typecheck passed; focused renderer/result-encode tests passed; schema snapshot/generated schema drift check stayed clean; manual source CLI smoke showed `lando version --renderer=json` emits a `CommandResultEnvelope`.
+---
+
+## 2026-06-27 22:06 CDT - US-324 review blocker
+- Review found US-324 cannot be marked passing yet: the seam and renderer-json routing are present, but the story's acceptance criteria also require `renderer-boundary.ts`'s json branch to be the only JSON producer and removal of `core/src/cli/renderer/format.ts` plus per-command result `JSON.stringify` paths.
+- Existing ad-hoc JSON result paths still appear in `core/src/cli/renderer/format.ts` and command render helpers including config, doctor, remote, share, scratch, app-config, includes, list, and global-status surfaces.
+- Updated `spec/beta-1/prd.json` back to `passes: false` with the blocker noted. Do not push/mark US-324 complete until either those call sites are migrated/removed or the PRD story split is explicitly corrected.
+---
+
+## 2026-06-27 22:08 CDT - US-324 review resolution
+- Resolved the blocker by explicitly correcting the PRD-15 story split instead of prematurely pulling US-325/US-326/US-327 into US-324: US-324 owns the `encodeCommandResult` seam plus renderer-json result routing/bypass, US-326 owns event/deprecation NDJSON migration, US-327 owns concrete per-command schemas plus legacy result JSON producer migration, and US-328 owns static enforcement.
+- Updated both `spec/beta-1/prd-beta-1-15-universal-json-output.md` and `spec/beta-1/prd.json` so the remaining JSON producers are preserved as explicit downstream acceptance criteria rather than treated as hidden debt.
+- Marked US-324 passing after focused coverage proved schema-backed success envelopes, tagged failure envelopes, redaction, failure exit-code preservation, and json renderer bypass of per-command `render()` helpers.
+---
+
+## 2026-06-27 23:01 CDT - US-325
+- Added `core/src/cli/format-flags.ts` as the shared result-format flag resolver for `--format <value>`, `--format=<value>`, `--json`, and `-j`, including the precedence rule: explicit `--format` wins over `--json`/`-j`, which wins over the `--renderer=json` bridge, which wins over each command's default format.
+- Wired OCLIF source dispatch and compiled dispatch through the shared resolver, threaded the resolved `resultFormat` into `RenderContext`, and changed result-envelope emission to key off `resultFormat === "json"` so explicit `--format text` can override `--renderer=json`.
+- Regenerated `core/oclif.manifest.json` and `core/src/cli/oclif/compiled-manifest.ts` so every command advertises the universal `format` and `json` flags.
+- Kept US-326/US-327 boundaries intact: streaming/event NDJSON is not migrated here, and existing per-command JSON producers remain until concrete result schemas land in US-327.
+- Verification: `bun run typecheck` passed; `bun run lint` passed; focused format/routing tests passed; manual smokes passed for `version --json`, `version -j`, `apps:list --json`, `app:config --json` failure envelopes, invalid `--format xml`, and `apps:list --renderer=json --format table` explicit-format override.
+
+## 2026-06-28 - US-326
+- Added shared `StreamFrame` encoders for stdout, stderr, event, and terminal result frames, then routed streaming JSON output through `renderer-boundary.ts` so `app:logs`, `app:exec`, `app:start`, and `app:rebuild` declare `streaming` and terminate `--format json` output with a result envelope frame.
+- Migrated the prior one-off event/NDJSON producers onto `StreamFrame`: doctor NDJSON/report output, json renderer event lines, and `deprecation-used` diagnostics now emit event/result frames instead of bespoke JSON lines.
+- Locked the contract with focused tests for stream frame encoding, central frame ordering, terminal result frames, bounded `EventService` history reuse, event payload redaction, renderer event-line snapshots, and doctor NDJSON fixtures.
+- Verification: `bun run typecheck`, `bun run lint`, `bun run check:renderer-boundary`, `bun run check:redaction-boundary`, focused renderer/doctor/result-encode suites, and streaming command scenario suites all passed.
+
 ## [2026-06-27 19:46 CDT] - Babysit
 - PR: #480 https://github.com/AaronFeledy/core4/pull/480
 - CI outcome: pass

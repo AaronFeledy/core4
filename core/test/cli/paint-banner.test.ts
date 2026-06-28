@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { PaintBannerEvent } from "@lando/sdk/events";
+import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/oclif/pre-renderer.ts";
@@ -189,9 +190,11 @@ describe("Renderer Layer hand-off for paint.banner", () => {
     const line = renderJsonLine(event as never);
     expect(line).not.toBeNull();
     if (line === null) throw new Error("expected JSON line");
-    const parsed = JSON.parse(line) as { _tag: string; banner: string };
-    expect(parsed._tag).toBe("paint.banner");
-    expect(parsed.banner).toBe(banner);
+    const parsed = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+    expect(parsed._tag).toBe("event");
+    if (parsed._tag !== "event") throw new Error("expected event frame");
+    expect(parsed.event).toBe("paint.banner");
+    expect((parsed.payload as { readonly banner?: string }).banner).toBe(banner);
   });
 
   test("plain Layer consumes paint.banner without re-emitting on stdout", async () => {
@@ -237,9 +240,11 @@ describe("Renderer Layer hand-off for paint.banner", () => {
     expect(lines.length).toBe(1);
     const firstLine = lines[0];
     if (firstLine === undefined) throw new Error("expected NDJSON line");
-    const parsed = JSON.parse(firstLine) as { _tag: string; banner: string };
-    expect(parsed._tag).toBe("paint.banner");
-    expect(parsed.banner).toBe(banner);
+    const parsed = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(firstLine));
+    expect(parsed._tag).toBe("event");
+    if (parsed._tag !== "event") throw new Error("expected event frame");
+    expect(parsed.event).toBe("paint.banner");
+    expect((parsed.payload as { readonly banner?: string }).banner).toBe(banner);
   });
 
   test("plain Layer hand-off is one-shot: publishing twice still writes nothing to stdout", async () => {

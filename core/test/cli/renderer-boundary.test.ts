@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
-import type { DeprecationNotice } from "@lando/sdk/schema";
+import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import {
@@ -49,6 +49,7 @@ describe("runWithRendererHandling", () => {
     note: "Prefer the new surface when convenient.",
   };
   const timestamp = DateTime.unsafeMake("2026-06-12T12:00:00.000Z");
+  const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
   test("writes render(value) to stdout on success", async () => {
     const io = createBufferedRendererIO();
@@ -129,6 +130,63 @@ describe("runWithRendererHandling", () => {
       },
     );
     expect(io.stdout()).toBe("[tooling:composer:appserver] installing\n");
+  });
+
+  test("json streaming emits chunks, bounded events, and a terminal result frame in order", async () => {
+    const io = createBufferedRendererIO();
+    const secret = "stream-secret-value";
+    process.env.LANDO_SECRET_STREAM_FRAME_TEST = secret;
+    try {
+      await runWithRendererHandling(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish({
+            _tag: "task.detail",
+            taskId: "app:logs:web",
+            stream: "stdout",
+            line: `token=${secret}`,
+            timestamp: "2026-06-04T00:00:00.000Z",
+          });
+          return { message: `done ${secret}` };
+        }),
+        {
+          runtime: Layer.empty,
+          rendererMode: "json",
+          resultFormat: "json",
+          io,
+          command: "app:logs",
+          resultSchema: Schema.Struct({ message: Schema.String }),
+          streaming: StreamFrame,
+          streamFrames: () => [
+            { _tag: "stdout", service: "web", chunk: `stdout ${secret}\n` },
+            { _tag: "stderr", service: "web", chunk: `stderr ${secret}\n` },
+          ],
+          render: () => "should not render",
+          formatError: () => "should not happen",
+        },
+      );
+    } finally {
+      process.env.LANDO_SECRET_STREAM_FRAME_TEST = undefined;
+    }
+
+    expect(io.stderr()).toBe("");
+    expect(io.stdout()).not.toContain(secret);
+    const frames = io.stdoutLines().map(decodeFrame);
+    expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "event", "result"]);
+    expect(frames[0]).toEqual({ _tag: "stdout", service: "web", chunk: "stdout [redacted]\n" });
+    expect(frames[1]).toEqual({ _tag: "stderr", service: "web", chunk: "stderr [redacted]\n" });
+    const event = frames[2];
+    if (event?._tag !== "event") throw new Error("expected event frame");
+    expect(event.event).toBe("task.detail");
+    expect(JSON.stringify(event.payload)).toContain("[redacted]");
+    const result = frames[3];
+    if (result?._tag !== "result") throw new Error("expected result frame");
+    expect(result.envelope).toMatchObject({
+      apiVersion: "v4",
+      command: "app:logs",
+      ok: true,
+      result: { message: "done [redacted]" },
+    });
   });
 
   test("writes formatError to stderr and sets exitCode=1 on typed failure", async () => {
@@ -249,10 +307,14 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    const event = JSON.parse(io.stderrLines()[0] ?? "{}");
-    expect(event._tag).toBe("deprecation-used");
-    expect(event.use.id).toBe("app:old");
-    expect(event.use.count).toBeUndefined();
+    const event = decodeFrame(io.stderrLines()[0] ?? "{}");
+    expect(event._tag).toBe("event");
+    if (event._tag !== "event") throw new Error("expected event frame");
+    expect(event.event).toBe("deprecation-used");
+    expect(
+      (event.payload as { readonly use?: { readonly id?: string; readonly count?: number } }).use?.id,
+    ).toBe("app:old");
+    expect((event.payload as { readonly use?: { readonly count?: number } }).use?.count).toBeUndefined();
   });
 });
 

@@ -115,7 +115,9 @@ const main = async (): Promise<void> => {
 
   for (const command of rootPlugin.commands) {
     const { load: _load, ...cached } = command;
-    const flags = await cacheLoadedFlags((await command.load()).flags);
+    const loaded = await command.load();
+    const baseFlags = (loaded as { readonly baseFlags?: Interfaces.FlagInput }).baseFlags;
+    const flags = await cacheLoadedFlags({ ...(baseFlags ?? {}), ...(loaded.flags ?? {}) });
     commands[command.id] = {
       ...cached,
       flags,

@@ -83,32 +83,22 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
     expect(stderr).toContain(`cacheDir: ${cacheDir}`);
   }, 30_000);
 
-  test("JSON renderer emits one NDJSON object on stderr with machine-readable code and remediation", async () => {
+  test("JSON renderer emits one command-result envelope with machine-readable code and remediation", async () => {
     const result = await runCommand(
       [process.execPath, sourceCliPath, "meta:plugin:login", "--renderer=json"],
       isolationEnv(),
     );
     expect(result.exitCode).not.toBe(0);
-    const stderr = stripAnsi(result.stderr);
-    const lines = stderr.split("\n").filter((line) => line.startsWith("{"));
-    expect(lines.length).toBeGreaterThanOrEqual(1);
-    const candidate = lines.find((line) => {
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        return parsed._tag === "message.error";
-      } catch {
-        return false;
-      }
-    });
-    expect(candidate, `expected one NDJSON message.error line in stderr; got:\n${stderr}`).toBeDefined();
-    if (candidate === undefined) throw new Error("expected NDJSON message.error line");
-    const parsed = JSON.parse(candidate) as Record<string, unknown>;
-    expect(parsed.code).toBe("NotImplementedError");
-    expect(parsed.commandId).toBe("meta:plugin:login");
-    expect(typeof parsed.remediation).toBe("string");
-    expect((parsed.remediation as string).length).toBeGreaterThan(0);
-    expect(parsed.logsDir).toBe(`${cacheDir}/logs`);
-    expect(parsed.cacheDir).toBe(cacheDir);
+    const parsed = JSON.parse(stripAnsi(result.stdout)) as {
+      readonly command?: string;
+      readonly ok?: boolean;
+      readonly error?: { readonly _tag?: string; readonly remediation?: string };
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.command).toBe("meta:plugin:login");
+    expect(parsed.error?._tag).toBe("NotImplementedError");
+    expect(typeof parsed.error?.remediation).toBe("string");
+    expect((parsed.error?.remediation ?? "").length).toBeGreaterThan(0);
   }, 30_000);
 
   test("LandofileNotFoundError on app:start surfaces commandId + cache pointers + remediation hint", async () => {
@@ -166,30 +156,20 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       expect(stderr).toContain(`logsDir: ${cacheDir}/logs`);
     }, 60_000);
 
-    test("compiled JSON renderer emits NDJSON message.error on stderr", async () => {
+    test("compiled JSON renderer emits a command-result envelope", async () => {
       const result = await runCommand(
         [compiledBinaryPath, "meta:plugin:login", "--renderer=json"],
         isolationEnv(),
       );
       expect(result.exitCode).not.toBe(0);
-      const stderr = stripAnsi(result.stderr);
-      const candidate = stderr
-        .split("\n")
-        .filter((line) => line.startsWith("{"))
-        .find((line) => {
-          try {
-            const parsed = JSON.parse(line) as Record<string, unknown>;
-            return parsed._tag === "message.error";
-          } catch {
-            return false;
-          }
-        });
-      expect(candidate).toBeDefined();
-      if (candidate === undefined) throw new Error("expected NDJSON message.error line");
-      const parsed = JSON.parse(candidate) as Record<string, unknown>;
-      expect(parsed.code).toBe("NotImplementedError");
-      expect(parsed.commandId).toBe("meta:plugin:login");
-      expect(parsed.logsDir).toBe(`${cacheDir}/logs`);
+      const parsed = JSON.parse(stripAnsi(result.stdout)) as {
+        readonly command?: string;
+        readonly ok?: boolean;
+        readonly error?: { readonly _tag?: string };
+      };
+      expect(parsed.ok).toBe(false);
+      expect(parsed.command).toBe("meta:plugin:login");
+      expect(parsed.error?._tag).toBe("NotImplementedError");
     }, 60_000);
   },
 );

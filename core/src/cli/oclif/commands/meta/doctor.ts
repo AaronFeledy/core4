@@ -46,10 +46,11 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
 
 const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: RenderContext): string => {
   const options = inputDoctorOptions(input);
-  if (options.format === "json") return renderDoctorReportAsJson(report);
-  if (options.format === "yaml") return renderDoctorReportAsYaml(report);
-  const rendererMode = (input as { readonly rendererMode?: unknown } | undefined)?.rendererMode;
-  return rendererMode === "json" ? renderDoctorReportAsNdjson(report) : renderDoctorReport(report, ctx);
+  const format = ctx?.format ?? options.format;
+  if (format === "json") return renderDoctorReportAsJson(report);
+  if (format === "ndjson") return renderDoctorReportAsNdjson(report);
+  if (format === "yaml") return renderDoctorReportAsYaml(report);
+  return renderDoctorReport(report, ctx);
 };
 
 const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {

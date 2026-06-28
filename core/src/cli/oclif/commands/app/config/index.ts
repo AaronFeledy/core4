@@ -16,7 +16,8 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   topLevelAlias: false,
   bootstrap: "app",
   run: () => appConfig(),
-  render: (result) => renderAppConfigResult(result as AppConfigResult),
+  render: (result, _input, ctx) =>
+    renderAppConfigResult(result as AppConfigResult, ctx?.format === "json" ? "json" : "table"),
 };
 
 export default class AppConfigCommand extends LandoCommandBase {
@@ -33,11 +34,6 @@ export default class AppConfigCommand extends LandoCommandBase {
   static override bootstrap = appConfigSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppConfigCommand)) as { readonly flags: { readonly format?: string } };
-    const format = parsed.flags.format === "json" ? "json" : "table";
-    await this.runEffect({
-      ...appConfigSpec,
-      render: (result) => renderAppConfigResult(result as AppConfigResult, format),
-    });
+    await this.runEffect(appConfigSpec);
   }
 }

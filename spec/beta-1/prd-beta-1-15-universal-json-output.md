@@ -58,7 +58,7 @@ Acceptance criteria:
 - `encodeCommandResult` (`core/src/cli/result-encode.ts`) encodes success via `Schema.encode(spec.resultSchema)` and failure via the §7.8 tagged-error schema with `ok: false`, wrapping both in `CommandResultEnvelope`.
 - The encoded string is passed through `RedactionService` (§3.7) before emission; a test asserts a known secret value never appears in the envelope.
 - The process exit code is preserved on failure (JSON output does not zero a non-zero exit).
-- `renderer-boundary.ts`'s `json` branch is the only JSON producer; `core/src/cli/renderer/format.ts`'s ad-hoc path and every per-command result `JSON.stringify` are removed.
+- `renderer-boundary.ts`'s `json` branch routes command-result JSON through `encodeCommandResult` and bypasses per-command `render()` helpers in json renderer mode; the physical migration of legacy per-command result `JSON.stringify` producers happens in US-327 as each command receives a faithful `resultSchema`, event/deprecation NDJSON migrates in US-326, and the static enforcement gate lands in US-328.
 - Tests pass; Typecheck passes; Lint passes.
 
 ### US-325: Universalize the `--format` flag plus the `--json` / `-j` shorthand across both dispatch paths
@@ -77,7 +77,7 @@ As an agent tailing logs or exec output, I receive typed frames terminated by a 
 Acceptance criteria:
 - `app:logs`, `app:exec`, and build-progress commands declare `streaming` and, under `--format json`, emit newline-delimited `StreamFrame`s terminated by a `result` frame carrying the envelope.
 - `event` frames reuse the §11.1 `EventService` bounded redacted history (no second event tap).
-- The prior one-off `doctor-ndjson` renderer and the deprecation-event JSON line are migrated onto `StreamFrame`.
+- The prior one-off `doctor-ndjson` renderer, `core/src/cli/renderer/format.ts`'s json event-line renderer, and the deprecation-event JSON line are migrated onto `StreamFrame`.
 - Tests assert frame ordering, the terminal `result` frame, and redaction of `event` payloads.
 - Tests pass; Typecheck passes; Lint passes.
 
@@ -86,6 +86,7 @@ As a user, every command's JSON shape is stable and documented.
 
 Acceptance criteria:
 - Every command module declares a `resultSchema` describing its result; the ~16 commands that previously hand-rolled JSON (`info`, `list`, `doctor`, `app-config*`, `scratch`, `meta/global-status`, `plugin-*`, `update`, `uninstall`, `setup-readiness`, `includes-*`) emit through the envelope with no behavior regression (locked by snapshot).
+- The legacy per-command result JSON producers are removed or migrated through `encodeCommandResult`, including the current `format === "json"` / `ctx?.mode === "json"` paths in `core/src/cli/commands/{app-config-lint,remote,config,share,app-includes-update,app-includes-verify,app-config,app-config-translate,list,scratch,meta/global-config,meta/global-status}.ts` and `renderDoctorReportAsJson` in `core/src/cli/commands/doctor-report.ts`.
 - Each command's per-id result shape is present in `sdk/test/fixtures/schema-snapshot.json`.
 - Tests pass; Typecheck passes; Lint passes.
 

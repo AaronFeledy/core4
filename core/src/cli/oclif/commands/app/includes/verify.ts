@@ -1,11 +1,7 @@
 import { Flags } from "@oclif/core";
 
 import type { IncludeVerifyReport } from "../../../../../landofile/includes.ts";
-import {
-  type AppIncludesVerifyFormat,
-  appIncludesVerify,
-  renderIncludesVerifyResult,
-} from "../../../../commands/app-includes-verify.ts";
+import { appIncludesVerify, renderIncludesVerifyResult } from "../../../../commands/app-includes-verify.ts";
 import { EmptyResultSchema, LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
 export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
@@ -15,10 +11,9 @@ export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
   namespace: "app",
   bootstrap: "minimal",
   run: () => appIncludesVerify(),
-  render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport),
+  render: (result, _input, ctx) =>
+    renderIncludesVerifyResult(result as IncludeVerifyReport, ctx?.format === "json" ? "json" : "text"),
 };
-
-const formatFromFlag = (value: unknown): AppIncludesVerifyFormat => (value === "json" ? "json" : "text");
 
 export default class AppIncludesVerifyCommand extends LandoCommandBase {
   static override description = appIncludesVerifySpec.summary;
@@ -33,13 +28,6 @@ export default class AppIncludesVerifyCommand extends LandoCommandBase {
   static override bootstrap = appIncludesVerifySpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppIncludesVerifyCommand)) as {
-      readonly flags: { readonly format?: string };
-    };
-    const format = formatFromFlag(parsed.flags.format);
-    await this.runEffect({
-      ...appIncludesVerifySpec,
-      render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, format),
-    });
+    await this.runEffect(appIncludesVerifySpec);
   }
 }

@@ -30,6 +30,13 @@ const runCli = async (args: ReadonlyArray<string>): Promise<RunResult> => {
   return { exitCode, stdout, stderr };
 };
 
+const parseErrorEnvelope = (
+  stdout: string,
+): { readonly command?: string; readonly error?: { readonly _tag?: string } } | undefined => {
+  if (stdout.trim().length === 0) return undefined;
+  return JSON.parse(stdout) as { readonly command?: string; readonly error?: { readonly _tag?: string } };
+};
+
 const nonMvpCommands = Object.keys(compiledCommands)
   .filter((id) => !isMvpCommandId(id))
   .sort((left, right) => left.localeCompare(right));
@@ -73,11 +80,13 @@ describe("non-MVP OCLIF commands", () => {
 
     for (const probe of probes) {
       const result = await runCli(probe.args);
+      const envelope = parseErrorEnvelope(result.stdout);
+      const output = `${result.stdout}\n${result.stderr}`;
 
       expect(result.exitCode, probe.commandId).not.toBe(0);
-      expect(result.stderr, probe.commandId).toContain("NotImplementedError");
-      expect(result.stderr, probe.commandId).toContain(`commandId: ${probe.commandId}`);
-      expect(result.stderr, probe.commandId).not.toContain("Nonexistent flag");
+      expect(envelope?.error?._tag ?? output, probe.commandId).toContain("NotImplementedError");
+      expect(envelope?.command ?? output, probe.commandId).toContain(probe.commandId);
+      expect(output, probe.commandId).not.toContain("Nonexistent flag");
     }
   }, 60_000);
 });

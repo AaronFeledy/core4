@@ -76,8 +76,39 @@ export const normalizeJsonEnvelope = (value: unknown): Record<string, unknown> =
   if (typeof value !== "object" || value === null) {
     return { __nonObject: String(value) };
   }
+  const record = value as Record<string, unknown>;
+  if (record._tag === "result" && typeof record.envelope === "object" && record.envelope !== null) {
+    return normalizeJsonEnvelope(record.envelope);
+  }
+  if (record.apiVersion === "v4") {
+    const normalized: Record<string, unknown> = {};
+    if (typeof record.command === "string") normalized.commandId = record.command;
+    if (record.ok === false && typeof record.error === "object" && record.error !== null) {
+      const error = record.error as Record<string, unknown>;
+      for (const [key, raw] of Object.entries(error)) {
+        if (key === "_tag") continue;
+        normalized[key] = typeof raw === "string" ? normalizeOutput(raw) : raw;
+      }
+      if (typeof error._tag === "string") normalized.code = error._tag;
+    } else if (Object.hasOwn(record, "result")) {
+      normalized.apiVersion = record.apiVersion;
+      normalized.command = record.command;
+      normalized.ok = record.ok;
+      normalized.result = record.result;
+    }
+    return normalized;
+  }
+  if (record._tag === "message.error") {
+    const normalized: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(record)) {
+      if (VOLATILE_JSON_KEYS.includes(key) || key === "_tag" || key === "body") continue;
+      normalized[key] = typeof raw === "string" ? normalizeOutput(raw) : raw;
+    }
+    if (typeof record.body === "string") normalized.message = normalizeOutput(record.body);
+    return normalized;
+  }
   const out: Record<string, unknown> = {};
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(record)) {
     if (VOLATILE_JSON_KEYS.includes(key)) continue;
     out[key] = typeof raw === "string" ? normalizeOutput(raw) : raw;
   }

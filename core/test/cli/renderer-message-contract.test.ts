@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
+import { StreamFrame } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
@@ -22,6 +23,13 @@ const firstLine = (lines: ReadonlyArray<string>): string => {
   const value = lines[0];
   if (value === undefined) throw new Error("expected at least one line");
   return value;
+};
+
+const decodeEventFrame = (line: string) => {
+  const frame = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+  expect(frame._tag).toBe("event");
+  if (frame._tag !== "event") throw new Error("expected event frame");
+  return frame;
 };
 
 describe("Renderer message contract: plain", () => {
@@ -93,39 +101,38 @@ describe("Renderer message contract: json (stderr NDJSON)", () => {
     const lines = io.stderrLines();
     expect(lines.length).toBe(1);
     const line = firstLine(lines);
-    expect(line.startsWith('{"_tag":"message.info"')).toBe(true);
-    const parsed = JSON.parse(line) as { _tag: string; body: string; timestamp: string };
-    expect(parsed._tag).toBe("message.info");
-    expect(parsed.body).toBe("fetched 3 plugins");
-    expect(typeof parsed.timestamp).toBe("string");
+    expect(line.startsWith('{"_tag":"event"')).toBe(true);
+    const frame = decodeEventFrame(line);
+    const payload = frame.payload as { _tag: string; body: string; timestamp: string };
+    expect(frame.event).toBe("message.info");
+    expect(payload._tag).toBe("message.info");
+    expect(payload.body).toBe("fetched 3 plugins");
+    expect(typeof payload.timestamp).toBe("string");
   });
 
   test("message.warn writes a message.warn NDJSON line", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeJsonRenderer(io).message.warn("deprecated key"));
-    const parsed = JSON.parse(firstLine(io.stderrLines())) as { _tag: string; body: string };
-    expect(parsed._tag).toBe("message.warn");
-    expect(parsed.body).toBe("deprecated key");
+    const frame = decodeEventFrame(firstLine(io.stderrLines()));
+    expect(frame.event).toBe("message.warn");
+    expect((frame.payload as { readonly body?: string }).body).toBe("deprecated key");
   });
 
   test("message.error with remediation preserves the remediation field", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeJsonRenderer(io).message.error("boom", "do x"));
-    const parsed = JSON.parse(firstLine(io.stderrLines())) as {
-      _tag: string;
-      body: string;
-      remediation: string;
-    };
-    expect(parsed._tag).toBe("message.error");
-    expect(parsed.body).toBe("boom");
-    expect(parsed.remediation).toBe("do x");
+    const frame = decodeEventFrame(firstLine(io.stderrLines()));
+    const payload = frame.payload as { readonly body?: string; readonly remediation?: string };
+    expect(frame.event).toBe("message.error");
+    expect(payload.body).toBe("boom");
+    expect(payload.remediation).toBe("do x");
   });
 
   test("message.error without remediation omits the field", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(makeJsonRenderer(io).message.error("boom"));
-    const parsed = JSON.parse(firstLine(io.stderrLines())) as { remediation?: string };
-    expect(Object.hasOwn(parsed, "remediation")).toBe(false);
+    const frame = decodeEventFrame(firstLine(io.stderrLines()));
+    expect(Object.hasOwn(frame.payload as object, "remediation")).toBe(false);
   });
 });
 
