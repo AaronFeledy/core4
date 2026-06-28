@@ -367,7 +367,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
           Effect.tapError((cause) => recordFailure("provider", cause)),
         );
-        runtimeServiceReadiness = (yield* runtimeServiceReadinessFor(provider)) ?? null;
+        runtimeServiceReadiness = yield* runtimeServiceReadinessFor(provider);
         yield* recordReadiness({
           id: "provider",
           status: "satisfied",

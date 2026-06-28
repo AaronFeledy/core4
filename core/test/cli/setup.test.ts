@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -500,6 +500,70 @@ describe("meta:setup command", () => {
         pid: 2468,
         runtimeVersion: "0.0.0-test",
       });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves runtime-service readiness when provider status is unavailable after setup", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-runtime-service-preserve-"));
+    try {
+      const readinessPath = setupReadinessPath(userDataRoot);
+      const runtimeService = {
+        running: true,
+        socketPath: join(userDataRoot, "runtime", "run", "podman.sock"),
+        pid: 2468,
+        runtimeVersion: "0.0.0-test",
+      };
+      await mkdir(dirname(readinessPath), { recursive: true });
+      await writeFile(
+        readinessPath,
+        `${JSON.stringify(
+          {
+            status: "ready",
+            providerId: "lando",
+            updatedAt: new Date(0).toISOString(),
+            steps: [],
+            runtimeService,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const readiness = JSON.parse(await readFile(readinessPath, "utf-8")) as {
+        readonly runtimeService?: typeof runtimeService;
+      };
+
+      expect(readiness.runtimeService).toEqual(runtimeService);
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }
