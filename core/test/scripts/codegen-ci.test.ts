@@ -341,7 +341,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
       expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
-      expect(workflow).toContain("US-189");
+      expect(workflow).toContain("follow-up portability effort");
       expect(workflow).toContain("- name: Unit test layer (linux-x64 full static scope)");
       expect(workflow).not.toContain(
         "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
