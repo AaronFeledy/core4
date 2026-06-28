@@ -8,14 +8,14 @@ import { type Context, Effect, Layer } from "effect";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import type { RuntimeServiceStatus } from "@lando/provider-lando";
-import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { type DoctorCheck, doctor, renderDoctorResult } from "../../src/cli/commands/doctor.ts";
 import { type SetupReadinessStep, writeSetupReadiness } from "../../src/cli/commands/setup-readiness.ts";
 
 interface RuntimeServiceTestProvider extends RuntimeProviderShape {
-  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatus>;
+  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatus, unknown>;
 }
 
 const steps = [
@@ -109,6 +109,23 @@ describe("meta:doctor runtime-service check", () => {
     expect(check.context.ownedServiceProcess).toBe("false");
   });
 
+  test("falls back to getStatus when getRuntimeServiceStatus fails", async () => {
+    const provider: RuntimeServiceTestProvider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getStatus: Effect.succeed({ running: true, message: "provider running" }),
+      getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
+    };
+
+    const check = await runtimeServiceCheck(provider);
+
+    expect(check.status).toBe("pass");
+    expect(check.runtime.running).toBe(true);
+    expect(check.context.runtimeRunning).toBe("true");
+    expect(check.context.socketReachable).toBe("true");
+    expect(check.context.ownedServiceProcess).toBe("false");
+  });
+
   test("warns with remediation on orphan pid", async () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
@@ -154,7 +171,7 @@ describe("meta:doctor runtime-service check", () => {
         }),
       };
 
-      const check = await runtimeServiceCheck(provider, { userDataRoot: dataRoot });
+      const check = await runtimeServiceCheck(provider, { userDataRoot: AbsolutePath.make(dataRoot) });
 
       expect(check.context.lastRecordedRunning).toBe("true");
       expect(check.context.lastRecordedSocketPath).toBe("/home/u/.local/share/lando/runtime/run/podman.sock");
@@ -187,7 +204,7 @@ describe("meta:doctor runtime-service check", () => {
       };
 
       const result = await Effect.runPromise(
-        doctor().pipe(Effect.provide(buildLayers(provider, { userDataRoot: dataRoot }))),
+        doctor().pipe(Effect.provide(buildLayers(provider, { userDataRoot: AbsolutePath.make(dataRoot) }))),
       );
       const check = result.checks.find((candidate) => candidate.name === "runtime-service");
       const text = renderDoctorResult(result);

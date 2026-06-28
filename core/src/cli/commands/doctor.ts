@@ -350,21 +350,27 @@ interface RuntimeServiceStatusShape {
 }
 
 interface RuntimeServiceCapableProvider {
-  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusShape>;
+  readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusShape, unknown>;
 }
 
-const runtimeServiceStatusFor = (provider: {
-  readonly getStatus: Effect.Effect<{ readonly running: boolean }, ProviderError>;
-}): Effect.Effect<RuntimeServiceStatusShape, ProviderError> => {
+const runtimeServiceStatusFromProviderStatus = (status: {
+  readonly running: boolean;
+}): RuntimeServiceStatusShape => ({
+  running: status.running,
+  socketReachable: status.running,
+  ownedServiceProcess: false,
+});
+
+const runtimeServiceStatusFor = (
+  provider: {
+    readonly getStatus: Effect.Effect<{ readonly running: boolean }, ProviderError>;
+  },
+  status: { readonly running: boolean },
+): Effect.Effect<RuntimeServiceStatusShape> => {
   const candidate = (provider as RuntimeServiceCapableProvider).getRuntimeServiceStatus;
-  if (candidate !== undefined) return candidate;
-  return provider.getStatus.pipe(
-    Effect.map((status) => ({
-      running: status.running,
-      socketReachable: status.running,
-      ownedServiceProcess: false,
-    })),
-  );
+  const fallback = Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
+  if (candidate !== undefined) return candidate.pipe(Effect.catchAll(() => fallback));
+  return fallback;
 };
 
 const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution => ({
@@ -540,7 +546,7 @@ export const doctor = (
     const runtimeServiceChecks: ReadonlyArray<DoctorCheck> =
       providerKindFor(provider.id) === "managed"
         ? yield* Effect.gen(function* () {
-            const runtimeServiceStatus = yield* runtimeServiceStatusFor(provider);
+            const runtimeServiceStatus = yield* runtimeServiceStatusFor(provider, status);
             return [
               buildRuntimeServiceDoctorCheck(
                 runtimeServiceStatus,
