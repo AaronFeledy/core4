@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -69,8 +71,21 @@ export const buildPodmanServiceArgs = (p: {
 export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
+  readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
 }
+
+const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
+  Effect.tryPromise({
+    try: async () => {
+      const raw = await readFile(`/proc/${pid}/cmdline`, "utf8");
+      return raw.split("\0").filter((part) => part.length > 0);
+    },
+    catch: () => [],
+  }).pipe(Effect.catchAll((argv) => Effect.succeed(argv)));
+
+const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
+  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
 
 export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
   launch: (spec) =>
@@ -99,6 +114,8 @@ export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
         return false;
       }
     }),
+  isServiceProcess: (pid, spec) =>
+    readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
   terminate: (pid) =>
     Effect.sync(() => {
       try {

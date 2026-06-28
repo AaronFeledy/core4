@@ -22,7 +22,11 @@ const unavailable = () =>
 const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}) });
 const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()) });
 
-type Call = ["launch", string] | ["isAlive", number] | ["terminate", number];
+type Call =
+  | ["launch", string]
+  | ["isAlive", number]
+  | ["isServiceProcess", number, string]
+  | ["terminate", number];
 
 const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
   info: Effect.gen(function* () {
@@ -31,7 +35,7 @@ const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
   }),
 });
 
-const serviceRunner = (calls: Call[], alive: boolean): PodmanServiceRunner => ({
+const serviceRunner = (calls: Call[], alive: boolean, serviceProcess = alive): PodmanServiceRunner => ({
   launch: (spec) =>
     Effect.sync(() => {
       calls.push(["launch", JSON.stringify(spec.args)]);
@@ -42,6 +46,11 @@ const serviceRunner = (calls: Call[], alive: boolean): PodmanServiceRunner => ({
       calls.push(["isAlive", pid]);
       return alive;
     }),
+  isServiceProcess: (pid, spec) =>
+    Effect.sync(() => {
+      calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
+      return serviceProcess;
+    }),
   terminate: (pid) =>
     Effect.sync(() => {
       calls.push(["terminate", pid]);
@@ -51,6 +60,7 @@ const serviceRunner = (calls: Call[], alive: boolean): PodmanServiceRunner => ({
 const failingLaunchRunner = (error: RuntimeLaunchError): PodmanServiceRunner => ({
   launch: () => Effect.fail(error),
   isAlive: () => Effect.succeed(false),
+  isServiceProcess: () => Effect.succeed(false),
   terminate: () => Effect.void,
 });
 
@@ -62,6 +72,10 @@ const throwingLaunchRunner = (): PodmanServiceRunner => ({
   isAlive: () =>
     Effect.sync(() => {
       throw new Error("host service isAlive must not be called");
+    }),
+  isServiceProcess: () =>
+    Effect.sync(() => {
+      throw new Error("host service isServiceProcess must not be called");
     }),
   terminate: () =>
     Effect.sync(() => {
@@ -175,6 +189,7 @@ describe("ensureRuntime", () => {
 
       expect(calls).toEqual([
         ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["terminate", 4321],
         ["launch", canonicalArgs(p)],
       ]);
@@ -203,6 +218,32 @@ describe("ensureRuntime", () => {
 
       expect(calls).toEqual([
         ["isAlive", 4321],
+        ["launch", canonicalArgs(p)],
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("live stale pid is not terminated when it no longer matches the runtime service", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: apiReachableAfterLaunch(calls),
+          serviceRunner: serviceRunner(calls, true, false),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
       ]);
     } finally {

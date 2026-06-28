@@ -85,7 +85,11 @@ const reapStaleRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void> =>
     const pid = yield* readStalePid(deps.pidPath);
     if (pid !== undefined) {
       const alive = yield* deps.serviceRunner.isAlive(pid);
-      if (alive) {
+      const serviceProcess = alive
+        ? yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
+            Effect.succeed(false)
+        : false;
+      if (serviceProcess) {
         yield* deps.serviceRunner.terminate(pid);
       }
     }
