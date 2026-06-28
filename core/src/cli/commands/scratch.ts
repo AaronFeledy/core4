@@ -76,12 +76,6 @@ const argsFromInput = (input: unknown): Record<string, unknown> => {
   return (input as { readonly args?: Record<string, unknown> }).args ?? {};
 };
 
-const rendererModeFromInput = (input: unknown): string | undefined => {
-  if (typeof input !== "object" || input === null) return undefined;
-  const rendererMode = (input as { readonly rendererMode?: unknown }).rendererMode;
-  return typeof rendererMode === "string" ? rendererMode : undefined;
-};
-
 const signalFromInput = (input: unknown): AbortSignal | undefined => {
   if (typeof input !== "object" || input === null) return undefined;
   const signal = (input as { readonly signal?: unknown }).signal;
@@ -140,7 +134,7 @@ export const scratchIdFromInput = (input: unknown): string => {
 
 export const scratchListFormatFromInput = (input: unknown): ScratchListFormat => {
   const flags = flagsFromInput(input);
-  if (flags.format === "json" || rendererModeFromInput(input) === "json") return "json";
+  if (flags.format === "json") return "json";
   return "table";
 };
 

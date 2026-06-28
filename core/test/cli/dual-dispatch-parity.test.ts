@@ -3,6 +3,7 @@ import {
   scratchListFormatFromInput,
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
+import type { ResultFormat } from "../../src/cli/format-flags.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
 import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
@@ -24,9 +25,22 @@ const compiledInput = (
   commandId: string,
   argv: ReadonlyArray<string>,
   rendererMode: "lando" | "json" = "lando",
-) => compiledCommandInputFromArgv(commandId, argv, { rendererMode });
+  resultFormat?: ResultFormat,
+) =>
+  compiledCommandInputFromArgv(commandId, argv, {
+    rendererMode,
+    ...(resultFormat === undefined ? {} : { resultFormat }),
+  });
 
 describe("dual-dispatch argv parser parity", () => {
+  test("compiled command inputs carry the resolved universal result format", () => {
+    expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "json"))).toBe("json");
+    expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "text"))).toBe("table");
+    expect(globalConfigFormatFromInput(compiledInput("meta:global:config", [], "lando", "json"))).toBe(
+      "json",
+    );
+  });
+
   test("apps:init uses the same parsed input shape as the OCLIF helper", () => {
     const input = compiledInput("apps:init", [
       "--name",
