@@ -709,3 +709,28 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Migrated the prior one-off event/NDJSON producers onto `StreamFrame`: doctor NDJSON/report output, json renderer event lines, and `deprecation-used` diagnostics now emit event/result frames instead of bespoke JSON lines.
 - Locked the contract with focused tests for stream frame encoding, central frame ordering, terminal result frames, bounded `EventService` history reuse, event payload redaction, renderer event-line snapshots, and doctor NDJSON fixtures.
 - Verification: `bun run typecheck`, `bun run lint`, `bun run check:renderer-boundary`, `bun run check:redaction-boundary`, focused renderer/doctor/result-encode suites, and streaming command scenario suites all passed.
+
+## [2026-06-27 19:46 CDT] - Babysit
+- PR: #480 https://github.com/AaronFeledy/core4/pull/480
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip rationale to PR body so guide-drift rerun passed)
+- Merge: merged (squash)
+---
+
+## 2026-06-27 - US-363 Runtime bundle extract & install
+- `lando setup` now unpacks the verified runtime bundle into a private bin directory. Added four §12.4 derived paths to the Lando paths primitive (`makeLandoPaths`) and the `LandoPaths`/`PathsService` contract: `runtimeBinDir` (`<userDataRoot>/runtime/bin`), `runtimeRunDir` (`<userDataRoot>/runtime/run`), `providerSocketPath` (`.../podman.sock`), `providerPidPath` (`.../podman.pid`).
+- New `provider-lando` extractor (`runtime-extract.ts`) installs a checksum-verified bundle: magic-byte format sniff (gzip → tar.gz, PK → zip), in-memory ustar+GNU-longname tar reader and a zip central-directory reader, executable bit on every extracted file (skipped on win32), rejection of path-traversal/absolute/symlink/hardlink entries with remediation, version-idempotent install via a `.runtime-installed-version` marker, and an atomic sibling-temp-dir + rename swap so a version change fully replaces the old tree.
+- Wired the extractor into the existing setup `bundle` step (runs after `verifyRuntimeBundle`, so a checksum mismatch writes nothing), gated entirely behind an optional `runtimeBinDir`. The installed bin dir is recorded in provider setup state, and the core provider registry derives `runtimeBinDir` from the paths primitive (no hand-spelled root joins).
+- Verification: typecheck, lint, and `check:paths-boundary` passed; spot checks passed for `paths`, `runtime-extract`, `setup.integration`, `runtime-bundle`, `check-paths-boundary`, and `paths-export`. Manual QA drove the real file:// download → SHA-verify → extract path end-to-end and confirmed `podman`/`gvproxy`/`conmon` landed in `runtimeBinDir` with exec bit `755`, marker written, and an idempotent re-run reporting no re-extract.
+- **Learnings for future iterations:**
+  - Adding behavior to `setupProviderLando` without breaking its exact-match tests: gate it behind a NEW OPTIONAL `SetupOptions` field and fold the work into an EXISTING `withStep` step. The state `toEqual` (4 keys), the step `children`/`completedIds` `toEqual` `["bundle","podman","socket","state"]`, and `treeComplete.succeeded === 4` are all order/count-sensitive — a new step or an unconditional state key breaks them. Spread the new state/result field only when both the bundle and the new option are present.
+  - `RuntimeBundle` carries `{version,bytes,sha256}` with bytes in memory and NO filename — detect archive format by magic bytes (`0x1f 0x8b` gzip, `0x50 0x4b` zip), never by extension.
+  - Atomic bin-tree swap must extract into a SIBLING temp dir (`${dir}.tmp-<pid>-<ts>`) under the same parent; `rename` across filesystems throws `EXDEV`. An idempotency marker file inside the bin dir keeps the version check out of `setup-state.json` and is observable in tests via an `extractImpl` spy whose call count stays flat on a same-version re-run.
+  - The two extraction precedents (`core/src/recipes/tarball-source.ts`, `plugins/file-sync-mutagen/src/download.ts`) do NOT reject symlink/hardlink tar entries — a multi-entry runtime extractor must add explicit typeflag `'2'`/`'1'`/`'k'`/`'h'` rejection on top of the `..`/absolute guards.
+  - New fields on `LandoPaths` are additive and safe: it is a type-only SDK interface (not in the §13.4 additive backward-compat gate, not JSON-schema-registered), and no test does a full-object `toEqual` on `makeLandoPaths()` output (only per-field and function-presence assertions).
+
+## 2026-06-27 20:58 CDT - US-363 Review
+- Reviewed the runtime bundle extraction story against the source PRD and fixed confirmed blockers: added the required first-run readiness guide for the PRD-owned setup surface, and added core setup coverage proving a provider-lando setup run with `runtimeBinDir` extracts the verified bundle and persists the bin path in setup state.
+- Review notes (deferred/rejected): doctor/provider consumption of persisted runtime state is deferred to US-364/US-365/US-366 because US-363 records the bin path and bundle version but does not own socket startup or doctor runtime status; user-visible "already satisfied" wording is deferred because functional no-reextract idempotency is already locked by the runtime-extract/setup tests; decompression size caps are a nonblocking supply-chain hardening follow-up because checksum-gated trusted bundle extraction is in scope here.
+- Verification: typecheck, lint, paths boundary, guide lint/coverage/public-transcript gates passed; guide-drift exited cleanly with no PR context; focused spot checks passed for core setup, provider-lando setup/runtime extraction, and the first-run readiness guide.
+---

@@ -45,6 +45,10 @@ export interface LandoPaths {
   readonly keysDir: string;
   readonly certsDir: string;
   readonly runtimeDir: string;
+  readonly runtimeBinDir: string;
+  readonly runtimeRunDir: string;
+  readonly providerSocketPath: string;
+  readonly providerPidPath: string;
   readonly globalAppRoot: string;
   readonly snapshotsDir: string;
   readonly appSnapshotsDir: (appId: string) => string;

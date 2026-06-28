@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, Effect, Layer } from "effect";
@@ -117,6 +118,35 @@ const runCommand = async (
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const tarOctal = (value: number, length: number): string =>
+  `${value.toString(8).padStart(length - 1, "0")}\0`;
+
+const buildRuntimeTarGz = (
+  entries: ReadonlyArray<{ readonly path: string; readonly bytes: Uint8Array }>,
+): Uint8Array => {
+  const chunks: Uint8Array[] = [];
+  for (const entry of entries) {
+    const header = new Uint8Array(512);
+    header.set(Buffer.from(entry.path, "latin1"), 0);
+    header.set(Buffer.from(tarOctal(0o644, 8), "ascii"), 100);
+    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 108);
+    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 116);
+    header.set(Buffer.from(tarOctal(entry.bytes.byteLength, 12), "ascii"), 124);
+    header.set(Buffer.from(tarOctal(0, 12), "ascii"), 136);
+    header.fill(0x20, 148, 156);
+    header[156] = "0".charCodeAt(0);
+    header.set(Buffer.from("ustar\0", "ascii"), 257);
+    header.set(Buffer.from("00", "ascii"), 263);
+    const checksum = header.reduce((sum, byte) => sum + byte, 0);
+    header.set(Buffer.from(tarOctal(checksum, 8), "ascii"), 148);
+    chunks.push(header, entry.bytes);
+    const padding = (512 - (entry.bytes.byteLength % 512)) % 512;
+    if (padding > 0) chunks.push(new Uint8Array(padding));
+  }
+  chunks.push(new Uint8Array(1024));
+  return gzipSync(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+};
 
 const stripAnsi = (value: string): string => {
   let output = "";
@@ -1539,6 +1569,56 @@ describe("meta:setup command", () => {
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("invokes provider-lando setup with runtime bundle extraction and persisted bin path", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-state-"));
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-runtime-"));
+    const runtimeBinDir = join(runtimeRoot, "runtime", "bin");
+    const encoder = new TextEncoder();
+    const bundleBytes = buildRuntimeTarGz([
+      { path: "podman", bytes: encoder.encode("podman") },
+      { path: "gvproxy", bytes: encoder.encode("gvproxy") },
+    ]);
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+        podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+        runtimeBundleDownloader: {
+          download: Effect.succeed({
+            version: "0.0.0-test",
+            bytes: bundleBytes,
+            sha256: sha256(bundleBytes),
+          }),
+        },
+        stateDir,
+        runtimeBinDir,
+      }),
+    );
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(Effect.provide(buildSetupLayers(registry))),
+      );
+
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
+      expect((await stat(join(runtimeBinDir, "podman"))).mode & 0o111).not.toBe(0);
+      expect((await stat(join(runtimeBinDir, "gvproxy"))).mode & 0o111).not.toBe(0);
+      expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
+        podmanVersion: "5.2.0",
+        runtimeBundleVersion: "0.0.0-test",
+        runtimeBundleSha256: sha256(bundleBytes),
+        runtimeBinDir,
+      });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(runtimeRoot, { recursive: true, force: true });
     }
   });
 

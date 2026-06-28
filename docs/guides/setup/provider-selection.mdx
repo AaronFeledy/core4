@@ -61,4 +61,24 @@ tags: [beta, docs, providers, setup, selection]
       />
     </Step>
   </Scenario>
+
+  <Scenario id="lando-managed-runtime-paths" render={false} reason="Runtime bundle extraction is exercised by provider-lando setup and runtime-extract tests; this guide keeps the user-visible provider-lando setup contract covered">
+    <Step name="managed-runtime-state">
+      <Variable
+        name="runtimeBinDir"
+        value="$LANDO_DATA_DIR/runtime/bin"
+        display="provider-lando installs verified runtime bundle binaries in Lando's private runtime bin directory"
+      />
+      <Variable
+        name="providerSocketPath"
+        value="$LANDO_DATA_DIR/runtime/run/podman.sock"
+        display="provider-lando resolves the managed Podman socket from Paths instead of a system Podman location"
+      />
+      <Variable
+        name="setupStatePath"
+        value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json"
+        display="Setup state records the installed runtime version and runtimeBinDir for doctor and later provider resolution"
+      />
+    </Step>
+  </Scenario>
 </Guide>

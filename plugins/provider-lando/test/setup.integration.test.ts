@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { Cause, Effect, Exit } from "effect";
 
 import {
@@ -578,4 +580,208 @@ describe("provider-lando setup", () => {
     },
     120_000,
   );
+});
+
+const octal = (value: number, length: number): string => `${value.toString(8).padStart(length - 1, "0")}\0`;
+
+interface TarEntrySpec {
+  readonly path: string;
+  readonly bytes?: Uint8Array;
+  readonly mode?: number;
+  readonly typeflag?: string;
+}
+
+const tarHeader = (entry: TarEntrySpec): Uint8Array => {
+  const bytes = entry.bytes ?? new Uint8Array();
+  const header = new Uint8Array(512);
+  header.set(Buffer.from(entry.path, "latin1"), 0);
+  header.set(Buffer.from(octal(entry.mode ?? 0o644, 8), "ascii"), 100);
+  header.set(Buffer.from(octal(0, 8), "ascii"), 108);
+  header.set(Buffer.from(octal(0, 8), "ascii"), 116);
+  header.set(Buffer.from(octal(bytes.byteLength, 12), "ascii"), 124);
+  header.set(Buffer.from(octal(0, 12), "ascii"), 136);
+  header.fill(0x20, 148, 156);
+  header[156] = (entry.typeflag ?? "0").charCodeAt(0);
+  header.set(Buffer.from("ustar\0", "ascii"), 257);
+  header.set(Buffer.from("00", "ascii"), 263);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  header.set(Buffer.from(octal(checksum, 8), "ascii"), 148);
+  return header;
+};
+
+const buildTarGz = (entries: ReadonlyArray<TarEntrySpec>): Uint8Array => {
+  const chunks: Uint8Array[] = [];
+  for (const entry of entries) {
+    const bytes = entry.bytes ?? new Uint8Array();
+    chunks.push(tarHeader(entry));
+    chunks.push(bytes);
+    const padding = (512 - (bytes.byteLength % 512)) % 512;
+    if (padding > 0) chunks.push(new Uint8Array(padding));
+  }
+  chunks.push(new Uint8Array(1024));
+  return gzipSync(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+};
+
+const downloaderFor = (archiveBytes: Uint8Array, version = "0.0.0-test") => ({
+  download: Effect.succeed({ version, bytes: archiveBytes, sha256: sha256(archiveBytes) }),
+});
+
+describe("provider-lando setup runtime bundle extraction", () => {
+  test("extracts the verified runtime bundle into runtimeBinDir with executable bits", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
+    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-bin-")), "runtime", "bin");
+    try {
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: new TextEncoder().encode("podman") },
+        { path: "gvproxy", bytes: new TextEncoder().encode("gvproxy") },
+      ]);
+
+      const result = await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes),
+          stateDir,
+          runtimeBinDir,
+          socketPath: "/tmp/lando-extract.sock",
+        }),
+      );
+
+      expect(result.runtimeBinDir).toBe(runtimeBinDir);
+      expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
+      expect(existsSync(join(runtimeBinDir, "gvproxy"))).toBe(true);
+      expect(statSync(join(runtimeBinDir, "podman")).mode & 0o111).not.toBe(0);
+
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.runtimeBinDir).toBe(runtimeBinDir);
+      expect(state.runtimeBundleVersion).toBe("0.0.0-test");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes nothing into runtimeBinDir when the bundle checksum does not match", async () => {
+    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-mismatch-")), "runtime", "bin");
+    try {
+      const archiveBytes = buildTarGz([{ path: "podman", bytes: new TextEncoder().encode("podman") }]);
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: {
+            download: Effect.succeed({ version: "0.0.0-test", bytes: archiveBytes, sha256: "deadbeef" }),
+          },
+          runtimeBinDir,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
+        }
+      }
+      expect(existsSync(join(runtimeBinDir, "podman"))).toBe(false);
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a runtime bundle entry that escapes runtimeBinDir with remediation", async () => {
+    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-traversal-")), "runtime", "bin");
+    try {
+      const archiveBytes = buildTarGz([{ path: "../escape", bytes: new TextEncoder().encode("evil") }]);
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes),
+          runtimeBinDir,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          expect((failure.value as ProviderUnavailableError).remediation).toBeDefined();
+        }
+      }
+      expect(existsSync(runtimeBinDir)).toBe(false);
+      expect(existsSync(join(runtimeBinDir, "..", "escape"))).toBe(false);
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("is version-idempotent and replaces the bin tree atomically on a version change", async () => {
+    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-idem-")), "runtime", "bin");
+    try {
+      const v1 = buildTarGz([{ path: "old-only", bytes: new TextEncoder().encode("old") }]);
+      const setupV1 = () =>
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: downloaderFor(v1, "1.0.0"),
+          runtimeBinDir,
+        });
+
+      await Effect.runPromise(setupV1());
+      const markerPath = join(runtimeBinDir, ".runtime-installed-version");
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("1.0.0");
+      const firstMtime = statSync(markerPath).mtimeMs;
+
+      await Effect.runPromise(setupV1());
+      expect(statSync(markerPath).mtimeMs).toBe(firstMtime);
+      expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(true);
+
+      const v2 = buildTarGz([{ path: "new-only", bytes: new TextEncoder().encode("new") }]);
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: downloaderFor(v2, "2.0.0"),
+          runtimeBinDir,
+        }),
+      );
+
+      expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
+      expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("2.0.0");
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not record runtimeBinDir in setup state when no bin dir is provided", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-extract-nobin-"));
+    try {
+      const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: downloaderFor(bundleBytes),
+          stateDir,
+          socketPath: "/tmp/lando-nobin.sock",
+        }),
+      );
+
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect("runtimeBinDir" in state).toBe(false);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });

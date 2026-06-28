@@ -1,0 +1,33 @@
+---
+id: first-run-readiness
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, setup, readiness]
+---
+
+<Guide>
+  <Scenario id="verified-runtime-bundle" render={false} reason="Runtime bundle download, checksum, extraction, and setup-state persistence are covered by provider-lando setup and runtime-extract tests without downloading host runtime artifacts">
+    <Step name="private-runtime-bin">
+      <Variable name="runtimeBinDir" value="<userDataRoot>/runtime/bin" display="The managed runtime bundle is extracted into Lando's private runtime bin directory" />
+      <Variable name="runtimeRunDir" value="<userDataRoot>/runtime/run" display="Runtime sockets and PID files live beside the private runtime state, not in system Podman or Docker locations" />
+      <Variable name="setupState" value="provider-lando/setup-state.json" display="Setup records the installed runtime bin directory and bundle version for later readiness checks" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="safe-extraction" render={false} reason="Archive safety is locked by runtime-extract tests for tar.gz, zip, traversal, absolute paths, link entries, and checksum mismatch no-write behavior">
+    <Step name="checksum-gated-extract">
+      <Variable name="checksum" value="verifyRuntimeBundle" display="Bundle bytes are SHA-256 verified before any extraction work starts" />
+      <Variable name="formats" value=".tar.gz and .zip" display="Linux/macOS gzip tarballs and Windows zip bundles use the same safe entry validation" />
+      <Variable name="unsafeEntries" value="path traversal, absolute paths, symlinks, hardlinks" display="Unsafe archive entries fail with remediation and leave runtimeBinDir untouched" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="idempotent-runtime-install" render={false} reason="Version idempotency and atomic replacement are covered by runtime-extract and provider-lando setup integration tests using temporary runtime roots">
+    <Step name="version-marker">
+      <Variable name="marker" value=".runtime-installed-version" display="A matching installed bundle version skips re-extraction on the next setup run" />
+      <Variable name="upgrade" value="temp dir + rename" display="A changed bundle version installs into a sibling temp directory before replacing the old bin tree" />
+      <Variable name="executables" value="podman, gvproxy, conmon, crun/runc, netavark, aardvark-dns" display="Runtime binaries and helpers are installed with executable bits on POSIX hosts" />
+    </Step>
+  </Scenario>
+</Guide>
