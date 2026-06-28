@@ -277,6 +277,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     runtimeDir: j(userDataRoot, "runtime"),
     runtimeBinDir: j(userDataRoot, "runtime", "bin"),
     runtimeRunDir: j(userDataRoot, "runtime", "run"),
+    runtimeStorageDir: j(userDataRoot, "runtime", "storage"),
+    runtimeConfigDir: j(userDataRoot, "runtime", "config"),
     providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: j(userDataRoot, "global"),

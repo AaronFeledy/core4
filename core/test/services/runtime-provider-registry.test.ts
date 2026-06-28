@@ -32,10 +32,14 @@ const dockerAppPlan: AppPlan = {
   provider: ProviderId.make("docker"),
 };
 
-const registryLayer = (defaultProviderId: "lando" | "docker" | "missing") => {
+const registryLayer = (
+  defaultProviderId: "lando" | "docker" | "missing",
+  options: { userDataRoot?: string } = {},
+) => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make(defaultProviderId),
     telemetry: { enabled: false },
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
   };
   const load = Effect.succeed(config);
   const configService: Context.Tag.Service<typeof ConfigService> = {
@@ -53,7 +57,8 @@ const registryLayer = (defaultProviderId: "lando" | "docker" | "missing") => {
 const runWithRegistry = <A, E>(
   defaultProviderId: "lando" | "docker" | "missing",
   effect: Effect.Effect<A, E, RuntimeProviderRegistry>,
-) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId))));
+  options: { userDataRoot?: string } = {},
+) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId, options))));
 
 describe("RuntimeProviderRegistryLive", () => {
   test("LANDO_PROVIDER overrides the configured default provider", async () => {
@@ -76,6 +81,17 @@ describe("RuntimeProviderRegistryLive", () => {
     const provider = await runWithRegistry(
       "lando",
       Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(appPlan)),
+    );
+
+    expect(provider.id).toBe("lando");
+    expect(provider.displayName).toBe("Lando Runtime Provider");
+  });
+
+  test("selects provider-lando when userDataRoot is configured (private runtime paths wired)", async () => {
+    const provider = await runWithRegistry(
+      "lando",
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(appPlan)),
+      { userDataRoot: "/tmp/lando-registry-user-data" },
     );
 
     expect(provider.id).toBe("lando");

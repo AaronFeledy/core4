@@ -429,6 +429,8 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.runtimeDir).toBe(join(data, "runtime"));
     expect(paths.runtimeBinDir).toBe(join(data, "runtime", "bin"));
     expect(paths.runtimeRunDir).toBe(join(data, "runtime", "run"));
+    expect(paths.runtimeStorageDir).toBe(join(data, "runtime", "storage"));
+    expect(paths.runtimeConfigDir).toBe(join(data, "runtime", "config"));
     expect(paths.providerSocketPath).toBe(join(data, "runtime", "run", "podman.sock"));
     expect(paths.providerPidPath).toBe(join(data, "runtime", "run", "podman.pid"));
     expect(paths.globalAppRoot).toBe(join(data, "global"));
@@ -492,6 +494,8 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.scratchDir).toBe("/iso/cache/scratch");
     expect(paths.runtimeBinDir).toBe("/iso/data/runtime/bin");
     expect(paths.runtimeRunDir).toBe("/iso/data/runtime/run");
+    expect(paths.runtimeStorageDir).toBe("/iso/data/runtime/storage");
+    expect(paths.runtimeConfigDir).toBe("/iso/data/runtime/config");
     expect(paths.providerSocketPath).toBe("/iso/data/runtime/run/podman.sock");
     expect(paths.providerPidPath).toBe("/iso/data/runtime/run/podman.pid");
     expect(paths.tunnelRunDir).toBe("/iso/data/run/tunnels");
@@ -519,6 +523,8 @@ describe("makeLandoPaths derived builders", () => {
     );
     expect(paths.runtimeBinDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\bin");
     expect(paths.runtimeRunDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\run");
+    expect(paths.runtimeStorageDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\storage");
+    expect(paths.runtimeConfigDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\config");
     expect(paths.providerSocketPath).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\run\\podman.sock",
     );

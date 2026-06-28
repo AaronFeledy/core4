@@ -110,7 +110,9 @@ export interface SetupOptions {
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
   readonly socketPath?: string;
+  readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
+  readonly readinessCheck?: Effect.Effect<void, ProviderUnavailableError>;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
@@ -402,13 +404,14 @@ const buildSetupSteps = (
   platform: HostPlatform,
   hasBundle: boolean,
   hasStateDir: boolean,
+  probesSocket: boolean,
 ): ReadonlyArray<SetupStep> => {
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
   steps.push({ taskId: "podman", label: "Detect Podman" });
   if (platform === "darwin" || platform === "win32")
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
-  steps.push({ taskId: "socket", label: "Probe Podman API" });
+  if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
 };
@@ -473,7 +476,8 @@ export const setupProviderLando = (
     const platform = options.platform ?? currentHostPlatform();
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
-    const steps = buildSetupSteps(platform, hasBundle, hasStateDir);
+    const probesSocket = options.skipSocketProbe !== true;
+    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket);
     const treeStart = performance.now();
 
     yield* publishEvent(
@@ -494,7 +498,7 @@ export const setupProviderLando = (
     const socketStep = steps.find((step) => step.taskId === "socket");
     const stateStep = steps.find((step) => step.taskId === "state");
 
-    if (podmanStep === undefined || socketStep === undefined) {
+    if (podmanStep === undefined || (probesSocket && socketStep === undefined)) {
       return yield* Effect.die("internal: missing required setup steps");
     }
 
@@ -557,16 +561,21 @@ export const setupProviderLando = (
       const api =
         options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
-      const info = yield* withStep(
-        options.eventService,
-        socketStep,
-        counter,
-        api === undefined
-          ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
-          : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
-      );
+      let info: unknown;
+      if (!options.skipSocketProbe && socketStep !== undefined) {
+        info = yield* withStep(
+          options.eventService,
+          socketStep,
+          counter,
+          api === undefined
+            ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
+            : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
+        );
+      }
 
       const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
+      const readinessCheck = options.readinessCheck ?? Effect.void;
+      yield* readinessCheck;
       const statePath =
         stateStep === undefined || options.stateDir === undefined
           ? undefined

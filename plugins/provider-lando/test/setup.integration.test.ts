@@ -396,6 +396,78 @@ describe("provider-lando setup", () => {
     }
   });
 
+  test("omits the socket task when managed setup skips the socket probe", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+
+    await Effect.runPromise(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 5.2.0"),
+        skipSocketProbe: true,
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    const treeStart = captured[0];
+    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["podman"]);
+
+    const startedIds = captured
+      .filter((event) => event._tag === "task.start")
+      .map((event) => event.taskId as string);
+    const completedIds = captured
+      .filter((event) => event._tag === "task.complete")
+      .map((event) => event.taskId as string);
+    expect(startedIds).toEqual(["podman"]);
+    expect(completedIds).toEqual(["podman"]);
+
+    const treeComplete = captured[captured.length - 1];
+    expect(treeComplete?.succeeded).toBe(1);
+    expect(treeComplete?.failed).toBe(0);
+  });
+
+  test("runs readiness before persisting setup state or reporting the setup tree ready", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-readiness-fail-"));
+    const readinessError = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "setup",
+      message: "Runtime did not become ready.",
+    });
+
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          stateDir,
+          readinessCheck: Effect.fail(readinessError),
+          eventService: {
+            publish: (event) =>
+              Effect.sync(() => {
+                captured.push(event);
+              }),
+          },
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(existsSync(providerStatePath(stateDir))).toBe(false);
+
+      const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
+      expect(treeComplete?.summary).toBe("Lando runtime setup failed");
+      expect(treeComplete?.failed).toBe(1);
+      expect(captured.some((event) => event.summary === "Lando runtime ready")).toBe(false);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("publishes task.fail and task.tree.complete when the Podman socket is unreachable", async () => {
     const previousSocket = process.env.LANDO_TEST_PODMAN_SOCKET;
     // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var

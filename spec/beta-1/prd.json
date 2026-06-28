@@ -2951,7 +2951,7 @@
         "Lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Reframed to a provider-owned `ensureRuntime` (not a setup-only launcher) so reboots/kills/crashes self-heal: setup is one-time but the socket is a process. `lando start`/exec/tooling trigger it lazily; setup calls it eagerly as a readiness step. Mirrors the spec ProxyService.setup -> GlobalAppService.ensureRunning precedent (\u00a710.8). Today setupProviderLando only probes `options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET` and fails with PodmanSocketUnreachableError; nothing launches the service. macOS/Windows reuse the US-200 machine."
     },
     {
