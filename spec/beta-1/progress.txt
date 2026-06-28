@@ -825,3 +825,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - `scripts/build-runtime-bundle.ts --local` only hashes already-staged bytes under `dist/cache/runtime-bundle/`; it has no producer, so any setup-driven CI job must stage `lando-runtime-<platform>.tar.gz` (upstream podman + rootless helpers per §17.3) inline before invoking `--local`.
   - `linuxProviderSetupSteps`/`podmanTeardownCommands` in the CI generator are shared with the guide-scenarios e2e job; add new provider-integration-only constants rather than editing the shared ones.
   - The cross-package live-socket helper belongs in `@lando/core/testing` (importable by core and every plugin test, including provider-podman transitively); its export surface has a frozen-list test but new exports are additive-safe.
+
+## 2026-06-28 10:20 CDT - US-367 Review
+- Reviewed the setup-driven provider CI story with the five-lane review-work pass and fixed the confirmed runbook blocker: local reproduction now stages the runtime bundle artifact before invoking `scripts/build-runtime-bundle.ts --local`, matching the generated CI job.
+- Review notes (deferred/rejected): guide-scenarios and nightly jobs still using manual `LANDO_TEST_PODMAN_SOCKET` are out of US-367 scope; stale live-test error wording mentioning `LANDO_TEST_PODMAN_SOCKET` is nonblocking because the skip gates now use `resolveLiveProviderSocket` and still accept the documented override.
+- Verification: typecheck, lint, codegen, runbook/workflow/live-socket spot checks passed; live provider/container runtime path was not run on the host per loop safety rules.
+---
