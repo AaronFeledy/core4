@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
@@ -23,6 +23,7 @@ import {
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime.ts";
+import { encodeCommandResult } from "./result-encode.ts";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -105,6 +106,8 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
 export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
   readonly rendererMode: RendererMode;
+  readonly command?: string;
+  readonly resultSchema?: Schema.Schema.AnyNoContext;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
@@ -114,6 +117,8 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
 }
+
+const EmptyCommandResultSchema = Schema.Struct({});
 
 export interface ResolveCliDeprecationWarningsOptions {
   readonly argv: ReadonlyArray<string>;
@@ -244,9 +249,39 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       : Layer.merge(options.runtime, rendererLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
+    const command = options.command ?? "cli:unknown";
+    const resultSchema = options.resultSchema ?? EmptyCommandResultSchema;
+    const jsonRedactor = Effect.gen(function* () {
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      if (redaction._tag === "Some")
+        return yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+      return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
+    });
+    const emitJsonResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor;
+        const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor });
+        yield* writeResultLine(line);
+      });
+    const setFailureExitCode = Effect.sync(() => {
+      (
+        options.setExitCode ??
+        ((code) => {
+          process.exitCode = code;
+        })
+      )(1);
+    });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
+        if (options.rendererMode === "json") {
+          yield* emitJsonResult({
+            _tag: "failure",
+            error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
+          });
+          yield* setFailureExitCode;
+          return;
+        }
         let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
         const redaction = yield* Effect.serviceOption(RedactionService);
         if (redaction._tag === "Some") {
@@ -254,14 +289,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           message = redactor.redactString(message);
         }
         yield* writeDiagnosticLine(message);
-        yield* Effect.sync(() => {
-          (
-            options.setExitCode ??
-            ((code) => {
-              process.exitCode = code;
-            })
-          )(1);
-        });
+        yield* setFailureExitCode;
       });
     const commandOutcome = yield* Effect.exit(
       Effect.gen(function* () {
@@ -281,6 +309,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       return;
     }
     if (commandOutcome.value._tag === "handled-failure") {
+      return;
+    }
+    if (options.rendererMode === "json") {
+      yield* emitJsonResult({ _tag: "success", value: commandOutcome.value.value });
       return;
     }
     const rendered = options.render?.(commandOutcome.value.value, renderContext);

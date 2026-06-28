@@ -321,6 +321,8 @@ export abstract class LandoCommandBase extends Command {
     await runWithRendererHandling(spec.run(input), {
       runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
       rendererMode,
+      command: spec.id,
+      resultSchema: spec.resultSchema,
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
       render: (value, ctx) => spec.render?.(value, input, ctx),

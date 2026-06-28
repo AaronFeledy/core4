@@ -146,7 +146,11 @@ import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
 import { renderUninstallResult, uninstall } from "./commands/uninstall.ts";
 import { update } from "./commands/update.ts";
 import { version as versionOperation } from "./commands/version.ts";
-import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
+import {
+  EmptyResultSchema,
+  type LandoCommandSpec,
+  notImplementedErrorForCommand,
+} from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
 import {
   remoteAddOptionsFromInput,
@@ -232,6 +236,9 @@ type OclifArgDefinition = Record<string, unknown>;
 
 const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
   (compiledCommands as Readonly<Record<string, CompiledCommand>>)[commandId];
+
+const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
+  (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;
 
 const flagDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifFlagDefinition>> =>
   (command as { flags?: Readonly<Record<string, OclifFlagDefinition>> }).flags ?? {};
@@ -484,6 +491,8 @@ const runCompiledCommand = <A, E, R, RE>(
   runWithRendererHandling(operation, {
     runtime,
     rendererMode: activeRendererMode,
+    command: activeCommandId,
+    resultSchema: landoSpecForId(activeCommandId)?.resultSchema ?? EmptyResultSchema,
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
