@@ -195,7 +195,11 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
           const stalePid = yield* readStalePid(deps.pidPath);
           if (stalePid !== undefined) {
             const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
-            if (staleAlive) {
+            const serviceProcess =
+              staleAlive &&
+              (yield* deps.serviceRunner.isServiceProcess?.(stalePid, buildPodmanServiceArgs(deps)) ??
+                Effect.succeed(false));
+            if (serviceProcess) {
               yield* deps.serviceRunner.terminate(stalePid);
             }
           }

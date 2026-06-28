@@ -232,7 +232,7 @@ describe("ensureRuntime", () => {
     }
   });
 
-  test("reachable socket with stale pid and no argv match relaunches after terminating recorded process", async () => {
+  test("reachable socket with live pid file but non-service process and no argv match does not terminate", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];
@@ -253,12 +253,12 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
         ["isAlive", 4321],
-        ["terminate", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
       ]);
-      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(calls.some((c) => c[0] === "terminate")).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
