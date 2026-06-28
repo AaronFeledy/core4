@@ -50,6 +50,8 @@ describe("compiled OCLIF manifest asset", () => {
     expect(Object.keys(manifestJson.commands["meta:update"]?.flags ?? {}).sort()).toEqual([
       "channel",
       "dry-run",
+      "format",
+      "json",
     ]);
     expect(manifestJson.commands["meta:update"]?.flags?.channel).not.toHaveProperty("default");
     expect(await readFile(compiledManifestPath, "utf8")).toBe(beforeCompiled);

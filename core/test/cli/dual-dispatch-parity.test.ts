@@ -140,7 +140,7 @@ describe("dual-dispatch argv parser parity", () => {
     );
     expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", ["--format", "json"]))).toBe("json");
     expect(
-      scratchListFormatFromInput(compiledInput("apps:scratch:info", ["scratch-demo-abc123"], "json")),
+      scratchListFormatFromInput(compiledInput("apps:scratch:info", ["scratch-demo-abc123"], "json", "json")),
     ).toBe("json");
     expect(
       keepVolumesFromInput(compiledInput("apps:scratch:destroy", ["scratch-demo-abc123", "--keep-volumes"])),
