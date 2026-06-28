@@ -97,7 +97,7 @@ Before publishing, CI runs dry-runs for every release package with the same `--t
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
-`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. The job provisions only the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
+`provider-integration-linux-x64` prepares the default Lando provider through `lando setup`, never a manually started `podman system service`. The job provisions only the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), stages a current-commit runtime bundle under `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the staged `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`. Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`; the integration and contract suites resolve that managed socket from Paths/setup state instead of an exported env var, and teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation locally:
 
@@ -114,6 +114,14 @@ tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
 rm -rf "$STAGE"
 
 MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
+cat > dist/cache/runtime-bundle/storage.conf <<EOF
+[storage]
+driver = "overlay"
+
+[storage.options.overlay]
+mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+EOF
+export CONTAINERS_STORAGE_CONF="$PWD/dist/cache/runtime-bundle/storage.conf"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 mkdir -p "$XDG_RUNTIME_DIR"
 LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=lando
