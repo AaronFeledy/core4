@@ -223,6 +223,7 @@ export interface ProviderLayerOptions {
   readonly socketPath?: string;
   readonly providerSocketPath?: string;
   readonly providerPidPath?: string;
+  readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
   readonly eventService?: BringUpOptions["eventService"];
@@ -241,7 +242,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const managedSocketPath = options.providerSocketPath;
   const socketPath = externalSocketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET ?? managedSocketPath;
   const podmanApi =
-    options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
+    options.podmanApi ??
+    (socketPath === undefined ? undefined : (options.podmanApiFactory ?? makePodmanApiClient)(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
