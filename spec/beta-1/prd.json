@@ -2987,8 +2987,8 @@
         "Lint passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "Closes the wiring gap: registry.ts currently passes stateDir/eventService/artifactDownload but not socketPath, so makeRuntimeProvider falls back to LANDO_TEST_PODMAN_SOCKET. Demote the env var to a test/CI-only override."
+      "passes": true,
+      "notes": "RuntimeProviderRegistryLive now consumes the injected PathsService and threads its provider socket, PID, runtime bin/run/storage/config paths, and userDataRoot-scoped provider state into provider-lando. Provider-lando has a test-only Podman API factory seam proving providerSocketPath resolves as the default socket with LANDO_TEST_PODMAN_SOCKET unset, and a manual provider-bootstrap probe selected provider-lando with socket/bin paths under an isolated userDataRoot runtime directory."
     },
     {
       "id": "US-367",

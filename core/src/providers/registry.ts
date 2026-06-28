@@ -23,13 +23,12 @@ import {
   ConfigService,
   Downloader,
   EventService,
+  PathsService,
   PluginRegistry,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-
-import { makeLandoPaths } from "../config/paths.ts";
 
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -117,6 +116,7 @@ const makeRuntimeProviderRegistry = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   eventService: EventPublisher | undefined,
   downloader: Context.Tag.Service<typeof Downloader>,
+  landoPaths: Context.Tag.Service<typeof PathsService>,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const artifactDownload = makeArtifactDownload(downloader);
 
@@ -147,22 +147,17 @@ const makeRuntimeProviderRegistry = (
       const installedProviderIds = yield* providerIds;
       const providerIdText = String(providerId);
       const installed = installedProviderIds.some((installedId) => String(installedId) === providerIdText);
-      const userDataRoot = yield* Effect.mapError(configService.get("userDataRoot"), toProviderConfig);
-      const landoPaths = userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot });
+      const userDataRoot = landoPaths.roots.userDataRoot;
       const provider =
         providerIdText === "lando"
           ? yield* makeLandoRuntimeProvider({
-              ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
-              ...(landoPaths === undefined
-                ? {}
-                : {
-                    runtimeBinDir: landoPaths.runtimeBinDir,
-                    runtimeRunDir: landoPaths.runtimeRunDir,
-                    runtimeStorageDir: landoPaths.runtimeStorageDir,
-                    runtimeConfigDir: landoPaths.runtimeConfigDir,
-                    providerSocketPath: landoPaths.providerSocketPath,
-                    providerPidPath: landoPaths.providerPidPath,
-                  }),
+              stateDir: `${userDataRoot}/providers`,
+              runtimeBinDir: landoPaths.runtimeBinDir,
+              runtimeRunDir: landoPaths.runtimeRunDir,
+              runtimeStorageDir: landoPaths.runtimeStorageDir,
+              runtimeConfigDir: landoPaths.runtimeConfigDir,
+              providerSocketPath: landoPaths.providerSocketPath,
+              providerPidPath: landoPaths.providerPidPath,
               ...(eventService === undefined ? {} : { eventService }),
               artifactDownload,
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
@@ -170,7 +165,7 @@ const makeRuntimeProviderRegistry = (
             ? yield* makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
             : providerIdText === "podman"
               ? yield* makePodmanRuntimeProvider({
-                  ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+                  stateDir: `${userDataRoot}/providers`,
                   ...(eventService === undefined ? {} : { eventService }),
                 }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
               : providers[providerIdText];
@@ -204,11 +199,13 @@ export const RuntimeProviderRegistryLive = Layer.effect(
     const pluginRegistry = yield* PluginRegistry;
     const eventService = yield* Effect.serviceOption(EventService);
     const downloader = yield* Downloader;
+    const landoPaths = yield* PathsService;
     return makeRuntimeProviderRegistry(
       configService,
       pluginRegistry,
       eventService._tag === "Some" ? eventService.value : undefined,
       downloader,
+      landoPaths,
     );
   }),
 );

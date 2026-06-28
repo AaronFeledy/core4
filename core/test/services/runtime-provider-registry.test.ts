@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
 
 import { NoProviderInstalledError } from "@lando/core/errors";
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientBasicLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
@@ -19,6 +20,7 @@ const appPlan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata: {
     resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
     source: "runtime-provider-registry.test",
@@ -36,10 +38,12 @@ const registryLayer = (
   defaultProviderId: "lando" | "docker" | "missing",
   options: { userDataRoot?: string } = {},
 ) => {
+  const userDataRoot =
+    options.userDataRoot === undefined ? undefined : AbsolutePath.make(options.userDataRoot);
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make(defaultProviderId),
     telemetry: { enabled: false },
-    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(userDataRoot === undefined ? {} : { userDataRoot }),
   };
   const load = Effect.succeed(config);
   const configService: Context.Tag.Service<typeof ConfigService> = {
@@ -50,6 +54,12 @@ const registryLayer = (
   return RuntimeProviderRegistryLive.pipe(
     Layer.provideMerge(PluginRegistryLive),
     Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive))),
+    Layer.provideMerge(
+      Layer.succeed(
+        PathsService,
+        makeLandoPaths({ userDataRoot: options.userDataRoot ?? "/tmp/lando-registry-user-data" }),
+      ),
+    ),
     Layer.provideMerge(Layer.succeed(ConfigService, configService)),
   );
 };
