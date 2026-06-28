@@ -270,6 +270,36 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>
   cause instanceof ProviderRuntimeExtractError ? cause : new ProviderRuntimeExtractError(message, cause);
 
+const hasErrorCode = (cause: unknown, code: string): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+
+const replaceRuntimeBinDir = async (tempDir: string, runtimeBinDir: string): Promise<void> => {
+  const backupDir = `${runtimeBinDir}.previous-${process.pid}-${Date.now()}`;
+  let backupCreated = false;
+
+  await rm(backupDir, { recursive: true, force: true });
+  try {
+    await rename(runtimeBinDir, backupDir);
+    backupCreated = true;
+  } catch (cause) {
+    if (!hasErrorCode(cause, "ENOENT")) throw cause;
+  }
+
+  try {
+    await rename(tempDir, runtimeBinDir);
+  } catch (cause) {
+    if (backupCreated) {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+      await rename(backupDir, runtimeBinDir);
+    }
+    throw cause;
+  }
+
+  if (backupCreated) {
+    await rm(backupDir, { recursive: true, force: true });
+  }
+};
+
 export const installRuntimeBundle = (
   options: InstallRuntimeBundleOptions,
 ): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
@@ -286,6 +316,7 @@ export const installRuntimeBundle = (
       try: async () => {
         try {
           const entries = extractImpl(options.archiveBytes);
+          let fileCount = 0;
           await rm(tempDir, { recursive: true, force: true });
           await mkdir(tempDir, { recursive: true });
           for (const entry of entries) {
@@ -297,11 +328,14 @@ export const installRuntimeBundle = (
             if (options.platform !== "win32") {
               await chmod(target, 0o755);
             }
+            fileCount += 1;
+          }
+          if (fileCount === 0) {
+            throw new ProviderRuntimeExtractError("Runtime bundle archive does not contain any files.");
           }
           await writeFile(markerPath(tempDir), options.version);
           await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });
-          await rm(options.runtimeBinDir, { recursive: true, force: true });
-          await rename(tempDir, options.runtimeBinDir);
+          await replaceRuntimeBinDir(tempDir, options.runtimeBinDir);
         } catch (cause) {
           await rm(tempDir, { recursive: true, force: true });
           throw cause;

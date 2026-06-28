@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import {
@@ -217,6 +218,38 @@ describe("installRuntimeBundle", () => {
       );
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects empty extracted archives without replacing an installed runtime", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => [{ path: "podman", bytes: encoder.encode("old-podman"), mode: 0o755 }],
+        }),
+      );
+
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes: buildTarGz([{ path: "empty-dir", typeflag: "5" }]),
+          version: "2.0.0",
+          runtimeBinDir,
+          platform: "linux",
+        }),
+      );
+
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("old-podman");
+      expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
+        "1.0.0",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }
