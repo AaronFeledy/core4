@@ -11,12 +11,12 @@ exports[`renderer.init-progress fixture plain renderer snapshot is stable 1`] = 
 `;
 
 exports[`renderer.init-progress fixture json renderer snapshot is stable on stderr 1`] = `
-"{"_tag":"task.tree.start","parentId":"init:node-postgres","label":"Initialize mvp","children":["render","postinit"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}
-{"_tag":"task.start","parentId":"init:node-postgres","taskId":"render","label":"Render recipe files (4)","timestamp":"2026-05-19T12:00:00.010Z"}
-{"_tag":"task.complete","taskId":"render","summary":"Rendered 4 files","durationMs":85,"timestamp":"2026-05-19T12:00:00.095Z"}
-{"_tag":"task.start","parentId":"init:node-postgres","taskId":"postinit","label":"Run post-init actions (2)","timestamp":"2026-05-19T12:00:00.100Z"}
-{"_tag":"task.complete","taskId":"postinit","summary":"Ran 2 actions","durationMs":420,"timestamp":"2026-05-19T12:00:00.520Z"}
-{"_tag":"task.tree.complete","parentId":"init:node-postgres","summary":"Initialized mvp","succeeded":2,"failed":0,"durationMs":525,"timestamp":"2026-05-19T12:00:00.525Z"}
+"{"_tag":"event","event":"task.tree.start","payload":{"_tag":"task.tree.start","parentId":"init:node-postgres","label":"Initialize mvp","children":["render","postinit"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}}
+{"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"init:node-postgres","taskId":"render","label":"Render recipe files (4)","timestamp":"2026-05-19T12:00:00.010Z"}}
+{"_tag":"event","event":"task.complete","payload":{"_tag":"task.complete","taskId":"render","summary":"Rendered 4 files","durationMs":85,"timestamp":"2026-05-19T12:00:00.095Z"}}
+{"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"init:node-postgres","taskId":"postinit","label":"Run post-init actions (2)","timestamp":"2026-05-19T12:00:00.100Z"}}
+{"_tag":"event","event":"task.complete","payload":{"_tag":"task.complete","taskId":"postinit","summary":"Ran 2 actions","durationMs":420,"timestamp":"2026-05-19T12:00:00.520Z"}}
+{"_tag":"event","event":"task.tree.complete","payload":{"_tag":"task.tree.complete","parentId":"init:node-postgres","summary":"Initialized mvp","succeeded":2,"failed":0,"durationMs":525,"timestamp":"2026-05-19T12:00:00.525Z"}}
 "
 `;
 
