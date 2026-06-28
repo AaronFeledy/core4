@@ -83,13 +83,13 @@ interface RuntimeServiceReadinessProvider {
 
 const runtimeServiceReadinessFor = (provider: {
   readonly getVersions: Effect.Effect<{ readonly runtime?: string }, unknown>;
-}): Effect.Effect<SetupReadinessRuntimeService | undefined, never> => {
+}): Effect.Effect<SetupReadinessRuntimeService | null | undefined, never> => {
   const statusEffect = (provider as RuntimeServiceReadinessProvider).getRuntimeServiceStatus;
   if (statusEffect === undefined) return Effect.succeed(undefined);
 
   return Effect.gen(function* () {
     const status = yield* statusEffect;
-    if (status.socketPath === undefined || status.socketPath.length === 0) return undefined;
+    if (status.socketPath === undefined || status.socketPath.length === 0) return null;
 
     const versions = yield* provider.getVersions.pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
     return {
@@ -98,7 +98,7 @@ const runtimeServiceReadinessFor = (provider: {
       ...(status.pid === undefined ? {} : { pid: status.pid }),
       ...(versions?.runtime === undefined ? {} : { runtimeVersion: versions.runtime }),
     };
-  }).pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
+  }).pipe(Effect.catchAllCause(() => Effect.succeed(null)));
 };
 
 export class ShellProfileIntegrationError extends Data.TaggedError("ShellProfileIntegrationError")<{

@@ -569,6 +569,71 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("clears stale runtime-service readiness when managed status cannot be refreshed after setup", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-runtime-service-clear-stale-"));
+    try {
+      const readinessPath = setupReadinessPath(userDataRoot);
+      const runtimeService = {
+        running: true,
+        socketPath: join(userDataRoot, "runtime", "run", "podman.sock"),
+        pid: 2468,
+        runtimeVersion: "0.0.0-test",
+      };
+      await mkdir(dirname(readinessPath), { recursive: true });
+      await writeFile(
+        readinessPath,
+        `${JSON.stringify(
+          {
+            status: "ready",
+            providerId: "lando",
+            updatedAt: new Date(0).toISOString(),
+            steps: [],
+            runtimeService,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+        getRuntimeServiceStatus: Effect.fail(new Error("status unavailable")),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const readiness = JSON.parse(await readFile(readinessPath, "utf-8")) as {
+        readonly runtimeService?: typeof runtimeService;
+      };
+
+      expect(readiness.runtimeService).toBeUndefined();
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("records unavailable evidence when host integration services are absent", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-unavailable-"));
     try {
