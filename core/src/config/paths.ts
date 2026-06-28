@@ -276,8 +276,11 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     certsDir: j(userDataRoot, "certs"),
     runtimeDir: j(userDataRoot, "runtime"),
     globalAppRoot: j(userDataRoot, "global"),
+    snapshotsDir: j(userDataRoot, "snapshots"),
+    appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),
+    toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),
     scratchDir: j(userCacheRoot, "scratch"),
     scratchRegistryFile: j(userCacheRoot, "scratch", "registry.bin"),
     scratchRegistryLockFile: j(userCacheRoot, "scratch", "registry.lock"),

@@ -428,6 +428,8 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.certsDir).toBe(join(data, "certs"));
     expect(paths.runtimeDir).toBe(join(data, "runtime"));
     expect(paths.globalAppRoot).toBe(join(data, "global"));
+    expect(paths.snapshotsDir).toBe(join(data, "snapshots"));
+    expect(paths.appSnapshotsDir("app-one")).toBe(join(data, "snapshots", "app-one"));
     expect(paths.tunnelRunDir).toBe(join(data, "run", "tunnels"));
   });
 
@@ -439,6 +441,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.scratchRegistryFile).toBe(join(cache, "scratch", "registry.bin"));
     expect(paths.scratchRegistryLockFile).toBe(join(cache, "scratch", "registry.lock"));
     expect(paths.tunnelRegistryFile).toBe(join(cache, "tunnels", "registry.bin"));
+    expect(paths.toolDownloadsDir("mutagen")).toBe(join(cache, "tool-downloads", "mutagen"));
     expect(paths.fileSyncSessionsDir).toBe(join(cache, "file-sync", "sessions"));
   });
 
@@ -479,6 +482,9 @@ describe("makeLandoPaths derived builders", () => {
       userConfRoot: "/iso/conf",
     });
     expect(paths.pluginsDir).toBe("/iso/data/plugins");
+    expect(paths.snapshotsDir).toBe("/iso/data/snapshots");
+    expect(paths.appSnapshotsDir("app-one")).toBe("/iso/data/snapshots/app-one");
+    expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
     expect(paths.scratchDir).toBe("/iso/cache/scratch");
     expect(paths.tunnelRunDir).toBe("/iso/data/run/tunnels");
     expect(paths.tunnelRegistryFile).toBe("/iso/cache/tunnels/registry.bin");
