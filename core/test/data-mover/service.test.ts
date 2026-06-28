@@ -29,13 +29,16 @@ import {
   type EventWaitOptions,
   type ExecChunk,
   type LandoEvent,
+  PathsService,
   RuntimeProvider,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive, __testOnlyEncodeTarOctal } from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
+import { StateStoreLive } from "../../src/state/service.ts";
 import { makeTestDataMover } from "../../src/testing/data-mover.ts";
 
 const app = AppId.make("data-app");
@@ -82,11 +85,15 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
 });
 
 const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
-  Layer.succeed(RuntimeProvider, {
-    ...TestRuntimeProvider,
-    ...overrides,
-    capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
-  });
+  Layer.mergeAll(
+    StateStoreLive,
+    Layer.succeed(PathsService, makeLandoPaths()),
+    Layer.succeed(RuntimeProvider, {
+      ...TestRuntimeProvider,
+      ...overrides,
+      capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
+    }),
+  );
 
 const captureEvents = () => {
   const captured: LandoEvent[] = [];
@@ -897,6 +904,7 @@ describe("DataMoverLive", () => {
         Effect.provide(DataMoverLive),
         Effect.provide(
           providerLayer({
+            capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
             snapshotVolume: (spec) => {
               providerSnapshotId = spec.snapshotId;
               return Effect.fail(
@@ -919,6 +927,203 @@ describe("DataMoverLive", () => {
       eventName: "post-volume-snapshot",
       outcome: "failure",
       snapshotId: providerSnapshotId,
+    });
+  });
+
+  test("persists copy-mode snapshots through StateStore and restores by id", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      const restored = join(dir, "restored.txt");
+      await writeFile(join(dir, "seed.txt"), "volume-payload");
+      await writeFile(join(dir, "changed.txt"), "changed-payload");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const handle = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "snap-one" },
+              );
+              const listed = yield* dataMover.listSnapshots({ app, store: "data" });
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "changed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* dataMover.restore(handle.id, { app, store: "data" });
+              yield* dataMover.transfer({
+                from: { _tag: "volume", app, store: "data" },
+                to: { _tag: "hostPath", path: absolute(restored) },
+                overwrite: true,
+              });
+              return { handle, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(result.handle.id).toBe("snap-one");
+        expect(result.listed).toHaveLength(1);
+        expect(result.listed[0]?.digest).toBe(sha256("volume-payload"));
+        expect(await readFile(restored, "utf8")).toBe("volume-payload");
+        expect(await Bun.file(join(dataRoot, "snapshots", String(app), "index.bin")).exists()).toBe(true);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "snap-one.tar")).exists(),
+        ).toBe(true);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "snap-one.json")).exists(),
+        ).toBe(true);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("restores copy-mode snapshots from the returned handle and prunes through the index", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      const restored = join(dir, "restored-from-handle.txt");
+      await writeFile(join(dir, "seed.txt"), "handle-payload");
+      await writeFile(join(dir, "changed.txt"), "changed-payload");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const first = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "snap-a" },
+              );
+              const second = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "snap-b" },
+              );
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "changed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              yield* dataMover.restore(first, { app, store: "data" });
+              yield* dataMover.restore(first, { app, store: "alternate" });
+              yield* dataMover.transfer({
+                from: { _tag: "volume", app, store: "alternate" },
+                to: { _tag: "hostPath", path: absolute(restored) },
+                overwrite: true,
+              });
+              const pruned = yield* dataMover.pruneSnapshots({
+                filter: { app, store: "data" },
+                keepLatest: 1,
+              });
+              const listed = yield* dataMover.listSnapshots({ app, store: "data" });
+              return { first, second, pruned, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(await readFile(restored, "utf8")).toBe("handle-payload");
+        expect(result.pruned).toEqual([result.first.id]);
+        expect(result.listed.map((entry) => entry.id)).toEqual([result.second.id]);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("persists native snapshot refs in the sidecar without writing an archive", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const listed = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              const handle = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { volumeSnapshot: "native", label: "native-one" },
+              );
+              yield* dataMover.restore(handle, { app, store: "data" });
+              return yield* dataMover.listSnapshots({ app, store: "data" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({ capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }) }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(listed[0]?.native).toEqual({ provider: "test", id: "native-one" });
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-one.tar")).exists(),
+        ).toBe(false);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-one.json")).exists(),
+        ).toBe(true);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("snapshot lookup operations fail SnapshotNotFoundError for a missing id", async () => {
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      const exit = await (async () => {
+        try {
+          return await Effect.runPromiseExit(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const dataMover = yield* DataMover;
+                yield* dataMover.restore("missing", { app, store: "data" });
+              }),
+            ).pipe(
+              Effect.provide(DataMoverLive),
+              Effect.provide(providerLayer()),
+              Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+            ),
+          );
+        } finally {
+          if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+          else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+        }
+      })();
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toMatchObject({ _tag: "SnapshotNotFoundError", snapshotId: "missing" });
+      }
     });
   });
 
