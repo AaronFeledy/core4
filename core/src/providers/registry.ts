@@ -29,6 +29,8 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../config/paths.ts";
+
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -150,6 +152,9 @@ const makeRuntimeProviderRegistry = (
         providerIdText === "lando"
           ? yield* makeLandoRuntimeProvider({
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+              ...(userDataRoot === undefined
+                ? {}
+                : { runtimeBinDir: makeLandoPaths({ userDataRoot }).runtimeBinDir }),
               ...(eventService === undefined ? {} : { eventService }),
               artifactDownload,
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))

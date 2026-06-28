@@ -2932,7 +2932,7 @@
         "Lint passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Remediation story (socket autosetup). Extends the PRD-13 Paths primitive with runtime bin/run/socket/pid helpers and adds the missing extraction step: today `runtime-bundle.ts` downloads + checksum-verifies the tarball but never unpacks it (verified in plugins/provider-lando/src/runtime-bundle.ts)."
     },
     {

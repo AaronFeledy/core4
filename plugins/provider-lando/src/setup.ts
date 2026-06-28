@@ -16,6 +16,7 @@ import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
+import { installRuntimeBundle } from "./runtime-extract.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
@@ -112,12 +113,14 @@ export interface SetupOptions {
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
+  readonly runtimeBinDir?: string;
   readonly eventService?: EventPublisher;
 }
 
 export interface SetupResult {
   readonly podmanVersion: string;
   readonly runtimeBundleVersion?: string;
+  readonly runtimeBinDir?: string;
   readonly statePath?: string;
 }
 
@@ -360,6 +363,7 @@ const persistSetupState = (
     readonly podmanVersion: string;
     readonly runtimeBundleVersion?: string;
     readonly runtimeBundleSha256?: string;
+    readonly runtimeBinDir?: string;
     readonly socketPath?: string;
   },
 ) =>
@@ -499,6 +503,7 @@ export const setupProviderLando = (
     const counter: StepCounter = { succeeded: 0 };
 
     const result = yield* Effect.gen(function* () {
+      const runtimeBinDir = options.runtimeBinDir;
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -506,7 +511,19 @@ export const setupProviderLando = (
               options.eventService,
               bundleStep,
               counter,
-              options.runtimeBundleDownloader.download.pipe(Effect.flatMap(verifyRuntimeBundle)),
+              options.runtimeBundleDownloader.download.pipe(
+                Effect.flatMap(verifyRuntimeBundle),
+                Effect.tap((verified) =>
+                  runtimeBinDir === undefined
+                    ? Effect.void
+                    : installRuntimeBundle({
+                        archiveBytes: verified.bytes,
+                        version: verified.version,
+                        runtimeBinDir,
+                        platform,
+                      }),
+                ),
+              ),
             );
 
       const podmanVersionOutput = yield* withStep(
@@ -564,6 +581,7 @@ export const setupProviderLando = (
                 ...(bundle === undefined
                   ? {}
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
+                ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
                 ...(socketPath === undefined ? {} : { socketPath }),
               }),
             );
@@ -571,6 +589,7 @@ export const setupProviderLando = (
       return {
         podmanVersion,
         ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
+        ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
         ...(statePath === undefined ? {} : { statePath }),
       } satisfies SetupResult;
     }).pipe(
