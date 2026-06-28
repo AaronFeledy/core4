@@ -49,7 +49,7 @@ export const writeSetupReadiness = (
   userDataRoot: string | undefined,
   providerId: string,
   steps: ReadonlyArray<SetupReadinessStep>,
-  runtimeService?: SetupReadinessRuntimeService,
+  runtimeService?: SetupReadinessRuntimeService | null,
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     if (userDataRoot === undefined) return;
@@ -59,7 +59,9 @@ export const writeSetupReadiness = (
         ? existing?.runtimeService === undefined
           ? {}
           : { runtimeService: existing.runtimeService }
-        : { runtimeService };
+        : runtimeService === null
+          ? {}
+          : { runtimeService };
     const summary: SetupReadinessSummary = {
       status: summaryStatus(steps),
       providerId,

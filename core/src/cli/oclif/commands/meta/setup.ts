@@ -318,7 +318,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const userDataRoot =
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
       const readinessSteps: SetupReadinessStep[] = [];
-      let runtimeServiceReadiness: SetupReadinessRuntimeService | undefined;
+      let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
       const recordReadiness = (step: SetupReadinessStep): Effect.Effect<void, never> => {
         const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
         if (existingIndex === -1) readinessSteps.push(step);
@@ -367,7 +367,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
           Effect.tapError((cause) => recordFailure("provider", cause)),
         );
-        runtimeServiceReadiness = yield* runtimeServiceReadinessFor(provider);
+        runtimeServiceReadiness = (yield* runtimeServiceReadinessFor(provider)) ?? null;
         yield* recordReadiness({
           id: "provider",
           status: "satisfied",

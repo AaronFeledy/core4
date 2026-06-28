@@ -88,6 +88,25 @@ describe("setup readiness persistence", () => {
     });
   });
 
+  test("write with null runtimeService clears existing runtimeService block", async () => {
+    await withTempUserDataRoot(async (userDataRoot) => {
+      await Effect.runPromise(
+        writeSetupReadiness(userDataRoot, "lando", steps, {
+          running: true,
+          socketPath: "/home/u/.local/share/lando/runtime/run/podman.sock",
+          pid: 1234,
+          runtimeVersion: "5.0.0",
+        }),
+      );
+
+      await Effect.runPromise(writeSetupReadiness(userDataRoot, "lando", steps, null));
+
+      const summary = await Effect.runPromise(readSetupReadiness(userDataRoot));
+
+      expect(summary?.runtimeService).toBeUndefined();
+    });
+  });
+
   test("read redacts runtimeService.socketPath", async () => {
     await withTempUserDataRoot(async (userDataRoot) => {
       await Effect.runPromise(
