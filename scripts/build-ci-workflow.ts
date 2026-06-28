@@ -253,7 +253,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime
           mkdir -p dist/cache/runtime-bundle
           STAGE="$(mktemp -d)"
           cp "$(command -v podman)" "$STAGE/podman"
-          for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon; do
+          for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
             src="$(command -v "$helper" || true)"
             if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done

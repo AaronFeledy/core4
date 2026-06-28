@@ -42,6 +42,13 @@ tags: [beta, docs, providers, setup, selection]
     </Step>
   </Scenario>
 
+  <Scenario id="ci-managed-lando-default" render={false} reason="linux-x64 provider-integration CI selects the lando capability default through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET">
+    <Step name="setup-driven-ci">
+      <Variable name="defaultProvider" value="lando" display="CI provider-integration-linux-x64 runs dist/lando setup --yes --provider=lando and resolves the managed socket from Paths for contract and integration suites" />
+      <Variable name="rehearsalOverride" value="LANDO_TEST_PODMAN_SOCKET" display="Local rehearsal may still point live tests at a manual socket when the managed runtime is unavailable" />
+    </Step>
+  </Scenario>
+
   <Scenario id="lando-podman-socket-conflict" render={false} reason="Keeps the lando and podman socket-conflict remediation covered without rendering a separate walkthrough">
     <Step name="conflict-detection">
       <Variable

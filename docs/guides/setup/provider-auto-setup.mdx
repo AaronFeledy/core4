@@ -20,6 +20,8 @@ tags: [beta, docs, setup, providers]
       <Variable name="nonInteractive" value="lando setup --no-interactive" display="Uses the same guided defaults without follow-up prompts" />
       <Variable name="confirmed" value="lando setup --yes" display="Confirms setup prompts but does not change provider precedence" />
       <Variable name="ci" value="lando setup --yes --provider=lando" display="Recommended CI shape: choose the provider and confirmation mode explicitly" />
+      <Variable name="ciBundle" value="LANDO_RUNTIME_BUNDLE_MANIFEST" display="linux-x64 provider-integration CI stages a current-commit runtime bundle tarball and points setup at the local file manifest before ensureRuntime brings up the managed socket" />
+      <Variable name="ciTeardown" value="lando poweroff + managed podman" display="CI teardown uses the Lando-managed podman binary with isolated --root, --runroot, and --config so cleanup targets the same store the job created" />
     </Step>
   </Scenario>
 

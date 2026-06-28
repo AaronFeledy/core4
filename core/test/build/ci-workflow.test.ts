@@ -605,6 +605,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("          mkdir -p dist/cache/runtime-bundle");
     expect(providerIntegration).toContain('          cp "$(command -v podman)" "$STAGE/podman"');
     expect(providerIntegration).toContain('          if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi');
+    expect(providerIntegration).toContain("netavark aardvark-dns gvproxy");
     expect(providerIntegration).not.toContain('          mkdir -p "$STAGE/bin"');
     expect(providerIntegration).not.toContain('          "$STAGE/bin/podman"');
     expect(providerIntegration).toContain("      - name: Build local runtime bundle manifest");
