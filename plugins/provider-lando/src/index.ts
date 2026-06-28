@@ -16,9 +16,12 @@ import {
   makePodmanApiClient,
   mvpProviderCapabilities,
 } from "./capabilities.ts";
+import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
+import { type PodmanServiceRunner, makeSystemPodmanServiceRunner } from "./podman-service-runner.ts";
+import type { RootlessProbes } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
   type PodmanCommandRunner,
@@ -41,12 +44,30 @@ export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";
 export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
+export { ensureRuntime } from "./ensure-runtime.ts";
+export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
 export { exec, execStream } from "./exec.ts";
 export type { ExecOptions } from "./exec.ts";
 export { inspect } from "./inspect.ts";
 export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
+export {
+  RuntimeLaunchError,
+  buildPodmanServiceArgs,
+  makeSystemPodmanServiceRunner,
+} from "./podman-service-runner.ts";
+export type { PodmanServiceRunner, PodmanServiceSpec } from "./podman-service-runner.ts";
+export {
+  RootlessPrerequisiteError,
+  classifyRootlessFailure,
+  makeSystemRootlessProbes,
+} from "./rootless-preflight.ts";
+export type {
+  RootlessPrerequisite,
+  RootlessProbeResults,
+  RootlessProbes,
+} from "./rootless-preflight.ts";
 export {
   MINIMUM_PODMAN_VERSION,
   PodmanMachinePrerequisiteError,
@@ -155,7 +176,14 @@ export interface ProviderLayerOptions {
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
+  readonly runtimeRunDir?: string;
+  readonly runtimeStorageDir?: string;
+  readonly runtimeConfigDir?: string;
   readonly socketPath?: string;
+  readonly providerSocketPath?: string;
+  readonly providerPidPath?: string;
+  readonly podmanService?: PodmanServiceRunner;
+  readonly rootlessProbes?: RootlessProbes;
   readonly eventService?: BringUpOptions["eventService"];
 }
 
@@ -166,6 +194,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
   const runtimeBinDir = options.runtimeBinDir;
+  const ensureSocketPath = options.providerSocketPath ?? socketPath;
+  const podmanBin = runtimeBinDir === undefined ? "podman" : `${runtimeBinDir}/podman`;
+  const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
   let runtimeVersion: string | undefined;
   let bundleVersion: string | undefined;
   const platform = options.platform ?? currentHostPlatform();
@@ -224,147 +255,182 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   };
 
   return capabilities.pipe(
-    Effect.map(
-      (resolvedCapabilities): RuntimeProviderShape => ({
-        id: "lando",
-        displayName: "Lando Runtime Provider",
-        version: "0.0.0",
-        platform,
-        capabilities: resolvedCapabilities,
-        isAvailable: Effect.succeed(true),
-        setup: (setupOptions) =>
-          setupProviderLando({
-            ...(podmanApi === undefined ? {} : { podmanApi }),
-            ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
-            ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
-            ...(options.artifactDownload === undefined ? {} : { artifactDownload: options.artifactDownload }),
-            platform,
-            ...(() => {
-              const setupRuntimeBundleDownloader =
-                setupOptions.runtimeBundleUrl === undefined
-                  ? (options.runtimeBundleDownloader ??
-                    makeSetupRuntimeBundleDownloader(undefined, undefined))
-                  : makeSetupRuntimeBundleDownloader(
-                      setupOptions.runtimeBundleUrl,
-                      setupOptions.runtimeBundleSha256,
-                    );
-              return setupRuntimeBundleDownloader === undefined
-                ? {}
-                : { runtimeBundleDownloader: setupRuntimeBundleDownloader };
-            })(),
-            ...(stateDir === undefined ? {} : { stateDir }),
-            ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
-            ...(socketPath === undefined ? {} : { socketPath }),
-            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(
-            Effect.tap((result) =>
-              Effect.sync(() => {
-                runtimeVersion = result.podmanVersion;
-                bundleVersion = result.runtimeBundleVersion;
-              }),
-            ),
-            Effect.asVoid,
-          ),
-        getStatus: Effect.succeed({ running: true, message: "ready" }),
-        getVersions: Effect.sync(() => ({
-          provider: "0.0.0",
-          ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
-          ...(bundleVersion === undefined ? {} : { bundle: bundleVersion }),
-        })),
-        buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
-        pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
-        removeArtifact: () => Effect.void,
-        apply: (plan, applyOptions) =>
-          bringUp(plan, {
-            ...(podmanApi === undefined ? {} : { podmanApi }),
-            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-            ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-          }).pipe(Effect.tap(() => rememberPlan(plan))),
-        start: () => Effect.void,
-        stop: () => Effect.void,
-        restart: () => Effect.void,
-        destroy: (target, destroyOptions) =>
-          Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
-            if (plan === undefined) return;
-            yield* bringDown(plan, {
-              ...(podmanApi === undefined ? {} : { podmanApi }),
-              volumes: destroyOptions.volumes,
-              ...(destroyOptions.purgeCaches === undefined
-                ? {}
-                : { purgeCaches: destroyOptions.purgeCaches }),
-            });
-            if (destroyOptions.removeState !== false) {
-              yield* forgetPlan(target.app);
-            }
-          }),
-        exec: (target, command) =>
-          Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "exec"));
-            return yield* exec(plan, target, command, {
-              ...(podmanApi === undefined ? {} : { podmanApi }),
-            });
-          }),
-        execStream: (target, command) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                plan === undefined
-                  ? Stream.fail(makeNoPlanError(target.app, "execStream"))
-                  : execStream(plan, target, command, {
-                      ...(podmanApi === undefined ? {} : { podmanApi }),
-                    }),
+    Effect.flatMap((resolvedCapabilities) =>
+      Effect.gen(function* () {
+        const canEnsure =
+          podmanApi !== undefined &&
+          ensureSocketPath !== undefined &&
+          options.runtimeStorageDir !== undefined &&
+          options.runtimeRunDir !== undefined &&
+          options.runtimeConfigDir !== undefined &&
+          options.providerPidPath !== undefined;
+        const ensureEffect: Effect.Effect<void, ProviderUnavailableError> = canEnsure
+          ? ensureRuntime({
+              platform,
+              podmanApi,
+              serviceRunner,
+              ...(options.podmanMachine === undefined ? {} : { machineRunner: options.podmanMachine }),
+              podmanBin,
+              storageDir: options.runtimeStorageDir,
+              runRoot: options.runtimeRunDir,
+              configDir: options.runtimeConfigDir,
+              socketPath: ensureSocketPath,
+              pidPath: options.providerPidPath,
+              ...(options.rootlessProbes === undefined ? {} : { rootlessProbes: options.rootlessProbes }),
+            })
+          : Effect.void;
+        const ensureOnce = yield* Effect.cached(ensureEffect);
+
+        return {
+          id: "lando",
+          displayName: "Lando Runtime Provider",
+          version: "0.0.0",
+          platform,
+          capabilities: resolvedCapabilities,
+          isAvailable: Effect.succeed(true),
+          setup: (setupOptions) =>
+            Effect.gen(function* () {
+              const result = yield* setupProviderLando({
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+                ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
+                ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
+                ...(options.artifactDownload === undefined
+                  ? {}
+                  : { artifactDownload: options.artifactDownload }),
+                platform,
+                ...(() => {
+                  const setupRuntimeBundleDownloader =
+                    setupOptions.runtimeBundleUrl === undefined
+                      ? (options.runtimeBundleDownloader ??
+                        makeSetupRuntimeBundleDownloader(undefined, undefined))
+                      : makeSetupRuntimeBundleDownloader(
+                          setupOptions.runtimeBundleUrl,
+                          setupOptions.runtimeBundleSha256,
+                        );
+                  return setupRuntimeBundleDownloader === undefined
+                    ? {}
+                    : { runtimeBundleDownloader: setupRuntimeBundleDownloader };
+                })(),
+                ...(stateDir === undefined ? {} : { stateDir }),
+                ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+                ...(socketPath === undefined ? {} : { socketPath }),
+                ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+              });
+              runtimeVersion = result.podmanVersion;
+              bundleVersion = result.runtimeBundleVersion;
+              yield* ensureOnce;
+            }),
+          getStatus: Effect.succeed({ running: true, message: "ready" }),
+          getVersions: Effect.sync(() => ({
+            provider: "0.0.0",
+            ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
+            ...(bundleVersion === undefined ? {} : { bundle: bundleVersion }),
+          })),
+          buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
+          pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
+          removeArtifact: () => Effect.void,
+          apply: (plan, applyOptions) =>
+            Effect.gen(function* () {
+              yield* ensureOnce;
+              const result = yield* bringUp(plan, {
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+                ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+                ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+              });
+              yield* rememberPlan(plan);
+              return result;
+            }),
+          start: () => Effect.void,
+          stop: () => Effect.void,
+          restart: () => Effect.void,
+          destroy: (target, destroyOptions) =>
+            Effect.gen(function* () {
+              const plan = yield* resolvePlan(target);
+              if (plan === undefined) return;
+              yield* bringDown(plan, {
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+                volumes: destroyOptions.volumes,
+                ...(destroyOptions.purgeCaches === undefined
+                  ? {}
+                  : { purgeCaches: destroyOptions.purgeCaches }),
+              });
+              if (destroyOptions.removeState !== false) {
+                yield* forgetPlan(target.app);
+              }
+            }),
+          exec: (target, command) =>
+            Effect.gen(function* () {
+              yield* ensureOnce;
+              const plan = yield* resolvePlan(target);
+              if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "exec"));
+              return yield* exec(plan, target, command, {
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+              });
+            }),
+          execStream: (target, command) =>
+            Stream.unwrap(
+              ensureOnce.pipe(
+                Effect.zipRight(
+                  resolvePlan(target).pipe(
+                    Effect.map((plan) =>
+                      plan === undefined
+                        ? Stream.fail(makeNoPlanError(target.app, "execStream"))
+                        : execStream(plan, target, command, {
+                            ...(podmanApi === undefined ? {} : { podmanApi }),
+                          }),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        run: () => Effect.fail(makeUnavailable("run")),
-        runStream: () => Stream.fail(makeUnavailable("runStream")),
-        logs: (target, logOptions) =>
-          Stream.unwrap(
-            resolvePlan(target).pipe(
-              Effect.map((plan) =>
-                plan === undefined
-                  ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                  : logs(plan, target, logOptions, {
-                      ...(podmanApi === undefined ? {} : { podmanApi }),
-                    }),
+          run: () => Effect.fail(makeUnavailable("run")),
+          runStream: () => Stream.fail(makeUnavailable("runStream")),
+          logs: (target, logOptions) =>
+            Stream.unwrap(
+              resolvePlan(target).pipe(
+                Effect.map((plan) =>
+                  plan === undefined
+                    ? Stream.fail(makeNoPlanError(target.app, "logs"))
+                    : logs(plan, target, logOptions, {
+                        ...(podmanApi === undefined ? {} : { podmanApi }),
+                      }),
+                ),
               ),
             ),
-          ),
-        inspect: (target) =>
-          Effect.gen(function* () {
-            const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
-            return yield* inspect(plan, target, {
-              ...(podmanApi === undefined ? {} : { podmanApi }),
-            });
-          }),
-        list: (filter) =>
-          Effect.forEach(Array.from(plans.values()), (plan) =>
-            Effect.forEach(Object.values(plan.services), (service) =>
-              inspect(
-                plan,
-                { app: plan.id, service: service.name },
-                { ...(podmanApi === undefined ? {} : { podmanApi }) },
+          inspect: (target) =>
+            Effect.gen(function* () {
+              const plan = yield* resolvePlan(target);
+              if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
+              return yield* inspect(plan, target, {
+                ...(podmanApi === undefined ? {} : { podmanApi }),
+              });
+            }),
+          list: (filter) =>
+            Effect.forEach(Array.from(plans.values()), (plan) =>
+              Effect.forEach(Object.values(plan.services), (service) =>
+                inspect(
+                  plan,
+                  { app: plan.id, service: service.name },
+                  { ...(podmanApi === undefined ? {} : { podmanApi }) },
+                ),
+              ),
+            ).pipe(
+              Effect.map((snapshots) => snapshots.flat()),
+              Effect.map((snapshots) =>
+                filter.app === undefined
+                  ? snapshots
+                  : snapshots.filter((snapshot) => snapshot.app === filter.app),
               ),
             ),
-          ).pipe(
-            Effect.map((snapshots) => snapshots.flat()),
-            Effect.map((snapshots) =>
-              filter.app === undefined
-                ? snapshots
-                : snapshots.filter((snapshot) => snapshot.app === filter.app),
-            ),
-          ),
-        snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
-        restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
-        removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
-        copyToService: () => Effect.fail(makeUnavailable("copyToService")),
-        copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
-        exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
-        importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+          snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
+          restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
+          listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
+          removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
+          copyToService: () => Effect.fail(makeUnavailable("copyToService")),
+          copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
+          exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
+          importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+        } satisfies RuntimeProviderShape;
       }),
     ),
   );

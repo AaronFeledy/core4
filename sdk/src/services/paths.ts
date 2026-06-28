@@ -47,6 +47,8 @@ export interface LandoPaths {
   readonly runtimeDir: string;
   readonly runtimeBinDir: string;
   readonly runtimeRunDir: string;
+  readonly runtimeStorageDir: string;
+  readonly runtimeConfigDir: string;
   readonly providerSocketPath: string;
   readonly providerPidPath: string;
   readonly globalAppRoot: string;

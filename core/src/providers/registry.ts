@@ -148,13 +148,21 @@ const makeRuntimeProviderRegistry = (
       const providerIdText = String(providerId);
       const installed = installedProviderIds.some((installedId) => String(installedId) === providerIdText);
       const userDataRoot = yield* Effect.mapError(configService.get("userDataRoot"), toProviderConfig);
+      const landoPaths = userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot });
       const provider =
         providerIdText === "lando"
           ? yield* makeLandoRuntimeProvider({
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
-              ...(userDataRoot === undefined
+              ...(landoPaths === undefined
                 ? {}
-                : { runtimeBinDir: makeLandoPaths({ userDataRoot }).runtimeBinDir }),
+                : {
+                    runtimeBinDir: landoPaths.runtimeBinDir,
+                    runtimeRunDir: landoPaths.runtimeRunDir,
+                    runtimeStorageDir: landoPaths.runtimeStorageDir,
+                    runtimeConfigDir: landoPaths.runtimeConfigDir,
+                    providerSocketPath: landoPaths.providerSocketPath,
+                    providerPidPath: landoPaths.providerPidPath,
+                  }),
               ...(eventService === undefined ? {} : { eventService }),
               artifactDownload,
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
