@@ -98,6 +98,18 @@ const reapStaleRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void> =>
     yield* bestEffortRm(deps.pidPath);
   });
 
+const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const pid = yield* readStalePid(deps.pidPath);
+    if (pid === undefined) return false;
+
+    const alive = yield* deps.serviceRunner.isAlive(pid);
+    if (!alive) return false;
+
+    return yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
+      Effect.succeed(false);
+  });
+
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const spec = buildPodmanServiceArgs({
@@ -159,7 +171,10 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const reachable = yield* Effect.either(deps.podmanApi.info);
-    if (reachable._tag === "Right") return;
+    if (reachable._tag === "Right") {
+      const owned = yield* currentRuntimeIsOwned(deps);
+      if (owned) return;
+    }
 
     yield* reapStaleRuntime(deps);
     yield* launchRuntime(deps);

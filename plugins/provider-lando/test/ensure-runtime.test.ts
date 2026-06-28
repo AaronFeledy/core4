@@ -142,7 +142,7 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
-  test("reachable socket is a no-op — no reap, no launch", async () => {
+  test("reachable socket without matching pid metadata is restarted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];
@@ -157,8 +157,63 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual([]);
-      await expectMissingFile(p.pidPath);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable socket with matching pid metadata is reused", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable socket with mismatched pid metadata is restarted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true, false),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["launch", canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
