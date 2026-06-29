@@ -111,6 +111,7 @@ import type { ServiceFeatureDefinition } from "./features.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
+import type { HttpClientShape } from "./http-client.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
 import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
@@ -182,6 +183,7 @@ export * from "./features.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
+export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
@@ -715,6 +717,11 @@ export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEng
 export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
   Downloader,
   DownloaderShape
+>() {}
+
+export declare class HttpClient extends Context.Tag("@lando/core/HttpClient")<
+  HttpClient,
+  HttpClientShape
 >() {}
 
 export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}

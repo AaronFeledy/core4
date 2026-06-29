@@ -313,6 +313,64 @@
       },
       "type": "array"
     },
+    "httpClients": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "customCa": {
+                "type": "boolean"
+              },
+              "proxyAware": {
+                "type": "boolean"
+              },
+              "schemes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "streaming": {
+                "type": "boolean"
+              },
+              "upload": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "schemes",
+              "streaming",
+              "upload",
+              "customCa",
+              "proxyAware"
+            ],
+            "type": "object"
+          },
+          "deprecated": {
+            "$ref": "#/$defs/DeprecationNotice"
+          },
+          "enabledByDefault": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "interactionServices": {
       "items": {
         "additionalProperties": false,

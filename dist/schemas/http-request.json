@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "allowFileSource": {
+      "type": "boolean"
+    },
+    "callerId": {
+      "type": "string"
+    },
+    "headers": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "method": {
+      "type": "string"
+    },
+    "redactionTokens": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "timeoutMs": {
+      "type": "number"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "type": "object"
+}

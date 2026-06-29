@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "pre-http-call"
+      ],
+      "type": "string"
+    },
+    "callerId": {
+      "type": "string"
+    },
+    "eventName": {
+      "enum": [
+        "pre-http-call"
+      ],
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "onBehalfOf": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    },
+    "urlOrigin": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "urlOrigin",
+    "timestamp"
+  ],
+  "type": "object"
+}

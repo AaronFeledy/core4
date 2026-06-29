@@ -4790,6 +4790,101 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-http-call"
+          ],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-http-call"
+          ],
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "urlOrigin",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-http-call"
+          ],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": [
+            "post-http-call"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "status": {
+          "type": "number"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "urlOrigin",
+        "outcome",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-data-transfer"
           ],
           "type": "string"

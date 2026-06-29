@@ -40,6 +40,12 @@ describe("@lando/sdk package exports", () => {
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
     expect(schema.DownloaderCapabilities).toBeDefined();
+    expect(schema.HttpRequest).toBeDefined();
+    expect(schema.HttpResponse).toBeDefined();
+    expect(schema.HttpStreamResponse).toBeDefined();
+    expect(schema.HttpUploadRequest).toBeDefined();
+    expect(schema.HttpClientCapabilities).toBeDefined();
+    expect(schema.HttpClientContribution).toBeDefined();
     expect(schema.ArchiveFormat).toBeDefined();
     expect(schema.DataEndpoint).toBeDefined();
     expect(schema.VolumeRef).toBeDefined();
@@ -245,6 +251,10 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DownloadOfflineError).toBeDefined();
     expect(errors.DownloadSourceForbiddenError).toBeDefined();
     expect(errors.DownloaderUnavailableError).toBeDefined();
+    expect(errors.HttpRequestError).toBeDefined();
+    expect(errors.HttpUploadError).toBeDefined();
+    expect(errors.HttpTrustError).toBeDefined();
+    expect(errors.HttpClientUnavailableError).toBeDefined();
     expect(errors.DataTransferError).toBeDefined();
     expect(errors.DataEndpointUnsupportedError).toBeDefined();
     expect(errors.DataChecksumMismatchError).toBeDefined();
@@ -343,6 +353,8 @@ describe("@lando/sdk package exports", () => {
     expect(events.PreDownloadEvent).toBeDefined();
     expect(events.DownloadProgressEvent).toBeDefined();
     expect(events.PostDownloadEvent).toBeDefined();
+    expect(events.PreHttpCallEvent).toBeDefined();
+    expect(events.PostHttpCallEvent).toBeDefined();
     expect(events.PrePullEvent).toBeDefined();
     expect(events.PostPullEvent).toBeDefined();
     expect(events.PrePushEvent).toBeDefined();
@@ -388,6 +400,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.Downloader).toBeDefined();
+    expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();
     expect(services.PathsService).toBeDefined();
     expect(services.RemoteSource).toBeDefined();

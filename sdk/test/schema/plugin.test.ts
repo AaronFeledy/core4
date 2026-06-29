@@ -64,6 +64,22 @@ describe("PluginManifest", () => {
             deprecated: notice,
           },
         ],
+        httpClients: [
+          {
+            id: "legacy-http-client",
+            module: "./http-client.ts",
+            capabilities: {
+              schemes: ["https"],
+              streaming: true,
+              upload: true,
+              customCa: true,
+              proxyAware: true,
+            },
+            enabledByDefault: true,
+            summary: "Legacy HTTP client.",
+            deprecated: notice,
+          },
+        ],
         setup: {
           flags: [{ name: "legacy-flag", type: "boolean", deprecated: notice }],
         },
@@ -77,6 +93,10 @@ describe("PluginManifest", () => {
     });
     expect(decoded.contributes?.downloaders?.[0]).toMatchObject({
       id: "legacy-downloader",
+      deprecated: notice,
+    });
+    expect(decoded.contributes?.httpClients?.[0]).toMatchObject({
+      id: "legacy-http-client",
       deprecated: notice,
     });
     expect(decoded.contributes?.setup?.flags?.[0]).toMatchObject({ name: "legacy-flag", deprecated: notice });

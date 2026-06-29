@@ -2131,5 +2131,68 @@
     "jsonSchemaPath": "dist/schemas/stream-frame.json",
     "packageExport": "@lando/sdk/schema#StreamFrame",
     "title": "Stream Frame"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Http Client Capabilities.",
+    "docsPath": "docs/reference/schemas/http-client-capabilities.mdx",
+    "id": "HttpClientCapabilities",
+    "jsonSchemaPath": "dist/schemas/http-client-capabilities.json",
+    "packageExport": "@lando/sdk/schema#HttpClientCapabilities",
+    "title": "Http Client Capabilities"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Http Request.",
+    "docsPath": "docs/reference/schemas/http-request.mdx",
+    "id": "HttpRequest",
+    "jsonSchemaPath": "dist/schemas/http-request.json",
+    "packageExport": "@lando/sdk/schema#HttpRequest",
+    "title": "Http Request"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Http Response.",
+    "docsPath": "docs/reference/schemas/http-response.mdx",
+    "id": "HttpResponse",
+    "jsonSchemaPath": "dist/schemas/http-response.json",
+    "packageExport": "@lando/sdk/schema#HttpResponse",
+    "title": "Http Response"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Http Stream Response.",
+    "docsPath": "docs/reference/schemas/http-stream-response.mdx",
+    "id": "HttpStreamResponse",
+    "jsonSchemaPath": "dist/schemas/http-stream-response.json",
+    "packageExport": "@lando/sdk/schema#HttpStreamResponse",
+    "title": "Http Stream Response"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Http Upload Request.",
+    "docsPath": "docs/reference/schemas/http-upload-request.mdx",
+    "id": "HttpUploadRequest",
+    "jsonSchemaPath": "dist/schemas/http-upload-request.json",
+    "packageExport": "@lando/sdk/schema#HttpUploadRequest",
+    "title": "Http Upload Request"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Pre Http Call Event.",
+    "docsPath": "docs/reference/schemas/pre-http-call-event.mdx",
+    "id": "PreHttpCallEvent",
+    "jsonSchemaPath": "dist/schemas/pre-http-call-event.json",
+    "packageExport": "@lando/sdk/schema#PreHttpCallEvent",
+    "title": "Pre Http Call Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Http Call Event.",
+    "docsPath": "docs/reference/schemas/post-http-call-event.mdx",
+    "id": "PostHttpCallEvent",
+    "jsonSchemaPath": "dist/schemas/post-http-call-event.json",
+    "packageExport": "@lando/sdk/schema#PostHttpCallEvent",
+    "title": "Post Http Call Event"
   }
 ]
