@@ -114,6 +114,8 @@
 - `HttpResponse`
 - `HttpStreamResponse`
 - `HttpUploadRequest`
+- `PostHttpCallEvent`
+- `PreHttpCallEvent`
 - `InlineProps`
 - `IncludeEntry`
 - `InspectProps`

@@ -1,3 +1,10 @@
+## 2026-06-29 16:48 CDT - US-330 Verify
+- Verified the freshly built compiled binary in `lando4-dev`: setup completed through a local verified runtime-bundle manifest, the managed runtime socket came up, and adjacent compiled `--help`, `shellenv`, and setup help smokes passed.
+- Verified the US-330 plugin-author surface end-to-end with a real Bun scenario importing `@lando/sdk/schema`, `@lando/sdk/errors`, and `@lando/sdk/services`: `contributes.httpClients[]` decoded with capabilities/deprecation metadata, `HttpClient` request/stream/upload methods ran under `Scope`, HTTP lifecycle event schemas decoded, and tagged HTTP errors instantiated.
+- Fixed a real acceptance blocker: `PreHttpCallEvent` and `PostHttpCallEvent` were registered public schemas but were not exported from `@lando/sdk/schema`, so the promised schema import surface failed for plugin authors.
+- **Learnings for future iterations:** Public schema registry membership is not enough; verify story-promised `@lando/sdk/schema` named imports from a consumer script, especially for event schemas sourced from `sdk/src/events/*`.
+---
+
 ## 2026-06-27 05:49 CDT - US-321 Review
 - Reviewed the plugin-abstraction contract-kit coverage/export gates and fixed confirmed blockers: root agent guidance now carries the kit rule, §4.2 rows point at the suite names, the SDK exports gate now dynamically proves every published `make*ContractSuite` is explicitly listed, the coverage gate now uses AST call detection instead of substring matching, and the DoctorCheck adapter preserves `doctor()` failures as contract failures.
 - Review notes (deferred/rejected): full DoctorCheck probe expansion is deferred because US-321 owns built-in invocation coverage and the SDK suite owns optional probe semantics; RouteFilter reference-mirror duplication is accepted because core is schema-only for those filters today; `GlobalConfig` test casting is pre-existing nearby style and not a story blocker.

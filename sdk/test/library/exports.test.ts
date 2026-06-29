@@ -46,6 +46,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.HttpUploadRequest).toBeDefined();
     expect(schema.HttpClientCapabilities).toBeDefined();
     expect(schema.HttpClientContribution).toBeDefined();
+    expect(schema.PreHttpCallEvent).toBeDefined();
+    expect(schema.PostHttpCallEvent).toBeDefined();
     expect(schema.ArchiveFormat).toBeDefined();
     expect(schema.DataEndpoint).toBeDefined();
     expect(schema.VolumeRef).toBeDefined();

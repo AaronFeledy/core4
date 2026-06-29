@@ -24,6 +24,7 @@ export * from "./docs.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./http-client.ts";
+export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./landofile.ts";
 export * from "./machine-output.ts";
