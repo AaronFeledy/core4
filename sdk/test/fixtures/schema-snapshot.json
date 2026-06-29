@@ -267,16 +267,24 @@
   ],
   "commandResultSchemas": {
     "app:cache:refresh": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
-          "type": "array"
+        "appCommandCachePath": {
+          "type": "string"
+        },
+        "commandsCompiled": {
+          "type": "number"
+        },
+        "pluginCommandCachePath": {
+          "type": "string"
         }
-      ]
+      },
+      "required": ["app", "commandsCompiled"],
+      "type": "object"
     },
     "app:config": {
       "$defs": {
@@ -1237,16 +1245,24 @@
       "type": "object"
     },
     "app:destroy": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesDestroyed": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
+        },
+        "volumesRemoved": {
+          "type": "boolean"
         }
-      ]
+      },
+      "required": ["app", "servicesDestroyed", "volumesRemoved"],
+      "type": "object"
     },
     "app:exec": {
       "$id": "/schemas/%7B%7D",
@@ -1855,16 +1871,43 @@
       "type": "object"
     },
     "app:rebuild": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesRebuilt": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "servicesStarted": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "state", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesRebuilt", "servicesStarted"],
+      "type": "object"
     },
     "app:remote:add": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2024,16 +2067,37 @@
       "type": "object"
     },
     "app:restart": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesStarted": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "state", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesStarted"],
+      "type": "object"
     },
     "app:share": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2313,28 +2377,54 @@
       ]
     },
     "app:start": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesStarted": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "state", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesStarted"],
+      "type": "object"
     },
     "app:stop": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesStopped": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesStopped"],
+      "type": "object"
     },
     "apps:init": {
       "$id": "/schemas/%7B%7D",
@@ -2385,16 +2475,30 @@
       "type": "object"
     },
     "apps:poweroff": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
-        },
-        {
+      "additionalProperties": false,
+      "properties": {
+        "appsPoweredOff": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
+        },
+        "keptGlobalApp": {
+          "type": "boolean"
+        },
+        "keptScratchApps": {
+          "type": "number"
+        },
+        "runtimeServicePid": {
+          "type": "number"
+        },
+        "runtimeServiceStopped": {
+          "type": "boolean"
         }
-      ]
+      },
+      "required": ["appsPoweredOff", "keptGlobalApp", "keptScratchApps", "runtimeServiceStopped"],
+      "type": "object"
     },
     "apps:scratch:destroy": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2768,16 +2872,15 @@
       "type": "object"
     },
     "meta:bun": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
-        },
-        {
-          "type": "array"
+      "additionalProperties": false,
+      "properties": {
+        "exitCode": {
+          "type": "number"
         }
-      ]
+      },
+      "required": ["exitCode"],
+      "type": "object"
     },
     "meta:config": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4214,16 +4317,27 @@
       "type": "object"
     },
     "meta:global:destroy": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "materialized": {
+          "type": "boolean"
+        },
+        "servicesDestroyed": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
+        },
+        "volumesRemoved": {
+          "type": "boolean"
         }
-      ]
+      },
+      "required": ["app", "materialized", "servicesDestroyed", "volumesRemoved"],
+      "type": "object"
     },
     "meta:global:info": {
       "$id": "/schemas/%7B%7D",
@@ -4238,16 +4352,51 @@
       ]
     },
     "meta:global:install": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
+      "additionalProperties": false,
+      "properties": {
+        "dist": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "serviceIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "status": {
+              "enum": ["created", "updated", "unchanged"],
+              "type": "string"
+            }
+          },
+          "required": ["path", "status", "serviceIds"],
           "type": "object"
         },
-        {
-          "type": "array"
+        "paths": {
+          "additionalProperties": false,
+          "properties": {
+            "distLandofile": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            },
+            "userLandofile": {
+              "type": "string"
+            }
+          },
+          "required": ["root", "distLandofile", "userLandofile"],
+          "type": "object"
+        },
+        "userLandofileCreated": {
+          "type": "boolean"
         }
-      ]
+      },
+      "required": ["paths", "dist", "userLandofileCreated"],
+      "type": "object"
     },
     "meta:global:list": {
       "$id": "/schemas/%7B%7D",
@@ -4298,16 +4447,37 @@
       ]
     },
     "meta:global:start": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesStarted": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "state", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesStarted"],
+      "type": "object"
     },
     "meta:global:status": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4363,28 +4533,67 @@
       "type": "object"
     },
     "meta:global:stop": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "materialized": {
+          "type": "boolean"
+        },
+        "servicesStopped": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "materialized", "servicesStopped"],
+      "type": "object"
     },
     "meta:global:uninstall": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "dist": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "serviceIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "status": {
+              "enum": ["created", "updated", "unchanged"],
+              "type": "string"
+            }
+          },
+          "required": ["path", "status", "serviceIds"],
           "type": "object"
         },
-        {
+        "materialized": {
+          "type": "boolean"
+        },
+        "purged": {
+          "type": "boolean"
+        },
+        "servicesRemoved": {
+          "items": {
+            "type": "string"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "materialized", "purged", "dist", "servicesRemoved"],
+      "type": "object"
     },
     "meta:plugin:add": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4742,16 +4951,8 @@
       "type": "object"
     },
     "meta:shellenv": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
-        },
-        {
-          "type": "array"
-        }
-      ]
+      "type": "string"
     },
     "meta:uninstall": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4831,28 +5032,35 @@
       "type": "object"
     },
     "meta:version": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "bun": {
+          "type": "string"
         },
-        {
-          "type": "array"
+        "core": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
         }
-      ]
+      },
+      "required": ["core", "bun", "platform"],
+      "type": "object"
     },
     "meta:x": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "exitCode": {
+          "type": "number"
         },
-        {
-          "type": "array"
+        "spec": {
+          "type": "string"
         }
-      ]
+      },
+      "required": ["spec", "exitCode"],
+      "type": "object"
     }
   },
   "generatedBy": "scripts/build-schema-snapshot.ts",

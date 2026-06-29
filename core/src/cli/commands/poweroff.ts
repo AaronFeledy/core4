@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
@@ -32,6 +32,14 @@ export interface PoweroffResult {
   readonly runtimeServiceStopped: boolean;
   readonly runtimeServicePid?: number;
 }
+
+export const PoweroffResultSchema = Schema.Struct({
+  appsPoweredOff: Schema.Array(Schema.String),
+  keptGlobalApp: Schema.Boolean,
+  keptScratchApps: Schema.Number,
+  runtimeServiceStopped: Schema.Boolean,
+  runtimeServicePid: Schema.optional(Schema.Number),
+});
 
 const GLOBAL_APP_ID = "global";
 const SCRATCH_PREFIX = "scratch-";

@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type {
   CapabilityError,
@@ -51,6 +51,17 @@ export interface GlobalStartResult {
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<GlobalStartedService>;
 }
+
+export const GlobalStartedServiceSchema = Schema.Struct({
+  name: Schema.String,
+  state: Schema.String,
+  endpoints: Schema.Array(Schema.String),
+});
+
+export const GlobalStartResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesStarted: Schema.Array(GlobalStartedServiceSchema),
+});
 
 type GlobalStartError =
   | CapabilityError

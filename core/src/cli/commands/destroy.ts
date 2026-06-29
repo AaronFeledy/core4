@@ -9,7 +9,7 @@
  */
 import { rm } from "node:fs/promises";
 
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
@@ -27,6 +27,12 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts"
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 export type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
+
+export const DestroyAppResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesDestroyed: Schema.Array(Schema.String),
+  volumesRemoved: Schema.Boolean,
+});
 
 type DestroyAppServices =
   | AppPlanner

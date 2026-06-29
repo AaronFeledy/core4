@@ -1,12 +1,12 @@
 import { Flags } from "@oclif/core";
-import { type PoweroffResult, poweroff, renderPoweroffResult } from "../../../commands/poweroff.ts";
-
 import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+  type PoweroffResult,
+  PoweroffResultSchema,
+  poweroff,
+  renderPoweroffResult,
+} from "../../../commands/poweroff.ts";
+
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 const extractFlags = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};
@@ -14,7 +14,7 @@ const extractFlags = (input: unknown): Record<string, unknown> => {
 };
 
 export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PoweroffResultSchema,
   id: "apps:poweroff",
   summary: "Stop every Lando-managed service across apps.",
   namespace: "apps",

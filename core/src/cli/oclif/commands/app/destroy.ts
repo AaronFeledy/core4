@@ -3,13 +3,13 @@
  */
 import { Flags } from "@oclif/core";
 
-import { type DestroyAppResult, destroyApp, renderDestroyAppResult } from "../../../commands/destroy.ts";
 import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+  type DestroyAppResult,
+  DestroyAppResultSchema,
+  destroyApp,
+  renderDestroyAppResult,
+} from "../../../commands/destroy.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 interface DestroyFlags {
   readonly purge: boolean;
@@ -19,7 +19,7 @@ interface DestroyFlags {
 }
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: DestroyAppResultSchema,
   id: "app:destroy",
   summary: "Destroy the current Lando app (preserves volumes unless --purge or --volumes).",
   namespace: "app",

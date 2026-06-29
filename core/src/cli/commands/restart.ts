@@ -3,7 +3,7 @@
  *
  * Bootstrap level: `app`.
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
 import type {
@@ -17,10 +17,15 @@ import type {
 } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../app-resolution.ts";
-import { type StartManagedScope, startApp } from "./start.ts";
+import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
 export type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
+
+export const RestartAppResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesStarted: Schema.Array(StartedServiceResultSchema),
+});
 
 type RestartAppServices =
   | AppPlanner

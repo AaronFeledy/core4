@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type CapabilityError,
@@ -33,6 +33,13 @@ export interface GlobalDestroyResult {
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
 }
+
+export const GlobalDestroyResultSchema = Schema.Struct({
+  app: Schema.String,
+  materialized: Schema.Boolean,
+  servicesDestroyed: Schema.Array(Schema.String),
+  volumesRemoved: Schema.Boolean,
+});
 
 type GlobalDestroyError =
   | CapabilityError

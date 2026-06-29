@@ -4,7 +4,7 @@
  * This command performs full app bootstrap and rebuilds the app plan cache
  * and command index without contacting the provider.
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -53,6 +53,13 @@ export interface AppCacheRefreshResult {
   readonly appCommandCachePath?: string;
   readonly pluginCommandCachePath?: string;
 }
+
+export const AppCacheRefreshResultSchema = Schema.Struct({
+  app: Schema.String,
+  commandsCompiled: Schema.Number,
+  appCommandCachePath: Schema.optional(Schema.String),
+  pluginCommandCachePath: Schema.optional(Schema.String),
+});
 
 type AppCacheRefreshError =
   | AppIdReservedError

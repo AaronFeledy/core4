@@ -867,3 +867,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The schema-snapshot generator (`scripts/build-schema-snapshot.ts`) snapshots ONLY the public `@lando/sdk` registry (`JSON_SCHEMA_NAMES`) plus bundled plugin manifests; it does not crawl CLI command modules. To freeze per-command CLI result shapes without bloating the public SDK library surface, add a SEPARATE top-level snapshot section (here `commandResultSchemas`) keyed by canonical command id with `JSONSchema.make` output. Keep it out of `scope.sdkSchemas` so the existing order-sensitive `scope.sdkSchemas === JSON_SCHEMA_NAMES` assertion is untouched. Every command `resultSchema` must be `JSONSchema.make`-able (no `Schema.transform` in the result shape) or the generator throws.
   - Large generated fixtures can trip biome's default 1 MiB `files.maxSize`; raise it in `biome.json` rather than excluding the file from the generator's mandatory `biome check --write` step.
 ---
+
+## 2026-06-29 01:36 CDT - US-327 Review
+- Reviewed the command-result schema migration and fixed a confirmed blocker: concrete non-streaming result commands that still used the open `EmptyResultSchema` placeholder now publish faithful local schemas and the command-result snapshot freezes those shapes instead of `{}`.
+- Review notes (deferred/rejected): `check:machine-output` and the static JSON producer boundary remain US-328 scope; remaining `EmptyResultSchema` specs are interactive, streaming, deferred, or no-payload surfaces rather than structured result commands.
+- Verification: typecheck passed; lint passed; focused spot checks passed for schema snapshot/result routing/command result registration plus app poweroff, global command/install, start, and restart coverage.
+---

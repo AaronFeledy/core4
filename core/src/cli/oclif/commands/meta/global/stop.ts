@@ -1,17 +1,13 @@
 import {
   type GlobalStopResult,
+  GlobalStopResultSchema,
   globalStop,
   renderGlobalStopResult,
 } from "../../../../commands/meta/global-stop.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const metaGlobalStopSpec: LandoCommandSpec<GlobalStopResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: GlobalStopResultSchema,
   id: "meta:global:stop",
   summary: "Stop the host-level global Lando app.",
   namespace: "meta",

@@ -5,16 +5,11 @@
  * `core/src/cli/commands/version.ts` (so `@lando/core/cli` can re-export
  * it without pulling OCLIF).
  */
-import { type VersionResult, version } from "../../../commands/version.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { type VersionResult, VersionResultSchema, version } from "../../../commands/version.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const versionSpec: LandoCommandSpec<VersionResult, never> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: VersionResultSchema,
   id: "meta:version",
   summary: "Show the Lando + Bun + plugin versions.",
   namespace: "meta",

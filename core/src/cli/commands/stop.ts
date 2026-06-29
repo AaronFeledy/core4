@@ -3,7 +3,7 @@
  *
  * Bootstrap level: `app`.
  */
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
@@ -20,6 +20,11 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts"
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 export type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+
+export const StopAppResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesStopped: Schema.Array(Schema.String),
+});
 
 type StopAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
 

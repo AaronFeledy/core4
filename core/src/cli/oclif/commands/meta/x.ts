@@ -1,14 +1,9 @@
 import { Args } from "@oclif/core";
 import { Cause, Effect, Exit } from "effect";
 
-import { type MetaXResult, metaX, renderMetaXResult } from "../../../commands/bun.ts";
+import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun.ts";
 
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -25,7 +20,7 @@ const splitSpecAndArgs = (
 };
 
 export const metaXSpec: LandoCommandSpec<MetaXResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: MetaXResultSchema,
   id: "meta:x",
   summary: "One-shot package execution via BunSelfRunner.x (bunx-equivalent).",
   namespace: "meta",
