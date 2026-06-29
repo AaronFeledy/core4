@@ -121,9 +121,13 @@ const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> 
       Effect.succeed(false);
   });
 
-const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+const findAliveServicePids = (
+  deps: EnsureRuntimeDeps,
+  find:
+    | ((spec: ReturnType<typeof buildPodmanServiceArgs>) => Effect.Effect<ReadonlyArray<number>>)
+    | undefined,
+): Effect.Effect<ReadonlyArray<number>> =>
   Effect.gen(function* () {
-    const find = deps.serviceRunner.findMatchingServicePids;
     if (find === undefined) return [];
 
     const spec = buildPodmanServiceArgs(deps);
@@ -134,6 +138,12 @@ const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<Re
     }
     return alive;
   });
+
+const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+  findAliveServicePids(deps, deps.serviceRunner.findMatchingServicePids);
+
+const findAliveManagedServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+  findAliveServicePids(deps, deps.serviceRunner.findManagedServicePids);
 
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
@@ -200,9 +210,14 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
       const owned = yield* currentRuntimeIsOwned(deps);
       if (owned) return;
 
-      if (deps.serviceRunner.findMatchingServicePids !== undefined) {
+      if (
+        deps.serviceRunner.findMatchingServicePids !== undefined ||
+        deps.serviceRunner.findManagedServicePids !== undefined
+      ) {
         const matchingPids = yield* findAliveMatchingServicePids(deps);
-        if (matchingPids.length === 0) {
+        const managedPids = yield* findAliveManagedServicePids(deps);
+        const pidsToStop = [...new Set([...matchingPids, ...managedPids])];
+        if (pidsToStop.length === 0) {
           const stalePid = yield* readStalePid(deps.pidPath);
           if (stalePid !== undefined) {
             const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
@@ -215,7 +230,7 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
             }
           }
         } else {
-          for (const pid of matchingPids) {
+          for (const pid of pidsToStop) {
             yield* deps.serviceRunner.terminate(pid);
           }
         }

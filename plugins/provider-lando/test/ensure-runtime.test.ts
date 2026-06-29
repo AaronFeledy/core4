@@ -63,6 +63,7 @@ type Call =
   | ["isAlive", number]
   | ["isServiceProcess", number, string]
   | ["findMatching", string]
+  | ["findManaged", string]
   | ["terminate", number];
 
 const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
@@ -76,7 +77,10 @@ const serviceRunner = (
   calls: Call[],
   alive: boolean,
   serviceProcess = alive,
-  options?: { readonly findMatchingPids?: ReadonlyArray<number> },
+  options?: {
+    readonly findMatchingPids?: ReadonlyArray<number>;
+    readonly findManagedPids?: ReadonlyArray<number>;
+  },
 ): PodmanServiceRunner => ({
   launch: (spec) =>
     Effect.sync(() => {
@@ -100,6 +104,15 @@ const serviceRunner = (
           Effect.sync(() => {
             calls.push(["findMatching", JSON.stringify(spec.args)]);
             return options.findMatchingPids ?? [];
+          }),
+      }),
+  ...(options?.findManagedPids === undefined
+    ? {}
+    : {
+        findManagedServicePids: (spec) =>
+          Effect.sync(() => {
+            calls.push(["findManaged", JSON.stringify(spec.args)]);
+            return options.findManagedPids ?? [];
           }),
       }),
   terminate: (pid) =>
@@ -179,6 +192,37 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
+  test("reachable socket with legacy managed argv stops service before relaunch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true, false, {
+            findMatchingPids: [],
+            findManagedPids: [8888],
+          }),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([
+        ["findMatching", canonicalArgs(p)],
+        ["findManaged", canonicalArgs(p)],
+        ["isAlive", 8888],
+        ["terminate", 8888],
+        ["launch", canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("reachable socket without owned argv match relaunches managed service", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -189,13 +233,14 @@ describe("ensureRuntime", () => {
         ensureRuntime({
           platform: "linux",
           podmanApi: reachableApi(),
-          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [] }),
+          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [], findManagedPids: [] }),
           ...p,
         }),
       );
 
       expect(calls).toEqual([
         ["findMatching", canonicalArgs(p)],
+        ["findManaged", canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
@@ -263,7 +308,7 @@ describe("ensureRuntime", () => {
         ensureRuntime({
           platform: "linux",
           podmanApi: reachableApi(),
-          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [] }),
+          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [], findManagedPids: [] }),
           ...p,
         }),
       );
@@ -272,6 +317,7 @@ describe("ensureRuntime", () => {
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
+        ["findManaged", canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
@@ -295,7 +341,10 @@ describe("ensureRuntime", () => {
         ensureRuntime({
           platform: "linux",
           podmanApi: reachableApi(),
-          serviceRunner: serviceRunner(calls, true, false, { findMatchingPids: [7777] }),
+          serviceRunner: serviceRunner(calls, true, false, {
+            findMatchingPids: [7777],
+            findManagedPids: [],
+          }),
           ...p,
         }),
       );
@@ -305,6 +354,7 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
         ["isAlive", 7777],
+        ["findManaged", canonicalArgs(p)],
         ["terminate", 7777],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
