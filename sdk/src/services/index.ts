@@ -1,7 +1,7 @@
 /** Effect service tags for the SDK. */
 import type { Context, Effect, Option, Queue, Redacted, Schema, Scope, Stream } from "effect";
 
-type _ServiceTagCompatContext = typeof Context.Tag;
+export type _ServiceTagCompatContext = typeof Context.Tag;
 
 import type {
   AbsolutePath,
@@ -19,6 +19,11 @@ import type {
   DeprecationUse,
   GlobalConfig,
   HostPlatform,
+  HttpClientCapabilities,
+  HttpRequest,
+  HttpResponse,
+  HttpStreamResponse,
+  HttpUploadRequest,
   LandofileShape,
   ManagedFile,
   ManagedFileInfo,
@@ -66,6 +71,10 @@ import type {
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
+  HttpClientUnavailableError,
+  HttpRequestError,
+  HttpTrustError,
+  HttpUploadError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -111,7 +120,6 @@ import type { ServiceFeatureDefinition } from "./features.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
-import type { HttpClientShape } from "./http-client.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
 import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
@@ -721,7 +729,31 @@ export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
 
 export declare class HttpClient extends Context.Tag("@lando/core/HttpClient")<
   HttpClient,
-  HttpClientShape
+  {
+    readonly id: string;
+    readonly capabilities: HttpClientCapabilities;
+    readonly request: (
+      req: HttpRequest,
+    ) => Effect.Effect<
+      HttpResponse,
+      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
+      Scope.Scope
+    >;
+    readonly stream: (req: HttpRequest) => Effect.Effect<
+      HttpStreamResponse & {
+        readonly body: Stream.Stream<Uint8Array, HttpRequestError | HttpTrustError>;
+      },
+      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
+      Scope.Scope
+    >;
+    readonly upload: (
+      req: HttpUploadRequest,
+    ) => Effect.Effect<
+      HttpResponse,
+      HttpUploadError | HttpTrustError | HttpClientUnavailableError,
+      Scope.Scope
+    >;
+  }
 >() {}
 
 export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}

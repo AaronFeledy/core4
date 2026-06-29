@@ -48,7 +48,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 ## Downloader / HttpClient
 
 - `DownloaderLive` issues every byte through core-private `HttpClient.stream`; it never calls `fetch` directly. Its `download()` `R` channel stays `Scope.Scope` because the live layer closes over `HttpClient` at construction.
-- `HttpClient` in `core/src/http-client/service.ts` is provisional and not exported from `@lando/sdk/services` or `core/src/services/index.ts`. `HttpClientBasicLive` is the only `fetch` call site under `core/src/` until the full SDK HttpClient story lands.
+- `@lando/sdk/services` publishes the public `HttpClient` tag with the same `@lando/core/HttpClient` key. `core/src/http-client/service.ts` remains the provisional stream-only core implementation until US-331 promotes `HttpClientLive`, the canonical network-trust resolver, and the network-boundary gate.
 - Reuse `@lando/sdk/verified-stream` for stream -> hash -> temp -> atomic rename; do not add another checksum/temp-file implementation.
 - Bootstrap wiring is provided-only: the generator emits `DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive)))`. Edit `scripts/build-bootstrap-layers.ts` and regenerate, never hand-edit `core/src/runtime/generated/layers/minimal.ts`.
 - Download progress/redaction/egress-fence contracts are not implemented yet; memory mode is verify-only and returns `path`, not `bytes`.
