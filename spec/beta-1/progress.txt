@@ -914,3 +914,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): extending `check:guide-coverage`/`check:guide-drift` to scan all beta-1 PRD guide tables is a systemic guide-gate follow-up, not a US-329 blocker because this story added the PRD-15 INDEX row and committed the guide/reference artifacts; a dedicated unit test for `build-command-reference.ts` and a stricter `json.char === "j"` assertion are non-blocking hardening because CI drift plus the manifest-backed generator already gate the shipped reference.
 - Verification: typecheck passed; lint passed; lint:guides and check:guide-coverage passed; focused spot checks passed for ci-workflow, codegen-ci, ci-runbook, and check-guide-coverage; command-reference regeneration left no drift. `check:public-transcripts` was not green in this workspace due to pre-existing missing unrelated recipe transcripts, and `check:guide-drift` skipped locally without PR context.
 ---
+
+## 2026-06-29 15:07 CDT - US-329 Verify
+- Verified the freshly compiled binary in `lando4-dev`: `lando setup` completed non-interactively, the scripting guide scenario passed against a throwaway `.lando.yml` app via `app:config --format=json` / `--json` / `-j` and `app:config:lint --format=json`, and adjacent `shellenv --format json` plus setup JSON output were smoke-tested.
+- Fixed a compiled setup JSON regression at the root cause: `runSetup` now passes `meta:setup` and `SetupResultSchema` into the renderer boundary, so setup envelopes no longer fall back to `command: "cli:unknown"`.
+- **Learnings for future iterations:** Commands that bypass `runCompiledCommand` and call `runWithRendererHandling` directly must pass `command` and `resultSchema`, or compiled `--format json` can silently lose canonical command metadata even when exit codes and unit conformance still pass.
+---

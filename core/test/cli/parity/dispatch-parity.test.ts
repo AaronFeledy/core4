@@ -394,6 +394,44 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       );
     }, 30_000);
 
+    test("meta:setup --format json emits the canonical setup envelope on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      const args = [
+        "meta:setup",
+        "--yes",
+        "--skip-provider",
+        "--skip-proxy",
+        "--skip-install-ca",
+        "--skip-shell-integration",
+        "--skip-file-sync",
+        "--format",
+        "json",
+      ];
+      try {
+        const source = await runSourceCli(args, { env: isolated.env });
+        const compiled = await runCompiledCli(args, { env: isolated.env });
+
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+        const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout));
+        const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout));
+        expect(sourceEnvelope.command).toBe("meta:setup");
+        expect(compiledEnvelope.command).toBe("meta:setup");
+        expect(compiledEnvelope).toMatchObject({
+          apiVersion: "v4",
+          ok: true,
+          result: { providerId: "lando", fileSyncStatus: "satisfied" },
+        });
+        expect(sourceEnvelope).toMatchObject({
+          apiVersion: "v4",
+          ok: true,
+          result: { providerId: "lando", fileSyncStatus: "satisfied" },
+        });
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
     test("uninstall dry-run renders the same safety plan on both paths", async () => {
       const source = await runSourceCli(["uninstall", "--dry-run"]);
       const compiled = await runCompiledCli(["uninstall", "--dry-run"]);
