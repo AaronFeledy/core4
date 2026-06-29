@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
-import { Data, Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import {
   type ConfigError,
@@ -45,6 +45,12 @@ export interface PluginLinkResult {
   readonly linkedPath: string;
   readonly registryEntry: string;
 }
+
+export const PluginLinkResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  linkedPath: Schema.String,
+  registryEntry: Schema.String,
+});
 
 export interface LinkedPluginEntry {
   readonly source: "linked";

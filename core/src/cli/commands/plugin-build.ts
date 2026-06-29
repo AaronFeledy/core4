@@ -1,7 +1,7 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
@@ -38,6 +38,14 @@ export interface PluginBuildResult {
   readonly outputs: ReadonlyArray<string>;
   readonly exitCode: number;
 }
+
+export const PluginBuildResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  pluginRoot: Schema.String,
+  entrypoints: Schema.Array(Schema.String),
+  outputs: Schema.Array(Schema.String),
+  exitCode: Schema.Number,
+});
 
 const declarationTsconfigName = ".lando-plugin-build.tsconfig.json";
 

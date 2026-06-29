@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -11,7 +11,7 @@ import type {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
@@ -26,6 +26,12 @@ export interface AppConfigResult {
   readonly source: "resolved";
   readonly landofile: LandofileShape;
 }
+
+export const AppConfigResultSchema = Schema.Struct({
+  app: Schema.String,
+  source: Schema.Literal("resolved"),
+  landofile: LandofileShape,
+});
 
 type AppConfigError =
   | AppIdReservedError
@@ -49,14 +55,10 @@ const tableRender = (result: AppConfigResult): string => {
   return lines.join("\n");
 };
 
-const jsonReplacer = (_key: string, value: unknown): unknown =>
-  typeof value === "bigint" ? value.toString() : value;
-
 export const renderAppConfigResult = (
   result: AppConfigResult,
-  format: "json" | "table" = "table",
+  _format: "json" | "table" = "table",
 ): string => {
-  if (format === "json") return JSON.stringify(result.landofile, jsonReplacer, 2);
   return tableRender(result);
 };
 

@@ -2,16 +2,12 @@ import { Args } from "@oclif/core";
 
 import {
   type PluginLinkResult,
+  PluginLinkResultSchema,
   pluginLink,
   renderPluginLinkResult,
 } from "../../../../commands/plugin-link.ts";
 
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown): { path?: string } => {
   if (typeof input !== "object" || input === null) return {};
@@ -20,7 +16,7 @@ const extractInput = (input: unknown): { path?: string } => {
 };
 
 export const pluginLinkSpec: LandoCommandSpec<PluginLinkResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PluginLinkResultSchema,
   id: "meta:plugin:link",
   summary: "Symlink the current plugin into the user-global plugin store (authoring command).",
   namespace: "meta",

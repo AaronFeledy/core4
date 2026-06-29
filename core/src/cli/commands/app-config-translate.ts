@@ -38,6 +38,25 @@ export interface AppConfigTranslateResult {
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
 }
 
+const ConfigTranslateDiagnosticSchema = Schema.Struct({
+  kind: Schema.Union(
+    Schema.Literal("generated"),
+    Schema.Literal("unsupported"),
+    Schema.Literal("non-portable"),
+    Schema.Literal("needs-review"),
+  ),
+  message: Schema.String,
+  path: Schema.optional(Schema.String),
+});
+
+export const AppConfigTranslateResultSchema = Schema.Struct({
+  inputPath: Schema.String,
+  outputPath: Schema.String,
+  mode: Schema.Union(Schema.Literal("canonical"), Schema.Literal("write")),
+  backupPath: Schema.optional(Schema.String),
+  diagnostics: Schema.Array(ConfigTranslateDiagnosticSchema),
+});
+
 export type AppConfigTranslateError =
   | LandofileNotFoundError
   | LandofileParseError
@@ -170,5 +189,5 @@ const textRender = (result: AppConfigTranslateResult): string => {
 
 export const renderConfigTranslateResult = (
   result: AppConfigTranslateResult,
-  format: AppConfigTranslateFormat = "text",
-): string => (format === "json" ? JSON.stringify(result, null, 2) : textRender(result));
+  _format: AppConfigTranslateFormat = "text",
+): string => textRender(result);

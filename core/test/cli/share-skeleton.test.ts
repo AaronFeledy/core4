@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, type Scope } from "effect";
 
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/core/services";
@@ -103,6 +103,7 @@ describe("share command skeleton", () => {
 
   test("compiled dispatcher exposes share routes and renderers", async () => {
     const source = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const shareSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/share.ts")).text();
 
     expect(source).toContain("renderShareResult(value, compiledFormat(input), ctx)");
     expect(source).toContain("renderShareListResult(value, options.format, ctx)");
@@ -110,6 +111,8 @@ describe("share command skeleton", () => {
     expect(source).toContain('argv[0] === "share"');
     expect(source).toContain('argv[0] === "app:share:list"');
     expect(source).toContain('argv[0] === "share:stop:app"');
+    expect(shareSource).not.toContain('format === "json"');
+    expect(shareSource).not.toContain("JSON.stringify");
   });
 
   test("share operations fail with TunnelProviderUnavailableError when no service is installed", async () => {
@@ -117,10 +120,24 @@ describe("share command skeleton", () => {
       const operations = await import("@lando/core/cli/operations");
 
       const startExit = await Effect.runPromiseExit(
-        Effect.scoped(operations.appShare({ cwd: dir, target: serviceTarget, yes: true })),
+        Effect.scoped(
+          operations.appShare({ cwd: dir, target: serviceTarget, yes: true }) as unknown as Effect.Effect<
+            unknown,
+            unknown,
+            Scope.Scope
+          >,
+        ),
       );
-      const listExit = await Effect.runPromiseExit(operations.appShareList({ cwd: dir }));
-      const stopExit = await Effect.runPromiseExit(operations.appShareStop({ cwd: dir, sessionId: "tun_1" }));
+      const listExit = await Effect.runPromiseExit(
+        operations.appShareList({ cwd: dir }) as unknown as Effect.Effect<unknown, unknown, never>,
+      );
+      const stopExit = await Effect.runPromiseExit(
+        operations.appShareStop({ cwd: dir, sessionId: "tun_1" }) as unknown as Effect.Effect<
+          unknown,
+          unknown,
+          never
+        >,
+      );
 
       for (const exit of [startExit, listExit, stopExit]) {
         expect(exit._tag).toBe("Failure");

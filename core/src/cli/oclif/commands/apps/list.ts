@@ -1,12 +1,12 @@
 import { Flags } from "@oclif/core";
-import { type ListServicesResult, listServices, renderAppsListResult } from "../../../commands/list.ts";
-
 import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+  AppsListResultSchema,
+  type ListServicesResult,
+  listServices,
+  renderAppsListResult,
+} from "../../../commands/list.ts";
+
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 const extractFormat = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
@@ -21,7 +21,7 @@ const extractPath = (input: unknown): string | undefined => {
 };
 
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: AppsListResultSchema,
   id: "apps:list",
   summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",

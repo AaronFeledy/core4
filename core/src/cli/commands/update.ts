@@ -147,6 +147,11 @@ export interface UpdateResult {
   readonly updatedPlugins: ReadonlyArray<string>;
 }
 
+export const UpdateResultSchema = Schema.Struct({
+  updatedCore: Schema.Boolean,
+  updatedPlugins: Schema.Array(Schema.String),
+});
+
 export interface UpdateManifestSignatureInput {
   readonly manifestUrl: string;
   readonly manifestBytes: Uint8Array;

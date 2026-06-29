@@ -2,19 +2,15 @@ import { Args } from "@oclif/core";
 
 import {
   type ScratchLogsResult,
+  ScratchLogsResultSchema,
   renderScratchLogsResult,
   scratchIdFromInput,
   scratchLogs,
 } from "../../../../commands/scratch.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appsScratchLogsSpec: LandoCommandSpec<ScratchLogsResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ScratchLogsResultSchema,
   id: "apps:scratch:logs",
   summary: "Show logs for a scratch Lando app.",
   namespace: "apps",

@@ -1,18 +1,21 @@
 import { Flags } from "@oclif/core";
 
 import type { IncludeVerifyReport } from "../../../../../landofile/includes.ts";
-import { appIncludesVerify, renderIncludesVerifyResult } from "../../../../commands/app-includes-verify.ts";
-import { EmptyResultSchema, LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+import {
+  AppIncludesVerifyResultSchema,
+  appIncludesVerify,
+  renderIncludesVerifyResult,
+} from "../../../../commands/app-includes-verify.ts";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
 export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: AppIncludesVerifyResultSchema,
   id: "app:includes:verify",
   summary: "Verify the includes lockfile matches the resolved tree without updating it.",
   namespace: "app",
   bootstrap: "minimal",
   run: () => appIncludesVerify(),
-  render: (result, _input, ctx) =>
-    renderIncludesVerifyResult(result as IncludeVerifyReport, ctx?.format === "json" ? "json" : "text"),
+  render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, "text"),
 };
 
 export default class AppIncludesVerifyCommand extends LandoCommandBase {

@@ -25,6 +25,37 @@ export type {
 
 export type AppIncludesVerifyFormat = "text" | "json";
 
+const IncludeVerifyNullableStringSchema = Schema.Union(Schema.String, Schema.Literal(null));
+
+const IncludeVerifyEntrySchema = Schema.Struct({
+  source: Schema.String,
+  status: Schema.Union(
+    Schema.Literal("ok"),
+    Schema.Literal("mismatch"),
+    Schema.Literal("missing"),
+    Schema.Literal("stale"),
+  ),
+  expected: IncludeVerifyNullableStringSchema,
+  actual: IncludeVerifyNullableStringSchema,
+});
+
+const IncludeVerifyMismatchSchema = Schema.Struct({
+  _tag: Schema.Literal("LandofileLockMismatchError"),
+  message: Schema.String,
+  lockfile: Schema.String,
+  source: Schema.String,
+  expected: Schema.String,
+  actual: Schema.String,
+  remediation: Schema.String,
+});
+
+export const AppIncludesVerifyResultSchema = Schema.Struct({
+  lockfilePath: Schema.String,
+  entries: Schema.Array(IncludeVerifyEntrySchema),
+  mismatches: Schema.Array(IncludeVerifyMismatchSchema),
+  ok: Schema.Boolean,
+});
+
 export interface AppIncludesVerifyOptions {
   readonly cwd?: string;
   readonly deps?: LandofileIncludeDeps;
@@ -133,8 +164,8 @@ const textRender = (report: IncludeVerifyReport): string => {
  */
 export const renderIncludesVerifyResult = (
   report: IncludeVerifyReport,
-  format: AppIncludesVerifyFormat = "text",
+  _format: AppIncludesVerifyFormat = "text",
 ): string => {
   if (!report.ok) process.exitCode = 1;
-  return format === "json" ? JSON.stringify(report, null, 2) : textRender(report);
+  return textRender(report);
 };

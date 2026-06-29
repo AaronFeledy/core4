@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { Data, Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
@@ -62,6 +62,19 @@ export interface PluginPublishResult {
   readonly published: boolean;
   readonly exitCode: number;
 }
+
+export const PluginPublishResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  pluginRoot: Schema.String,
+  registry: Schema.String,
+  tag: Schema.String,
+  packageContents: Schema.Array(Schema.String),
+  dryRun: Schema.Boolean,
+  rebuilt: Schema.Boolean,
+  tested: Schema.Boolean,
+  published: Schema.Boolean,
+  exitCode: Schema.Number,
+});
 
 type PluginPublishError =
   | NotImplementedError

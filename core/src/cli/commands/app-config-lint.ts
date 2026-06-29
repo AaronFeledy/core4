@@ -37,8 +37,8 @@ const textRender = (result: ConfigLintResult): string => {
  */
 export const renderConfigLintResult = (
   result: ConfigLintResult,
-  format: AppConfigLintFormat = "text",
+  _format: AppConfigLintFormat = "text",
 ): string => {
   if (!result.valid) process.exitCode = 1;
-  return format === "json" ? JSON.stringify(result, null, 2) : textRender(result);
+  return textRender(result);
 };

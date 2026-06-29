@@ -537,10 +537,9 @@ export const appPush = (
 
 export const renderRemoteListResult = (
   result: ReadonlyArray<RemoteEntry>,
-  format: "text" | "json" = "text",
-  ctx?: RenderContext,
+  _format: "text" | "json" = "text",
+  _ctx?: RenderContext,
 ): string => {
-  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   if (result.length === 0) return "No remotes configured.";
   return result.map((entry) => `${entry.name}\t${entry.config.source}`).join("\n");
 };
@@ -548,38 +547,34 @@ export const renderRemoteListResult = (
 export const renderRemoteMutationResult = (
   result: RemoteMutationResult,
   action: "added" | "removed",
-  format: "text" | "json" = "text",
-  ctx?: RenderContext,
+  _format: "text" | "json" = "text",
+  _ctx?: RenderContext,
 ): string => {
-  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${action}: ${result.remote}`;
 };
 
 export const renderRemoteTestResult = (
   result: RemoteTestResult,
-  format: "text" | "json" = "text",
-  ctx?: RenderContext,
+  _format: "text" | "json" = "text",
+  _ctx?: RenderContext,
 ): string => {
-  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${result.ok ? "ok" : "failed"}${result.env === undefined ? "" : `: ${result.env}`}${result.message === undefined ? "" : ` - ${result.message}`}`;
 };
 
 export const renderRemoteEnvListResult = (
   result: ReadonlyArray<RemoteEnvironmentType>,
-  format: "text" | "json" = "text",
-  ctx?: RenderContext,
+  _format: "text" | "json" = "text",
+  _ctx?: RenderContext,
 ): string => {
-  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   if (result.length === 0) return "No remote environments.";
   return result.map((entry) => `${entry.id}${entry.default === true ? "\t(default)" : ""}`).join("\n");
 };
 
 export const renderSyncResult = (
   result: SyncResultType,
-  format: "text" | "json" = "text",
-  ctx?: RenderContext,
+  _format: "text" | "json" = "text",
+  _ctx?: RenderContext,
 ): string => {
-  if (format === "json" || ctx?.mode === "json") return JSON.stringify(result, null, 2);
   return `${result.direction}: ${result.remote}@${result.env} (${result.datasets.join(", ")})${result.changed ? " changed" : " unchanged"}`;
 };
 

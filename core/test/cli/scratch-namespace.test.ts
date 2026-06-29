@@ -4,9 +4,10 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
+  ScratchListResultSchema,
   renderScratchGcReport,
   renderScratchListResult,
   scratchDestroy,
@@ -119,7 +120,7 @@ describe("apps:scratch:* command operations", () => {
   test("list renders an honest empty scratch list", async () => {
     const result = await runScratch(scratchList());
     expect(result).toEqual([]);
-    expect(renderScratchListResult(result, "json")).toBe("[]");
+    expect(Schema.encodeSync(ScratchListResultSchema)(result)).toEqual([]);
     expect(renderScratchListResult(result, "table")).toBe("No scratch apps found.");
   });
 

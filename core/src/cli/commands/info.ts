@@ -4,7 +4,7 @@
  * Supports `--deep`, repeated `--filter`, `--path`, `--service`,
  * `--format json|table|yaml`.
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   InfoAppError,
@@ -29,6 +29,32 @@ import {
 export type { InfoAppError, InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 
 type InfoAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+
+const InfoServiceStatusSchema = Schema.Literal(
+  "unknown",
+  "stopped",
+  "starting",
+  "running",
+  "healthy",
+  "unhealthy",
+  "error",
+);
+
+export const AppInfoServiceSchema = Schema.Struct({
+  app: Schema.String,
+  service: Schema.String,
+  api: Schema.Literal(4),
+  type: Schema.String,
+  provider: Schema.String,
+  primary: Schema.Boolean,
+  status: InfoServiceStatusSchema,
+  endpoints: Schema.Array(Schema.String),
+});
+
+export const AppInfoResultSchema = Schema.Struct({
+  app: Schema.String,
+  services: Schema.Array(AppInfoServiceSchema),
+});
 
 const statusText = (status: string | undefined): InfoServiceStatus => {
   switch (status) {

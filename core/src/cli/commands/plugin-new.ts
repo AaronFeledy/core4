@@ -46,6 +46,23 @@ export interface PluginNewResult {
   readonly files: ReadonlyArray<string>;
 }
 
+export const PluginNewResultSchema = Schema.Struct({
+  name: Schema.String,
+  destination: Schema.String,
+  template: Schema.Literal(
+    "service-type",
+    "provider",
+    "tooling-engine",
+    "template-engine",
+    "route-filter",
+    "config-translator",
+    "recipe",
+    "bare",
+  ),
+  cspace: Schema.String,
+  files: Schema.Array(Schema.String),
+});
+
 const TEMPLATE_SET = new Set<string>(PLUGIN_NEW_TEMPLATE_IDS);
 
 const isPluginNewTemplateId = (value: string): value is PluginNewTemplateId => TEMPLATE_SET.has(value);

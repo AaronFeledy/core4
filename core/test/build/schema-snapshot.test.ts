@@ -17,6 +17,7 @@ import {
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "../../../sdk/src/schema/index.ts";
+import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -75,6 +76,21 @@ describe("schema snapshot gate", () => {
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
     expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
     expect(snapshot.bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
+  });
+
+  test("snapshot freezes a result schema for every canonical command id", async () => {
+    const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as {
+      readonly scope: { readonly commandResultSchemas: ReadonlyArray<string> };
+      readonly commandResultSchemas: Record<string, { readonly $schema?: string }>;
+    };
+
+    const canonicalIds = Object.keys(compiledCommands).sort();
+
+    expect(Object.keys(snapshot.commandResultSchemas).sort()).toEqual(canonicalIds);
+    expect([...snapshot.scope.commandResultSchemas].sort()).toEqual(canonicalIds);
+    for (const id of canonicalIds) {
+      expect(snapshot.commandResultSchemas[id]).toBeDefined();
+    }
   });
 
   test("public registry drives schema names and metadata index", async () => {

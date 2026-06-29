@@ -4,16 +4,12 @@ import { Effect } from "effect";
 import {
   type PluginPublishOptions,
   type PluginPublishResult,
+  PluginPublishResultSchema,
   pluginPublish,
   renderPluginPublishResult,
 } from "../../../../commands/plugin-publish.ts";
 import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown): PluginPublishOptions => {
   const flags =
@@ -35,7 +31,7 @@ const extractInput = (input: unknown): PluginPublishOptions => {
 };
 
 export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PluginPublishResultSchema,
   id: "meta:plugin:publish",
   summary: "Publish the current plugin (authoring command).",
   namespace: "meta",

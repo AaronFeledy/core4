@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
-import { config, renderConfigResult } from "../../src/cli/commands/config.ts";
+import { ConfigResultSchema, config, renderConfigResult } from "../../src/cli/commands/config.ts";
 
 const fakeConfigService = (overrides: Partial<{ userDataRoot: string; userConfRoot: string }>) =>
   Layer.succeed(ConfigService, {
@@ -38,16 +38,17 @@ const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) =
 };
 
 describe("meta:config command", () => {
-  test("returns the resolved global config as JSON", async () => {
+  test("encodes the resolved global config result faithfully", async () => {
     const result = await Effect.runPromise(
       config({ format: "json" }).pipe(
         Effect.provide(fakeConfigService({ userDataRoot: "/data", userConfRoot: "/conf" })),
       ),
     );
-    const rendered = renderConfigResult(result);
-    const parsed = JSON.parse(rendered);
-    expect(parsed.userDataRoot).toBe("/data");
-    expect(parsed.userConfRoot).toBe("/conf");
+    const encoded = Schema.encodeSync(ConfigResultSchema)(result);
+    expect(encoded).toMatchObject({
+      config: { userDataRoot: "/data", userConfRoot: "/conf" },
+      format: "json",
+    });
   });
 
   test("supports dot-path lookups via --path", async () => {
@@ -56,7 +57,11 @@ describe("meta:config command", () => {
         Effect.provide(fakeConfigService({ userDataRoot: "/data" })),
       ),
     );
-    expect(JSON.parse(renderConfigResult(result))).toBe("/data");
+    expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({
+      key: "userDataRoot",
+      value: "/data",
+      format: "json",
+    });
   });
 
   test("get subcommand reads a single key", async () => {
@@ -89,10 +94,11 @@ describe("meta:config command", () => {
         ),
       );
 
-      expect(JSON.parse(renderConfigResult(result))).toMatchObject({
+      expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({
         telemetry: { enabled: false, source: "config" },
         changed: true,
-        policy: "docs/telemetry/retention.md",
+        format: "json",
+        configPath: join(dir, "config.yml"),
       });
       expect(await readFile(join(dir, "config.yml"), "utf8")).toContain("enabled: false");
     });
@@ -109,9 +115,10 @@ describe("meta:config command", () => {
         ),
       );
 
-      expect(JSON.parse(renderConfigResult(result))).toMatchObject({
+      expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({
         telemetry: { enabled: false, source: "env" },
         changed: false,
+        format: "json",
       });
     });
   });
