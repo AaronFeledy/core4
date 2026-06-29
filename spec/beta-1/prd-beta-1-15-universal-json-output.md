@@ -140,7 +140,7 @@ Acceptance criteria:
 
 | Guide | Path | Status |
 |---|---|---|
-| Driving Lando from JSON / an agent | `docs/guides/scripting-with-json.mdx` | Planned |
+| Driving Lando from JSON / an agent | `docs/guides/scripting-with-json.mdx` | Shipped |
 
 **CLI / source surface paths covered (drift gate input):**
 

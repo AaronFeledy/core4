@@ -1,0 +1,53 @@
+---
+id: scripting-with-json
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 120000
+tags: [beta, docs, cli, json, scripting, agent]
+---
+
+<Guide>
+  <Scenario id="drive-lando-from-json" render>
+    <Step name="scaffold-app">
+      <Variable name="appName" value="scripting-demo" display="A scaffolded app used to demonstrate machine-readable command output" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="read-config-as-json">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config -j" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="lint-config-as-json">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup-scaffold">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="json-shorthand-and-envelope" render={false} reason="Documents the universal machine-output flag aliases and the envelope contract that every non-interactive command shares; the render scenario above proves the JSON shape against representative commands">
+    <Step name="universal-flag">
+      <Variable name="formatFlag" value="lando &lt;command&gt; --format json" display="Every non-interactive command accepts the universal --format json flag and emits exactly one CommandResultEnvelope on stdout" />
+      <Variable name="equalsForm" value="lando &lt;command&gt; --format=json" display="The --format=json form is equivalent to --format json" />
+      <Variable name="jsonShorthand" value="lando &lt;command&gt; --json" display="--json is a global shorthand injected by the adapter, equivalent to --format json" />
+      <Variable name="shortShorthand" value="lando &lt;command&gt; -j" display="-j is the single-character shorthand for --format json, matching the convention agents and scripts expect" />
+    </Step>
+    <Step name="success-envelope">
+      <Variable name="successShape" value="{ &quot;ok&quot;: true, &quot;result&quot;: &lt;typed-result&gt; }" display="On success the envelope wraps the command's typed result under result with ok set to true" />
+      <Variable name="apiVersion" value="apiVersion: &quot;v4&quot;" display="One global envelope version identifies the wire contract; per-command result shape stability is frozen by the schema snapshot, not per-command versioning" />
+      <Variable name="redaction" value="redacted before emission" display="Every envelope passes through the redaction service before it reaches stdout, so secrets never appear in machine output" />
+    </Step>
+    <Step name="failure-envelope">
+      <Variable name="failureShape" value="{ &quot;ok&quot;: false, &quot;error&quot;: &lt;tagged-error&gt; }" display="On failure the envelope carries the tagged error JSON under error with ok set to false" />
+      <Variable name="exitCode" value="exit code preserved" display="A failing command preserves its non-zero exit code alongside the failure envelope so scripts can branch on both the exit status and the parsed error tag" />
+      <Variable name="errorTag" value="error._tag" display="The tagged error exposes a machine _tag plus human remediation, so an agent can react to the failure class without scraping prose" />
+    </Step>
+    <Step name="parity-and-streaming">
+      <Variable name="dispatchParity" value="source and compiled --format json are identical" display="--format json behaves identically in the source OCLIF dispatch and the compiled binary dispatch, so scripts get the same shape from either build" />
+      <Variable name="streamingFrames" value="StreamFrame frames terminated by a result frame" display="Streaming commands such as app:logs and app:exec emit StreamFrames under --format json and terminate with a single result frame" />
+      <Variable name="reference" value="docs/reference/commands.mdx" display="The generated command reference lists every public command and documents the universal --format json flag once in its machine-readable output section" />
+    </Step>
+  </Scenario>
+</Guide>

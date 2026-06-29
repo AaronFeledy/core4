@@ -49,6 +49,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: CORE_ROOT,
   },
   {
+    id: "command-reference",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-command-reference.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "ci-workflow",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-ci-workflow.ts`],
     cwd: REPO_ROOT,

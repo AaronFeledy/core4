@@ -1,0 +1,885 @@
+---
+title: Command Reference
+description: Generated reference for every public Lando command and its flags.
+---
+
+{/* GENERATED FILE — do not hand-edit. Regenerate via `bun run codegen:command-reference`. */}
+
+# Command Reference
+
+This page is generated from the compiled command manifest and lists every public
+Lando command. Hidden and internal commands are omitted.
+
+## Machine-readable output
+
+Every command accepts the universal `--format json` flag (and its `--format=json`
+form) to emit a single machine-readable `CommandResultEnvelope` on stdout. The
+`--json` and `-j` shorthands are equivalent to `--format json`. These flags are
+injected into every command, so they are not repeated in the per-command flag
+tables below.
+
+On success the envelope is `{ "ok": true, "result": <typed result> }`; on failure
+it is `{ "ok": false, "error": <tagged error> }` with the command's exit code
+preserved. Every envelope is redacted before emission. Agents and scripts should
+consume this JSON instead of parsing the rendered tables.
+
+## Commands
+
+## `lando app:cache:refresh`
+
+Rebuild the app plan, tooling graph, and command index without starting services.
+
+## `lando app:config`
+
+Read the current app's Landofile.
+
+## `lando app:config:lint`
+
+Validate the current app's Landofile against the canonical schema.
+
+## `lando app:config:translate`
+
+Translate a non-canonical config file into a canonical v4 Landofile.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--write` | Overwrite the input Landofile in place (a .bak backup is kept). |
+
+## `lando app:destroy`
+
+Destroy the current Lando app (preserves volumes unless --purge or --volumes).
+
+Aliases: `lando destroy`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--purge` | Also remove app/service-scoped storage volumes and snapshots. |
+| `--purge-caches` | Remove cache storage volumes. |
+| `--volumes` | Also remove app/service-scoped storage volumes. |
+| `--yes, -y` | Skip the confirmation prompt (no-op until interactive prompts land). |
+
+## `lando app:exec`
+
+Run a command in a Lando service.
+
+Aliases: `lando exec`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `command` | Command to run (first positional). |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--cwd` | Working directory inside the service. |
+| `--service, -s` | Service to run the command in. |
+| `--user, -u` | User to run the command as inside the service. |
+
+## `lando app:includes:update`
+
+Refresh every includes lockfile entry to its latest source-resolved version.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--check` | Report would-be lockfile drift without writing. |
+
+## `lando app:includes:verify`
+
+Verify the includes lockfile matches the resolved tree without updating it.
+
+## `lando app:info`
+
+Print provider-neutral runtime info for the current app.
+
+Aliases: `lando info`
+
+## `lando app:logs`
+
+Stream logs from the current app.
+
+Aliases: `lando logs`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--follow, -f` | Stream new log lines (deferred to Beta). |
+| `--service, -s` | Filter logs to a single planned service. |
+| `--since` | Filter to lines since the given time (deferred to Beta). |
+| `--tail` | Show last N lines per service. |
+
+## `lando app:pull`
+
+Pull remote datasets into the current app.
+
+Aliases: `lando pull`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `env` | Remote selector, optionally <remote>@<env>. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Confirm protected remote operations. |
+| `--no-interactive` | Disable interactive confirmation prompts. |
+| `--no-snapshot` | Skip the safety snapshot before applying pulled data. |
+| `--only` | Comma-separated dataset kinds. |
+| `--remote` | Remote name. |
+| `--yes, -y` | Answer yes to confirmation prompts. |
+
+## `lando app:push`
+
+Push local datasets to a remote.
+
+Aliases: `lando push`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `env` | Remote selector, optionally <remote>@<env>. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Confirm protected remote operations. |
+| `--no-interactive` | Disable interactive confirmation prompts. |
+| `--no-snapshot` | Skip the safety snapshot before applying pulled data. |
+| `--only` | Comma-separated dataset kinds. |
+| `--remote` | Remote name. |
+| `--yes, -y` | Answer yes to confirmation prompts. |
+
+## `lando app:rebuild`
+
+Rebuild artifacts and restart the current app.
+
+Aliases: `lando rebuild`
+
+## `lando app:remote:add`
+
+Add a remote to the current app Landofile.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Remote name. |
+| `source` | RemoteSource id. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--set` | Remote config key=value pair. |
+
+## `lando app:remote:env:list`
+
+List environments for a configured remote.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--remote` | Remote name. |
+
+## `lando app:remote:list`
+
+List remotes configured for the current app.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--remote` | Remote name. |
+
+## `lando app:remote:remove`
+
+Remove a remote from the current app Landofile.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Remote name. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--remote` | Remote name. |
+
+## `lando app:remote:setup`
+
+Run remote setup checks for the current app.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `env` | Remote selector, optionally <remote>@<env>. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Force remote setup checks. |
+| `--remote` | Remote name. |
+
+## `lando app:remote:test`
+
+Test remote connectivity for the current app.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `env` | Remote selector, optionally <remote>@<env>. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--remote` | Remote name. |
+
+## `lando app:restart`
+
+Restart the current app (stop + start).
+
+Aliases: `lando restart`
+
+## `lando app:share`
+
+Start a public tunnel for the current app.
+
+Aliases: `lando share`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--detach` | Record the tunnel as a detached session. |
+| `--provider` | TunnelService provider id. |
+| `--target` | Tunnel target as service[:port], route id, or loopback URL. |
+| `--yes, -y` | Answer yes to confirmation prompts. |
+
+## `lando app:share:list`
+
+List public tunnel sessions for the current app.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--provider` | TunnelService provider id. |
+
+## `lando app:share:stop`
+
+Stop a public tunnel session.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Force tunnel stop when supported by the provider. |
+| `--provider` | TunnelService provider id. |
+| `--session` | Tunnel session id. |
+
+## `lando app:shell`
+
+Open an interactive shell in a Lando service.
+
+Aliases: `lando shell`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--host` | Open a host shell scoped to the current app. |
+| `--service, -s` | Service to open a shell in. |
+
+## `lando app:ssh`
+
+Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).
+
+Aliases: `lando ssh`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `command` | Optional command to run instead of the default shell. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Service to open a shell in. |
+| `--sidecar` | (Beta) Open the shell in a per-app SSH sidecar; rejected in Alpha. |
+| `--subsystem` | (Beta) SSH subsystem to invoke; rejected in Alpha. |
+| `--user, -u` | User to run the shell as inside the service. |
+
+## `lando app:start`
+
+Start the current Lando app.
+
+Aliases: `lando start`
+
+## `lando app:stop`
+
+Stop the current Lando app.
+
+Aliases: `lando stop`
+
+## `lando apps:init`
+
+Generate a new Lando app.
+
+Aliases: `lando init`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--answer` | Recipe answer in key=value form (repeatable). |
+| `--answers` | Path to a JSON answers file. |
+| `--checksum` | Expected SHA-256 of a --source=tarball archive (64 hex chars). |
+| `--destination` | Target directory. |
+| `--full` | Use full recipe defaults instead of prompts. |
+| `--id` | Recipe id for --source=registry. |
+| `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
+| `--name` | App name (slugified for the project id). |
+| `--no-interactive` | Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError. |
+| `--option` | Recipe option in key=value form (repeatable). |
+| `--package` | npm package spec <name>[@version] (for --source=npm). |
+| `--path` | Subdirectory within a remote recipe source. |
+| `--recipe` | Recipe to apply. |
+| `--registry-url` | Override the recipe registry base URL (for --source=registry). |
+| `--source` | Init source id (cwd, git, tarball, npm, registry, template). |
+| `--url` | Remote recipe source URL (for --source=git/tarball). |
+| `--yes` | Accept every prompt's default without asking. |
+
+## `lando apps:list`
+
+List Lando apps applied across discovered providers on this host.
+
+Aliases: `lando list`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--path` | Filter apps whose root contains the given substring. |
+
+## `lando apps:poweroff`
+
+Stop every Lando-managed service across apps.
+
+Aliases: `lando poweroff`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--keep-global` | Do not stop the global app. |
+| `--keep-scratch` | Do not stop scratch apps. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando apps:scratch:destroy`
+
+Destroy a scratch Lando app.
+
+Aliases: `lando scratch:destroy`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `id` | Scratch app id. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--keep-volumes` | Keep scratch volumes for inspection. |
+
+## `lando apps:scratch:gc`
+
+Inspect scratch Lando app orphans.
+
+Aliases: `lando scratch:gc`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--prune` | Reap orphaned scratch resources after reporting them. |
+
+## `lando apps:scratch:info`
+
+Show information for a scratch Lando app.
+
+Aliases: `lando scratch:info`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `id` | Scratch app id. |
+
+## `lando apps:scratch:list`
+
+List scratch Lando apps.
+
+Aliases: `lando scratch:list`
+
+## `lando apps:scratch:logs`
+
+Show logs for a scratch Lando app.
+
+Aliases: `lando scratch:logs`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `id` | Scratch app id. |
+
+## `lando apps:scratch:start`
+
+Start a scratch Lando app.
+
+Aliases: `lando scratch:start`, `lando scratch`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--answer` | Recipe answer in key=value form (repeatable). |
+| `--answers` | Path to a JSON answers file. |
+| `--detach` | Return after acquiring the scratch app. |
+| `--fork` | Use the current app as the scratch source. |
+| `--from` | Recipe reference to materialize as a scratch app. |
+| `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
+| `--isolate` | Fork isolation: 'none' shares the source app root, 'full' uses a content copy. (one of `none`, `full`) |
+| `--mount-cwd` | Mount the current working directory into the scratch app's primary service. |
+| `--name` | Base name for the generated scratch id. |
+| `--no-interactive` | Never prompt; recipe prompts must be satisfied by defaults or --answer. |
+| `--option` | Alias for --answer in key=value form (repeatable). |
+| `--share-global-storage` | Join the shared cross-app network and expose the global app's storage scope. |
+| `--yes, -y` | Accept every recipe prompt's default without asking. |
+
+## `lando apps:scratch:stop`
+
+Stop a scratch Lando app.
+
+Aliases: `lando scratch:stop`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `id` | Scratch app id. |
+
+## `lando meta:bun`
+
+Proxy to the embedded Bun CLI via BunSelfRunner.
+
+Aliases: `lando bun`
+
+## `lando meta:config`
+
+Read or write the global Lando config (view/get; write ops are deferred to Beta).
+
+Aliases: `lando config`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key for get/set/unset. |
+| `subcommand` | Subcommand: view (default), get, set, unset, edit, validate, translate. |
+| `value` | Value for set. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--path` | Dot-path key selector. |
+
+## `lando meta:doctor`
+
+Run diagnostics for app config, host/provider setup, and plugin-contributed checks.
+
+Aliases: `lando doctor`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--app` | Also lint the current app's Landofile against the canonical schema. |
+| `--deprecations` | Also report deprecated surfaces used by the current app and loaded plugins. |
+| `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
+| `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
+
+## `lando meta:events:follow`
+
+Follow the lifecycle event trace stream for diagnostics and e2e tests.
+
+Aliases: `lando events`
+
+## `lando meta:global:config`
+
+Read the host-level global Lando app Landofile stack.
+
+Aliases: `lando global:config`
+
+## `lando meta:global:destroy`
+
+Destroy the host-level global Lando app provider resources.
+
+Aliases: `lando global:destroy`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--purge` | Also remove global service data volumes. |
+| `--yes, -y` | Confirm destruction of global app provider resources. |
+
+## `lando meta:global:info`
+
+Global-app `info` (deliverable).
+
+## `lando meta:global:install`
+
+Materialize the host-level global Lando app Landofile stack.
+
+Aliases: `lando global:install`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `plugin` | Plugin name for future global-service enablement. |
+
+## `lando meta:global:list`
+
+Global-app `list` (deliverable).
+
+## `lando meta:global:logs`
+
+Global-app `logs` (deliverable).
+
+## `lando meta:global:rebuild`
+
+Global-app `rebuild` (deliverable).
+
+## `lando meta:global:restart`
+
+Global-app `restart` (deliverable).
+
+## `lando meta:global:start`
+
+Start the host-level global Lando app.
+
+Aliases: `lando global:start`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Start and inspect a specific global service (repeatable). |
+
+## `lando meta:global:status`
+
+Show runtime status for the host-level global Lando app.
+
+Aliases: `lando global:status`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Filter to a specific global service (repeatable). |
+
+## `lando meta:global:stop`
+
+Stop the host-level global Lando app.
+
+Aliases: `lando global:stop`
+
+## `lando meta:global:uninstall`
+
+Clear generated services from the host-level global Lando app.
+
+Aliases: `lando global:uninstall`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `plugin` | Plugin name for future global-service disablement. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--purge` | Also remove global service provider resources and data volumes before clearing services. |
+
+## `lando meta:plugin:add`
+
+Install a plugin (npm source) with manifest validation and trust prompt.
+
+Aliases: `lando plugin:add`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `spec` | Plugin spec (npm package name with optional @version). |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--force` | Re-install even if already present. |
+| `--trust` | Trust the plugin for this session (required for non-interactive installs; persistent trust is deferred to Beta). |
+| `--yes, -y` | Alias of --trust. |
+
+## `lando meta:plugin:build`
+
+Build the current plugin source (authoring command).
+
+## `lando meta:plugin:link`
+
+Symlink the current plugin into the user-global plugin store (authoring command).
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `path` | Plugin authoring directory to link (defaults to cwd). |
+
+## `lando meta:plugin:login`
+
+Authenticate with a plugin source.
+
+Aliases: `lando plugin:login`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--registry` | Registry URL. |
+
+## `lando meta:plugin:logout`
+
+Forget plugin source authentication.
+
+Aliases: `lando plugin:logout`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--registry` | Registry URL. |
+
+## `lando meta:plugin:new`
+
+Scaffold a new plugin from a built-in template (authoring command).
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `destination` | Destination directory. |
+| `name` | New plugin package name. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--answer` | Scaffold answer in key=value form (repeatable). |
+| `--answers` | Path to a JSON answers file. |
+| `--cspace` | Contribution namespace used by the scaffold. |
+| `--description` | Plugin description. |
+| `--no-interactive` | Never prompt; name, template, cspace, and description must be supplied. |
+| `--template` | Bundled plugin template id. (one of `service-type`, `provider`, `tooling-engine`, `template-engine`, `route-filter`, `config-translator`, `recipe`, `bare`) |
+
+## `lando meta:plugin:publish`
+
+Publish the current plugin (authoring command).
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Validate and list package contents without publishing. |
+| `--no-interactive` | Never prompt for credentials. |
+| `--no-test` | Skip retesting before publish. |
+| `--registry` | Registry URL override. |
+| `--tag` | Publish dist-tag (default: latest). |
+
+## `lando meta:plugin:remove`
+
+Remove an installed Lando plugin.
+
+Aliases: `lando plugin:remove`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Plugin name. |
+
+## `lando meta:plugin:test`
+
+Run the current plugin's Bun test suite (authoring command).
+
+## `lando meta:plugin:trust`
+
+Manage trusted plugin postinstall entries.
+
+Aliases: `lando plugin:trust`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `action` | Plugin name, list, or revoke. |
+| `name` | Plugin name to revoke. |
+
+## `lando meta:plugin:trust-authoring-root`
+
+Authorize an absolute path as a plugin authoring root.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `path` | Absolute path to mark as a trusted authoring root. |
+
+## `lando meta:plugin:unlink`
+
+Remove a previously linked plugin (authoring command).
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `name` | Plugin name. |
+
+## `lando meta:recipes:list`
+
+List canonical recipes shipped with the binary.
+
+Aliases: `lando recipes`
+
+## `lando meta:setup`
+
+Run host setup (provider, CA, proxy, shell integration).
+
+Aliases: `lando setup`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--host-proxy` | Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS. (one of `auto`, `none`) |
+| `--no-interactive` | Do not prompt; fail or use documented non-interactive setup defaults. |
+| `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
+| `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |
+| `--runtime-bundle-url` | Override the Lando-managed runtime bundle URL for setup. |
+| `--skip-file-sync` | Skip Mutagen binary download; deferred to first accelerated app:start. |
+| `--skip-install-ca` |  |
+| `--skip-provider` |  |
+| `--skip-proxy` |  |
+| `--skip-shell-integration` |  |
+| `--yes` | Skip confirmation prompts. |
+
+## `lando meta:shellenv`
+
+Print shell-profile snippets to integrate Lando into your PATH.
+
+Aliases: `lando shellenv`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--shell` | (one of `posix`, `powershell`, `pwsh`) |
+
+## `lando meta:uninstall`
+
+Remove Lando-owned installed files after confirmation.
+
+Aliases: `lando uninstall`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Print the uninstall plan without changing the system. |
+| `--keep-data` | Remove Lando-owned toolchain files while preserving app data and global state. |
+| `--purge` | Remove Lando-owned toolchain files and data roots after confirmation. |
+| `--yes, -y` | Confirm destructive uninstall execution after reviewing the plan. |
+
+## `lando meta:update`
+
+Update Lando core and plugins.
+
+Aliases: `lando update`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--channel` | Release channel to resolve. (one of `stable`, `next`, `dev`) |
+| `--dry-run` | Verify update metadata without replacing the binary. |
+
+## `lando meta:version`
+
+Show the Lando + Bun + plugin versions.
+
+Aliases: `lando --version`, `lando -v`, `lando version`
+
+## `lando meta:x`
+
+One-shot package execution via BunSelfRunner.x (bunx-equivalent).
+
+Aliases: `lando x`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `spec` | Package spec (e.g. prettier@latest, @astrojs/cli) |

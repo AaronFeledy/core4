@@ -490,6 +490,14 @@ ${setupBunSteps}
       - name: Verify schema snapshot is current
         run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json dist/schemas docs/reference/schemas
 
+      - name: Regenerate command reference
+        run: |
+          bun run codegen:oclif-manifest
+          bun run codegen:command-reference
+
+      - name: Verify command reference is current
+        run: git diff --exit-code -- docs/reference/commands.mdx
+
 ${timingNoticeStep("schema-snapshot", 15)}
 
   bundled-codegen:

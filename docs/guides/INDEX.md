@@ -105,6 +105,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | PRD-12 | US-282 | OpenTUI-backed interactive prompts | `docs/guides/cli/interactive-prompts.mdx` | Shipped |
 | PRD-12 | US-284 | Terminal renderer visual QA | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
+| PRD-15 | US-329 | Driving Lando from JSON / an agent | `docs/guides/scripting-with-json.mdx` | Shipped |
 
 ## Core service catalog (capability guides — no PRD mapping)
 

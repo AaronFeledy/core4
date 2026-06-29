@@ -624,6 +624,8 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       ),
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
+      command: setupSpec.id,
+      resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       renderEvents: process.stdout.isTTY === true,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
