@@ -72,6 +72,9 @@ ${setupBunSteps}
       - name: Probe boundary lint
         run: bun run check:probe-boundary
 
+      - name: Machine output boundary lint
+        run: bun run check:machine-output
+
       - name: Static scope notice for portable-only platforms
         if: \${{ matrix.platform != 'linux-x64' }}
         run: |

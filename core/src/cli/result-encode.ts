@@ -90,6 +90,16 @@ const fallbackEnvelope = (command: string): unknown => ({
 const encodeJsonLine = (value: unknown, redactor: Redactor): string =>
   redactor.redactString(JSON.stringify(value));
 
+/**
+ * No-op redactor for synchronous callers that carry no secret-bearing fields
+ * (the doctor NDJSON renderers), letting a pure `=> string` helper route result
+ * serialization through the encode seam without an Effect RedactionService lookup.
+ */
+export const identityRedactor: Redactor = {
+  redactString: (text: string) => text,
+  redactValue: (value: unknown) => value,
+};
+
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => encodeJsonLine(envelope, options.redactor)),
