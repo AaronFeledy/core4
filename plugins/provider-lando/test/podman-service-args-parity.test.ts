@@ -42,5 +42,9 @@ test("provider delegates Podman service arg shaping to the core managed runtime 
   const source = readFileSync(join(import.meta.dir, "../src/podman-service-runner.ts"), "utf8");
 
   expect(source).toContain("buildManagedRuntimeServiceArgs");
-  expect(source).not.toContain('"--root"');
+
+  const buildFn = source.match(/export const buildPodmanServiceArgs[\s\S]*?^};/m)?.[0];
+  expect(buildFn).toBeDefined();
+  expect(buildFn).not.toContain('"--root"');
+  expect(buildFn).not.toContain('"system"');
 });
