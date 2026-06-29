@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Flags } from "@oclif/core";
-import { Data, DateTime, Effect } from "effect";
+import { Data, DateTime, Effect, Schema } from "effect";
 
 import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -56,12 +56,7 @@ import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
 import { isDecoratedContext } from "../../../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../../../renderer/summary.ts";
 
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 type FileSyncStatus = "deferred" | "installed" | "satisfied" | "unavailable";
 
@@ -70,6 +65,12 @@ interface SetupResult {
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
 }
+
+export const SetupResultSchema = Schema.Struct({
+  providerId: Schema.String,
+  installDir: Schema.String,
+  fileSyncStatus: Schema.Literal("deferred", "installed", "satisfied", "unavailable"),
+});
 
 interface RuntimeServiceStatusForReadiness {
   readonly running: boolean;
@@ -275,7 +276,7 @@ const buildSetupSummary = (providerId: string, installDir: string, status: strin
 });
 
 export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: SetupResultSchema,
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",

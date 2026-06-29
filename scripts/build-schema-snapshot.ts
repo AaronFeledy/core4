@@ -12,8 +12,10 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Schema } from "effect";
+import { JSONSchema, Schema } from "effect";
 
+import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
+import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
 import { BUNDLED_PLUGINS } from "../core/src/plugins/bundled.ts";
 import {
   JSON_SCHEMA_NAMES,
@@ -51,6 +53,28 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
   }
 };
 
+const commandSpecFor = (commandClass: unknown): LandoCommandSpec | undefined =>
+  (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec;
+
+// Freezes each canonical command's resultSchema as JSON Schema keyed by command id.
+const generateCommandResultSchemas = (): Record<string, unknown> => {
+  const commands = compiledCommands as Record<string, unknown>;
+  const entries = Object.keys(commands)
+    .sort((left, right) => left.localeCompare(right))
+    .map((commandId) => {
+      const spec = commandSpecFor(commands[commandId]);
+      if (spec?.resultSchema === undefined || spec.resultSchema === null) {
+        throw new Error(`Command ${commandId} does not declare a resultSchema.`);
+      }
+      try {
+        return [commandId, stable(JSONSchema.make(spec.resultSchema))] as const;
+      } catch (cause) {
+        throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
+      }
+    });
+  return Object.fromEntries(entries);
+};
+
 const renderSnapshot = (): string => {
   assertPublicSchemaAnnotations();
   assertPublicSchemaContractCoverage(REPO_ROOT);
@@ -67,6 +91,7 @@ const renderSnapshot = (): string => {
     name: plugin.name,
     manifest: stable(Schema.encodeSync(PluginManifest)(plugin.manifest)),
   })).sort((left, right) => left.name.localeCompare(right.name));
+  const commandResultSchemas = generateCommandResultSchemas();
 
   return `${JSON.stringify(
     stable({
@@ -75,9 +100,11 @@ const renderSnapshot = (): string => {
         sdkSchemas: JSON_SCHEMA_NAMES,
         schemaMetadata: "dist/schemas/index.json",
         bundledPluginManifests: bundledPluginManifests.map((plugin) => plugin.name),
+        commandResultSchemas: Object.keys(commandResultSchemas),
       },
       schemaMetadata: publicSchemaMetadataIndex,
       sdkSchemas,
+      commandResultSchemas,
       bundledPluginManifests,
     }),
     null,

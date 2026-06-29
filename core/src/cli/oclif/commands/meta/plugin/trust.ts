@@ -1,6 +1,7 @@
 import { Args } from "@oclif/core";
 
 import {
+  PluginTrustCommandResultSchema,
   type PluginTrustListResult,
   type PluginTrustResult,
   type PluginTrustRevokeResult,
@@ -11,12 +12,7 @@ import {
   renderPluginTrustResult,
   renderPluginTrustRevokeResult,
 } from "../../../../commands/plugin-trust.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown): { action: string; name: string } => {
   if (typeof input !== "object" || input === null) return { action: "", name: "" };
@@ -30,7 +26,7 @@ const extractInput = (input: unknown): { action: string; name: string } => {
 type PluginTrustCommandResult = PluginTrustResult | PluginTrustListResult | PluginTrustRevokeResult;
 
 export const pluginTrustSpec: LandoCommandSpec<PluginTrustCommandResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PluginTrustCommandResultSchema,
   id: "meta:plugin:trust",
   summary: "Manage trusted plugin postinstall entries.",
   namespace: "meta",

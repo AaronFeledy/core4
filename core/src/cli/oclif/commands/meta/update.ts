@@ -1,15 +1,15 @@
 import { Flags } from "@oclif/core";
 
-import { type UpdateOptions, type UpdateResult, update } from "../../../commands/update.ts";
+import {
+  type UpdateOptions,
+  type UpdateResult,
+  UpdateResultSchema,
+  update,
+} from "../../../commands/update.ts";
 /**
  * `lando meta:update` — OCLIF wrapper.
  */
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   const flags =
@@ -24,7 +24,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
 };
 
 export const updateSpec: LandoCommandSpec<UpdateResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: UpdateResultSchema,
   id: "meta:update",
   summary: "Update Lando core and plugins.",
   namespace: "meta",

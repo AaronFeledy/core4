@@ -1,6 +1,10 @@
-import { type RebuildAppResult, rebuildApp, renderRebuildAppResult } from "../../../commands/rebuild.ts";
 import {
-  EmptyResultSchema,
+  type RebuildAppResult,
+  RebuildAppResultSchema,
+  rebuildApp,
+  renderRebuildAppResult,
+} from "../../../commands/rebuild.ts";
+import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
@@ -10,7 +14,7 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: RebuildAppResultSchema,
   id: "app:rebuild",
   summary: "Rebuild artifacts and restart the current app.",
   namespace: "app",

@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 
 import { renderConfigLintResult } from "@lando/core/cli/operations";
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import { ConfigLintResult } from "@lando/sdk/schema";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -82,7 +83,7 @@ describe("renderConfigLintResult", () => {
     });
   });
 
-  test("the json format is a stable serialization of ConfigLintResult", () => {
+  test("ConfigLintResult schema encodes the structured lint result faithfully", () => {
     const result: ConfigLintResult = {
       app: "bad",
       file: "/x/.lando.yml",
@@ -90,8 +91,8 @@ describe("renderConfigLintResult", () => {
       violations: [{ path: "bogus", message: "is unexpected" }],
     };
     restoreExitCode(() => {
-      const json = JSON.parse(renderConfigLintResult(result, "json")) as ConfigLintResult;
-      expect(json).toEqual(result);
+      const encoded = Schema.encodeSync(ConfigLintResult)(result);
+      expect(encoded).toEqual(result);
     });
   });
 });

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type ConfigError,
@@ -48,6 +48,11 @@ export interface PluginRemoveResult {
   readonly pluginName: string;
   readonly removed: boolean;
 }
+
+export const PluginRemoveResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  removed: Schema.Boolean,
+});
 
 const removeFailure = (name: string, stderr: string): NotImplementedError =>
   new NotImplementedError({

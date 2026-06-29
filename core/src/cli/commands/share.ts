@@ -179,14 +179,11 @@ export const appShareStop = (
     return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" as TunnelStatusType };
   });
 
-const renderJson = (value: unknown): string => `${JSON.stringify(value)}\n`;
-
 export const renderShareResult = (
   result: TunnelSessionType,
-  format: "text" | "json" = "text",
+  _format: "text" | "json" = "text",
   _ctx?: RenderContext,
 ): string => {
-  if (format === "json") return renderJson(result);
   const target =
     result.target._tag === "service" ? `${result.target.service}:${result.target.port}` : result.target._tag;
   return `Tunnel ${result.id} ${result.status} via ${result.provider} (${target})${
@@ -196,19 +193,17 @@ export const renderShareResult = (
 
 export const renderShareListResult = (
   result: ReadonlyArray<TunnelSessionType>,
-  format: "text" | "json" = "text",
+  _format: "text" | "json" = "text",
   _ctx?: RenderContext,
 ): string => {
-  if (format === "json") return renderJson(result);
   if (result.length === 0) return "No active tunnels.\n";
   return `${result.map((session) => `${session.id}\t${session.provider}\t${session.status}`).join("\n")}\n`;
 };
 
 export const renderShareStopResult = (
   result: ShareStopResult,
-  format: "text" | "json" = "text",
+  _format: "text" | "json" = "text",
   _ctx?: RenderContext,
 ): string => {
-  if (format === "json") return renderJson(result);
   return `Tunnel ${result.sessionId} stopped.\n`;
 };

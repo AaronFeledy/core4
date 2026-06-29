@@ -2,26 +2,21 @@ import { Flags } from "@oclif/core";
 
 import {
   type AppConfigTranslateResult,
+  AppConfigTranslateResultSchema,
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../../../commands/app-config-translate.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: AppConfigTranslateResultSchema,
   id: "app:config:translate",
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "minimal",
   run: () => appConfigTranslate(),
-  render: (result, _input, ctx) =>
-    renderConfigTranslateResult(result as AppConfigTranslateResult, ctx?.format === "json" ? "json" : "text"),
+  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "text"),
 };
 
 export default class AppConfigTranslateCommand extends LandoCommandBase {

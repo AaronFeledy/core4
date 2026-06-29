@@ -1,7 +1,7 @@
 import { lstat, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Data, Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
 
 import {
   type ConfigError,
@@ -41,6 +41,13 @@ export interface PluginUnlinkResult {
   readonly action: "restored" | "removed";
   readonly restoredPath?: string;
 }
+
+export const PluginUnlinkResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  registryEntry: Schema.String,
+  action: Schema.Literal("restored", "removed"),
+  restoredPath: Schema.optional(Schema.String),
+});
 
 const removeRegistrySymlink = async (path: string): Promise<void> => {
   const stats = await lstat(path).catch(() => undefined);

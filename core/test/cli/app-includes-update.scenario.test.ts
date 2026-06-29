@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
-import { renderIncludesUpdateResult } from "@lando/core/cli/operations";
+import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
 
@@ -83,7 +83,7 @@ describe("renderIncludesUpdateResult", () => {
     });
   });
 
-  test("json format serializes the report", () => {
+  test("AppIncludesUpdateResultSchema encodes the report faithfully", () => {
     const report: IncludeUpdateReport = {
       lockfilePath: "/x/.lando.lock.yml",
       entries: [],
@@ -94,8 +94,8 @@ describe("renderIncludesUpdateResult", () => {
     };
 
     restoreExitCode(() => {
-      const parsed = JSON.parse(renderIncludesUpdateResult(report, "json")) as IncludeUpdateReport;
-      expect(parsed).toEqual(report);
+      const encoded = Schema.encodeSync(AppIncludesUpdateResultSchema)(report);
+      expect(encoded).toEqual(report);
     });
   });
 });

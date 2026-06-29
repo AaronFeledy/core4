@@ -3,11 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
 import {
+  AppConfigTranslateResultSchema,
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
@@ -144,13 +145,14 @@ describe("appConfigTranslate", () => {
     }
   });
 
-  test("renderConfigTranslateResult emits text and json forms", async () => {
+  test("renderConfigTranslateResult emits text and the result schema encodes faithfully", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
     const result = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
     const text = renderConfigTranslateResult(result, "text");
     expect(text).toContain(".lando.yml.canonical");
-    const json = JSON.parse(renderConfigTranslateResult(result, "json")) as { mode: string };
-    expect(json.mode).toBe("canonical");
+    const encoded = Schema.encodeSync(AppConfigTranslateResultSchema)(result);
+    expect(encoded.mode).toBe("canonical");
+    expect(encoded.outputPath).toBe(result.outputPath);
   });
 });

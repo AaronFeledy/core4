@@ -2,18 +2,14 @@ import { Effect } from "effect";
 
 import {
   type PluginBuildResult,
+  PluginBuildResultSchema,
   pluginBuild,
   renderPluginBuildResult,
 } from "../../../../commands/plugin-build.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PluginBuildResultSchema,
   id: "meta:plugin:build",
   summary: "Build the current plugin source (authoring command).",
   namespace: "meta",

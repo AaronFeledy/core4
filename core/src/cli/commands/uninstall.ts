@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
@@ -30,6 +30,17 @@ export interface UninstallPlanStep {
   readonly error?: string;
 }
 
+export const UninstallPlanStepSchema = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  target: Schema.String,
+  destructive: Schema.Boolean,
+  status: Schema.Literal("owned", "user-owned", "skipped", "manual"),
+  detail: Schema.String,
+  outcome: Schema.optional(Schema.Literal("completed", "failed", "manual", "skipped")),
+  error: Schema.optional(Schema.String),
+});
+
 export interface UninstallOptions {
   readonly dryRun?: boolean;
   readonly yes?: boolean;
@@ -53,6 +64,15 @@ export interface UninstallResult {
   readonly reportPath?: string;
   readonly steps: ReadonlyArray<UninstallPlanStep>;
 }
+
+export const UninstallResultSchema = Schema.Struct({
+  dryRun: Schema.Boolean,
+  refused: Schema.Boolean,
+  mode: Schema.Literal("keep-data", "purge"),
+  failed: Schema.Boolean,
+  reportPath: Schema.optional(Schema.String),
+  steps: Schema.Array(UninstallPlanStepSchema),
+});
 
 export interface UninstallReport {
   readonly status: "completed" | "failed";

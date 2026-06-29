@@ -2301,8 +2301,8 @@
         "Lint passes."
       ],
       "priority": 128,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Interpretation C (faithful core-local schemas + reuse public schemas + new commandResultSchemas snapshot section). Every structured command now declares a faithful resultSchema replacing the open EmptyResultSchema passthrough (config family, apps:list, scratch x7, meta/global config+status, app:info, meta:doctor, remote/share reuse existing faithful schemas, all 10 implemented meta:plugin:* plus update/uninstall/setup). Legacy result-JSON producers removed from the render helpers (config/list/scratch/app-config*/app-includes*/global-config/global-status/remote/share) and renderDoctorReportAsJson deleted; --format yaml/table and the doctor NDJSON streaming contract are preserved. AC3 satisfied by a new commandResultSchemas section in schema-snapshot.json freezing all 72 per-id result shapes (JSONSchema.make), idempotent and drift-gated. Verified: typecheck, lint, deprecation gate, schema-snapshot test, and focused CLI/contract tests pass; manual --format json/-j/yaml/table/ndjson QA confirms faithful envelopes with no behavior regression."
     },
     {
       "id": "US-328",

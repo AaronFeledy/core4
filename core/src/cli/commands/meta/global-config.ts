@@ -1,7 +1,7 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { decodeGlobalLandofile } from "./global-plan.ts";
@@ -13,23 +13,36 @@ export interface GlobalConfigResult {
   readonly distLandofile: string;
   readonly userLandofile: string;
   readonly paths: GlobalAppPaths;
-  readonly landofile: LandofileShape;
+  readonly landofile: LandofileShapeType;
 }
+
+export const GlobalAppPathsSchema = Schema.Struct({
+  root: Schema.String,
+  distLandofile: Schema.String,
+  userLandofile: Schema.String,
+});
+
+export const GlobalConfigResultSchema = Schema.Struct({
+  app: Schema.String,
+  source: Schema.Literal("global"),
+  materialized: Schema.Boolean,
+  distLandofile: Schema.String,
+  userLandofile: Schema.String,
+  paths: GlobalAppPathsSchema,
+  landofile: LandofileShape,
+});
 
 type GlobalConfigError = GlobalAppError | FileSystemError | LandofileParseError | LandofileValidationError;
 
 type GlobalConfigServices = FileSystem | GlobalAppService;
 
-const emptyGlobalLandofile: LandofileShape = { name: "global", runtime: 4, services: {} };
-
-const jsonReplacer = (_key: string, value: unknown): unknown =>
-  typeof value === "bigint" ? value.toString() : value;
+const emptyGlobalLandofile: LandofileShapeType = { name: "global", runtime: 4, services: {} };
 
 export const renderGlobalConfigResult = (
   result: GlobalConfigResult,
-  format: "json" | "table" = "table",
+  _format: "json" | "table" = "table",
 ): string => {
-  if (format === "json") return JSON.stringify(result.landofile, jsonReplacer, 2);
+  void _format;
   const services = Object.keys(result.landofile.services ?? {});
   return [
     `app\t${result.app}`,

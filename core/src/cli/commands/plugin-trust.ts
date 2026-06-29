@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { PluginTrustStore } from "@lando/sdk/services";
@@ -14,10 +14,20 @@ export interface PluginTrustResult {
   readonly pluginName: string;
 }
 
+export const PluginTrustResultSchema = Schema.Struct({
+  kind: Schema.Literal("plugin"),
+  pluginName: Schema.String,
+});
+
 export interface PluginTrustAuthoringRootResult {
   readonly kind: "authoring-root";
   readonly path: string;
 }
+
+export const PluginTrustAuthoringRootResultSchema = Schema.Struct({
+  kind: Schema.Literal("authoring-root"),
+  path: Schema.String,
+});
 
 export interface PluginTrustListResult {
   readonly kind: "list";
@@ -25,10 +35,27 @@ export interface PluginTrustListResult {
   readonly trustedAuthoringRoots: ReadonlyArray<string>;
 }
 
+export const PluginTrustListResultSchema = Schema.Struct({
+  kind: Schema.Literal("list"),
+  trustedPlugins: Schema.Array(Schema.String),
+  trustedAuthoringRoots: Schema.Array(Schema.String),
+});
+
 export interface PluginTrustRevokeResult {
   readonly kind: "revoke";
   readonly pluginName: string;
 }
+
+export const PluginTrustRevokeResultSchema = Schema.Struct({
+  kind: Schema.Literal("revoke"),
+  pluginName: Schema.String,
+});
+
+export const PluginTrustCommandResultSchema = Schema.Union(
+  PluginTrustResultSchema,
+  PluginTrustListResultSchema,
+  PluginTrustRevokeResultSchema,
+);
 
 export const pluginTrust = (input: { readonly name: string; readonly cacheRoot?: string }): Effect.Effect<
   PluginTrustResult,

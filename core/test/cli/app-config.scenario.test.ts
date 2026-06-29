@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { appConfig, renderAppConfigResult } from "@lando/core/cli/operations";
+import { AppConfigResultSchema, appConfig, renderAppConfigResult } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -68,8 +68,11 @@ describe("lando app:config", () => {
     expect(table).toContain("app\ttest-app-config");
     expect(table).toContain("services\t(none)");
     expect(table).toContain("recipe\tnode");
-    const json = renderAppConfigResult(result, "json");
-    expect(JSON.parse(json)).toMatchObject({ name: "test-app-config", recipe: "node" });
+    expect(Schema.encodeSync(AppConfigResultSchema)(result)).toMatchObject({
+      app: "test-app-config",
+      source: "resolved",
+      landofile: { name: "test-app-config", recipe: "node" },
+    });
   });
 
   test("fails outside an app directory with init remediation", async () => {

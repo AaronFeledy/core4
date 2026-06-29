@@ -1,18 +1,21 @@
 import { Flags } from "@oclif/core";
 
 import type { IncludeUpdateReport } from "../../../../../landofile/includes.ts";
-import { appIncludesUpdate, renderIncludesUpdateResult } from "../../../../commands/app-includes-update.ts";
-import { EmptyResultSchema, LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+import {
+  AppIncludesUpdateResultSchema,
+  appIncludesUpdate,
+  renderIncludesUpdateResult,
+} from "../../../../commands/app-includes-update.ts";
+import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
 export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: AppIncludesUpdateResultSchema,
   id: "app:includes:update",
   summary: "Refresh every includes lockfile entry to its latest source-resolved version.",
   namespace: "app",
   bootstrap: "minimal",
   run: (input) => appIncludesUpdate({ check: checkFromInput(input) }),
-  render: (result, _input, ctx) =>
-    renderIncludesUpdateResult(result as IncludeUpdateReport, ctx?.format === "json" ? "json" : "text"),
+  render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
 };
 
 const checkFromInput = (input: unknown): boolean =>

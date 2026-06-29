@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
 import { writeCwdAppMapEntry } from "../../src/cache/cwd-app-map.ts";
-import { listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
+import { AppsListResultSchema, listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 let userDataRoot: string;
 let isolatedCacheRoot: string;
@@ -86,15 +86,15 @@ describe("apps:list command", () => {
     expect(bravo?.appRoot).toBe("/srv/bravo");
   });
 
-  test("renders a JSON payload with --format json", async () => {
+  test("encodes a JSON payload with the command result schema", async () => {
     const result = await Effect.runPromise(
       listServices({ userDataRoot, userCacheRoot: isolatedCacheRoot }).pipe(
         Effect.provide(fakeConfigService(userDataRoot)),
       ),
     );
-    const rendered = renderAppsListResult(result, "json");
-    const parsed = JSON.parse(rendered);
-    expect(parsed.apps.length).toBe(2);
+    const encoded = Schema.encodeSync(AppsListResultSchema)(result);
+    expect(encoded.apps.length).toBe(2);
+    expect(encoded).toEqual(result);
   });
 
   test("falls back to the resolved user cache root via LANDO_USER_CACHE_ROOT", async () => {

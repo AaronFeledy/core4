@@ -1,13 +1,13 @@
 import { Cause, Effect, Exit } from "effect";
 
-import { type MetaBunResult, metaBun, renderMetaBunResult } from "../../../commands/bun.ts";
-
 import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+  type MetaBunResult,
+  MetaBunResultSchema,
+  metaBun,
+  renderMetaBunResult,
+} from "../../../commands/bun.ts";
+
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -16,7 +16,7 @@ const extractArgv = (input: unknown): ReadonlyArray<string> => {
 };
 
 export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: MetaBunResultSchema,
   id: "meta:bun",
   summary: "Proxy to the embedded Bun CLI via BunSelfRunner.",
   namespace: "meta",

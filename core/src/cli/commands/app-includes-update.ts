@@ -23,6 +23,22 @@ export type {
 
 export type AppIncludesUpdateFormat = "text" | "json";
 
+const IncludeUpdateEntrySchema = Schema.Struct({
+  source: Schema.String,
+  resolved: Schema.String,
+  checksum: Schema.String,
+  status: Schema.Union(Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")),
+});
+
+export const AppIncludesUpdateResultSchema = Schema.Struct({
+  lockfilePath: Schema.String,
+  entries: Schema.Array(IncludeUpdateEntrySchema),
+  removed: Schema.Array(Schema.String),
+  drift: Schema.Boolean,
+  wrote: Schema.Boolean,
+  checkMode: Schema.Boolean,
+});
+
 export interface AppIncludesUpdateOptions {
   readonly check?: boolean;
   readonly cwd?: string;
@@ -125,8 +141,8 @@ const textRender = (report: IncludeUpdateReport): string => {
  */
 export const renderIncludesUpdateResult = (
   report: IncludeUpdateReport,
-  format: AppIncludesUpdateFormat = "text",
+  _format: AppIncludesUpdateFormat = "text",
 ): string => {
   if (report.checkMode && report.drift) process.exitCode = 1;
-  return format === "json" ? JSON.stringify(report, null, 2) : textRender(report);
+  return textRender(report);
 };

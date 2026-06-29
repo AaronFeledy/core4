@@ -2,19 +2,15 @@ import { Flags } from "@oclif/core";
 
 import type { ScratchSummary } from "@lando/sdk/services";
 import {
+  ScratchListResultSchema,
   renderScratchListResult,
   scratchList,
   scratchListFormatFromInput,
 } from "../../../../commands/scratch.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ScratchListResultSchema,
   id: "apps:scratch:list",
   summary: "List scratch Lando apps.",
   namespace: "apps",

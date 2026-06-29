@@ -4,15 +4,10 @@
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const shellenvShellFromInput = (input: unknown) => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
@@ -23,7 +18,7 @@ export const shellenvShellFromInput = (input: unknown) => {
 };
 
 export const shellenvSpec: LandoCommandSpec<string> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: Schema.String,
   id: "meta:shellenv",
   summary: "Print shell-profile snippets to integrate Lando into your PATH.",
   namespace: "meta",

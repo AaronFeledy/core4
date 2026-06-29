@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type {
   CapabilityError,
@@ -34,6 +34,12 @@ export interface GlobalStopResult {
   readonly materialized: boolean;
   readonly servicesStopped: ReadonlyArray<string>;
 }
+
+export const GlobalStopResultSchema = Schema.Struct({
+  app: Schema.String,
+  materialized: Schema.Boolean,
+  servicesStopped: Schema.Array(Schema.String),
+});
 
 type GlobalStopError =
   | CapabilityError

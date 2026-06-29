@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import type { ScratchAppNotFoundError, ScratchIsolationConflictError } from "@lando/sdk/errors";
@@ -60,6 +60,86 @@ export interface ScratchLogsResult {
   readonly handle: ScratchHandle;
   readonly lines: ReadonlyArray<string>;
 }
+
+export const ScratchSourceResultSchema = Schema.Union(
+  Schema.Struct({ kind: Schema.Literal("fork") }),
+  Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
+);
+
+export const ScratchAppRefResultSchema = Schema.Struct({
+  kind: Schema.Literal("user", "global", "scratch"),
+  id: Schema.String,
+  root: Schema.String,
+});
+
+export const ScratchHandleResultSchema = Schema.Struct({
+  id: Schema.String,
+  app: ScratchAppRefResultSchema,
+});
+
+export const ScratchSummaryResultSchema = Schema.Struct({
+  id: Schema.String,
+  app: ScratchAppRefResultSchema,
+  source: ScratchSourceResultSchema,
+  mode: Schema.Literal("none", "full"),
+  created: Schema.String,
+  status: Schema.Literal("attached", "detached", "orphan"),
+});
+
+export const ScratchListResultSchema = Schema.Array(ScratchSummaryResultSchema);
+
+const ScratchMountPointResultSchema = Schema.Struct({
+  service: Schema.String,
+  target: Schema.String,
+  source: Schema.optional(Schema.String),
+  kind: Schema.Literal("app", "bind", "tmpfs", "volume"),
+  readOnly: Schema.Boolean,
+});
+
+const ScratchNetworkMembershipResultSchema = Schema.Struct({
+  perAppBridge: Schema.optional(Schema.String),
+  sharedNetwork: Schema.optional(Schema.String),
+});
+
+const ScratchEndpointResultSchema = Schema.Struct({
+  protocol: Schema.String,
+  port: Schema.optional(Schema.Number),
+  name: Schema.optional(Schema.String),
+});
+
+const ScratchServiceEndpointsResultSchema = Schema.Struct({
+  service: Schema.String,
+  endpoints: Schema.Array(ScratchEndpointResultSchema),
+});
+
+export const ScratchInfoResultSchema = Schema.Struct({
+  id: Schema.String,
+  app: ScratchAppRefResultSchema,
+  source: ScratchSourceResultSchema,
+  mode: Schema.Literal("none", "full"),
+  created: Schema.String,
+  status: Schema.Literal("attached", "detached", "orphan"),
+  mounts: Schema.Array(ScratchMountPointResultSchema),
+  network: ScratchNetworkMembershipResultSchema,
+  endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
+});
+
+export const ScratchStartResultSchema = Schema.Struct({
+  handle: ScratchHandleResultSchema,
+  detached: Schema.Boolean,
+  rendered: Schema.optional(Schema.Boolean),
+});
+
+export const ScratchGcReportResultSchema = Schema.Struct({
+  inspected: Schema.Number,
+  reaped: Schema.Array(Schema.String),
+  errors: Schema.Array(Schema.String),
+});
+
+export const ScratchLogsResultSchema = Schema.Struct({
+  handle: ScratchHandleResultSchema,
+  lines: Schema.Array(Schema.String),
+});
 
 export type ScratchListFormat = "json" | "table";
 
@@ -271,10 +351,9 @@ export const buildScratchListSummary = (result: ReadonlyArray<ScratchSummary>): 
 
 export const renderScratchListResult = (
   result: ReadonlyArray<ScratchSummary>,
-  format: ScratchListFormat = "table",
+  _format: ScratchListFormat = "table",
   ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result);
   if (isDecoratedContext(ctx))
     return formatSummary(buildScratchListSummary(result), { columns: ctx?.columns });
   if (result.length === 0) return "No scratch apps found.";
@@ -340,8 +419,10 @@ const renderInfoNetwork = (info: ScratchInfo): string => {
   return `network: ${parts.length === 0 ? "(none)" : parts.join(", ")}`;
 };
 
-export const renderScratchInfoResult = (result: ScratchInfo, format: ScratchListFormat = "table"): string => {
-  if (format === "json") return JSON.stringify(result, null, 2);
+export const renderScratchInfoResult = (
+  result: ScratchInfo,
+  _format: ScratchListFormat = "table",
+): string => {
   return [
     `id: ${result.id}`,
     `source: ${scratchSourceLabel(result.source)}`,

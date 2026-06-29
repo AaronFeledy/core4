@@ -1,24 +1,18 @@
 import { Flags } from "@oclif/core";
 
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import { ConfigLintResult } from "@lando/sdk/schema";
 import { appConfigLint, renderConfigLintResult } from "../../../../commands/app-config-lint.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ConfigLintResult,
   id: "app:config:lint",
   summary: "Validate the current app's Landofile against the canonical schema.",
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "minimal",
   run: () => appConfigLint(),
-  render: (result, _input, ctx) =>
-    renderConfigLintResult(result as ConfigLintResult, ctx?.format === "json" ? "json" : "text"),
+  render: (result) => renderConfigLintResult(result as ConfigLintResult, "text"),
 };
 
 export default class AppConfigLintCommand extends LandoCommandBase {

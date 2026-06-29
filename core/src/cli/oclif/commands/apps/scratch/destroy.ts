@@ -2,16 +2,12 @@ import { Args, Flags } from "@oclif/core";
 
 import type { ScratchHandle } from "@lando/sdk/services";
 import {
+  ScratchHandleResultSchema,
   renderScratchDestroyResult,
   scratchDestroy,
   scratchIdFromInput,
 } from "../../../../commands/scratch.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const keepVolumesFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
@@ -20,7 +16,7 @@ export const keepVolumesFromInput = (input: unknown): boolean => {
 };
 
 export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ScratchHandleResultSchema,
   id: "apps:scratch:destroy",
   summary: "Destroy a scratch Lando app.",
   namespace: "apps",

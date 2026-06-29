@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
@@ -22,6 +22,13 @@ export interface PluginTestResult {
   readonly argv: ReadonlyArray<string>;
   readonly exitCode: number;
 }
+
+export const PluginTestResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  pluginRoot: Schema.String,
+  argv: Schema.Array(Schema.String),
+  exitCode: Schema.Number,
+});
 
 const splitPluginTestArgv = (
   argv: ReadonlyArray<string>,

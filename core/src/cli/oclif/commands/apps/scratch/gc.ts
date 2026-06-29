@@ -1,13 +1,12 @@
 import { Flags } from "@oclif/core";
 
 import type { ScratchGcReport } from "@lando/sdk/services";
-import { renderScratchGcReport, scratchGc } from "../../../../commands/scratch.ts";
 import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+  ScratchGcReportResultSchema,
+  renderScratchGcReport,
+  scratchGc,
+} from "../../../../commands/scratch.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const pruneFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
@@ -16,7 +15,7 @@ export const pruneFromInput = (input: unknown): boolean => {
 };
 
 export const appsScratchGcSpec: LandoCommandSpec<ScratchGcReport> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ScratchGcReportResultSchema,
   id: "apps:scratch:gc",
   summary: "Inspect scratch Lando app orphans.",
   namespace: "apps",

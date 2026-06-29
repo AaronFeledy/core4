@@ -2,15 +2,11 @@ import { Effect } from "effect";
 
 import {
   type PluginTestResult,
+  PluginTestResultSchema,
   pluginTest,
   renderPluginTestResult,
 } from "../../../../commands/plugin-test.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -19,7 +15,7 @@ const extractArgv = (input: unknown): ReadonlyArray<string> => {
 };
 
 export const pluginTestSpec: LandoCommandSpec<PluginTestResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: PluginTestResultSchema,
   id: "meta:plugin:test",
   summary: "Run the current plugin's Bun test suite (authoring command).",
   namespace: "meta",

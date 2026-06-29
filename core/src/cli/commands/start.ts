@@ -6,7 +6,7 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect, Exit, Scope } from "effect";
+import { DateTime, Effect, Exit, Schema, Scope } from "effect";
 
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
@@ -38,6 +38,17 @@ import {
 } from "../progress.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
+
+export const StartedServiceResultSchema = Schema.Struct({
+  name: Schema.String,
+  state: Schema.String,
+  endpoints: Schema.Array(Schema.String),
+});
+
+export const StartAppResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesStarted: Schema.Array(StartedServiceResultSchema),
+});
 
 /**
  * Optional managed scope an App handle injects so start-state resources

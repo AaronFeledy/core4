@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { NotImplementedError } from "@lando/sdk/errors";
 
@@ -15,6 +15,10 @@ export interface MetaBunOptions {
 export interface MetaBunResult {
   readonly exitCode: number;
 }
+
+export const MetaBunResultSchema = Schema.Struct({
+  exitCode: Schema.Number,
+});
 
 export const metaBun = (options: MetaBunOptions): Effect.Effect<MetaBunResult, NotImplementedError> =>
   Effect.gen(function* () {
@@ -43,6 +47,11 @@ export interface MetaXResult {
   readonly spec: string;
   readonly exitCode: number;
 }
+
+export const MetaXResultSchema = Schema.Struct({
+  spec: Schema.String,
+  exitCode: Schema.Number,
+});
 
 export const metaX = (options: MetaXOptions): Effect.Effect<MetaXResult, NotImplementedError> =>
   Effect.gen(function* () {

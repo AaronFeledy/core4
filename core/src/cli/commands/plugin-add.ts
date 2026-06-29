@@ -89,6 +89,16 @@ export interface PluginAddResult {
   readonly trustSource: "flag" | "persistent" | "prompt" | "session" | "untrusted";
 }
 
+export const PluginAddResultSchema = Schema.Struct({
+  pluginName: Schema.String,
+  pluginVersion: Schema.String,
+  trustName: Schema.String,
+  pluginsRoot: Schema.String,
+  entry: Schema.String,
+  trusted: Schema.Boolean,
+  trustSource: Schema.Literal("flag", "persistent", "prompt", "session", "untrusted"),
+});
+
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
 
 const trustNonInteractiveError = (spec: string): InteractionRequiredError =>

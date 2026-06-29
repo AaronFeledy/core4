@@ -2,15 +2,11 @@ import { Flags } from "@oclif/core";
 
 import {
   type GlobalConfigResult,
+  GlobalConfigResultSchema,
   globalConfig,
   renderGlobalConfigResult,
 } from "../../../../commands/meta/global-config.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const globalConfigFormatFromInput = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
@@ -19,7 +15,7 @@ export const globalConfigFormatFromInput = (input: unknown): "json" | "table" =>
 };
 
 export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config",
   summary: "Read the host-level global Lando app Landofile stack.",
   namespace: "meta",

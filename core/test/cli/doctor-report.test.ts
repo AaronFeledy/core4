@@ -8,6 +8,7 @@ import { type Context, DateTime, Effect, Layer, Schema } from "effect";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import {
+  CommandResultEnvelope,
   type DeprecationNotice,
   type DeprecationSurfaceKind,
   type GlobalConfig,
@@ -18,9 +19,9 @@ import { DeprecationService } from "@lando/sdk/services";
 
 import {
   type DoctorReport,
+  DoctorReportSchema,
   doctorReport,
   renderDoctorReport,
-  renderDoctorReportAsJson,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
@@ -45,6 +46,9 @@ const resultEnvelope = (ndjson: string) => {
   if (frame?._tag !== "result") throw new Error("expected terminal result frame");
   return frame.envelope;
 };
+
+const decodeCommandEnvelope = (line: string) =>
+  Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -180,23 +184,31 @@ describe("meta:doctor combined report", () => {
     });
   });
 
-  test("meta:doctor render path honors json renderer mode for the combined report", async () => {
+  test("meta:doctor json renderer emits the schema-encoded command result envelope", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    const rendered = metaDoctorSpec.render?.(report, undefined, {
-      mode: "json",
-      format: "ndjson",
-      columns: undefined,
-      isTTY: false,
+
+    const io = createBufferedRendererIO();
+    let renderCalled = false;
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "json",
+      resultFormat: "json",
+      command: "meta:doctor",
+      resultSchema: metaDoctorSpec.resultSchema,
+      io,
+      render: () => {
+        renderCalled = true;
+        return renderDoctorReport(report);
+      },
+      formatError: (error) => String(error),
     });
 
-    expect(rendered).toStartWith('{"_tag":"event"');
-    expect(rendered).toContain('"event":"doctor.check"');
-    expect(rendered).toContain('"name":"selected-provider"');
-    expect(rendered).toContain('"name":"host-proxy"');
-    expect(rendered).toContain('"name":"global-app"');
-    expect(rendered).toContain('"result":{"timestamp"');
-    expect(rendered).toContain('"checks":9');
+    const envelope = decodeCommandEnvelope(io.stdoutLines()[0] ?? "{}");
+    expect(envelope).toMatchObject({ apiVersion: "v4", command: "meta:doctor", ok: true });
+    expect(envelope.result).toEqual(Schema.encodeSync(DoctorReportSchema)(report));
+    expect(io.stderr()).toBe("");
+    expect(renderCalled).toBe(false);
   });
 
   test("doctorReport runs the shared app:config:lint pass and renders it under --app", async () => {
@@ -311,8 +323,13 @@ describe("meta:doctor combined report", () => {
         }).pipe(Effect.provide(buildLayers(provider))),
       );
 
-      const json = JSON.parse(renderDoctorReportAsJson(report)) as DoctorReport;
-      expect(json.deprecations?.entries[0]).toMatchObject({ kind: "env-override", id: "LANDO_LEGACY" });
+      const encoded = Schema.decodeUnknownSync(DoctorReportSchema)(
+        Schema.encodeSync(DoctorReportSchema)(report),
+      );
+      expect(encoded.deprecations?.entries[0]).toMatchObject({
+        kind: "env-override",
+        id: "LANDO_LEGACY",
+      });
 
       const yaml = renderDoctorReportAsYaml(report);
       expect(yaml).toContain("deprecations:");
@@ -346,6 +363,7 @@ describe("meta:doctor combined report", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const io = createBufferedRendererIO();
     let exitCode = 0;
+    let renderCalled = false;
 
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -354,10 +372,16 @@ describe("meta:doctor combined report", () => {
       }),
       {
         runtime: buildLayers(provider),
-        rendererMode: "plain",
+        rendererMode: "json",
+        resultFormat: "json",
+        command: "meta:doctor",
+        resultSchema: DoctorReportSchema,
         io,
         suppressDeprecationDiagnostics: true,
-        render: renderDoctorReportAsJson,
+        render: () => {
+          renderCalled = true;
+          return "legacy-json-renderer";
+        },
         formatError: (error) => String(error),
         setExitCode: (code) => {
           exitCode = code;
@@ -365,10 +389,13 @@ describe("meta:doctor combined report", () => {
       },
     );
 
-    const parsed = JSON.parse(io.stdout()) as DoctorReport;
+    const parsed = decodeCommandEnvelope(io.stdoutLines()[0] ?? "{}");
     expect(exitCode).toBe(0);
     expect(io.stderr()).toBe("");
-    expect(parsed.deprecations?.entries[0]).toMatchObject({ kind: "command", id: "app:legacy" });
+    expect(renderCalled).toBe(false);
+    expect(parsed.result).toMatchObject({
+      deprecations: { entries: [{ kind: "command", id: "app:legacy" }] },
+    });
   });
 
   test("meta:doctor suppresses renderer diagnostics for machine output formats", () => {

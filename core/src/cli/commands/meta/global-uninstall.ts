@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type CapabilityError,
@@ -35,6 +35,20 @@ export interface GlobalUninstallResult {
   readonly dist: GlobalDistResult;
   readonly servicesRemoved: ReadonlyArray<string>;
 }
+
+const GlobalDistResultSchema = Schema.Struct({
+  path: Schema.String,
+  status: Schema.Literal("created", "updated", "unchanged"),
+  serviceIds: Schema.Array(Schema.String),
+});
+
+export const GlobalUninstallResultSchema = Schema.Struct({
+  app: Schema.String,
+  materialized: Schema.Boolean,
+  purged: Schema.Boolean,
+  dist: GlobalDistResultSchema,
+  servicesRemoved: Schema.Array(Schema.String),
+});
 
 type GlobalUninstallError =
   | CapabilityError

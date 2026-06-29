@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
-import { renderIncludesVerifyResult } from "@lando/core/cli/operations";
+import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 
@@ -108,7 +108,7 @@ describe("renderIncludesVerifyResult", () => {
     });
   });
 
-  test("json format serializes the report including the mismatch schema", () => {
+  test("AppIncludesVerifyResultSchema encodes the report including the mismatch schema", () => {
     const report: IncludeVerifyReport = {
       lockfilePath: "/x/.lando.lock.yml",
       entries: [{ source: "a", status: "missing", expected: null, actual: "v:hash" }],
@@ -128,9 +128,9 @@ describe("renderIncludesVerifyResult", () => {
 
     restoreExitCode(() => {
       process.exitCode = 0;
-      const parsed = JSON.parse(renderIncludesVerifyResult(report, "json")) as IncludeVerifyReport;
-      expect(parsed).toEqual(report);
-      expect(parsed.mismatches[0]?._tag).toBe("LandofileLockMismatchError");
+      const encoded = Schema.encodeSync(AppIncludesVerifyResultSchema)(report);
+      expect(encoded).toEqual(report);
+      expect(encoded.mismatches[0]?._tag).toBe("LandofileLockMismatchError");
     });
   });
 });

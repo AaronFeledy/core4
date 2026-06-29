@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, Redacted, Schema } from "effect";
 
 import {
   AppPlanner,
@@ -15,10 +15,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
-import type { SyncResult } from "@lando/sdk/schema";
+import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
-
-import { renderSyncResult } from "../../src/cli/commands/remote.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -165,6 +163,7 @@ describe("remote sync command skeleton", () => {
 
   test("compiled remote renderers forward RenderContext", async () => {
     const source = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const remoteSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/remote.ts")).text();
 
     expect(source).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
     expect(source).toContain("renderRemoteListResult(value, options.format, ctx)");
@@ -175,6 +174,8 @@ describe("remote sync command skeleton", () => {
     expect(source).toContain('argv[0] === "pull:app"');
     expect(source).toContain('argv[0] === "remote:list:app"');
     expect(source).toContain('argv[0] === "remote:list:env:app"');
+    expect(remoteSource).not.toContain('ctx?.mode === "json"');
+    expect(remoteSource).not.toContain('format === "json"');
   });
 
   test("remote add writes remotes and remote list reads them without a provider", async () => {
@@ -765,9 +766,9 @@ describe("remote sync command skeleton", () => {
 
       expect(snapshotCalls).toBe(0);
       expect(result.snapshots).toEqual([]);
-      expect(
-        JSON.parse(renderSyncResult(result, "text", { mode: "json", columns: undefined, isTTY: false })),
-      ).toEqual(result);
+      expect(Schema.decodeUnknownSync(SyncResultSchema)(Schema.encodeSync(SyncResultSchema)(result))).toEqual(
+        result,
+      );
     });
   });
 });

@@ -4,21 +4,16 @@ import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services
 
 import {
   type DoctorReport,
+  DoctorReportSchema,
   doctorReport,
   renderDoctorReport,
-  renderDoctorReportAsJson,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../../commands/doctor-report.ts";
 import type { DoctorOptions } from "../../../commands/doctor.ts";
 import type { RenderContext } from "../../../renderer-boundary.ts";
 
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -47,7 +42,6 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
 const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: RenderContext): string => {
   const options = inputDoctorOptions(input);
   const format = ctx?.format ?? options.format;
-  if (format === "json") return renderDoctorReportAsJson(report);
   if (format === "ndjson") return renderDoctorReportAsNdjson(report);
   if (format === "yaml") return renderDoctorReportAsYaml(report);
   return renderDoctorReport(report, ctx);
@@ -63,7 +57,7 @@ export const metaDoctorSpec: LandoCommandSpec<
   unknown,
   ConfigService | RuntimeProviderRegistry
 > = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: DoctorReportSchema,
   id: "meta:doctor",
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",

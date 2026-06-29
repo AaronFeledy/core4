@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type {
   CapabilityError,
@@ -48,11 +48,28 @@ export interface GlobalStatusService {
   readonly endpoints: ReadonlyArray<string>;
 }
 
+export const GlobalStatusServiceSchema = Schema.Struct({
+  app: Schema.String,
+  service: Schema.String,
+  api: Schema.Literal(4),
+  type: Schema.String,
+  provider: Schema.String,
+  primary: Schema.Boolean,
+  status: Schema.Literal("unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"),
+  endpoints: Schema.Array(Schema.String),
+});
+
 export interface GlobalStatusResult {
   readonly app: string;
   readonly materialized: boolean;
   readonly services: ReadonlyArray<GlobalStatusService>;
 }
+
+export const GlobalStatusResultSchema = Schema.Struct({
+  app: Schema.String,
+  materialized: Schema.Boolean,
+  services: Schema.Array(GlobalStatusServiceSchema),
+});
 
 type GlobalStatusError =
   | CapabilityError
@@ -122,9 +139,6 @@ const endpointText = (endpoint: EndpointPlan): string => {
   return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
-const jsonReplacer = (_key: string, value: unknown): unknown =>
-  typeof value === "bigint" ? value.toString() : value;
-
 const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
   switch (status) {
     case "running":
@@ -181,10 +195,10 @@ export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDoc
 
 export const renderGlobalStatusResult = (
   result: GlobalStatusResult,
-  format: "json" | "table" = "table",
+  _format: "json" | "table" = "table",
   ctx?: RenderContext,
 ): string => {
-  if (format === "json") return JSON.stringify(result, jsonReplacer, 2);
+  void _format;
   if (isDecoratedContext(ctx))
     return formatSummary(buildGlobalStatusSummary(result), { columns: ctx?.columns });
   if (!result.materialized) return "Global app is not installed.\n(no services)";

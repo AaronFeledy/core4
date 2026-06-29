@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
@@ -16,6 +16,18 @@ export interface AppsListEntry {
   readonly appRoot: string;
   readonly services: ReadonlyArray<string>;
 }
+
+export const AppsListEntrySchema = Schema.Struct({
+  appId: Schema.String,
+  appName: Schema.String,
+  providerId: Schema.String,
+  appRoot: Schema.String,
+  services: Schema.Array(Schema.String),
+});
+
+export const AppsListResultSchema = Schema.Struct({
+  apps: Schema.Array(AppsListEntrySchema),
+});
 
 export interface ListServicesOptions {
   readonly path?: string;
@@ -112,11 +124,8 @@ const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => 
 
 export const renderAppsListResult = (
   result: ListServicesResult,
-  format: "json" | "table" = "table",
+  _format: "json" | "table" = "table",
 ): string => {
-  if (format === "json") {
-    return JSON.stringify(result, null, 2);
-  }
   if (result.apps.length === 0) {
     return "No Lando apps applied on this host.";
   }

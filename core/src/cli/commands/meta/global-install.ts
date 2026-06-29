@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   GlobalAppError,
@@ -25,6 +25,24 @@ export interface GlobalInstallResult {
   readonly dist: GlobalDistResult;
   readonly userLandofileCreated: boolean;
 }
+
+const GlobalAppPathsResultSchema = Schema.Struct({
+  root: Schema.String,
+  distLandofile: Schema.String,
+  userLandofile: Schema.String,
+});
+
+const GlobalDistResultSchema = Schema.Struct({
+  path: Schema.String,
+  status: Schema.Literal("created", "updated", "unchanged"),
+  serviceIds: Schema.Array(Schema.String),
+});
+
+export const GlobalInstallResultSchema = Schema.Struct({
+  paths: GlobalAppPathsResultSchema,
+  dist: GlobalDistResultSchema,
+  userLandofileCreated: Schema.Boolean,
+});
 
 const pluginInstallError = (plugin: string): GlobalAppError =>
   new GlobalAppError({

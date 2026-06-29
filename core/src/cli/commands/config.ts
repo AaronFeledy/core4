@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ConfigError, type LandoCommandError, NotImplementedError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
@@ -35,6 +35,57 @@ export interface ConfigResult {
   readonly changed?: boolean;
   readonly configPath?: string;
 }
+
+const ResultGlobalConfigSchema = Schema.Struct({
+  userDataRoot: Schema.optional(Schema.String),
+  userConfRoot: Schema.optional(Schema.String),
+  userCacheRoot: Schema.optional(Schema.String),
+  systemPluginRoot: Schema.optional(Schema.String),
+  defaultProviderId: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
+  telemetry: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  renderer: Schema.optional(Schema.String),
+  network: Schema.optional(
+    Schema.Struct({
+      proxy: Schema.optional(
+        Schema.Struct({
+          http: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
+          https: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
+          noProxy: Schema.optional(Schema.Array(Schema.String)),
+        }),
+      ),
+      ca: Schema.optional(
+        Schema.Struct({
+          trustHost: Schema.optional(Schema.Boolean),
+          certs: Schema.optional(Schema.Array(Schema.String)),
+        }),
+      ),
+    }),
+  ),
+});
+
+export const ConfigResultSchema = Schema.Struct({
+  config: Schema.optional(ResultGlobalConfigSchema),
+  key: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.Unknown),
+  format: Schema.Union(Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")),
+  telemetry: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean,
+      source: Schema.Union(
+        Schema.Literal("flag"),
+        Schema.Literal("env"),
+        Schema.Literal("config"),
+        Schema.Literal("default"),
+      ),
+    }),
+  ),
+  changed: Schema.optional(Schema.Boolean),
+  configPath: Schema.optional(Schema.String),
+});
 
 const writeRemediation =
   "`lando config set/unset/edit/validate/translate` are deferred to Beta. Edit `<userConfRoot>/config.yml` directly in Alpha.";
@@ -112,7 +163,6 @@ export const renderConfigResult = (result: ConfigResult): string => {
       : result.value !== undefined
         ? result.value
         : (result.config ?? {});
-  if (result.format === "json") return JSON.stringify(target, null, 2);
   if (result.format === "yaml") return formatYaml(target);
   return formatTable(target);
 };

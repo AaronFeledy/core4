@@ -1,16 +1,16 @@
-import { type StopAppResult, renderStopAppResult, stopApp } from "../../../commands/stop.ts";
+import {
+  type StopAppResult,
+  StopAppResultSchema,
+  renderStopAppResult,
+  stopApp,
+} from "../../../commands/stop.ts";
 /**
  * `lando app:stop` — OCLIF wrapper.
  */
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const stopSpec: LandoCommandSpec<StopAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: StopAppResultSchema,
   id: "app:stop",
   summary: "Stop the current Lando app.",
   namespace: "app",

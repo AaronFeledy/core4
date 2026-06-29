@@ -18,7 +18,12 @@ import {
 import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
-import { renderScratchInfoResult, renderScratchListResult } from "../../src/cli/commands/scratch.ts";
+import {
+  ScratchInfoResultSchema,
+  ScratchListResultSchema,
+  renderScratchInfoResult,
+  renderScratchListResult,
+} from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 
@@ -74,14 +79,14 @@ const infoFixtureInput: ScratchInfo = {
 };
 
 describe("scratch list/info JSON renderer snapshots", () => {
-  test("list JSON renderer matches the named fixture", async () => {
+  test("list result schema encoding matches the named fixture", async () => {
     const expected = await Bun.file(join(fixtureDir, "scratch-list.json")).json();
-    expect(JSON.parse(renderScratchListResult(listFixtureInput, "json"))).toEqual(expected);
+    expect(Schema.encodeSync(ScratchListResultSchema)(listFixtureInput)).toEqual(expected);
   });
 
-  test("info JSON renderer matches the named fixture", async () => {
+  test("info result schema encoding matches the named fixture", async () => {
     const expected = await Bun.file(join(fixtureDir, "scratch-info.json")).json();
-    expect(JSON.parse(renderScratchInfoResult(infoFixtureInput, "json"))).toEqual(expected);
+    expect(Schema.encodeSync(ScratchInfoResultSchema)(infoFixtureInput)).toEqual(expected);
   });
 
   test("list table renderer surfaces id / source / mode / created / status", () => {

@@ -2,20 +2,16 @@ import { Flags } from "@oclif/core";
 
 import {
   type ScratchStartResult,
+  ScratchStartResultSchema,
   normalizeScratchStartArgv,
   renderScratchStartResult,
   scratchStart,
   scratchStartOptionsFromInput,
 } from "../../../../commands/scratch.ts";
-import {
-  EmptyResultSchema,
-  LandoCommandBase,
-  type LandoCommandSpec,
-  resolveTopLevelAliases,
-} from "../../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ScratchStartResultSchema,
   id: "apps:scratch:start",
   summary: "Start a scratch Lando app.",
   namespace: "apps",
