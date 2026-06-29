@@ -2349,7 +2349,7 @@
         "Lint passes."
       ],
       "priority": 131,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-09 network primitives. Implement before US-285/US-286: HttpClient is the egress chokepoint Downloader wraps."
     },
     {

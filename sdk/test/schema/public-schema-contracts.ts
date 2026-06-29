@@ -255,6 +255,13 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   CommandWarning: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandResultEnvelope: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   StreamFrame: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HttpClientCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HttpRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HttpResponse: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HttpStreamResponse: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HttpUploadRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PreHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PostHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
 } as const satisfies Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>;
 
 type JsonObject = Record<string, unknown>;

@@ -7197,6 +7197,69 @@
       "jsonSchemaPath": "dist/schemas/stream-frame.json",
       "packageExport": "@lando/sdk/schema#StreamFrame",
       "title": "Stream Frame"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Http Client Capabilities.",
+      "docsPath": "docs/reference/schemas/http-client-capabilities.mdx",
+      "id": "HttpClientCapabilities",
+      "jsonSchemaPath": "dist/schemas/http-client-capabilities.json",
+      "packageExport": "@lando/sdk/schema#HttpClientCapabilities",
+      "title": "Http Client Capabilities"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Http Request.",
+      "docsPath": "docs/reference/schemas/http-request.mdx",
+      "id": "HttpRequest",
+      "jsonSchemaPath": "dist/schemas/http-request.json",
+      "packageExport": "@lando/sdk/schema#HttpRequest",
+      "title": "Http Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Http Response.",
+      "docsPath": "docs/reference/schemas/http-response.mdx",
+      "id": "HttpResponse",
+      "jsonSchemaPath": "dist/schemas/http-response.json",
+      "packageExport": "@lando/sdk/schema#HttpResponse",
+      "title": "Http Response"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Http Stream Response.",
+      "docsPath": "docs/reference/schemas/http-stream-response.mdx",
+      "id": "HttpStreamResponse",
+      "jsonSchemaPath": "dist/schemas/http-stream-response.json",
+      "packageExport": "@lando/sdk/schema#HttpStreamResponse",
+      "title": "Http Stream Response"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Http Upload Request.",
+      "docsPath": "docs/reference/schemas/http-upload-request.mdx",
+      "id": "HttpUploadRequest",
+      "jsonSchemaPath": "dist/schemas/http-upload-request.json",
+      "packageExport": "@lando/sdk/schema#HttpUploadRequest",
+      "title": "Http Upload Request"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Http Call Event.",
+      "docsPath": "docs/reference/schemas/pre-http-call-event.mdx",
+      "id": "PreHttpCallEvent",
+      "jsonSchemaPath": "dist/schemas/pre-http-call-event.json",
+      "packageExport": "@lando/sdk/schema#PreHttpCallEvent",
+      "title": "Pre Http Call Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Http Call Event.",
+      "docsPath": "docs/reference/schemas/post-http-call-event.mdx",
+      "id": "PostHttpCallEvent",
+      "jsonSchemaPath": "dist/schemas/post-http-call-event.json",
+      "packageExport": "@lando/sdk/schema#PostHttpCallEvent",
+      "title": "Post Http Call Event"
     }
   ],
   "scope": {
@@ -7524,7 +7587,14 @@
       "CommandResultFormat",
       "CommandWarning",
       "CommandResultEnvelope",
-      "StreamFrame"
+      "StreamFrame",
+      "HttpClientCapabilities",
+      "HttpRequest",
+      "HttpResponse",
+      "HttpStreamResponse",
+      "HttpUploadRequest",
+      "PreHttpCallEvent",
+      "PostHttpCallEvent"
     ]
   },
   "sdkSchemas": {
@@ -12489,6 +12559,214 @@
       "enum": ["darwin", "linux", "win32", "wsl"],
       "type": "string"
     },
+    "HttpClientCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "customCa": {
+          "type": "boolean"
+        },
+        "proxyAware": {
+          "type": "boolean"
+        },
+        "schemes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "upload": {
+          "type": "boolean"
+        }
+      },
+      "required": ["schemes", "streaming", "upload", "customCa", "proxyAware"],
+      "type": "object"
+    },
+    "HttpRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allowFileSource": {
+          "type": "boolean"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "headers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "value"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "method": {
+          "type": "string"
+        },
+        "redactionTokens": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeoutMs": {
+          "type": "number"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url"],
+      "type": "object"
+    },
+    "HttpResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "contentLength": {
+          "type": "number"
+        },
+        "headers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "value"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "number"
+        },
+        "statusText": {
+          "type": "string"
+        }
+      },
+      "required": ["status", "headers"],
+      "type": "object"
+    },
+    "HttpStreamResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "value"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "number"
+        },
+        "statusText": {
+          "type": "string"
+        }
+      },
+      "required": ["status", "headers"],
+      "type": "object"
+    },
+    "HttpUploadRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "callerId": {
+          "type": "string"
+        },
+        "contentLength": {
+          "type": "number"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "headers": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "value"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "method": {
+          "type": "string"
+        },
+        "redactionTokens": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": ["file"],
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "path"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "enum": ["inline"],
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "source"],
+      "type": "object"
+    },
     "IncludeEntry": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "anyOf": [
@@ -16389,6 +16667,79 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-http-call"],
+              "type": "string"
+            },
+            "callerId": {
+              "type": "string"
+            },
+            "eventName": {
+              "enum": ["pre-http-call"],
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "onBehalfOf": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "urlOrigin": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "urlOrigin", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-http-call"],
+              "type": "string"
+            },
+            "callerId": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["post-http-call"],
+              "type": "string"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "onBehalfOf": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "status": {
+              "type": "number"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "urlOrigin": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "eventName", "urlOrigin", "outcome", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-data-transfer"],
               "type": "string"
             },
@@ -19692,6 +20043,56 @@
           },
           "type": "array"
         },
+        "httpClients": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "customCa": {
+                    "type": "boolean"
+                  },
+                  "proxyAware": {
+                    "type": "boolean"
+                  },
+                  "schemes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "streaming": {
+                    "type": "boolean"
+                  },
+                  "upload": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["schemes", "streaming", "upload", "customCa", "proxyAware"],
+                "type": "object"
+              },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
+              "enabledByDefault": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "interactionServices": {
           "items": {
             "additionalProperties": false,
@@ -20329,6 +20730,56 @@
                     },
                     "required": [],
                     "type": "object"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "httpClients": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "customCa": {
+                        "type": "boolean"
+                      },
+                      "proxyAware": {
+                        "type": "boolean"
+                      },
+                      "schemes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "streaming": {
+                        "type": "boolean"
+                      },
+                      "upload": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["schemes", "streaming", "upload", "customCa", "proxyAware"],
+                    "type": "object"
+                  },
+                  "deprecated": {
+                    "$ref": "#/$defs/DeprecationNotice"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
                   },
                   "summary": {
                     "type": "string"
@@ -22091,6 +22542,56 @@
         }
       },
       "required": ["_tag", "scope", "app", "timestamp"],
+      "type": "object"
+    },
+    "PostHttpCallEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-http-call"],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": ["post-http-call"],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": ["success", "failure"],
+          "type": "string"
+        },
+        "status": {
+          "type": "number"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "eventName", "urlOrigin", "outcome", "timestamp"],
       "type": "object"
     },
     "PostInitEvent": {
@@ -24518,6 +25019,43 @@
         }
       },
       "required": ["_tag", "scope", "app", "triggeredBy", "timestamp"],
+      "type": "object"
+    },
+    "PreHttpCallEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-http-call"],
+          "type": "string"
+        },
+        "callerId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": ["pre-http-call"],
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "urlOrigin": {
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "eventName", "urlOrigin", "timestamp"],
       "type": "object"
     },
     "PreInitEvent": {

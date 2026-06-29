@@ -1,0 +1,24 @@
+---
+title: Post Http Call Event
+description: Public Lando schema contract for Post Http Call Event.
+---
+
+# Post Http Call Event
+
+Public Lando schema contract for Post Http Call Event.
+
+[JSON Schema artifact](../../../dist/schemas/post-http-call-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `post-http-call` | — | — |
+| `eventName` | Yes | `string` | — | — | `post-http-call` | — | — |
+| `urlOrigin` | Yes | `string` | a string | — | — | — | — |
+| `method` | No | `string` | — | — | — | — | — |
+| `status` | No | `number` | — | — | — | — | — |
+| `callerId` | No | `string` | — | — | — | — | — |
+| `onBehalfOf` | No | `string` | — | — | — | — | — |
+| `outcome` | Yes | `string` | — | — | `success`, `failure` | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |
+| `failureDetail` | No | `string` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

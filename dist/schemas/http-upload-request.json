@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "callerId": {
+      "type": "string"
+    },
+    "contentLength": {
+      "type": "number"
+    },
+    "contentType": {
+      "type": "string"
+    },
+    "headers": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "method": {
+      "type": "string"
+    },
+    "redactionTokens": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "file"
+              ],
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "inline"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "url",
+    "source"
+  ],
+  "type": "object"
+}

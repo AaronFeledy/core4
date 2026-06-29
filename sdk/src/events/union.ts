@@ -29,6 +29,7 @@ import {
   PreGlobalStartEvent,
   PreGlobalStopEvent,
 } from "./global.ts";
+import { PostHttpCallEvent, PreHttpCallEvent } from "./http-call.ts";
 import {
   PostDestroyEvent,
   PostInitEvent,
@@ -124,6 +125,8 @@ export const LandoEvent = Schema.Union(
   PreDownloadEvent,
   DownloadProgressEvent,
   PostDownloadEvent,
+  PreHttpCallEvent,
+  PostHttpCallEvent,
   PreDataTransferEvent,
   DataTransferProgressEvent,
   PostDataTransferEvent,

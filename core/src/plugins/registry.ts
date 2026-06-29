@@ -101,6 +101,7 @@ const normalizeExternalContributionModules = async (
 ): Promise<PluginManifest> => {
   const globalServices = manifest.contributes?.globalServices;
   const downloaders = manifest.contributes?.downloaders;
+  const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const remoteSources = manifest.contributes?.remoteSources;
   const datasets = manifest.contributes?.datasets;
@@ -108,6 +109,7 @@ const normalizeExternalContributionModules = async (
   if (
     globalServices === undefined &&
     downloaders === undefined &&
+    httpClients === undefined &&
     interactionServices === undefined &&
     remoteSources === undefined &&
     datasets === undefined &&
@@ -135,6 +137,15 @@ const normalizeExternalContributionModules = async (
       ? undefined
       : await Promise.all(
           downloaders.map(async (contribution) => {
+            if (contribution.module === undefined) return contribution;
+            return { ...contribution, module: await normalizeContributionModulePath(contribution.module) };
+          }),
+        );
+  const normalizedHttpClients =
+    httpClients === undefined
+      ? undefined
+      : await Promise.all(
+          httpClients.map(async (contribution) => {
             if (contribution.module === undefined) return contribution;
             return { ...contribution, module: await normalizeContributionModulePath(contribution.module) };
           }),
@@ -182,6 +193,7 @@ const normalizeExternalContributionModules = async (
       ...manifest.contributes,
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
+      ...(normalizedHttpClients === undefined ? {} : { httpClients: normalizedHttpClients }),
       ...(normalizedInteractionServices === undefined
         ? {}
         : { interactionServices: normalizedInteractionServices }),

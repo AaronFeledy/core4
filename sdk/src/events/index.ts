@@ -5,6 +5,7 @@ export * from "./data.ts";
 export * from "./deprecation.ts";
 export * from "./download.ts";
 export * from "./global.ts";
+export * from "./http-call.ts";
 export * from "./lifecycle.ts";
 export * from "./managed-file.ts";
 export * from "./message.ts";

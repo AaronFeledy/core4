@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
+import { HttpClientCapabilities } from "./http-client.ts";
 import { PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
 import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts";
@@ -96,6 +97,27 @@ export const DownloaderContribution = Schema.Struct({
 export type DownloaderContribution = typeof DownloaderContribution.Type;
 
 /**
+ * Plugin-contributed HTTP client entry.
+ *
+ * Plugins use `httpClients:` to register HTTP client implementations for later
+ * runtime selection by the `HttpClient` service.
+ */
+export const HttpClientContribution = Schema.Struct({
+  /** HTTP client id registered by the plugin. MUST be unique across plugins. */
+  id: Schema.String,
+  /** Path to the module that produces the HTTP client implementation. */
+  module: Schema.optional(Schema.String),
+  /** Static capabilities advertised by this HTTP client implementation. */
+  capabilities: Schema.optional(HttpClientCapabilities),
+  /** Initial enabled state when the plugin is first installed. */
+  enabledByDefault: Schema.optional(Schema.Boolean),
+  /** One-line description surfaced in HTTP client listings / diagnostics. */
+  summary: Schema.optional(Schema.String),
+  deprecated: Schema.optional(DeprecationNotice),
+});
+export type HttpClientContribution = typeof HttpClientContribution.Type;
+
+/**
  * Plugin-contributed interaction service entry.
  *
  * Plugins use `interactionServices:` to register an alternative prompting
@@ -170,6 +192,8 @@ export const PluginContribution = Schema.Struct({
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
   /** Verified-download implementations registered. */
   downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
+  /** HTTP client implementations registered. */
+  httpClients: Schema.optional(Schema.Array(HttpClientContribution)),
   /** Interaction (prompting) service implementations registered. */
   interactionServices: Schema.optional(Schema.Array(InteractionServiceContribution)),
   remoteSources: Schema.optional(Schema.Array(RemoteSourceContribution)),

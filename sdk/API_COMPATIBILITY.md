@@ -18,6 +18,7 @@
 - §6.11.1/§6.11.2: `PluginRegistry.loadServiceType`'s error union additively gains `ServiceTypeCollisionError` (raised at load when an `extends:` chain points at an unregistered parent, cycles, or exceeds depth 4); the frozen `PluginRegistry` method-signature fixture is updated to match. `ServiceTypeInput` additively gains an optional `parentResolution?: ServiceTypeResolution` so a child resolver can resolve against its parent's resolution. `ServiceTypeCollisionError` is a new `@lando/sdk/errors` tagged error. All three are additive type-only/error changes (no new runtime schema export, no JSON Schema artifact).
 - `EventService` additively gains `waitForAny` (await the first event matching any of several specs) and `query` (scan a bounded redacted in-memory history buffer without blocking). `subscribe`/`waitFor`/`query` become generic over the event `name`: a known `_tag` literal narrows to that union variant, `"*"` resolves to the full `LandoEvent` union, and any other string falls back to the loose structural `LandoEvent`, so existing string-named callers keep compiling. `waitFor`'s second parameter changes from a positional `filter?` to an `options?: { filter?, timeout? }` object that also carries an optional Clock-driven timeout. New type-only exports from `@lando/sdk/services`: `EventFor`, `LandoEventName`, `EventWaitOptions`, `EventWaitAnyOptions`, `EventWaitSpec`, `EventWaitSpecs`. `EventError` additively gains an optional `reason?: "timeout"` field (no JSON Schema artifact; `EventError` is not a registered public schema). The frozen `EventService` method-signature fixture is updated to match.
 - `DataStorePlan` and Landofile `StorageInput` add `kind?: "data" | "cache"` plus optional `key`; omitted `DataStorePlan.kind` decodes as `"data"`. `DestroyAppOptions` and provider `DestroyOptions` add `purgeCaches?: boolean` so cache volumes remain outside regular data-volume destruction unless explicitly purged.
+- `@lando/sdk` publishes an additive contract-only `HttpClient` surface for US-330: serializable request/response/upload schemas, HTTP call lifecycle events, tagged errors, the `HttpClient` service tag, and plugin manifest `contributes.httpClients[]`. Core runtime wiring remains deferred to US-331.
 
 ## Additive Alpha schema exports
 
@@ -107,6 +108,14 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HttpClientCapabilities`
+- `HttpClientContribution`
+- `HttpRequest`
+- `HttpResponse`
+- `HttpStreamResponse`
+- `HttpUploadRequest`
+- `PostHttpCallEvent`
+- `PreHttpCallEvent`
 - `InlineProps`
 - `IncludeEntry`
 - `InspectProps`
@@ -332,6 +341,10 @@
 - `DownloadSizeMismatchError`
 - `DownloadSourceForbiddenError`
 - `DownloaderUnavailableError`
+- `HttpClientUnavailableError`
+- `HttpRequestError`
+- `HttpTrustError`
+- `HttpUploadError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
@@ -385,6 +398,7 @@
 - `DataMover`
 - `DeprecationService`
 - `Downloader`
+- `HttpClient`
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`

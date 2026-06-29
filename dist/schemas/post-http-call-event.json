@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "post-http-call"
+      ],
+      "type": "string"
+    },
+    "callerId": {
+      "type": "string"
+    },
+    "durationMs": {
+      "type": "number"
+    },
+    "eventName": {
+      "enum": [
+        "post-http-call"
+      ],
+      "type": "string"
+    },
+    "failureDetail": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "onBehalfOf": {
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "success",
+        "failure"
+      ],
+      "type": "string"
+    },
+    "status": {
+      "type": "number"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    },
+    "urlOrigin": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "urlOrigin",
+    "outcome",
+    "timestamp"
+  ],
+  "type": "object"
+}

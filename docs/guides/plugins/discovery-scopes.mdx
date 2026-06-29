@@ -12,6 +12,7 @@ tags: [beta, docs, plugins, discovery]
       <Variable name="system" value="bundled plugins" display="System plugins are the compiled-in bundled plugin set shipped with Lando" />
       <Variable name="user" value="&lt;userDataRoot&gt;/plugins/registry.json" display="User plugins are discovered from the managed per-user plugin registry written by lando plugin:add" />
       <Variable name="app" value="&lt;appRoot&gt;/.lando/plugins/registry.json" display="App plugins are discovered from the current app root's local plugin registry" />
+      <Variable name="contributionModules" value="globalServices|downloaders|httpClients|interactionServices|remoteSources|datasets|snapshotStores" display="Discovered plugin contribution module paths are normalized from their package root before the registry publishes them to runtime services" />
     </Step>
     <Step name="precedence">
       <Variable name="order" value="app &gt; user &gt; system" display="When the same plugin id appears in more than one source, the highest-precedence source wins" />
