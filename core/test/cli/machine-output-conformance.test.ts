@@ -78,7 +78,7 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-describe("§13.1 machine-output conformance", () => {
+describe("machine-output conformance", () => {
   test("enumerates every canonical command id and the deferred stubs", () => {
     expect(canonicalIds.length).toBeGreaterThan(0);
     expect(canonicalIds).toContain("app:start");
