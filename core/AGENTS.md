@@ -41,6 +41,10 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - Host-safe `meta:setup` parity tests should force `PATH=/no-such-path`, isolated `LANDO_USER_*` roots, and `--provider=podman`; the default `lando` provider attempts a network bundle download.
 - Compiled `meta:plugin:*` handlers must manually replicate OCLIF parse errors. `--renderer`/`--help`/`--version` are stripped before command dispatch, while command-scoped unknown flags still need exit-2 rejection.
 
+## Machine-output gate
+
+- `bun run check:machine-output` (`scripts/check-machine-output.ts`) is a TypeScript-AST boundary gate over `core/src/**`+`plugins/**`. It fails on a `JSON.stringify` whose argument is (recursively, with shallow same-file `const`/`let` alias resolution) a command-result envelope (direct keys `apiVersion`+`command`+`ok`+`result`|`error`) or a `{ _tag: "result", envelope }` stream frame; the only carve-out is `core/src/cli/result-encode.ts`. Serialize result envelopes only through `encodeCommandResult`/`encodeStreamResultFrame`; a synchronous `=> string` helper can route through them via `Effect.runSync(...)` with the exported `identityRedactor` when its payload carries no secret-bearing field (the doctor NDJSON renderers do this). The gate also flags a `LandoCommandSpec` object literal (annotated `: LandoCommandSpec` or shaped `id`+`summary`+`namespace`+`bootstrap`+`run`) missing a direct `resultSchema`; `EmptyResultSchema` counts as present.
+
 ## Downloader / HttpClient
 
 - `DownloaderLive` issues every byte through core-private `HttpClient.stream`; it never calls `fetch` directly. Its `download()` `R` channel stays `Scope.Scope` because the live layer closes over `HttpClient` at construction.

@@ -25,6 +25,7 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "../renderer/summary.ts";
+import { encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import {
   DefaultGlobalAppDoctorLayer,
@@ -33,6 +34,7 @@ import {
   renderGlobalAppDoctorResult,
   renderGlobalAppDoctorResultAsNdjson,
 } from "./doctor-global-app.ts";
+import { DoctorNdjsonSummarySchema } from "./doctor-ndjson.ts";
 import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
@@ -428,23 +430,21 @@ export const renderDoctorReportAsNdjson = (
   const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
   const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const summary = {
+    timestamp,
+    checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
+    failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
+    warned: checks.filter((check) => check.status === "warn").length,
+  };
   lines.push(
-    JSON.stringify({
-      _tag: "result",
-      envelope: {
-        apiVersion: "v4",
+    Effect.runSync(
+      encodeStreamResultFrame({
         command: "meta:doctor",
-        ok: true,
-        result: {
-          timestamp,
-          checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
-          failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
-          warned: checks.filter((check) => check.status === "warn").length,
-        },
-        warnings: [],
-        deprecations: [],
-      },
-    }),
+        resultSchema: DoctorNdjsonSummarySchema,
+        outcome: { _tag: "success", value: summary },
+        redactor: identityRedactor,
+      }),
+    ),
   );
   return `${lines.join("\n")}\n`;
 };

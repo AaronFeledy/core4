@@ -46,6 +46,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run check:paths-boundary");
     expect(runbook).toContain("bun run check:state-store-boundary");
     expect(runbook).toContain("bun run check:probe-boundary");
+    expect(runbook).toContain("bun run check:machine-output");
     expect(runbook).toContain("bun run test:unit");
     expect(runbook).toContain("Every platform cell runs the fork-safe portable static gates");
     expect(runbook).toContain(

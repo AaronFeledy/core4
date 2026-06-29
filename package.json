@@ -40,6 +40,7 @@
     "check:paths-boundary": "bun run scripts/check-paths-boundary.ts",
     "check:state-store-boundary": "bun run scripts/check-state-store-boundary.ts",
     "check:probe-boundary": "bun run scripts/check-probe-boundary.ts",
+    "check:machine-output": "bun run scripts/check-machine-output.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
