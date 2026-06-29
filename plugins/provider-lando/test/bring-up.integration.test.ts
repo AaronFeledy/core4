@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -594,10 +595,10 @@ describe("provider-lando bringUp", () => {
     expect(fake.running.has("lando-bringupapp-node")).toBe(true);
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "brings up Node and Postgres services against a live Podman socket",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
       const liveRequest = api.request;

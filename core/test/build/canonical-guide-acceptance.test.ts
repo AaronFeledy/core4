@@ -76,7 +76,7 @@ describe("Canonical guide acceptance path", () => {
     expect(smokeGenerated).toContain("// @layer: e2e");
     expect(smokeGenerated).toContain('LANDO_GUIDE_E2E === "1"');
     expect(smokeGenerated).toContain("LANDO_SCENARIO_E2E_BINARY !== undefined");
-    expect(smokeGenerated).toContain("LANDO_TEST_PODMAN_SOCKET !== undefined");
+    expect(smokeGenerated).toContain("hasLiveProviderSocket()");
     expect(smokeGenerated).toContain(
       '"beta docs recipes transcripts @smoke canonical-public-transcript:provider-e2e-smoke [e2e]"',
     );

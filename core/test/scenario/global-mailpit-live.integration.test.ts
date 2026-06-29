@@ -1,5 +1,6 @@
 import { DateTime, Effect } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -162,10 +163,10 @@ const waitForCapturedMessage = async (timeoutMs: number): Promise<void> => {
 };
 
 describe("global Mailpit capture — live integration", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "captures SMTP mail sent from a per-app service over the shared cross-app network",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);

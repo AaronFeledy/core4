@@ -3,13 +3,16 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
+
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
 const configuredBinaryPath = process.env.LANDO_MVP_BINARY_PATH;
 const binaryPath =
   configuredBinaryPath === undefined ? resolve(coreRoot, "dist/lando") : resolve(configuredBinaryPath);
 const shouldBuildBinary = configuredBinaryPath === undefined;
-const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+const liveSocket = resolveLiveProviderSocket();
+const socketPath = liveSocket?.socketPath;
 const canRunLiveSmoke = socketPath !== undefined && process.platform === "linux" && process.arch === "x64";
 
 interface RunResult {

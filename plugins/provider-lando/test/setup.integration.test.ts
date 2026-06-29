@@ -13,6 +13,7 @@ import {
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
   ProviderBundleChecksumError,
+  RUNTIME_BUNDLE_MANIFEST_ENV,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
@@ -34,6 +35,20 @@ import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
 const podmanCommand = (version: string) => ({ version: Effect.succeed(version) });
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const withoutRuntimeBundleManifestEnv = async <A>(run: () => Promise<A>): Promise<A> => {
+  const previous = process.env[RUNTIME_BUNDLE_MANIFEST_ENV];
+  delete process.env[RUNTIME_BUNDLE_MANIFEST_ENV];
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env[RUNTIME_BUNDLE_MANIFEST_ENV];
+    } else {
+      process.env[RUNTIME_BUNDLE_MANIFEST_ENV] = previous;
+    }
+  }
+};
 
 const machineRunner = (status: PodmanMachineStatus, calls: string[]): PodmanMachineRunner => ({
   inspect: Effect.sync(() => {
@@ -269,11 +284,13 @@ describe("provider-lando setup", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.setup({
-          force: false,
-          runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
-          runtimeBundleSha256: "a".repeat(64),
-        }),
+        provider
+          .setup({
+            force: false,
+            runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
+            runtimeBundleSha256: "a".repeat(64),
+          })
+          .pipe(Effect.scoped),
       );
 
       expect(fetchedUrl).toBe("https://example.invalid/custom-runtime.zip");
@@ -292,46 +309,48 @@ describe("provider-lando setup", () => {
   });
 
   test("wires the default runtime-bundle downloader when provider setup has a state directory", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-default-bundle-"));
-    const calls: string[] = [];
-    let fetchedUrl: string | undefined;
-    const artifactDownload: ArtifactDownload = (request) =>
-      Effect.sync(() => {
-        fetchedUrl = request.url;
-        return {
-          bytes: new TextEncoder().encode("tampered windows runtime bundle"),
-          sha256: request.expectedSha256,
-          path: `${request.directory}/${request.filename}`,
-        };
-      });
+    await withoutRuntimeBundleManifestEnv(async () => {
+      const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-default-bundle-"));
+      const calls: string[] = [];
+      let fetchedUrl: string | undefined;
+      const artifactDownload: ArtifactDownload = (request) =>
+        Effect.sync(() => {
+          fetchedUrl = request.url;
+          return {
+            bytes: new TextEncoder().encode("tampered windows runtime bundle"),
+            sha256: request.expectedSha256,
+            path: `${request.directory}/${request.filename}`,
+          };
+        });
 
-    try {
-      const provider = await Effect.runPromise(
-        makeRuntimeProvider({
-          platform: "win32",
-          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
-          podmanCommand: podmanCommand("podman version 5.2.0"),
-          podmanMachine: machineRunner("running", calls),
-          artifactDownload,
-          stateDir,
-        }),
-      );
+      try {
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform: "win32",
+            podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+            podmanCommand: podmanCommand("podman version 5.2.0"),
+            podmanMachine: machineRunner("running", calls),
+            artifactDownload,
+            stateDir,
+          }),
+        );
 
-      const exit = await Effect.runPromiseExit(provider.setup({ force: false }));
+        const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
 
-      expect(fetchedUrl).toContain("lando-runtime-win32-x64.zip");
-      expect(calls).toEqual([]);
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
+        expect(fetchedUrl).toContain("lando-runtime-win32-x64.zip");
+        expect(calls).toEqual([]);
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          const failure = Cause.failureOption(exit.cause);
+          expect(failure._tag).toBe("Some");
+          if (failure._tag === "Some") {
+            expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
+          }
         }
+      } finally {
+        await rm(stateDir, { recursive: true, force: true });
       }
-    } finally {
-      await rm(stateDir, { recursive: true, force: true });
-    }
+    });
   });
 
   test.skipIf(process.platform !== "darwin" || !process.env.LANDO_TEST_PROVIDER_LANDO_MACOS)(
@@ -700,14 +719,15 @@ const downloaderFor = (archiveBytes: Uint8Array, version = "0.0.0-test") => ({
 
 describe("provider-lando setup runtime bundle extraction", () => {
   test("extracts the verified runtime bundle into runtimeBinDir with executable bits", async () => {
-    const stateDir = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
-    const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-bin-")), "runtime", "bin");
+    const root = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
+    const stateDir = join(root, "providers");
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const runtimeConfigDir = join(root, "runtime", "config");
     try {
       const archiveBytes = buildTarGz([
         { path: "podman", bytes: new TextEncoder().encode("podman") },
         { path: "gvproxy", bytes: new TextEncoder().encode("gvproxy") },
       ]);
-
       const result = await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
@@ -716,11 +736,15 @@ describe("provider-lando setup runtime bundle extraction", () => {
           runtimeBundleDownloader: downloaderFor(archiveBytes),
           stateDir,
           runtimeBinDir,
+          runtimeConfigDir,
           socketPath: "/tmp/lando-extract.sock",
         }),
       );
 
       expect(result.runtimeBinDir).toBe(runtimeBinDir);
+      expect(await readFile(join(runtimeConfigDir, "containers.conf"), "utf8")).toContain(
+        `helper_binaries_dir = ["${runtimeBinDir}"]`,
+      );
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
       expect(existsSync(join(runtimeBinDir, "gvproxy"))).toBe(true);
       expect(statSync(join(runtimeBinDir, "podman")).mode & 0o111).not.toBe(0);
@@ -729,8 +753,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
       expect(state.runtimeBinDir).toBe(runtimeBinDir);
       expect(state.runtimeBundleVersion).toBe("0.0.0-test");
     } finally {
-      await rm(stateDir, { recursive: true, force: true });
-      await rm(runtimeBinDir, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 

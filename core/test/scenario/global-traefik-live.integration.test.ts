@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -143,10 +144,10 @@ const fetchThroughTraefik = async (timeoutMs: number): Promise<Response> => {
 };
 
 describe("global Traefik routing — live integration", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "routes a per-app service through Traefik by Host header over the shared cross-app network",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);

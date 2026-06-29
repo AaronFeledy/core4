@@ -8,6 +8,7 @@ export * from "./downloader.ts";
 export * from "./data-mover.ts";
 export * from "./events.ts";
 export * from "./interaction.ts";
+export * from "./live-provider-socket.ts";
 export * from "./managed-file.ts";
 export * from "./remote-sync.ts";
 export * from "./scenario-context.ts";

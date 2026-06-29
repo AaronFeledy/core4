@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { Duration, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { runProbe } from "@lando/sdk/probe";
+import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import type { HostPlatform } from "@lando/sdk/schema";
 
 import type { PodmanApiClient } from "./capabilities.ts";
@@ -32,7 +32,18 @@ export interface EnsureRuntimeDeps {
   readonly socketPath: string;
   readonly pidPath: string;
   readonly rootlessProbes?: RootlessProbes;
+  readonly readinessPolicy?: RetryPolicy;
 }
+
+// info() fails fast (connection refused) while podman is cold-starting, so the
+// readiness budget must be wall-clock patience, not a small attempt count burned
+// against instant refusals. A loaded CI runner can take tens of seconds to bring
+// the socket up: poll twice a second for ~45s, with timeout as a per-probe cap.
+const defaultRuntimeReadinessPolicy: RetryPolicy = {
+  maxAttempts: 91,
+  delay: Duration.millis(500),
+  timeout: Duration.seconds(45),
+};
 
 const missingMachineRunnerError = (platform: "darwin" | "win32") =>
   new ProviderUnavailableError({
@@ -110,9 +121,13 @@ const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> 
       Effect.succeed(false);
   });
 
-const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+const findAliveServicePids = (
+  deps: EnsureRuntimeDeps,
+  find:
+    | ((spec: ReturnType<typeof buildPodmanServiceArgs>) => Effect.Effect<ReadonlyArray<number>>)
+    | undefined,
+): Effect.Effect<ReadonlyArray<number>> =>
   Effect.gen(function* () {
-    const find = deps.serviceRunner.findMatchingServicePids;
     if (find === undefined) return [];
 
     const spec = buildPodmanServiceArgs(deps);
@@ -123,6 +138,12 @@ const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<Re
     }
     return alive;
   });
+
+const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+  findAliveServicePids(deps, deps.serviceRunner.findMatchingServicePids);
+
+const findAliveManagedServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
+  findAliveServicePids(deps, deps.serviceRunner.findManagedServicePids);
 
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
@@ -149,7 +170,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
   runProbe(
     {
       id: "provider-lando-runtime-ready",
-      policy: { maxAttempts: 10, delay: Duration.millis(100), timeout: Duration.seconds(5) },
+      policy: deps.readinessPolicy ?? defaultRuntimeReadinessPolicy,
     },
     deps.podmanApi.info,
   ).pipe(
@@ -163,7 +184,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
               message: "The Lando runtime service did not become reachable after launch.",
               remediation:
                 "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
-              details: { attempts: result.attempts },
+              details: { attempts: result.attempts, elapsedMs: result.elapsedMs },
               cause: result.lastError,
             }),
           ),
@@ -189,12 +210,29 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
       const owned = yield* currentRuntimeIsOwned(deps);
       if (owned) return;
 
-      if (deps.serviceRunner.findMatchingServicePids !== undefined) {
+      if (
+        deps.serviceRunner.findMatchingServicePids !== undefined ||
+        deps.serviceRunner.findManagedServicePids !== undefined
+      ) {
         const matchingPids = yield* findAliveMatchingServicePids(deps);
-        if (matchingPids.length === 0) return;
-
-        for (const pid of matchingPids) {
-          yield* deps.serviceRunner.terminate(pid);
+        const managedPids = yield* findAliveManagedServicePids(deps);
+        const pidsToStop = [...new Set([...matchingPids, ...managedPids])];
+        if (pidsToStop.length === 0) {
+          const stalePid = yield* readStalePid(deps.pidPath);
+          if (stalePid !== undefined) {
+            const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
+            const serviceProcess =
+              staleAlive &&
+              (yield* deps.serviceRunner.isServiceProcess?.(stalePid, buildPodmanServiceArgs(deps)) ??
+                Effect.succeed(false));
+            if (serviceProcess) {
+              yield* deps.serviceRunner.terminate(stalePid);
+            }
+          }
+        } else {
+          for (const pid of pidsToStop) {
+            yield* deps.serviceRunner.terminate(pid);
+          }
         }
       }
     }

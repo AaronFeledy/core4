@@ -117,6 +117,8 @@ const canonicalRuntimeArgs = (paths: ReturnType<typeof runtimePaths>) =>
     paths.runtimeRunDir,
     "--config",
     paths.runtimeConfigDir,
+    "--storage-opt",
+    `overlay.mount_program=${paths.runtimeBinDir}/fuse-overlayfs`,
     "system",
     "service",
     "--time=0",

@@ -5,6 +5,7 @@ import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { RetryPolicy } from "@lando/sdk/probe";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
@@ -226,6 +227,7 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  readonly readinessPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
 }
 
@@ -279,6 +281,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       : makeDefaultRuntimeBundleDownloader({
           stateDir,
           platform,
+          ...(url === undefined ? {} : { env: {} }),
           ...(url === undefined ? {} : { url }),
           ...(sha256 === undefined ? {} : { sha256 }),
           artifactDownload: options.artifactDownload ?? missingArtifactDownload,
@@ -337,6 +340,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               socketPath: ensureSocketPath,
               pidPath: options.providerPidPath,
               ...(options.rootlessProbes === undefined ? {} : { rootlessProbes: options.rootlessProbes }),
+              ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
             })
           : Effect.void;
         const [cachedEnsure, invalidateEnsure] = yield* Effect.cachedInvalidateWithTTL(
@@ -418,6 +422,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 })(),
                 ...(stateDir === undefined ? {} : { stateDir }),
                 ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+                ...(options.runtimeConfigDir === undefined
+                  ? {}
+                  : { runtimeConfigDir: options.runtimeConfigDir }),
                 ...(socketPath === undefined ? {} : { socketPath }),
                 ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
                 readinessCheck: ensureOnce,

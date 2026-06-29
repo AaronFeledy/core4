@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Duration, Effect, Stream } from "effect";
+
+import type { RetryPolicy } from "@lando/sdk/probe";
 
 import {
   type PodmanApiClient,
@@ -21,6 +23,12 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+
+const fastReadinessPolicy: RetryPolicy = {
+  maxAttempts: 5,
+  delay: Duration.millis(1),
+  timeout: Duration.millis(200),
+};
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("ensureapp");
@@ -170,6 +178,7 @@ const withRuntimeProvider = async <A>(
   use: (provider: RuntimeProviderShape) => Promise<A>,
   infoSuccessesBeforeEnsureFailure = 1,
   launchesBeforeInfoSuccess = 1,
+  readinessPolicy: RetryPolicy = fastReadinessPolicy,
 ): Promise<A> => {
   const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
   try {
@@ -185,6 +194,7 @@ const withRuntimeProvider = async <A>(
         runtimeRunDir: join(tempDir, "run"),
         runtimeConfigDir: join(tempDir, "config"),
         providerPidPath: join(tempDir, "run", "podman.pid"),
+        readinessPolicy,
         rootlessProbes: {
           probe: () => ({
             subidConfigured: true,
@@ -281,6 +291,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
+          podmanApi: makeFakePodmanApi(events),
           podmanService: makeFakeServiceRunner(events),
           runtimeBinDir: join(tempDir, "bin"),
           runtimeStorageDir: join(tempDir, "storage"),
@@ -288,6 +299,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
           runtimeConfigDir: join(tempDir, "config"),
           providerSocketPath: join(tempDir, "run", "podman.sock"),
           providerPidPath: join(tempDir, "run", "podman.pid"),
+          readinessPolicy: fastReadinessPolicy,
           rootlessProbes: {
             probe: () => ({
               subidConfigured: true,

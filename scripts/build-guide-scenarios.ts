@@ -595,7 +595,7 @@ export const renderScenarioTest = (
     platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
   );
   const skippedE2eTestName = quote(
-    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)`,
+    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and a live provider socket via lando setup or LANDO_TEST_PODMAN_SOCKET)`,
   );
   const e2eForcedSkip = usesE2eRuntime && forcedSkip;
   const testNameExpression =
@@ -627,13 +627,13 @@ ${
   usesLibraryRuntime
     ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
     : usesE2eRuntime
-      ? 'import { ScenarioContextFactory } from "@lando/core/testing";'
+      ? 'import { ScenarioContextFactory, hasLiveProviderSocket } from "@lando/core/testing";'
       : 'import { withScenarioContext } from "@lando/core/testing";'
 }
 
 ${
   usesE2eRuntime
-    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && process.env.LANDO_TEST_PODMAN_SOCKET !== undefined;'
+    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && hasLiveProviderSocket();'
     : ""
 }
 

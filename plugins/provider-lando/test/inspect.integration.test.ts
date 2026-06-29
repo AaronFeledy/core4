@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, inspect, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -172,10 +173,10 @@ describe("provider-lando inspect", () => {
     expect(fake.calls).toEqual([{ method: "GET", path: "/containers/lando-inspectapp-node/json" }]);
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "inspects live Podman services after bringUp",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 

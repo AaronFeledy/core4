@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Fiber, Stream } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -232,10 +233,10 @@ describe("provider-lando exec", () => {
     expect(result).toEqual({ exitCode: 1, stdout: "", stderr: "" });
   });
 
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "execs commands in a live Podman service",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
       expect(socketPath).toBeTruthy();
       const api = makePodmanApiClient(socketPath ?? "");
 

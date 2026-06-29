@@ -341,7 +341,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
       expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
-      expect(workflow).toContain("US-189");
+      expect(workflow).toContain("follow-up portability effort");
       expect(workflow).toContain("- name: Unit test layer (linux-x64 full static scope)");
       expect(workflow).not.toContain(
         "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
@@ -372,7 +372,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("name: lando-linux-x64");
       expect(workflow).toContain('LANDO_GUIDE_E2E: "1"');
       expect(workflow).toContain(
-        'run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"',
+        'run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"',
       );
       expect(workflow).toContain("name: guide-scenario-transcripts-${{ github.run_id }}.zip");
       expect(workflow).toContain("name: guide-e2e-provider-diagnostics-${{ github.run_id }}.zip");

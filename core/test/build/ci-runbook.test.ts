@@ -61,6 +61,12 @@ describe("ci runbook", () => {
     expect(runbook).toContain("::notice title=ci-timing::");
     expect(runbook).toContain("timeout cap");
     expect(runbook).toContain("BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated");
+    expect(runbook).toContain("prepares the default Lando provider through `lando setup`");
+    expect(runbook).toContain("scripts/build-runtime-bundle.ts --local");
+    expect(runbook).toContain("tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz");
+    expect(runbook).toContain("LANDO_RUNTIME_BUNDLE_MANIFEST");
+    expect(runbook).toContain("dist/lando setup --yes --provider=lando");
+    expect(runbook).toContain("`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback");
     expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
     expect(runbook).toContain("Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64");

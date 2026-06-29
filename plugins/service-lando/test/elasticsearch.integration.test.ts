@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -45,10 +46,10 @@ const waitForElasticsearch = async (port: number, timeoutMs: number): Promise<vo
 };
 
 describe("elasticsearch service type — live integration: cluster health endpoint", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots Elasticsearch 8 (single-node, security-disabled) and verifies green/yellow cluster health",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const appRootStr = await mkdtemp(join(tmpdir(), "lando-es-int-"));

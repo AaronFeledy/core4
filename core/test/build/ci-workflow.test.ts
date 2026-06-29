@@ -474,16 +474,23 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
     expect(guideScenarios).toContain("          name: lando-linux-x64");
     expect(guideScenarios).toContain("        run: chmod +x dist/lando");
-    expect(guideScenarios).toContain("      - name: Install Podman");
-    expect(guideScenarios).toContain(
+    expect(guideScenarios).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(guideScenarios).toContain("      - name: Prepare provider via lando setup");
+    expect(guideScenarios).toContain("          dist/lando setup --yes --provider=lando");
+    expect(guideScenarios).toContain("      - name: Verify managed runtime socket");
+    expect(guideScenarios).not.toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
+    expect(guideScenarios).not.toContain("      - name: Install Podman");
+    expect(guideScenarios).not.toContain("podman system service");
     expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
     expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(guideScenarios).toContain(
-      `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --test-name-pattern="@smoke.*\\[e2e\\]"`,
+      `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
     );
     expect(guideScenarios).toContain("      - name: Teardown guide e2e provider");
+    expect(guideScenarios).toContain("          dist/lando poweroff || true");
+    expect(guideScenarios).toContain('          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"');
     expect(guideScenarios).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideScenarios).toContain("        if: failure()");
     expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
@@ -573,7 +580,7 @@ describe("ci workflow", () => {
     );
   });
 
-  test("runs provider integration tests against a private Podman socket", async () => {
+  test("prepares the Lando provider via lando setup with no manual socket bring-up", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
@@ -594,24 +601,80 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-podman/test/contract.integration.test.ts",
     );
-    expect(providerIntegration).toContain("      - name: Install Podman");
-    expect(providerIntegration).toContain("          sudo apt-get install -y podman");
-    expect(providerIntegration).toContain("      - name: Start Podman socket");
-    expect(providerIntegration).toContain("          podman system service --time=0 unix:///tmp/podman.sock");
+
+    expect(providerIntegration).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(providerIntegration).toContain("          sudo apt-get install -y uidmap fuse-overlayfs");
+    expect(providerIntegration).toContain('grep -q "^$(id -un):" /etc/subuid');
+    expect(providerIntegration).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerIntegration).toContain(
-      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
+      "          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then",
     );
+    expect(providerIntegration).toContain(
+      "            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0",
+    );
+    expect(providerIntegration).toContain("systemd.unified_cgroup_hierarchy");
+
+    expect(providerIntegration).toContain("      - name: Stage current-commit runtime bundle");
+    expect(providerIntegration).toContain("          mkdir -p dist/cache/runtime-bundle");
+    expect(providerIntegration).toContain('          cp "$(command -v podman)" "$STAGE/podman"');
+    expect(providerIntegration).toContain(
+      '          if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi',
+    );
+    expect(providerIntegration).toContain("netavark aardvark-dns gvproxy");
+    expect(providerIntegration).toContain('export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"');
+    expect(providerIntegration).toContain('mkdir -p "$XDG_RUNTIME_DIR"');
+    expect(providerIntegration).not.toContain('          mkdir -p "$STAGE/bin"');
+    expect(providerIntegration).not.toContain('          "$STAGE/bin/podman"');
+    expect(providerIntegration).toContain("      - name: Build local runtime bundle manifest");
+    expect(providerIntegration).toContain(
+      '          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"',
+    );
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"',
+    );
+    expect(providerIntegration).toContain("      - name: Configure rootless overlay storage");
+    expect(providerIntegration).toContain("          cat > dist/cache/runtime-bundle/storage.conf <<EOF");
+    expect(providerIntegration).toContain(
+      '          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"',
+    );
+    expect(providerIntegration).toContain(
+      '          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"',
+    );
+    expect(providerIntegration).toContain("      - name: Prepare provider via lando setup");
+    expect(providerIntegration).toContain("          dist/lando setup --yes --provider=lando");
     expect(providerIntegration).toContain(
       '          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"',
     );
+
+    expect(providerIntegration).toContain("      - name: Verify managed runtime socket");
+    expect(providerIntegration).toContain(
+      '          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"',
+    );
+    expect(providerIntegration).toContain(
+      '          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"',
+    );
+    expect(providerIntegration).toContain(
+      '          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine',
+    );
+    expect(providerIntegration).not.toContain("podman system service");
+    expect(providerIntegration).not.toContain("LANDO_TEST_PODMAN_SOCKET");
+    expect(providerIntegration).not.toContain("/tmp/podman.sock");
+    expect(providerIntegration).not.toContain("/tmp/podman-service.pid");
+    expect(providerIntegration).not.toContain("      - name: Install Podman");
+    expect(providerIntegration).not.toContain("      - name: Start Podman socket");
+    expect(providerIntegration).not.toContain("      - name: Teardown Podman");
+
     expect(providerIntegration).toContain("      - name: Configure Docker socket");
     expect(providerIntegration).toContain("          test -S /var/run/docker.sock");
     expect(providerIntegration).toContain(
       '          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"',
     );
+
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
-    expect(providerIntegration).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerIntegration).toContain(
       '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
     );
@@ -624,32 +687,58 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       "          bun test plugins/service-lando/test/*.integration.test.ts",
     );
-    expect(providerIntegration).not.toContain(
-      "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
-    );
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
-    expect(providerIntegration).toContain("          podman pull node:lts");
-    expect(providerIntegration).toContain("          podman pull node:22-alpine");
-    expect(providerIntegration).toContain("          podman pull postgres:16");
-    expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
-    expect(providerIntegration).toContain("          podman pull golang:1.22");
-    expect(providerIntegration).toContain("          podman pull docker.io/library/alpine:3.21");
-    expect(providerIntegration).toContain("          podman pull docker.io/axllent/mailpit:v1.30.1");
-    expect(providerIntegration).toContain("          podman pull memcached:1.6");
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:lts',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull postgres:16-alpine',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull golang:1.22',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/library/alpine:3.21',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull docker.io/axllent/mailpit:v1.30.1',
+    );
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull memcached:1.6',
+    );
     expect(providerIntegration).toContain("          docker pull node:22-alpine");
-    expect(providerIntegration).toContain("      - name: Teardown Podman");
+
+    expect(providerIntegration).toContain("      - name: Teardown Lando runtime");
+    expect(providerIntegration).toContain("          dist/lando poweroff");
+    expect(providerIntegration).toContain(
+      '          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true',
+    );
+    expect(providerIntegration).not.toMatch(
+      /Teardown Lando runtime[\s\S]*?podman ps -aq --filter "name=lando-" \| xargs -r podman rm/,
+    );
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("      - name: Collect provider diagnostics");
     expect(providerIntegration).toContain("        if: failure()");
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
-    expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("        uses: actions/upload-artifact@v4");
     expect(providerIntegration).toContain("          name: provider-integration-diagnostics-linux-x64");
     expect(providerIntegration).toContain("          if-no-files-found: ignore");
     expect(providerIntegration).not.toContain("--silent");
 
-    expect(providerIntegration.indexOf("Teardown Podman")).toBeGreaterThan(
+    expect(providerIntegration.indexOf("Prepare provider via lando setup")).toBeLessThan(
+      providerIntegration.indexOf("Run provider contract tests"),
+    );
+    expect(providerIntegration.indexOf("Build local runtime bundle manifest")).toBeLessThan(
+      providerIntegration.indexOf("Prepare provider via lando setup"),
+    );
+    expect(providerIntegration.indexOf("Teardown Lando runtime")).toBeGreaterThan(
       providerIntegration.indexOf("bun test plugins/provider-docker/test"),
     );
     expect(providerIntegration.indexOf("Upload provider integration diagnostics")).toBeGreaterThan(

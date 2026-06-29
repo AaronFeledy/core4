@@ -46,28 +46,38 @@ export class RuntimeLaunchError extends ProviderUnavailableError {
   }
 }
 
+const runtimeBinDirFromPodman = (podmanBin: string): string | undefined => {
+  const separator = podmanBin.lastIndexOf("/");
+  return separator > 0 ? podmanBin.slice(0, separator) : undefined;
+};
+
 export const buildPodmanServiceArgs = (p: {
   readonly podmanBin: string;
   readonly storageDir: string;
   readonly runRoot: string;
   readonly configDir: string;
   readonly socketPath: string;
-}): PodmanServiceSpec => ({
-  command: p.podmanBin,
-  args: buildManagedRuntimeServiceArgs({
-    runtimeStorageDir: p.storageDir,
-    runtimeRunDir: p.runRoot,
-    runtimeConfigDir: p.configDir,
-    providerSocketPath: p.socketPath,
-  }),
-  socketPath: p.socketPath,
-});
+}): PodmanServiceSpec => {
+  const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
+  return {
+    command: p.podmanBin,
+    args: buildManagedRuntimeServiceArgs({
+      runtimeStorageDir: p.storageDir,
+      runtimeRunDir: p.runRoot,
+      runtimeConfigDir: p.configDir,
+      ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
+      providerSocketPath: p.socketPath,
+    }),
+    socketPath: p.socketPath,
+  };
+};
 
 export interface PodmanServiceRunner {
   readonly launch: (spec: PodmanServiceSpec) => Effect.Effect<number, RuntimeLaunchError>;
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
   readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
+  readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
 }
 
@@ -82,6 +92,37 @@ const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
 
 const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
   actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
+
+const argvFlagValue = (argv: ReadonlyArray<string>, flag: string): string | undefined => {
+  const index = argv.indexOf(flag);
+  if (index < 0 || index + 1 >= argv.length) return undefined;
+  return argv[index + 1];
+};
+
+const isPodmanSystemServiceArgv = (argv: ReadonlyArray<string>): boolean => {
+  const systemIndex = argv.indexOf("system");
+  return systemIndex >= 0 && argv[systemIndex + 1] === "service";
+};
+
+export const isManagedPodmanServiceArgv = (argv: ReadonlyArray<string>, spec: PodmanServiceSpec): boolean => {
+  if (argv[0] !== spec.command || !isPodmanSystemServiceArgv(argv)) return false;
+
+  const expectedArgv = [spec.command, ...spec.args];
+  const root = argvFlagValue(argv, "--root");
+  const runroot = argvFlagValue(argv, "--runroot");
+  const config = argvFlagValue(argv, "--config");
+  if (
+    root !== argvFlagValue(expectedArgv, "--root") ||
+    runroot !== argvFlagValue(expectedArgv, "--runroot") ||
+    config !== argvFlagValue(expectedArgv, "--config")
+  ) {
+    return false;
+  }
+
+  const socketBind = argv.at(-1);
+  const expectedSocket = `unix://${spec.socketPath}`;
+  return socketBind === expectedSocket;
+};
 
 const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
   Effect.tryPromise({
@@ -100,6 +141,17 @@ const findMatchingServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<R
     for (const pid of pids) {
       const argv = yield* readProcessArgv(pid);
       if (sameArgv(argv, expected)) matching.push(pid);
+    }
+    return matching;
+  });
+
+const findManagedPodmanServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
+  Effect.gen(function* () {
+    const pids = yield* listProcPids();
+    const matching: number[] = [];
+    for (const pid of pids) {
+      const argv = yield* readProcessArgv(pid);
+      if (isManagedPodmanServiceArgv(argv, spec)) matching.push(pid);
     }
     return matching;
   });
@@ -134,6 +186,7 @@ export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
   isServiceProcess: (pid, spec) =>
     readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
   findMatchingServicePids: findMatchingServicePidsOnHost,
+  findManagedServicePids: findManagedPodmanServicePidsOnHost,
   terminate: (pid) =>
     Effect.sync(() => {
       try {

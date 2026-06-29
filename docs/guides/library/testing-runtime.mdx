@@ -86,6 +86,14 @@ tags: [beta, docs, library, testing]
     </Step>
   </Scenario>
 
+  <Scenario id="live-provider-socket-gate" render={false} reason="Live integration gates resolve sockets through @lando/core/testing helpers without documenting a separate CLI walkthrough">
+    <Step name="managed-or-override">
+      <Variable name="resolver" value="resolveLiveProviderSocket" display="@lando/core/testing resolves an optional LANDO_TEST_PODMAN_SOCKET override when it is a real socket, otherwise the Lando-managed Paths default from lando setup" />
+      <Variable name="gate" value="hasLiveProviderSocket" display="Integration suites skip unless resolveLiveProviderSocket finds a live socket on disk" />
+      <Variable name="ci" value="lando setup --yes --provider=lando" display="linux-x64 provider-integration CI prepares the managed socket through lando setup instead of exporting LANDO_TEST_PODMAN_SOCKET" />
+    </Step>
+  </Scenario>
+
   <Scenario id="probe-primitive" render={false} reason="The contracts-only probe primitive is pure SDK surface verified by TestClock tests without a LandoRuntime or provider backed app">
     <Step name="retry-and-verdict">
       <Variable name="subpath" value="@lando/sdk/probe" display="@lando/sdk/probe exports RetryPolicy, ProbeSpec, ProbeOutcome, ProbeResult, toSchedule, and runProbe as a contracts-only tier with no service Layer" />

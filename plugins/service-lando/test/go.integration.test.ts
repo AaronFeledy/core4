@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runTooling } from "@lando/core/cli/operations";
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -129,10 +130,10 @@ const waitForHttp = async (url: string, timeoutMs: number): Promise<Response> =>
 };
 
 describe("go service type — live integration: minimal Go HTTP server + lando go version", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots a Go service, serves HTTP from the bind-mounted main.go, and runs `lando go version` through tooling",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const appRootStr = await mkdtemp(join(tmpdir(), "lando-go-int-"));

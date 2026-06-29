@@ -3,6 +3,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -100,10 +101,10 @@ const waitForValkey = async (port: number, timeoutMs: number): Promise<void> => 
 };
 
 describe("valkey service type — live integration: RESP ping/set/get", () => {
-  test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
+  test.skipIf(resolveLiveProviderSocket() === undefined)(
     "boots Valkey and pings/sets/gets a key through the exposed RESP endpoint",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = resolveLiveProviderSocket()?.socketPath ?? "";
       expect(socketPath).toBeTruthy();
 
       const appRootStr = await mkdtemp(join(tmpdir(), "lando-valkey-int-"));

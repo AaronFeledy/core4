@@ -20,6 +20,7 @@ tags: [beta, docs, provider-podman, setup, linux]
       <Variable name="landofileField" value="provider: podman" display="Opt in by setting provider in your .lando.yml" />
       <Variable name="cliFlag" value="lando setup --provider=podman" display="Or pass --provider=podman to lando setup" />
       <Variable name="defaultProvider" value="lando" display="Default stays @lando/provider-lando; provider-podman never auto-loads" />
+      <Variable name="liveTests" value="resolveLiveProviderSocket" display="Provider integration suites gate on @lando/core/testing live socket resolution instead of requiring LANDO_TEST_PODMAN_SOCKET when the managed lando socket is already up" />
     </Step>
   </Scenario>
 
