@@ -908,3 +908,9 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
   - The `check:guide-coverage` gate scans `spec/alpha-3` (hardcoded), not `spec/beta-1`, so a beta-1 PRD's `## Guide Coverage` declaration is not enforced by that gate; still add the INDEX.md row (drift/consistency) and flip the PRD status for humans.
   - Run focused guide generation with `bun run dev:guides docs/guides/<path>.mdx --once` (single positional path + `--once`).
 ---
+
+## [2026-06-29 14:44 CDT] - US-329 Review
+- Review fixed a confirmed acceptance gap: the executable JSON guide now verifies the `app:config` envelope through both shorthand aliases (`--json` and `-j`) in addition to `--format=json`, so the rendered scenario demonstrates the full universal flag family instead of documenting shorthands only.
+- Review notes (deferred/rejected): extending `check:guide-coverage`/`check:guide-drift` to scan all beta-1 PRD guide tables is a systemic guide-gate follow-up, not a US-329 blocker because this story added the PRD-15 INDEX row and committed the guide/reference artifacts; a dedicated unit test for `build-command-reference.ts` and a stricter `json.char === "j"` assertion are non-blocking hardening because CI drift plus the manifest-backed generator already gate the shipped reference.
+- Verification: typecheck passed; lint passed; lint:guides and check:guide-coverage passed; focused spot checks passed for ci-workflow, codegen-ci, ci-runbook, and check-guide-coverage; command-reference regeneration left no drift. `check:public-transcripts` was not green in this workspace due to pre-existing missing unrelated recipe transcripts, and `check:guide-drift` skipped locally without PR context.
+---
