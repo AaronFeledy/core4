@@ -831,3 +831,19 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review notes (deferred/rejected): guide-scenarios and nightly jobs still using manual `LANDO_TEST_PODMAN_SOCKET` are out of US-367 scope; stale live-test error wording mentioning `LANDO_TEST_PODMAN_SOCKET` is nonblocking because the skip gates now use `resolveLiveProviderSocket` and still accept the documented override.
 - Verification: typecheck, lint, codegen, runbook/workflow/live-socket spot checks passed; live provider/container runtime path was not run on the host per loop safety rules.
 ---
+
+## [2026-06-28 19:01:43 CDT] - Babysit
+- PR: #487 https://github.com/AaronFeledy/core4/pull/487
+- CI outcome: fail (guide-scenarios-linux-x64)
+- Review feedback: fixed (managed guide e2e setup/teardown, stale runtime relaunch, pid-file termination guard, and guide e2e serialization fixes pushed; Bugbot latest check passes)
+- Merge: deferred (latest guide-scenarios-linux-x64 still fails during `dist/lando setup` with `ProviderUnavailableError`; triage budget exhausted for this babysit run)
+---
+
+## 2026-06-28 19:17 CDT - US-367 Build (finish in-flight)
+- Fixed the flaky `guide-scenarios-linux-x64` blocker where `dist/lando setup --yes --provider=lando` intermittently failed with `ProviderUnavailableError` ("The Lando runtime service did not become reachable after launch"). Root cause: the managed-runtime readiness probe in `plugins/provider-lando/src/ensure-runtime.ts` used `{ maxAttempts: 10, delay: 100ms, timeout: 5s }`, but `podmanApi.info` fails fast (connection refused) while podman is still cold-starting, so the probe burned all 10 attempts in ~1s of real time and gave up before the socket came up. CI journalctl proved the managed podman child scopes started ~1s AFTER setup had already aborted; the sibling `provider-integration-linux-x64` job passed only because its runner brought podman up faster (it runs fewer pre-setup steps).
+- The readiness budget is now wall-clock driven: a `defaultRuntimeReadinessPolicy` of `{ maxAttempts: 91, delay: 500ms, timeout: 45s }` polls the socket twice a second for ~45s, with the overall timeout as a per-probe safety cap. The policy is an optional `readinessPolicy` field on `EnsureRuntimeDeps` so unit tests inject a fast policy and stay quick; the production caller in `index.ts` passes nothing and gets the generous default. Failure details now also carry `elapsedMs` alongside `attempts` so future CI logs show whether the budget exhausted attempts or the deadline.
+- Verification: typecheck, lint (incl. biome formatting), and the probe-boundary gate passed; `plugins/provider-lando/test/ensure-runtime.test.ts` (16 tests), `podman-service-runner.test.ts`, and `setup.test.ts` spot checks passed. New patience test proven RED against the old 10-attempt policy (raises `did not become reachable` when the API needs 12 probes) and GREEN against the fix. The live guide-scenarios container path itself only runs in real CI (host cannot launch a container runtime).
+- **Learnings for future iterations:**
+  - A `runProbe` readiness check against a fail-fast endpoint (connection-refused returns instantly) is governed by `maxAttempts * delay`, NOT the `timeout` deadline — the per-attempt timeout never engages because the attempt returns immediately. For cold-start patience you must size the wall-clock budget via `maxAttempts * delay`, with `timeout` only as a cap for a genuinely hung attempt. The previous `10 * 100ms` looked like "5s of patience" but was really ~1s.
+  - Keep the readiness policy injectable on `EnsureRuntimeDeps` (like `rootlessProbes`): production omits it for the generous default, unit tests pass a tiny policy so the "stays unreachable" cases (linux + darwin) do not block for the full real-time budget. `runProbe` uses the real `Clock` in these tests (no TestClock), so a 45s default with a fail-fast fake would hang every negative test for 45s.
+---

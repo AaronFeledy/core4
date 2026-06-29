@@ -3,9 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { RetryPolicy } from "@lando/sdk/probe";
 import type { PodmanApiClient } from "../src/capabilities.ts";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import { type PodmanServiceRunner, RuntimeLaunchError } from "../src/podman-service-runner.ts";
@@ -23,6 +24,12 @@ const unavailable = () =>
 const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}) });
 const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()) });
 
+const fastReadinessPolicy: RetryPolicy = {
+  maxAttempts: 3,
+  delay: Duration.millis(1),
+  timeout: Duration.millis(50),
+};
+
 const expectMissingFile = async (path: string) => {
   await readFile(path, "utf8").then(
     () => {
@@ -37,6 +44,19 @@ const apiReachableAfterMachineAction = (calls: string[]): PodmanApiClient => ({
     return yield* Effect.fail(unavailable());
   }),
 });
+
+const apiReachableAfterAttempts = (failUntil: number): { api: PodmanApiClient; attempts: () => number } => {
+  let attempts = 0;
+  return {
+    api: {
+      info: Effect.suspend(() => {
+        attempts += 1;
+        return attempts > failUntil ? Effect.succeed({}) : Effect.fail(unavailable());
+      }),
+    },
+    attempts: () => attempts,
+  };
+};
 
 type Call =
   | ["launch", string]
@@ -479,6 +499,7 @@ describe("ensureRuntime", () => {
           platform: "linux",
           podmanApi: unreachableApi(),
           serviceRunner: serviceRunner(calls, false),
+          readinessPolicy: fastReadinessPolicy,
           ...p,
         }),
       );
@@ -497,6 +518,30 @@ describe("ensureRuntime", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("default readiness budget tolerates a slow cold start beyond the first ten probes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const slow = apiReachableAfterAttempts(12);
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: slow.api,
+          serviceRunner: serviceRunner(calls, false),
+          ...p,
+        }),
+      );
+
+      expect(slow.attempts()).toBeGreaterThan(10);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   test("darwin resolves the machine instead of launching a host service", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
@@ -532,6 +577,7 @@ describe("ensureRuntime", () => {
           podmanApi: unreachableApi(),
           serviceRunner: throwingLaunchRunner(),
           machineRunner: machineRunner("missing", calls),
+          readinessPolicy: fastReadinessPolicy,
           ...p,
         }),
       );
