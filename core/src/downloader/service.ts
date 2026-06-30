@@ -178,8 +178,6 @@ type DownloadError =
   | DownloadOfflineError
   | DownloadSourceForbiddenError;
 
-// ----- Event seam (redact -> publish) -------------------------------------
-
 /**
  * The redacted-event seam the downloader publishes its lifecycle scope through.
  * `redactText` masks secret values out of every free-string payload field
@@ -252,8 +250,6 @@ interface PostEventInput {
   readonly failureDetail: string | undefined;
   readonly redact: (text: string) => string;
 }
-
-// ----- Service factory ----------------------------------------------------
 
 /**
  * Build a `Downloader` service over a resolved `HttpClient` and event seam. The

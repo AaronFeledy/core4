@@ -5,8 +5,8 @@
  * issues through (`Downloader`, `lando setup` preflight, tool provisioning), so
  * overriding `HttpClient` governs all egress. The tag, its `{ id, capabilities,
  * request, stream, upload }` shape, the request/response/upload schemas, and the
- * tagged errors live in `@lando/sdk` (published by US-330); core implements the
- * real `HttpClientLive` against that shape (US-331). This module re-exports the
+ * tagged errors live in `@lando/sdk`; core implements `HttpClientLive` against
+ * that contract. This module re-exports the
  * SDK contract so core-internal callers have a stable import path and do not
  * reach across the SDK boundary directly.
  */

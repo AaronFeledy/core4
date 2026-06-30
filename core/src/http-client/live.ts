@@ -132,8 +132,6 @@ const releaseWebReader = (reader: WebBodyReader) =>
     }
   });
 
-// ----- Trust resolution ----------------------------------------------------
-
 const loadCaPems = (paths: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>> =>
   Effect.all(
     paths.map((path) =>
@@ -158,8 +156,6 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined> =>
     const caPems = yield* loadCaPems(plan.caCertPaths);
     return { proxy: plan.proxy, caPems };
   });
-
-// ----- Event seam ----------------------------------------------------------
 
 interface HttpCallEvents {
   readonly redact: (text: string) => string;
@@ -215,8 +211,6 @@ const postEvent = (input: PostEventInput): LandoEvent =>
     timestamp: DateTime.unsafeMake(Date.now()),
   });
 
-// ----- Fetch + body --------------------------------------------------------
-
 interface FetchOutcome {
   readonly response: Response;
 }
@@ -262,8 +256,6 @@ const responseBodyStream = (
       ),
   );
 };
-
-// ----- file:// sources -----------------------------------------------------
 
 const filePathFromUrl = (url: URL): Effect.Effect<string, HttpRequestError> =>
   Effect.try({
@@ -311,8 +303,6 @@ const streamFile = (
     };
   });
 };
-
-// ----- Service factory -----------------------------------------------------
 
 const makeStream =
   (
