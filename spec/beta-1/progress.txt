@@ -969,3 +969,15 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Verification: typecheck passed; lint passed; `check:network-boundary` passed; focused spot checks passed for HttpClient/network-trust/boundary/downloader (74 pass, 1 existing todo) and setup/artifact-download/CI adjacency (86 pass).
 - **Learnings for future iterations:** HttpClient contract suites that document cancellation guarantees need an explicit optional interruption probe, not just implementation-local abort finalizers; user-facing HttpClient errors should use `urlOrigin`, never fallback strings built from full URLs.
 ---
+## [2026-06-29 21:45:35 CDT] - Babysit
+- PR: #492 https://github.com/AaronFeledy/core4/pull/492
+- CI outcome: fail (guide-scenarios-darwin-arm64, guide-scenarios-darwin-x64, guide-scenarios-linux-arm64, guide-scenarios-linux-x64, guide-scenarios-windows-x64)
+- Review feedback: fixed (Bugbot findings for config trust in json fetch, CA read failures, premature post-http-call success, env trust on config load failure, trust-plan throws; linux-x64 static test proxy/env failures)
+- Merge: deferred (five triage rounds exhausted; guide-scenarios failures remain)
+---
+## 2026-06-29 22:10 CDT - US-331 Build (verify complete)
+- Re-entered the in-flight US-331 branch (PR #492, 10 commits ahead of main, already `passes: true`). Confirmed the story implementation is genuinely complete with no remaining code work: HttpClientLive, the canonical `@lando/sdk/network-trust` resolver, and the `check:network-boundary` egress gate are all in place and green.
+- Verification: typecheck passed; lint (`biome check` + `check:deprecations`) passed; `check:network-boundary` passed; spot checks green for http-client contract+live and network-trust (43 pass).
+- Residual CI blocker is NOT a code defect: all 5 `guide-scenarios-*` jobs fail at exactly one step, `check:guide-drift`, because PR #492's body lacks a `Guide-Coverage-Skip:` line for the internal network-trust plumbing surfaces it touches (includes/recipes sources, core testing seams, mutagen download, docker provider). The gate reads solely from `gh pr view 492 --json body`, so no working-tree change satisfies it; the honest remedy is a single PR-body skip line, which is a publishing-surface action owned by Push/Babysit (Babysit already deferred here). No fabricated guide edits were made.
+- **Learnings for future iterations:** `check:guide-drift` is a PR-body gate, not a working-tree gate — a story whose only red check is guide-drift has zero repo-side fix available; one `Guide-Coverage-Skip: <reason ≥ 24 chars>` line in the PR body short-circuits ALL per-surface diagnostics at once (`SKIP_TAG_PATTERN` in `scripts/check-guide-drift.ts` returns early before any diagnostic). Pure internal-plumbing refactors that touch guide-owned source surfaces without changing user-facing behavior should carry that skip line from the moment the PR is opened.
+---
