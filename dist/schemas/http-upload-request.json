@@ -33,6 +33,9 @@
     "method": {
       "type": "string"
     },
+    "onBehalfOf": {
+      "type": "string"
+    },
     "redactionTokens": {
       "items": {
         "type": "string"

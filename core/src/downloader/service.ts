@@ -28,7 +28,7 @@ import {
   DownloadSourceForbiddenError,
 } from "@lando/sdk/errors";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "@lando/sdk/events";
-import type { DownloadRequest, DownloadResult, DownloaderCapabilities } from "@lando/sdk/schema";
+import type { DownloadRequest, DownloadResult, DownloaderCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
 import {
@@ -46,6 +46,20 @@ const CAPABILITIES: DownloaderCapabilities = {
   offline: true,
   mirror: false,
 };
+
+/**
+ * Build the `HttpClient` request for a download, tagged `onBehalfOf:"downloader"`
+ * so the underlying `http-call` is attributed to this download and not
+ * double-counted as independent egress. Caller correlation and redaction tokens
+ * thread through so the HttpClient event seam can redact them.
+ */
+const httpRequestFor = (request: DownloadRequest): HttpRequest => ({
+  url: request.url,
+  allowFileSource: request.allowFileSource ?? false,
+  onBehalfOf: "downloader",
+  ...(request.callerId === undefined ? {} : { callerId: request.callerId }),
+  ...(request.redactionTokens === undefined ? {} : { redactionTokens: request.redactionTokens }),
+});
 
 /** Redacted scheme+host origin only — never userinfo, path, or query. */
 const urlOrigin = (url: string): string => {
@@ -342,10 +356,7 @@ export const makeDownloaderService = (
             );
           }
 
-          const response = yield* http.stream({
-            url: request.url,
-            allowFileSource: request.allowFileSource ?? false,
-          });
+          const response = yield* http.stream(httpRequestFor(request));
           const httpError = statusError(response.status, origin);
           if (httpError !== undefined) return yield* Effect.fail(httpError);
           const result = yield* persistVerifiedStream({
@@ -373,10 +384,7 @@ export const makeDownloaderService = (
           );
         }
 
-        const response = yield* http.stream({
-          url: request.url,
-          allowFileSource: request.allowFileSource ?? false,
-        });
+        const response = yield* http.stream(httpRequestFor(request));
         const httpError = statusError(response.status, origin);
         if (httpError !== undefined) return yield* Effect.fail(httpError);
         const result = yield* collectVerifiedStream({
@@ -393,7 +401,7 @@ export const makeDownloaderService = (
         } satisfies DownloadResult;
       }).pipe(
         Effect.catchTags({
-          HttpStreamError: (error) =>
+          HttpRequestError: (error) =>
             Effect.fail(
               new DownloadFetchError({
                 message: error.message,
@@ -402,6 +410,16 @@ export const makeDownloaderService = (
                 ...(error.cause === undefined ? {} : { cause: error.cause }),
               }),
             ),
+          HttpTrustError: (error) =>
+            Effect.fail(
+              new DownloadFetchError({
+                message: error.message,
+                urlOrigin: origin,
+                ...(error.cause === undefined ? {} : { cause: error.cause }),
+              }),
+            ),
+          HttpClientUnavailableError: (error) =>
+            Effect.fail(new DownloadFetchError({ message: error.message, urlOrigin: origin })),
           VerifiedStreamError: (error) => Effect.fail(mapVerifiedError(error, origin)),
         }),
       );

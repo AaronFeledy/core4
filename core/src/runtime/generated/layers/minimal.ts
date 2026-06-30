@@ -19,7 +19,7 @@ import { makeLandoPaths } from "../../../config/paths.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { DownloaderLive } from "../../../downloader/service.ts";
-import { HttpClientBasicLive } from "../../../http-client/live.ts";
+import { HttpClientLive } from "../../../http-client/live.ts";
 import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
@@ -39,6 +39,9 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
   const eventServiceLive = EventServiceLive.pipe(Layer.provide(redactionLive));
+  const httpClientLive = HttpClientLive.pipe(
+    Layer.provide(Layer.mergeAll(ConfigServiceLive, eventServiceLive)),
+  );
 
   return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
@@ -59,6 +62,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     redactionLive,
     Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(eventServiceLive)),
     Layer.suspend(() => InteractionServiceLive),
-    DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, eventServiceLive))),
+    httpClientLive,
+    DownloaderLive.pipe(Layer.provide(httpClientLive)),
   );
 };

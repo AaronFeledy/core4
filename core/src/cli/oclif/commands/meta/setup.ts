@@ -19,6 +19,7 @@ import {
   CertificateAuthority,
   ConfigService,
   FileSyncEngine,
+  type HttpClient,
   PrivilegeService,
   ProxyService,
   RuntimeProviderRegistry,
@@ -39,9 +40,7 @@ import {
 } from "../../../../providers/precedence.ts";
 import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 import {
-  type SetupNetworkTrustFetch,
   type SetupNetworkTrustProbe,
-  makeSetupNetworkTrustProbe,
   networkTrustFromResolved,
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
@@ -159,12 +158,6 @@ const inputNetworkProbe = (input: unknown): SetupNetworkTrustProbe | undefined =
   return typeof probe === "function" ? (probe as SetupNetworkTrustProbe) : undefined;
 };
 
-const inputNetworkFetch = (input: unknown): SetupNetworkTrustFetch | undefined => {
-  if (typeof input !== "object" || input === null || !("_networkFetch" in input)) return undefined;
-  const fetchImpl = input._networkFetch;
-  return typeof fetchImpl === "function" ? (fetchImpl as SetupNetworkTrustFetch) : undefined;
-};
-
 export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
   inputHostProxyMode(input) === "none";
 
@@ -275,7 +268,11 @@ const buildSetupSummary = (providerId: string, installDir: string, status: strin
   footer: `Lando runtime ready (${providerId})`,
 });
 
-export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
+export const setupSpec: LandoCommandSpec<
+  SetupResult,
+  unknown,
+  ConfigService | RuntimeProviderRegistry | HttpClient
+> = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
@@ -310,7 +307,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       );
 
       const provider = yield* registry.select(setupProviderPlan(selectedProvider));
-      const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
+      const networkProbe = inputNetworkProbe(input);
       const privilege = yield* Effect.serviceOption(PrivilegeService);
       const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 

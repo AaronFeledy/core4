@@ -14,6 +14,7 @@ import { Effect, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/core/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
+import { type ResolvedNetworkTrust, fetchInitForNetwork } from "@lando/sdk/network-trust";
 import type { HostPlatform, NetworkConfig } from "@lando/sdk/schema";
 
 import manifestData from "../mutagen-versions.json" with { type: "json" };
@@ -293,42 +294,23 @@ interface InstallBinaryOptions {
   readonly extractImpl: ExtractImpl;
 }
 
-interface LoadedNetworkConfig extends NetworkConfig {
-  readonly ca?:
-    | (NonNullable<NetworkConfig["ca"]> & {
-        readonly loadedCerts?: ReadonlyArray<{ readonly pem: string }>;
-      })
-    | undefined;
-}
+type NetworkConfigWithLoadedCerts = NetworkConfig & {
+  readonly ca?: NonNullable<NetworkConfig["ca"]> & {
+    readonly loadedCerts?: ReadonlyArray<{ readonly pem: string }>;
+  };
+};
 
-const fetchInitForNetwork = (
-  url: string,
-  network: NetworkConfig | undefined,
-): BunFetchRequestInit | undefined => {
-  const parsedUrl = new URL(url);
-  const loaded = network as LoadedNetworkConfig | undefined;
-  const host = parsedUrl.hostname.toLowerCase();
-  const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
-  const hostWithPort = `${host}:${port}`;
-  const bypassProxy =
-    loaded?.proxy?.noProxy.some((raw) => {
-      const pattern = raw.toLowerCase();
-      if (pattern === "*") return true;
-      if (pattern === host || pattern === hostWithPort) return true;
-      if (pattern.startsWith(".")) return host.endsWith(pattern);
-      return host.endsWith(`.${pattern}`);
-    }) ?? false;
-  const proxyCandidate = bypassProxy
-    ? undefined
-    : parsedUrl.protocol === "https:"
-      ? (loaded?.proxy?.https ?? loaded?.proxy?.http)
-      : (loaded?.proxy?.http ?? loaded?.proxy?.https);
-  const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
-  const ca = loaded?.ca?.loadedCerts?.map((cert) => cert.pem);
-  if (proxy === undefined && (ca === undefined || ca.length === 0)) return undefined;
+const resolvedNetworkTrustFromConfig = (network: NetworkConfig | undefined): ResolvedNetworkTrust => {
+  const loaded = network as NetworkConfigWithLoadedCerts | undefined;
+  const http = loaded?.proxy?.http;
+  const https = loaded?.proxy?.https;
   return {
-    ...(proxy === undefined ? {} : { proxy }),
-    ...(ca === undefined || ca.length === 0 ? {} : { tls: { ca } }),
+    proxy: {
+      ...(http === null || http === undefined ? {} : { http }),
+      ...(https === null || https === undefined ? {} : { https }),
+      noProxy: loaded?.proxy?.noProxy ?? [],
+    },
+    caPems: (loaded?.ca?.loadedCerts ?? []).map((cert) => cert.pem),
   };
 };
 
@@ -339,7 +321,10 @@ const downloadVerifiedArchive = (
 ): Effect.Effect<Uint8Array, FileSyncStartError> =>
   Effect.tryPromise({
     try: async () => {
-      const response = await fetchImpl(entry.url, fetchInitForNetwork(entry.url, network));
+      const response = await fetchImpl(
+        entry.url,
+        fetchInitForNetwork(entry.url, resolvedNetworkTrustFromConfig(network)),
+      );
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${entry.url}`);
       }

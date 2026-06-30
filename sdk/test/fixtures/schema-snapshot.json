@@ -12614,11 +12614,18 @@
         "method": {
           "type": "string"
         },
+        "onBehalfOf": {
+          "type": "string"
+        },
         "redactionTokens": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "redirect": {
+          "enum": ["follow", "error", "manual"],
+          "type": "string"
         },
         "timeoutMs": {
           "type": "number"
@@ -12723,6 +12730,9 @@
           "type": "array"
         },
         "method": {
+          "type": "string"
+        },
+        "onBehalfOf": {
           "type": "string"
         },
         "redactionTokens": {

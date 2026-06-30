@@ -38,7 +38,18 @@ import type {
   RemoteSourceShape,
 } from "@lando/sdk/services";
 
-import type { HttpClientShape, HttpStreamRequest } from "../http-client/service.ts";
+import { HttpUploadError } from "@lando/sdk/errors";
+import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
+
+import type { HttpClientShape } from "../http-client/service.ts";
+
+const REMOTE_HTTP_CAPABILITIES: HttpClientCapabilities = {
+  schemes: ["https", "http", "file"],
+  streaming: true,
+  upload: false,
+  customCa: true,
+  proxyAware: true,
+};
 
 const TEST_REMOTE_SECRET = "REMOTE-CONTRACT-SECRET-493f61";
 const TEST_DATASET_SECRET = "DATASET-CONTRACT-SECRET-8d31f2";
@@ -76,7 +87,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-type RemoteEgressRecord = { readonly request: HttpStreamRequest };
+type RemoteEgressRecord = { readonly request: HttpRequest };
 type ToolProvisionRecord = { readonly request: DownloadRequest };
 type DatasetDelegationRecord = {
   readonly operation: "fetch" | "send";
@@ -161,15 +172,23 @@ const makeRemoteSource = (input: {
   ];
   const http: HttpClientShape = {
     id: `${input.id}-remote-http`,
+    capabilities: REMOTE_HTTP_CAPABILITIES,
+    request: (request) =>
+      Effect.sync(() => {
+        input.records.egress.push({ request });
+        return { status: 200, headers: [], contentLength: 0 };
+      }),
     stream: (request) =>
       Effect.sync(() => {
         input.records.egress.push({ request });
         return {
           status: 200,
-          headers: new Map<string, string>(),
+          headers: [],
           body: Stream.fromIterable([new Uint8Array()]),
         };
       }),
+    upload: (request) =>
+      Effect.fail(new HttpUploadError({ message: "upload not supported", urlOrigin: request.url })),
   };
   const downloader: DownloaderShape = {
     id: `${input.id}-tool-downloader`,

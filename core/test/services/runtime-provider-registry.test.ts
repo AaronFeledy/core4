@@ -6,7 +6,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/cor
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClientBasicLive } from "../../src/http-client/live.ts";
+import { HttpClientLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 
@@ -53,7 +53,7 @@ const registryLayer = (
 
   return RuntimeProviderRegistryLive.pipe(
     Layer.provideMerge(PluginRegistryLive),
-    Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientBasicLive))),
+    Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientLive))),
     Layer.provideMerge(
       Layer.succeed(
         PathsService,

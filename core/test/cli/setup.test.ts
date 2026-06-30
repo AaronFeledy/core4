@@ -29,7 +29,7 @@ import {
 } from "@lando/sdk/test";
 import {
   classifySetupNetworkFailure,
-  makeSetupNetworkTrustProbe,
+  defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
@@ -39,7 +39,9 @@ import SetupCommand, {
 } from "../../src/cli/oclif/commands/meta/setup.ts";
 import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
+import type { HttpClient } from "../../src/http-client/service.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
@@ -55,13 +57,20 @@ const makeConfigService = (
   return { load, get: (key) => Effect.map(load, (c) => c[key]) };
 };
 
+const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
+  void init;
+  return Promise.resolve(new Response(null, { status: 204 }));
+}) as unknown as typeof fetch;
+
 const buildSetupLayers = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
   configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<ConfigService | RuntimeProviderRegistry> =>
-  Layer.merge(
+  httpFetch: typeof fetch = okProbeFetch,
+): Layer.Layer<ConfigService | RuntimeProviderRegistry | HttpClient> =>
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
+    makeHttpClientLive(httpFetch),
   );
 
 const buildSetupLayersWithHostIntegrations = (
@@ -74,7 +83,13 @@ const buildSetupLayersWithHostIntegrations = (
   },
   configOverrides: Partial<GlobalConfig> = {},
 ): Layer.Layer<
-  ConfigService | RuntimeProviderRegistry | CertificateAuthority | ProxyService | SshService | FileSyncEngine
+  | ConfigService
+  | RuntimeProviderRegistry
+  | HttpClient
+  | CertificateAuthority
+  | ProxyService
+  | SshService
+  | FileSyncEngine
 > =>
   Layer.mergeAll(
     buildSetupLayers(registry, configOverrides),
@@ -88,7 +103,7 @@ const buildSetupLayersWithPrivilege = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
   privilege: Context.Tag.Service<typeof PrivilegeService>,
   configOverrides: Partial<GlobalConfig> = {},
-): Layer.Layer<ConfigService | RuntimeProviderRegistry | PrivilegeService> =>
+): Layer.Layer<ConfigService | RuntimeProviderRegistry | HttpClient | PrivilegeService> =>
   Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -270,7 +285,6 @@ describe("meta:setup command", () => {
       setupSpec
         .run({
           installDir: "/opt/lando",
-          _networkFetch: async () => new Response(null, { status: 204 }),
           flags: { "runtime-bundle-url": "https://example.invalid/lando-runtime.zip" },
         })
         .pipe(
@@ -315,7 +329,6 @@ describe("meta:setup command", () => {
       setupSpec
         .run({
           installDir: "/opt/lando",
-          _networkFetch: async () => new Response(null, { status: 204 }),
           flags: {},
         })
         .pipe(
@@ -1181,14 +1194,18 @@ describe("meta:setup command", () => {
     };
 
     await Effect.runPromise(
-      setupSpec.run({ installDir: "/opt/lando", _networkFetch: fetcher }).pipe(
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
         Effect.provide(
-          buildSetupLayers(registry, {
-            network: {
-              proxy: { https: "http://proxy.example:8080", noProxy: [] },
-              ca: { certs: [], trustHost: true },
-            },
-          } as Partial<GlobalConfig>),
+          buildSetupLayers(
+            registry,
+            {
+              network: {
+                proxy: { https: "http://proxy.example:8080", noProxy: [] },
+                ca: { certs: [], trustHost: true },
+              },
+            } as Partial<GlobalConfig>,
+            fetcher as unknown as typeof fetch,
+          ),
         ),
       ),
     );
@@ -1214,23 +1231,22 @@ describe("meta:setup command", () => {
     };
 
     const exit = await Effect.runPromiseExit(
-      setupSpec
-        .run({
-          installDir: "/opt/lando",
-          _networkFetch: async () => {
-            throw new Error("connect ETIMEDOUT github.com");
-          },
-        })
-        .pipe(
-          Effect.provide(
-            buildSetupLayers(registry, {
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
+        Effect.provide(
+          buildSetupLayers(
+            registry,
+            {
               network: {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>),
+            } as Partial<GlobalConfig>,
+            (() => {
+              throw new Error("connect ETIMEDOUT github.com");
+            }) as unknown as typeof fetch,
           ),
         ),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -1250,14 +1266,15 @@ describe("meta:setup command", () => {
   });
 
   test("network trust probe maps HTTP 407 responses to proxy authentication failures", async () => {
-    const probe = makeSetupNetworkTrustProbe(
-      async () => new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
-    );
+    const probeFetch = (() =>
+      Promise.resolve(
+        new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
+      )) as unknown as typeof fetch;
     const exit = await Effect.runPromiseExit(
-      probe({
+      defaultSetupNetworkTrustProbe({
         proxy: { https: "http://proxy.example:8080", noProxy: [] },
         ca: { trustHost: true, certs: [], loadedCerts: [] },
-      }),
+      }).pipe(Effect.provide(makeHttpClientLive(probeFetch))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -1285,22 +1302,23 @@ describe("meta:setup command", () => {
     };
 
     const exit = await Effect.runPromiseExit(
-      setupSpec
-        .run({
-          installDir: "/opt/lando",
-          _networkFetch: async () =>
-            new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
-        })
-        .pipe(
-          Effect.provide(
-            buildSetupLayers(registry, {
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
+        Effect.provide(
+          buildSetupLayers(
+            registry,
+            {
               network: {
                 proxy: { https: "http://proxy.example:8080", noProxy: [] },
                 ca: { certs: [], trustHost: true },
               },
-            } as Partial<GlobalConfig>),
+            } as Partial<GlobalConfig>,
+            (() =>
+              Promise.resolve(
+                new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
+              )) as unknown as typeof fetch,
           ),
         ),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");

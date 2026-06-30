@@ -339,6 +339,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:env-helper-boundary");
       expect(workflow).toContain("- name: Probe boundary lint");
       expect(workflow).toContain("run: bun run check:probe-boundary");
+      expect(workflow).toContain("- name: Network boundary lint");
+      expect(workflow).toContain("run: bun run check:network-boundary");
       expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
       expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
       expect(workflow).toContain("follow-up portability effort");

@@ -12,6 +12,8 @@ import { RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeRegistryResponse } from "@lando/sdk/schema";
 import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
 
+import { httpJsonFetch } from "../http-client/json-fetch.ts";
+
 import { type GitRecipeCloner, resolveGitRecipeSource } from "./git-source.ts";
 import type { ResolvedRecipe } from "./source.ts";
 import {
@@ -59,15 +61,17 @@ const decodeRegistryResponse = (payload: unknown): RecipeRegistryResponseType =>
 export const defaultRecipeRegistryClient = (registryUrl: string): RecipeRegistryClient => ({
   fetchResolution: async (id) => {
     const base = registryUrl.replace(/\/+$/u, "");
-    const response = await fetch(`${base}/${encodeURIComponent(id)}`, {
-      headers: { accept: "application/json" },
+    const response = await httpJsonFetch(`${base}/${encodeURIComponent(id)}`, {
+      headers: [{ name: "accept", value: "application/json" }],
       redirect: "follow",
-      signal: AbortSignal.timeout(15000),
+      timeoutMs: 15000,
     });
     if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     try {
-      return decodeRegistryResponse(await response.json());
+      return decodeRegistryResponse(JSON.parse(new TextDecoder().decode(response.bytes)));
     } catch (cause) {
       throw new RegistryDecodeError(cause);
     }

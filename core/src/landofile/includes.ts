@@ -9,6 +9,7 @@ import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/sche
 import type { StateBucket, StateRoot } from "@lando/sdk/services";
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { httpJsonFetch } from "../http-client/json-fetch.ts";
 import { type GitRecipeCloner, defaultGitRecipeCloner, publish } from "../recipes/git-source.ts";
 import { type NpmPackument, type NpmRegistryClient, parseNpmPackageSpec } from "../recipes/npm-source.ts";
 import {
@@ -314,13 +315,15 @@ const defaultNpmRegistryClient: NpmRegistryClient = {
     const encoded = packageName.startsWith("@")
       ? `@${encodeURIComponent(packageName.slice(1))}`
       : encodeURIComponent(packageName);
-    const response = await fetch(`https://registry.npmjs.org/${encoded}`, {
-      headers: { accept: "application/json" },
+    const response = await httpJsonFetch(`https://registry.npmjs.org/${encoded}`, {
+      headers: [{ name: "accept", value: "application/json" }],
       redirect: "follow",
     });
     if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    return (await response.json()) as NpmPackument;
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return JSON.parse(new TextDecoder().decode(response.bytes)) as NpmPackument;
   },
 };
 

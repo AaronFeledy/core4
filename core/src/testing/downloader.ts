@@ -1,12 +1,22 @@
 /** In-memory `Downloader` double: production `makeDownloaderService` over a stub `HttpClient`. */
 import { Effect, Stream } from "effect";
 
+import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
+import type { HttpClientCapabilities } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { DownloaderShape } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { type DownloaderEvents, makeDownloaderService } from "../downloader/service.ts";
-import { type HttpClientShape, HttpStreamError } from "../http-client/service.ts";
+import type { HttpClientShape } from "../http-client/service.ts";
+
+const TEST_HTTP_CAPABILITIES: HttpClientCapabilities = {
+  schemes: ["https", "http", "file"],
+  streaming: true,
+  upload: false,
+  customCa: true,
+  proxyAware: true,
+};
 
 export interface TestDownloaderHandle {
   readonly service: DownloaderShape;
@@ -29,22 +39,35 @@ export const makeTestDownloader = (): Effect.Effect<TestDownloaderHandle> =>
 
     const http: HttpClientShape = {
       id: "test-downloader-http",
+      capabilities: TEST_HTTP_CAPABILITIES,
+      request: (request) =>
+        Effect.suspend(() => {
+          const body = sources.get(request.url);
+          if (body === undefined) {
+            return Effect.fail(
+              new HttpRequestError({ message: "no source registered", urlOrigin: request.url, status: 404 }),
+            );
+          }
+          return Effect.succeed({ status: 200, headers: [], contentLength: body.length });
+        }),
       stream: (request) =>
         Effect.suspend(() => {
           streamCalls += 1;
           const body = sources.get(request.url);
           if (body === undefined) {
             return Effect.fail(
-              new HttpStreamError({ message: "no source registered", url: request.url, status: 404 }),
+              new HttpRequestError({ message: "no source registered", urlOrigin: request.url, status: 404 }),
             );
           }
           bytesStreamed += body.length;
           return Effect.succeed({
             status: 200,
-            headers: new Map<string, string>(),
+            headers: [],
             body: Stream.fromIterable([body]),
           });
         }),
+      upload: (request) =>
+        Effect.fail(new HttpUploadError({ message: "upload not supported", urlOrigin: request.url })),
     };
 
     const { redact } = createSecretRedactor([]);

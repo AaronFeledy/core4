@@ -28,6 +28,7 @@ import type {
   EventService,
   FileSystem,
   GlobalAppService,
+  HttpClient,
   InteractionService,
   LandofileService,
   Logger,
@@ -145,6 +146,7 @@ type MinimalRuntimeServices =
   | ProcessRunner
   | RedactionService
   | StateStore
+  | HttpClient
   | Downloader;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;

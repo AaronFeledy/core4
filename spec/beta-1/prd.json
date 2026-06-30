@@ -2368,7 +2368,7 @@
         "Lint passes."
       ],
       "priority": 132,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-09 network primitives. Prerequisite for the Downloader stories (US-285..US-288)."
     },
     {

@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 
 import { RecipeSourceError } from "@lando/sdk/errors";
 
+import { httpJsonFetch } from "../http-client/json-fetch.ts";
 import type { ResolvedRecipe } from "./source.ts";
 import {
   type TarballRecipeExtractor,
@@ -149,13 +150,15 @@ const encodePackageName = (name: string): string =>
 export const defaultNpmRegistryClient = (registryUrl: string): NpmRegistryClient => ({
   fetchPackument: async (packageName) => {
     const base = registryUrl.replace(/\/+$/u, "");
-    const response = await fetch(`${base}/${encodePackageName(packageName)}`, {
-      headers: { accept: "application/json" },
+    const response = await httpJsonFetch(`${base}/${encodePackageName(packageName)}`, {
+      headers: [{ name: "accept", value: "application/json" }],
       redirect: "follow",
     });
     if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    return (await response.json()) as NpmPackument;
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return JSON.parse(new TextDecoder().decode(response.bytes)) as NpmPackument;
   },
 });
 
