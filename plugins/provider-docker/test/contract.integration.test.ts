@@ -259,13 +259,13 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const bind = body?.HostConfig?.Binds?.[0];
           const volume = bind?.split(":")[0];
           const command = body?.Cmd?.join(" ");
-          if (container !== undefined && volume !== undefined && command === "sh -c cat > /data/payload") {
-            volumes.set(volume, await collectAsyncBytes(request.stdin));
-          }
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload") {
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           }
           return { status: 204, body: "" };
+        }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait")) {
+          return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
@@ -344,6 +344,28 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
         );
         return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
+      }
+      if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
+        );
+        return Stream.unwrap(
+          Effect.promise(async () => {
+            const container = containers.get(name);
+            const body = container?.body as
+              | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+              | undefined;
+            const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
+            if (
+              container !== undefined &&
+              volume !== undefined &&
+              body?.Cmd?.join(" ") === "sh -c cat > /data/payload"
+            ) {
+              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            }
+            return Stream.empty;
+          }),
+        );
       }
       if (request.path.startsWith("/volumes/") && request.path.endsWith("/archive")) {
         const name = decodeURIComponent(request.path.slice("/volumes/".length, -"/archive".length));
@@ -585,11 +607,63 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(volumes).toEqual([]);
   });
 
+  test("data-plane copies use the applied plan slug for service container names", async () => {
+    const fake = makeDataPlaneFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const plan = { ...makePlan(), slug: "custom-slug" };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.copyToService(
+          { app: appId, service: serviceName, plan },
+          {
+            sourcePath: AbsolutePath.make(import.meta.path),
+            targetPath: PortablePath.make("/tmp/payload"),
+            overwrite: true,
+          },
+        ),
+      ),
+    );
+
+    expect(
+      fake.calls.some((call) => call.path.startsWith("/containers/lando-custom-slug-web/archive?")),
+    ).toBe(true);
+  });
+
+  test("ephemeral data-store mounts use the canonical store name", async () => {
+    const fake = makeDataPlaneFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "alpine:3.20",
+          command: ["sh", "-c", "true"],
+          mounts: [{ store: "cache-data", target: PortablePath.make("/data"), readOnly: false }],
+        }),
+      ),
+    );
+
+    const createCall = fake.calls.find((call) => call.path.startsWith("/containers/create?name="));
+    expect(
+      (createCall?.body as { HostConfig?: { Binds?: ReadonlyArray<string> } } | undefined)?.HostConfig?.Binds,
+    ).toEqual(["cache-data:/data"]);
+  });
+
   test("runs the provider data-plane contract through the Docker Engine API", async () => {
+    const fake = makeDataPlaneFakeApi();
     await Effect.runPromise(
       runProviderDataPlaneContract({
         providerName: "docker",
-        factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: makeDataPlaneFakeApi().api }),
+        factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }),
+        observations: {
+          usedCopyVolumeSnapshot: () =>
+            fake.calls.some((call) => call.method === "GET" && call.path.endsWith("/archive")),
+          usedNativeServiceFileCopy: () =>
+            fake.calls.some(
+              (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),
+            ),
+        },
       }),
     );
   });

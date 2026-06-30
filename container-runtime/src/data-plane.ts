@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 
-import { Effect, type Scope, Stream } from "effect";
+import { Effect, Fiber, type Scope, Stream } from "effect";
 
 import { ArtifactTransferError, ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
-import { AppId, type DataStoreMountPlan, ProviderId, type ServiceName } from "@lando/sdk/schema";
+import {
+  AppId,
+  type AppPlan,
+  type DataStoreMountPlan,
+  ProviderId,
+  type ServiceName,
+} from "@lando/sdk/schema";
 import type {
   ArtifactRef,
   EphemeralRunSpec,
@@ -64,9 +70,13 @@ const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> =>
   })();
 
 const sanitize = (value: string): string => value.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-const volumeName = (store: string): string => `lando-data-${sanitize(store)}`;
-const serviceContainerName = (target: { readonly app: AppId; readonly service: ServiceName }): string =>
-  `lando-${sanitize(String(target.app))}-${sanitize(String(target.service))}`;
+const volumeName = (store: string): string => store;
+const serviceContainerName = (target: {
+  readonly app: AppId;
+  readonly service: ServiceName;
+  readonly plan?: AppPlan;
+}): string =>
+  `lando-${sanitize(target.plan?.slug ?? String(target.app))}-${sanitize(String(target.service))}`;
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
 
@@ -205,17 +215,41 @@ const removeEphemeralContainer = (options: ProviderDataPlaneOptions, name: strin
       )
     : Effect.void;
 
+const attachEphemeralStdin = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+  spec.stdinStream === undefined
+    ? Effect.void
+    : collectStreamBytes(
+        stream(options, "run.attach", {
+          method: "POST",
+          path: `/containers/${encodeURIComponent(name)}/attach?stream=true&stdin=true&stdout=false&stderr=false`,
+          stdin: spec.stdinStream,
+        }),
+      ).pipe(Effect.asVoid);
+
+const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+  request(options, "run.wait", {
+    method: "POST",
+    path: `/containers/${encodeURIComponent(name)}/wait`,
+  }).pipe(
+    Effect.tap((response) => ensure2xx(options, "run.wait", response, firstDataStoreMount(spec)?.store)),
+  );
+
 const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
   Effect.acquireUseRelease(
     createEphemeralContainer(options, spec),
     (name) =>
       Effect.gen(function* () {
+        const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
         const start = yield* request(options, "run.start", {
           method: "POST",
           path: `/containers/${encodeURIComponent(name)}/start`,
-          ...(spec.stdinStream === undefined ? {} : { stdin: spec.stdinStream }),
         });
         yield* ensure2xx(options, "run.start", start, firstDataStoreMount(spec)?.store);
+        if (spec.stdinStream === undefined) {
+          yield* waitForEphemeralContainer(options, name, spec);
+        } else {
+          yield* Fiber.join(stdinFiber);
+        }
         const stdout =
           spec.captureStdout === true
             ? yield* collectStreamBytes(

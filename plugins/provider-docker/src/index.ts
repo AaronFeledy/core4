@@ -240,6 +240,39 @@ const parseInfoJson = (response: DockerHttpResponse) =>
       }),
   });
 
+const collectRequestStdin = async (
+  stdin: AsyncIterable<Uint8Array> | undefined,
+): Promise<Uint8Array | undefined> => {
+  if (stdin === undefined) return undefined;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of stdin) {
+    chunks.push(chunk);
+    size += chunk.byteLength;
+  }
+  const payload = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    payload.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return payload;
+};
+
+interface WritableStdinSink {
+  write(payload: Uint8Array): unknown;
+  end(): unknown;
+}
+
+const writeStdinPayload = (
+  stdin: WritableStdinSink | null | undefined,
+  payload: Uint8Array | undefined,
+): void => {
+  if (stdin === undefined || stdin === null || payload === undefined) return;
+  stdin.write(payload);
+  stdin.end();
+};
+
 const request = (
   api: DockerApiClient,
   operation: string,
@@ -479,11 +512,20 @@ const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
       if (input.body !== undefined) {
         args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
       }
+      if (input.stdin !== undefined) {
+        args.push("--data-binary", "@-");
+      }
       args.push(`http://localhost/v1.43${input.path}`);
 
       const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
         try: async () => {
-          const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
+          const payload = await collectRequestStdin(input.stdin);
+          const proc = Bun.spawn(["curl", ...args], {
+            stderr: "pipe",
+            stdin: payload === undefined ? "ignore" : "pipe",
+            stdout: "pipe",
+          });
+          writeStdinPayload(proc.stdin as WritableStdinSink | null | undefined, payload);
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(proc.stdout).text(),
             new Response(proc.stderr).text(),
@@ -1306,8 +1348,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         restoreVolume: dataPlane.restoreVolume,
         listVolumes: dataPlane.listVolumes,
         removeVolume: dataPlane.removeVolume,
-        copyToService: dataPlane.copyToService,
-        copyFromService: dataPlane.copyFromService,
+        copyToService: (target, spec) => {
+          const plan = resolvePlan(target);
+          return dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec);
+        },
+        copyFromService: (target, spec) => {
+          const plan = resolvePlan(target);
+          return dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec);
+        },
         exportArtifact: dataPlane.exportArtifact,
         importArtifact: dataPlane.importArtifact,
       }),

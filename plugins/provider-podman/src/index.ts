@@ -737,8 +737,20 @@ export const makeRuntimeProvider = (
         restoreVolume: dataPlane.restoreVolume,
         listVolumes: dataPlane.listVolumes,
         removeVolume: dataPlane.removeVolume,
-        copyToService: dataPlane.copyToService,
-        copyFromService: dataPlane.copyFromService,
+        copyToService: (target, spec) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+            ),
+          ),
+        copyFromService: (target, spec) =>
+          Stream.unwrap(
+            resolvePlan(target).pipe(
+              Effect.map((plan) =>
+                dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+              ),
+            ),
+          ),
         exportArtifact: dataPlane.exportArtifact,
         importArtifact: dataPlane.importArtifact,
       }),

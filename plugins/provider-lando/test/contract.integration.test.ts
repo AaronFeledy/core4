@@ -165,12 +165,12 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             | undefined;
           const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
           const command = body?.Cmd?.join(" ");
-          if (container !== undefined && volume !== undefined && command === "sh -c cat > /data/payload")
-            volumes.set(volume, await collectAsyncBytes(request.stdin));
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           return { status: 204, body: "" };
         }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
+          return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json"))
           return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
         if (
@@ -245,6 +245,28 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         );
         return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
       }
+      if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
+        );
+        return Stream.unwrap(
+          Effect.promise(async () => {
+            const container = containers.get(name);
+            const body = container?.body as
+              | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+              | undefined;
+            const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
+            if (
+              container !== undefined &&
+              volume !== undefined &&
+              body?.Cmd?.join(" ") === "sh -c cat > /data/payload"
+            ) {
+              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            }
+            return Stream.empty;
+          }),
+        );
+      }
       if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
         const container = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
@@ -286,11 +308,21 @@ describe("provider-lando RuntimeProvider contract", () => {
   });
 
   test("runs the provider data-plane contract through the managed Podman API", async () => {
+    const fake = makeDataPlaneFakeApi();
     await Effect.runPromise(
       runProviderDataPlaneContract({
         providerName: "lando",
-        factory: () =>
-          RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: makeDataPlaneFakeApi().api }))),
+        factory: () => RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
+        observations: {
+          usedNativeVolumeSnapshot: () =>
+            fake.calls.some(
+              (call) => call.path.startsWith("/libpod/volumes/") && call.path.endsWith("/snapshot"),
+            ),
+          usedNativeServiceFileCopy: () =>
+            fake.calls.some(
+              (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),
+            ),
+        },
       }),
     );
   });

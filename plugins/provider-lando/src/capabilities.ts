@@ -135,6 +135,39 @@ export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilit
 export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
   providerLandoCapabilitiesForPlatform(platform);
 
+const collectRequestStdin = async (
+  stdin: AsyncIterable<Uint8Array> | undefined,
+): Promise<Uint8Array | undefined> => {
+  if (stdin === undefined) return undefined;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of stdin) {
+    chunks.push(chunk);
+    size += chunk.byteLength;
+  }
+  const payload = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    payload.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return payload;
+};
+
+interface WritableStdinSink {
+  write(payload: Uint8Array): unknown;
+  end(): unknown;
+}
+
+const writeStdinPayload = (
+  stdin: WritableStdinSink | null | undefined,
+  payload: Uint8Array | undefined,
+): void => {
+  if (stdin === undefined || stdin === null || payload === undefined) return;
+  stdin.write(payload);
+  stdin.end();
+};
+
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>
     Stream.fromAsyncIterable(streamPodmanRequest(socketPath, request), (cause) =>
@@ -156,12 +189,21 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
       if (request.body !== undefined) {
         args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
       }
+      if (request.stdin !== undefined) {
+        args.push("--data-binary", "@-");
+      }
 
       args.push(`http://localhost/v5.0.0${request.path}`);
 
       const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
         try: async () => {
-          const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
+          const payload = await collectRequestStdin(request.stdin);
+          const proc = Bun.spawn(["curl", ...args], {
+            stderr: "pipe",
+            stdin: payload === undefined ? "ignore" : "pipe",
+            stdout: "pipe",
+          });
+          writeStdinPayload(proc.stdin as WritableStdinSink | null | undefined, payload);
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(proc.stdout).text(),
             new Response(proc.stderr).text(),

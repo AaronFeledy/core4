@@ -143,6 +143,7 @@ export const socketHttpRequestText = (
   request: SocketHttpRequest,
   options: Pick<SocketHttpClientOptions, "apiPrefix" | "hostHeader" | "defaultHeaders">,
   body = requestBody(request),
+  rawBodyLength?: number,
 ): string => {
   const headers = [
     `${request.method} ${options.apiPrefix}${request.path} HTTP/1.1`,
@@ -152,6 +153,8 @@ export const socketHttpRequestText = (
   ];
   if (body !== undefined) {
     headers.push("Content-Type: application/json", `Content-Length: ${textEncoder.encode(body).length}`);
+  } else if (rawBodyLength !== undefined) {
+    headers.push(`Content-Length: ${rawBodyLength}`);
   }
   return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
 };
@@ -288,9 +291,18 @@ const writeRequest = (
   connection: SocketHttpConnection,
   request: SocketHttpRequest,
   options: SocketHttpClientOptions,
+  stdinPayload?: Bytes,
 ): void => {
   try {
-    connection.write(socketHttpRequestText(request, options));
+    connection.write(
+      socketHttpRequestText(
+        request,
+        options,
+        stdinPayload === undefined ? requestBody(request) : undefined,
+        stdinPayload?.length,
+      ),
+    );
+    if (stdinPayload !== undefined) connection.write(stdinPayload);
   } catch (cause) {
     throw mapError(
       options,
@@ -310,7 +322,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
   const request = async (input: SocketHttpRequest): Promise<SocketHttpResponse> => {
     const connection = await connect(options, input);
-    writeRequest(connection, input, options);
+    const stdinPayload = input.stdin === undefined ? undefined : await collectBytes(input.stdin);
+    writeRequest(connection, input, options, stdinPayload);
     try {
       const responseBytes = await collectBytes(connection);
       const parsed = parseHttpHead(responseBytes, operation);

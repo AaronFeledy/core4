@@ -588,11 +588,23 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           copyToService:
             dataPlane === undefined
               ? () => Effect.fail(makeUnavailable("copyToService"))
-              : dataPlane.copyToService,
+              : (target, spec) =>
+                  resolvePlan(target).pipe(
+                    Effect.flatMap((plan) =>
+                      dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+                    ),
+                  ),
           copyFromService:
             dataPlane === undefined
               ? () => Stream.fail(makeUnavailable("copyFromService"))
-              : dataPlane.copyFromService,
+              : (target, spec) =>
+                  Stream.unwrap(
+                    resolvePlan(target).pipe(
+                      Effect.map((plan) =>
+                        dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+                      ),
+                    ),
+                  ),
           exportArtifact:
             dataPlane === undefined
               ? () => Stream.fail(makeUnavailable("exportArtifact"))

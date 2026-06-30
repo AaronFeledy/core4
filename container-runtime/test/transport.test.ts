@@ -110,6 +110,22 @@ describe("socket HTTP transport", () => {
     expect(connection.writes.at(-1)).toBe("typed\n");
   });
 
+  test("sends stdin bytes as the request body for non-hijacked requests", async () => {
+    const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n{}")]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    const response = await client.request({
+      method: "POST",
+      path: "/images/load",
+      stdin: stdinBytes("tar", "ball"),
+    });
+
+    expect(response).toEqual({ status: 200, body: "{}" });
+    expect(connection.writes[0]).toContain("POST /v1.43/images/load HTTP/1.1\r\n");
+    expect(connection.writes[0]).toContain("Content-Length: 7\r\n");
+    expect(connection.writes.at(-1)).toBe("tarball");
+  });
+
   test("destroys hijacked socket streams when aborted", async () => {
     const connection = new WaitingConnection([]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
@@ -129,9 +145,14 @@ describe("socket HTTP transport", () => {
     const connection = new FakeConnection([bytes("HTTP/1.1 OK\r\n\r\n{}")]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
 
-    await expect(client.request({ method: "GET", path: "/info" })).rejects.toBeInstanceOf(
-      ContainerTransportError,
-    );
+    let caught: unknown;
+    try {
+      await client.request({ method: "GET", path: "/info" });
+    } catch (cause) {
+      caught = cause;
+    }
+
+    expect(caught).toBeInstanceOf(ContainerTransportError);
   });
 
   test("normalizes Docker and Podman Desktop named-pipe URIs", () => {
