@@ -209,3 +209,11 @@ This period built the §6.11 service-composition model, published the paths/land
   - To make an in-memory HttpClient double exercise a real timeout, register a never-resolving source (`serveHang`) backed by `Effect.acquireUseRelease(..., () => Effect.never, finalizer)` and expose a `pendingHangs` counter; the finalizer decrement is what proves "no leaked socket" once the deadline interrupts. The contract harness's optional `timeout` hook mirrors the existing `interruption` hook shape.
   - The `runHttpClientContract` harness lives in the big `sdk/src/test/index.ts` barrel and is test-only (not a published schema), so adding a harness field needs no schema-snapshot regen — `HttpRequest.timeoutMs` already existed in the public schema.
 ---
+
+## 2026-06-30 18:40 CDT - US-368 Review
+- Review fixed a blocker in timeout enforcement: `timeoutMs` now also bounds response-body reads after headers arrive, so a transfer that stalls mid-body fails with the tagged timeout error instead of hanging after `openConnection` succeeds.
+- Review notes (deferred/rejected): `upload` timeout enforcement is vacuous for the core live client because `capabilities.upload=false` and `upload` fails immediately before any transfer opens.
+- Review notes (deferred/rejected): negative/NaN `timeoutMs` validation is outside US-368; the published schema already allowed `Number`, and this story preserves the documented 0/unset unbounded behavior.
+- Verification: typecheck and lint passed; focused spot checks passed for http-client contract, downloader contract, npm/registry metadata sources, and landofile includes.
+- **Learnings for future iterations:** Timeout coverage for `HttpClient.stream()` must include body-pull stalls after the `Response` object exists; a fetch promise that never resolves only proves the connection-open deadline, not the full transfer path.
+---
