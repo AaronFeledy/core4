@@ -214,6 +214,41 @@ describe("HttpClientLive network trust", () => {
     expect(capture.init()?.tls).toBeUndefined();
   });
 
+  test("self-resolves proxy and CA from env when ConfigService.load fails", async () => {
+    const dir = await makeTempDir();
+    const caPath = join(dir, "env-only.pem");
+    const envCaPem = "-----BEGIN CERTIFICATE-----\nFROMENV\n-----END CERTIFICATE-----";
+    await writeFile(caPath, envCaPem);
+
+    const prevHttpProxy = process.env.HTTP_PROXY;
+    const prevCaCerts = process.env.LANDO_NETWORK_CA_CERTS;
+    process.env.HTTP_PROXY = "http://env-proxy:8080";
+    process.env.LANDO_NETWORK_CA_CERTS = JSON.stringify([caPath]);
+
+    const configLayer = Layer.succeed(ConfigService, {
+      load: Effect.fail(new Error("global config unavailable")),
+      get: () => Effect.die("unused"),
+    } as never);
+
+    const capture = captureFetch();
+    const program = Effect.flatMap(HttpClient, (client) =>
+      Effect.flatMap(client.stream({ url: "https://example.com/artifact" }), (res) =>
+        Stream.runDrain(res.body),
+      ),
+    ).pipe(Effect.provide(Layer.mergeAll(makeHttpClientLive(capture.fetchImpl), configLayer)));
+
+    try {
+      await Effect.runPromise(Effect.scoped(program));
+      expect(capture.init()?.proxy).toBe("http://env-proxy:8080");
+      expect(capture.init()?.tls).toEqual({ ca: [envCaPem] });
+    } finally {
+      if (prevHttpProxy === undefined) process.env.HTTP_PROXY = undefined;
+      else process.env.HTTP_PROXY = prevHttpProxy;
+      if (prevCaCerts === undefined) process.env.LANDO_NETWORK_CA_CERTS = undefined;
+      else process.env.LANDO_NETWORK_CA_CERTS = prevCaCerts;
+    }
+  });
+
   test("self-resolves proxy and CA from ConfigService when NetworkTrust is absent", async () => {
     const dir = await makeTempDir();
     const caPath = join(dir, "custom.pem");

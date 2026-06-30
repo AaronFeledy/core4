@@ -158,9 +158,7 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
     if (Option.isNone(config)) return undefined;
 
     const globalConfig = yield* config.value.load.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    if (globalConfig === undefined) return undefined;
-
-    const plan = resolveNetworkTrustPlan({ network: globalConfig.network });
+    const plan = resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network });
     const caPems = yield* loadCaPems(plan.caCertPaths);
     return { proxy: plan.proxy, caPems };
   });
