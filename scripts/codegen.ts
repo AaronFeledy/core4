@@ -34,6 +34,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "provider-images",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-provider-images.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "bundled-recipes",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-recipes.ts`],
     cwd: REPO_ROOT,
