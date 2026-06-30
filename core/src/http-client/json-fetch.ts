@@ -12,6 +12,7 @@
 
 import { Duration, Effect, Layer, Stream } from "effect";
 
+import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { HttpClientLive } from "./live.ts";
 import { HttpClient } from "./service.ts";
@@ -64,7 +65,9 @@ export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}):
           options.timeoutMs === undefined
             ? effect
             : effect.pipe(Effect.timeout(Duration.millis(options.timeoutMs))),
-        Effect.provide(HttpClientLive.pipe(Layer.provide(EventServiceLive))),
+        Effect.provide(
+          Layer.mergeAll(HttpClientLive.pipe(Layer.provide(EventServiceLive)), ConfigServiceLive),
+        ),
       ),
     ),
   );

@@ -7,7 +7,9 @@ import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit, Layer, type Scope, Stream } from "effect";
 
 import type { HttpRequest, HttpStreamResponse } from "@lando/sdk/schema";
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import type { GlobalConfig } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
+import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { HttpClientLive, makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
@@ -210,6 +212,69 @@ describe("HttpClientLive network trust", () => {
     await drive(capture.fetchImpl, { url: "https://example.com/artifact" });
     expect(capture.init()?.proxy).toBeUndefined();
     expect(capture.init()?.tls).toBeUndefined();
+  });
+
+  test("self-resolves proxy and CA from ConfigService when NetworkTrust is absent", async () => {
+    const dir = await makeTempDir();
+    const caPath = join(dir, "custom.pem");
+    const CA_PEM = "-----BEGIN CERTIFICATE-----\nFROMCONFIG\n-----END CERTIFICATE-----";
+    await writeFile(caPath, CA_PEM);
+
+    const config: GlobalConfig = {
+      defaultProviderId: ProviderId.make("lando"),
+      telemetry: { enabled: false },
+      network: {
+        proxy: { https: "http://config-proxy:3128", noProxy: [] },
+        ca: { certs: [caPath], trustHost: true },
+      },
+    };
+    const configLayer = Layer.succeed(ConfigService, {
+      load: Effect.succeed(config),
+      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+    } as never);
+
+    const capture = captureFetch();
+    const program = Effect.flatMap(HttpClient, (client) =>
+      Effect.flatMap(client.stream({ url: "https://example.com/artifact" }), (res) =>
+        Stream.runDrain(res.body),
+      ),
+    ).pipe(Effect.provide(Layer.mergeAll(makeHttpClientLive(capture.fetchImpl), configLayer)));
+
+    await Effect.runPromise(Effect.scoped(program));
+    expect(capture.init()?.proxy).toBe("http://config-proxy:3128");
+    expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
+  });
+
+  test("fails before fetch when a configured CA path is unreadable", async () => {
+    const missing = join(await makeTempDir(), "missing-ca.pem");
+    const config: GlobalConfig = {
+      defaultProviderId: ProviderId.make("lando"),
+      telemetry: { enabled: false },
+      network: { ca: { certs: [missing], trustHost: true } },
+    };
+    const configLayer = Layer.succeed(ConfigService, {
+      load: Effect.succeed(config),
+      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+    } as never);
+
+    let fetchCalled = false;
+    const fetchImpl = (() => {
+      fetchCalled = true;
+      return Promise.resolve(new Response(new Uint8Array(), { status: 200 }));
+    }) as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) => client.stream({ url: "https://example.com/artifact" })).pipe(
+          Effect.provide(Layer.mergeAll(makeHttpClientLive(fetchImpl), configLayer)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { _tag: string; message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toContain(missing);
+    expect(fetchCalled).toBe(false);
   });
 });
 
