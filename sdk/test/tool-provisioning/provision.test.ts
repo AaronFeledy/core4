@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -50,6 +50,10 @@ const makeDirs = async (): Promise<Dirs> => {
 
 const run = <A, E>(eff: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>> => Effect.runPromiseExit(eff);
 
+const expectBytes = (actual: Uint8Array<ArrayBufferLike>, expected: Uint8Array<ArrayBufferLike>): void => {
+  expect(Buffer.compare(Buffer.from(actual), Buffer.from(expected))).toBe(0);
+};
+
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
   const opt = Cause.failureOption(exit.cause);
@@ -99,7 +103,7 @@ describe("provisionTool", () => {
       );
       expect(exit._tag).toBe("Success");
       const installed = await readFile(join(dirs.binDir, "mutagen"));
-      expect(new Uint8Array(installed)).toEqual(HOST_BIN);
+      expectBytes(installed, HOST_BIN);
       const info = await stat(join(dirs.binDir, "mutagen"));
       expect(info.mode & 0o777).toBe(0o755);
     } finally {
@@ -133,7 +137,7 @@ describe("provisionTool", () => {
       );
       expect(exit._tag).toBe("Success");
       const installed = await readFile(join(dirs.binDir, "mutagen-agents", "mutagen-agent-linux-amd64"));
-      expect(new Uint8Array(installed)).toEqual(AGENT_AMD64);
+      expectBytes(installed, AGENT_AMD64);
     } finally {
       await dirs.cleanup();
     }
@@ -165,7 +169,7 @@ describe("provisionTool", () => {
       );
       expect(exit._tag).toBe("Success");
       const installed = await readFile(join(dirs.binDir, "mutagen.exe"));
-      expect(new Uint8Array(installed)).toEqual(HOST_EXE);
+      expectBytes(installed, HOST_EXE);
     } finally {
       await dirs.cleanup();
     }
@@ -195,7 +199,7 @@ describe("provisionTool", () => {
       );
       expect(exit._tag).toBe("Success");
       const installed = await readFile(join(dirs.binDir, "mkcert"));
-      expect(new Uint8Array(installed)).toEqual(RAW_BIN);
+      expectBytes(installed, RAW_BIN);
     } finally {
       await dirs.cleanup();
     }
@@ -255,6 +259,41 @@ describe("provisionTool", () => {
         ).pipe(Effect.provide(dl.layer)),
       );
       expect(failure(exit)).toBeInstanceOf(ToolInstallPathError);
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
+  test("installName through a symlinked parent escaping binDir fails before download", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    dl.serve("https://example.test/host.tar.gz", HOST_TARGZ);
+    const outside = join(dirs.binDir, "..", "outside");
+    await mkdir(dirs.binDir, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await symlink(outside, join(dirs.binDir, "linked"));
+    const manifest = manifestFor("linux-x64/cli", {
+      url: "https://example.test/host.tar.gz",
+      sha256: HOST_TARGZ_SHA,
+      archive: "tar.gz",
+      member: "mutagen",
+      installName: "linked/mutagen",
+    });
+    try {
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "linux-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "linux",
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+      expect(failure(exit)).toBeInstanceOf(ToolInstallPathError);
+      expect(dl.downloadCalls()).toBe(0);
     } finally {
       await dirs.cleanup();
     }
@@ -349,7 +388,8 @@ describe("provisionTool", () => {
 
       const second = await run(Effect.scoped(provisionTool(input)).pipe(Effect.provide(dl.layer)));
       expect(second._tag).toBe("Success");
-      expect((second as Exit.Success<{ skipped: boolean }>).value.skipped).toBe(true);
+      if (!Exit.isSuccess(second)) throw new Error("expected success");
+      expect(second.value.skipped).toBe(true);
       // Zero NEW download calls: the offline no-op short-circuits before the downloader.
       expect(dl.downloadCalls()).toBe(1);
     } finally {
@@ -384,7 +424,8 @@ describe("provisionTool", () => {
       );
       expect(forced._tag).toBe("Success");
       // archive byte-cache hit means no NEW network, but the install/extract re-ran (not skipped).
-      expect((forced as Exit.Success<{ skipped: boolean }>).value.skipped).toBe(false);
+      if (!Exit.isSuccess(forced)) throw new Error("expected success");
+      expect(forced.value.skipped).toBe(false);
       expect(dl.downloadCalls()).toBeGreaterThanOrEqual(callsAfterFirst);
     } finally {
       await dirs.cleanup();

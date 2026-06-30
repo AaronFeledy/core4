@@ -22,7 +22,7 @@
  * An omitted `archive` means the downloaded bytes are the binary itself.
  */
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
@@ -76,6 +76,11 @@ const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(byt
 const versionMarkerPath = (binDir: string, toolId: string): string => join(binDir, `.${toolId}.version`);
 const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
 
+const isContained = (root: string, target: string): boolean => {
+  const rel = relative(root, target);
+  return rel.length === 0 || (!rel.startsWith(`..${"/"}`) && !rel.startsWith("..\\") && !isAbsolute(rel));
+};
+
 /**
  * Resolve `installName` to an absolute path strictly contained under the
  * realpath of `binDir`. Subdirectories (e.g. `mutagen-agents/...`) are allowed;
@@ -100,13 +105,7 @@ const resolveContainedInstallPath = (
   const root = resolve(binDir);
   const resolved = resolve(root, installName);
   const rel = relative(root, resolved);
-  if (
-    rel.length === 0 ||
-    rel === ".." ||
-    rel.startsWith(`..${"/"}`) ||
-    rel.startsWith("..\\") ||
-    isAbsolute(rel)
-  ) {
+  if (rel.length === 0 || !isContained(root, resolved)) {
     return {
       ok: false,
       error: new ToolInstallPathError({
@@ -119,6 +118,41 @@ const resolveContainedInstallPath = (
   }
   return { ok: true, path: resolved };
 };
+
+const ensureRealpathContainedInstallParent = (
+  input: ProvisionToolInput,
+  installPath: string,
+): Effect.Effect<void, ToolInstallPathError> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(input.binDir, { recursive: true });
+      const installDir = dirname(installPath);
+      await mkdir(installDir, { recursive: true });
+      const [rootRealpath, installDirRealpath] = await Promise.all([
+        realpath(input.binDir),
+        realpath(installDir),
+      ]);
+      if (!isContained(rootRealpath, installDirRealpath)) {
+        throw new ToolInstallPathError({
+          message: `Install name "${input.manifest.artifacts[input.key]?.installName ?? input.key}" escapes the bin directory through a symlinked parent.`,
+          toolId: input.toolId,
+          installName: input.manifest.artifacts[input.key]?.installName,
+          remediation:
+            "Use an install path whose real parent directory is contained within the bin directory.",
+        });
+      }
+    },
+    catch: (cause) =>
+      cause instanceof ToolInstallPathError
+        ? cause
+        : new ToolInstallPathError({
+            message: `Failed to verify the install path for "${input.key}" is contained within the bin directory.`,
+            toolId: input.toolId,
+            installName: input.manifest.artifacts[input.key]?.installName,
+            remediation: "Ensure the bin directory exists and is accessible, then retry `lando setup`.",
+            cause,
+          }),
+  });
 
 /** Extract a named regular-file member from a (decompressed) POSIX tar buffer. */
 const extractTarMember = (tar: Uint8Array, member: string): Uint8Array | undefined => {
@@ -375,6 +409,7 @@ export const provisionTool = (
     const contained = resolveContainedInstallPath(input.binDir, input.toolId, entry.installName);
     if (!contained.ok) return yield* Effect.fail(contained.error);
     const installPath = contained.path;
+    yield* ensureRealpathContainedInstallParent(input, installPath);
 
     const mode = entry.mode !== undefined ? Number.parseInt(entry.mode, 8) || DEFAULT_MODE : DEFAULT_MODE;
 
