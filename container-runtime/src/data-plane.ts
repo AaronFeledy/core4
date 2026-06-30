@@ -124,25 +124,46 @@ const extractFirstTarFile = (archive: Uint8Array): Uint8Array | undefined => {
   return archive.slice(start, end);
 };
 
-const decodeDockerMultiplexedStdout = (payload: Uint8Array): Uint8Array => {
-  const frames: Uint8Array[] = [];
+const decodeDockerRunLogs = (
+  payload: Uint8Array,
+  rawStream: "stdout" | "stderr",
+): {
+  readonly stdout: Uint8Array;
+  readonly stderr: Uint8Array;
+  readonly chunks: ReadonlyArray<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>>;
+} => {
+  const stdout: Uint8Array[] = [];
+  const stderr: Uint8Array[] = [];
+  const chunks: Array<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> = [];
+  const raw = () => ({
+    stdout: rawStream === "stdout" ? payload : new Uint8Array(),
+    stderr: rawStream === "stderr" ? payload : new Uint8Array(),
+    chunks: payload.byteLength === 0 ? [] : [{ kind: rawStream, chunk: payload }],
+  });
   let offset = 0;
   while (offset < payload.byteLength) {
-    if (payload.byteLength - offset < 8) return payload;
+    if (payload.byteLength - offset < 8) return raw();
     const streamType = payload[offset] ?? -1;
-    if (streamType !== 1 && streamType !== 2) return payload;
+    if (streamType !== 1 && streamType !== 2) return raw();
     const reserved1 = payload[offset + 1] ?? -1;
     const reserved2 = payload[offset + 2] ?? -1;
     const reserved3 = payload[offset + 3] ?? -1;
-    if (reserved1 !== 0 || reserved2 !== 0 || reserved3 !== 0) return payload;
+    if (reserved1 !== 0 || reserved2 !== 0 || reserved3 !== 0) return raw();
     const length = new DataView(payload.buffer, payload.byteOffset + offset + 4, 4).getUint32(0, false);
     const start = offset + 8;
     const end = start + length;
-    if (length < 0 || end > payload.byteLength) return payload;
-    if (streamType === 1) frames.push(payload.slice(start, end));
+    if (end > payload.byteLength) return raw();
+    const chunk = payload.slice(start, end);
+    if (streamType === 1) {
+      stdout.push(chunk);
+      chunks.push({ kind: "stdout", chunk });
+    } else {
+      stderr.push(chunk);
+      chunks.push({ kind: "stderr", chunk });
+    }
     offset = end;
   }
-  return frames.length === 0 ? new Uint8Array() : concatBytes(frames);
+  return { stdout: concatBytes(stdout), stderr: concatBytes(stderr), chunks };
 };
 
 const collectStreamBytes = <E, R>(stream: Stream.Stream<Uint8Array, E, R>) =>
@@ -346,6 +367,26 @@ const volumeInfoFromEngineVolume = (
   };
 };
 
+const legacyVolumeInfoFromEngineVolume = (
+  volume: EngineVolume,
+  filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
+) => {
+  const labels = volume.Labels ?? {};
+  if (labels[landoVolumeLabels.app] !== undefined || labels[landoVolumeLabels.store] !== undefined) {
+    return undefined;
+  }
+  if (filter.app === undefined || filter.store === undefined) return undefined;
+  if (filter.labels !== undefined || volume.Name !== volumeName(filter.store)) return undefined;
+  return {
+    ref: {
+      app: filter.app,
+      store: filter.store,
+      ...(filter.scope === undefined ? {} : { scope: filter.scope }),
+    },
+    ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
+  };
+};
+
 const request = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.request === undefined
     ? Effect.fail(volumeError(options, operation, "Provider API request client is missing."))
@@ -406,6 +447,7 @@ const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: Ephem
       AttachStdin: attachStdin,
       StdinOnce: attachStdin,
       AttachStdout: spec.captureStdout === true,
+      AttachStderr: true,
     },
   }).pipe(
     Effect.tap((response) => ensure2xx(options, "run.create", response, mount?.store)),
@@ -478,15 +520,13 @@ const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
           yield* Fiber.join(stdinFiber);
         }
         yield* waitForEphemeralContainer(options, name, spec);
-        const stdout =
-          spec.captureStdout === true
-            ? yield* collectStreamBytes(
-                stream(options, "run.logs", {
-                  method: "GET",
-                  path: `/containers/${encodeURIComponent(name)}/logs?stdout=true&stderr=false`,
-                }),
-              ).pipe(Effect.map(decodeDockerMultiplexedStdout))
-            : new Uint8Array();
+        const captureStdout = spec.captureStdout === true;
+        const logs = yield* collectStreamBytes(
+          stream(options, "run.logs", {
+            method: "GET",
+            path: `/containers/${encodeURIComponent(name)}/logs?stdout=${captureStdout ? "true" : "false"}&stderr=true`,
+          }),
+        ).pipe(Effect.map((payload) => decodeDockerRunLogs(payload, captureStdout ? "stdout" : "stderr")));
         const inspect = yield* request(options, "run.inspect", {
           method: "GET",
           path: `/containers/${encodeURIComponent(name)}/json`,
@@ -494,7 +534,12 @@ const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
         yield* ensure2xx(options, "run.inspect", inspect, firstDataStoreMount(spec)?.store);
         const parsed =
           inspect.body.length === 0 ? {} : (JSON.parse(inspect.body) as { State?: { ExitCode?: number } });
-        return { exitCode: parsed.State?.ExitCode ?? 0, stdout, stderr: "" };
+        return {
+          exitCode: parsed.State?.ExitCode ?? 0,
+          stdout: logs.stdout,
+          stderr: textDecoder.decode(logs.stderr),
+          chunks: logs.chunks,
+        };
       }).pipe(
         Effect.catchAll((cause) =>
           Effect.fail(
@@ -579,9 +624,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     runStream: (spec: EphemeralRunSpec): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> =>
       Stream.unwrap(
         runBytes(options, { ...spec, captureStdout: true }).pipe(
-          Effect.map(({ exitCode, stdout }) =>
-            Stream.make({ kind: "stdout" as const, chunk: stdout }, { exitCode }),
-          ),
+          Effect.map(({ exitCode, chunks }) => Stream.make(...chunks, { exitCode })),
         ),
       ),
     snapshotVolume: ((spec) => {
@@ -716,7 +759,11 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   Volumes?: ReadonlyArray<EngineVolume>;
                 });
           return (parsed.Volumes ?? [])
-            .map((volume) => volumeInfoFromEngineVolume(volume, filter))
+            .map(
+              (volume) =>
+                volumeInfoFromEngineVolume(volume, filter) ??
+                legacyVolumeInfoFromEngineVolume(volume, filter),
+            )
             .filter((volume): volume is NonNullable<typeof volume> => volume !== undefined);
         }),
         Effect.mapError((cause) =>

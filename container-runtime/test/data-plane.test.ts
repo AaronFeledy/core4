@@ -26,13 +26,16 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
   return output;
 };
 
-const multiplexedStdoutFrame = (payload: Uint8Array): Uint8Array => {
+const multiplexedFrame = (stream: "stdout" | "stderr", payload: Uint8Array): Uint8Array => {
   const frame = new Uint8Array(8 + payload.byteLength);
-  frame[0] = 1;
+  frame[0] = stream === "stdout" ? 1 : 2;
   new DataView(frame.buffer).setUint32(4, payload.byteLength, false);
   frame.set(payload, 8);
   return frame;
 };
+
+const multiplexedStdoutFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stdout", payload);
+const multiplexedStderrFrame = (payload: Uint8Array): Uint8Array => multiplexedFrame("stderr", payload);
 
 const appId = AppId.make("app-id");
 const serviceName = ServiceName.make("web");
@@ -107,6 +110,7 @@ const makeCopySnapshotApi = () => {
         }
         return { status: 500, body: "{}" };
       }),
+    stream: () => Stream.empty,
   };
   return { api, volumes };
 };
@@ -210,21 +214,23 @@ describe("provider data plane", () => {
             : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
         ),
       stream: (request) =>
-        Stream.fromAsyncIterable(
-          (async function* () {
-            attached = text(await collectAsyncBytes(request.stdin));
-            attachAborted = request.signal?.aborted === true;
-            yield new Uint8Array();
-          })(),
-          (cause) =>
-            new VolumeOperationError({
-              providerId: "test",
-              operation: "run.attach",
-              message: "Failed to collect stdin.",
-              remediation: "Retry the test.",
-              cause,
-            }),
-        ),
+        request.path.includes("/attach?")
+          ? Stream.fromAsyncIterable(
+              (async function* () {
+                attached = text(await collectAsyncBytes(request.stdin));
+                attachAborted = request.signal?.aborted === true;
+                yield new Uint8Array();
+              })(),
+              (cause) =>
+                new VolumeOperationError({
+                  providerId: "test",
+                  operation: "run.attach",
+                  message: "Failed to collect stdin.",
+                  remediation: "Retry the test.",
+                  cause,
+                }),
+            )
+          : Stream.empty,
     };
     const provider = makeProviderDataPlane({
       providerId: "test",
@@ -260,8 +266,8 @@ describe("provider data plane", () => {
             : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
         );
       },
-      stream: () => {
-        attachCalled = true;
+      stream: (request) => {
+        if (request.path.includes("/attach?")) attachCalled = true;
         return Stream.empty;
       },
     };
@@ -316,6 +322,80 @@ describe("provider data plane", () => {
     );
 
     expect(result.stdout).toBe("hello from logs");
+  });
+
+  test("captures Docker multiplexed stderr frames from ephemeral runs", async () => {
+    const paths: string[] = [];
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        paths.push(request.path);
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 1 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: (request) => {
+        paths.push(request.path);
+        return Stream.make(multiplexedStderrFrame(bytes("helper failed")));
+      },
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "alpine:3.20",
+          command: ["sh", "-c", "echo helper failed >&2; exit 1"],
+          remove: true,
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({ exitCode: 1, stdout: "", stderr: "helper failed" });
+    expect(paths.some((path) => path.includes("/logs?stdout=false&stderr=true"))).toBe(true);
+  });
+
+  test("streams Docker multiplexed stderr frames from ephemeral runs", async () => {
+    const api: DataPlaneApiClient = {
+      request: (request) =>
+        Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 1 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        ),
+      stream: () =>
+        Stream.make(multiplexedStdoutFrame(bytes("stdout")), multiplexedStderrFrame(bytes("stderr"))),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const chunks = await Effect.runPromise(
+      Effect.scoped(
+        provider
+          .runStream({
+            image: "alpine:3.20",
+            command: ["sh", "-c", "echo stdout; echo stderr >&2"],
+            remove: true,
+          })
+          .pipe(Stream.runCollect),
+      ),
+    );
+
+    expect(Array.from(chunks)).toEqual([
+      { kind: "stdout", chunk: bytes("stdout") },
+      { kind: "stderr", chunk: bytes("stderr") },
+      { exitCode: 1 },
+    ]);
   });
 
   test("persists copy-mode snapshots in a provider volume across data-plane instances", async () => {
@@ -412,6 +492,28 @@ describe("provider data plane", () => {
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
 
     expect(volumes.map((volume) => volume.ref.store)).toEqual(["data"]);
+  });
+
+  test("includes legacy unlabeled volumes for exact app and store lookups", async () => {
+    const api: DataPlaneApiClient = {
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: JSON.stringify({
+            Volumes: [{ Name: "data" }, { Name: "cache" }],
+          }),
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
+
+    expect(volumes).toEqual([{ ref: { app: AppId.make("app"), store: "data" } }]);
   });
 
   test("fails service copy when the applied plan is unavailable", async () => {
