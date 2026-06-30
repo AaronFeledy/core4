@@ -4,8 +4,8 @@
  * profiler/RemoteSource CLIs later).
  *
  * It is a PURE module on the contracts tier (like `@lando/sdk/probe` and
- * `@lando/sdk/secrets`): not an Effect service tag and not a §4.2 pluggable
- * abstraction. Host-override of network behavior happens one layer down at the
+ * `@lando/sdk/secrets`): not an Effect service tag and not a pluggable plugin
+ * abstraction seam. Host-override of network behavior happens one layer down at the
  * `Downloader`; this helper is fixed so every bundled tool installs identically.
  * It consumes the `Downloader` service (verified bytes) and `node:fs` (placement).
  *

@@ -3,8 +3,7 @@ import { Schema } from "effect";
 /**
  * Manifest/host-resolution failure in the tool-provisioning helper: the active
  * host entry could not be resolved from a `ToolManifest`, or the manifest is
- * otherwise unusable. This is the fail-closed equivalent of the per-plugin
- * "unsupported platform" errors removed by the tool-provisioning consolidation.
+ * otherwise unusable (fail-closed when the host or artifact key is unsupported).
  */
 export class ToolManifestError extends Schema.TaggedError<ToolManifestError>()("ToolManifestError", {
   message: Schema.String,

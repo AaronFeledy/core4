@@ -40,7 +40,7 @@ const expectPassingSpotCheck = async (testPath: string, nameFilter: string): Pro
 
 const longHarness = { timeout: 180_000 };
 
-describe("§17.9 acceptance criteria 10-14 on linux-x64", () => {
+describe("linux-x64 acceptance criteria 10-14", () => {
   test(
     "criterion 10: install.sh verifies GPG trust root, installs binary, runs version, and matches shellenv PATH",
     async () => {
