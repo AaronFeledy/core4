@@ -1025,6 +1025,11 @@ export const runProviderDataPlaneContract = (
           ),
         );
       const store = nextContractRunId();
+      const serviceTarget = {
+        app: TEST_APP_ID,
+        service: TEST_SERVICE_NAME,
+        plan: makeTestAppPlan(ProviderId.make(provider.id)),
+      };
       const volumePayload = sampleBytes(0, 1, 2, 3, 128, 255);
       const mutatedPayload = sampleBytes(255, 128, 3, 2, 1, 0);
       const servicePayload = sampleBytes(9, 8, 7, 6, 5, 4);
@@ -1135,10 +1140,7 @@ export const runProviderDataPlaneContract = (
       );
 
       yield* withTempCopySource(servicePayload, (sourcePath) =>
-        provider.copyToService(
-          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
-          { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true },
-        ),
+        provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),
       ).pipe(Effect.mapError(mapProviderFailure("copyToService succeeds")));
       if (
         provider.capabilities.serviceFileCopy === "native" &&
@@ -1151,10 +1153,7 @@ export const runProviderDataPlaneContract = (
         );
       }
       const copiedServiceBytes = yield* collectByteStream(
-        provider.copyFromService(
-          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
-          { sourcePath: TEST_VOLUME_PATH },
-        ),
+        provider.copyFromService(serviceTarget, { sourcePath: TEST_VOLUME_PATH }),
       ).pipe(Effect.mapError(mapProviderFailure("copyFromService succeeds")));
       yield* requireContract(
         bytesEqual(copiedServiceBytes, servicePayload),
