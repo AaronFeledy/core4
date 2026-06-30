@@ -22,7 +22,7 @@ import type { ReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { type FileHandle, open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { type Context, DateTime, Effect, Layer, Option, type Scope, Stream } from "effect";
+import { type Context, DateTime, Effect, Exit, Layer, Option, type Scope, Stream } from "effect";
 
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
@@ -348,19 +348,27 @@ const makeStream =
       }
 
       const { response } = result.right;
-      yield* events.publish(
-        postEvent({
-          request,
-          origin,
-          outcome: "success",
-          status: response.status,
-          durationMs: Date.now() - startedAt,
-          failureDetail: undefined,
-          redact: events.redact,
-        }),
-      );
+      const publishPost = (outcome: "success" | "failure", failureDetail: string | undefined) =>
+        events.publish(
+          postEvent({
+            request,
+            origin,
+            outcome,
+            status: response.status,
+            durationMs: Date.now() - startedAt,
+            failureDetail,
+            redact: events.redact,
+          }),
+        );
+
       const body = yield* responseBodyStream(request, response);
-      return { status: response.status, headers: headerRecords(response.headers), body };
+      const bodyWithTelemetry = body.pipe(
+        Stream.tapError((error) => publishPost("failure", messageFromCause(error, "body-read-failed"))),
+        Stream.ensuringWith((exit) =>
+          Exit.isSuccess(exit) ? publishPost("success", undefined) : Effect.void,
+        ),
+      );
+      return { status: response.status, headers: headerRecords(response.headers), body: bodyWithTelemetry };
     });
 
 const makeRequest =

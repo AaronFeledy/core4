@@ -320,6 +320,53 @@ describe("HttpClientLive lifecycle events", () => {
     expect(events.every((e) => (e as { onBehalfOf?: string }).onBehalfOf === "downloader")).toBe(true);
   });
 
+  test("post-http-call reports failure when the response body stream errors during read", async () => {
+    const cap = captureEvents();
+    const failBodyFetch = (() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.error(new Error("stream read failed"));
+            },
+          }),
+          { status: 200 },
+        ),
+      )) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://evt.test/body-fail" }).pipe(
+          Effect.provide(makeHttpClientLive(failBodyFetch).pipe(Layer.provide(cap.layer))),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+
+    const posts = cap.events().filter((e) => e._tag === "post-http-call") as ReadonlyArray<{
+      outcome?: string;
+      status?: number;
+      failureDetail?: string;
+    }>;
+    expect(posts.length).toBe(1);
+    expect(posts[0]?.outcome).toBe("failure");
+    expect(posts[0]?.status).toBe(200);
+    expect(posts[0]?.failureDetail).toContain("stream read failed");
+  });
+
+  test("post-http-call success is emitted only after the body stream is wired", async () => {
+    const cap = captureEvents();
+    await Effect.runPromise(
+      Effect.scoped(
+        streamAndCollect({ url: "https://evt.test/ok" }).pipe(
+          Effect.provide(makeHttpClientLive(serveOnce(new Uint8Array([9]))).pipe(Layer.provide(cap.layer))),
+        ),
+      ),
+    );
+    const post = cap.events().find((e) => e._tag === "post-http-call") as { outcome?: string } | undefined;
+    expect(post?.outcome).toBe("success");
+  });
+
   test("post-http-call reports a failure outcome without leaking the URL", async () => {
     const secret = "FAILSECRET-xyz";
     const url = `https://user:${secret}@evt.test/missing?token=${secret}`;
