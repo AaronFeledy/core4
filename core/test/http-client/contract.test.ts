@@ -81,12 +81,14 @@ describe("HttpClient contract suite", () => {
       }
       if (url === "https://contract.test/timeout-hang.bin") {
         timeoutSignal = requestInit.signal;
-        return new Promise<Response>((_resolve, reject) => {
-          requestInit.signal?.addEventListener("abort", () => {
-            timeoutAborted = true;
-            reject(new Error("aborted"));
-          });
+        const body = new ReadableStream<Uint8Array>({
+          start: (_controller) => {
+            requestInit.signal?.addEventListener("abort", () => {
+              timeoutAborted = true;
+            });
+          },
         });
+        return Promise.resolve(new Response(body, { status: 200 }));
       }
       lastInit = {
         url,

@@ -43,7 +43,7 @@ import {
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
 import { HttpClient, type HttpClientShape } from "./service.ts";
-import { applyHttpTimeout } from "./timeout.ts";
+import { applyHttpStreamTimeout, applyHttpTimeout } from "./timeout.ts";
 
 type HttpHeaderRecord = HttpResponse["headers"][number];
 
@@ -117,13 +117,24 @@ const requestHeadersInit = (headers: HttpRequest["headers"]): Record<string, str
     ? undefined
     : Object.fromEntries(headers.map((header) => [header.name, header.value]));
 
-async function* readWebBody(reader: WebBodyReader): AsyncIterable<Uint8Array> {
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) return;
-    if (chunk.value !== undefined) yield chunk.value;
-  }
-}
+const readWebBodyChunk = (
+  request: HttpRequest,
+  response: Response,
+  reader: WebBodyReader,
+): Effect.Effect<Uint8Array, Option.Option<HttpRequestError>> =>
+  applyHttpTimeout(
+    request,
+    Effect.tryPromise({
+      try: () => reader.read(),
+      catch: (cause) =>
+        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
+    }),
+  ).pipe(
+    Effect.mapError(Option.some),
+    Effect.flatMap((chunk) =>
+      chunk.done || chunk.value === undefined ? Effect.fail(Option.none()) : Effect.succeed(chunk.value),
+    ),
+  );
 
 const releaseWebReader = (reader: WebBodyReader) =>
   Effect.promise(async () => {
@@ -271,10 +282,7 @@ const responseBodyStream = (
       Effect.sync(() => responseBody.getReader() as unknown as WebBodyReader),
       releaseWebReader,
     ),
-    (reader) =>
-      Stream.fromAsyncIterable(readWebBody(reader), (cause) =>
-        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
-      ),
+    (reader) => Stream.repeatEffectOption(readWebBodyChunk(request, response, reader)),
   );
 };
 
@@ -325,8 +333,11 @@ const streamFile = (
     return {
       status: 200,
       headers: [],
-      body: Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
-        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+      body: applyHttpStreamTimeout(
+        request,
+        Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
+          requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+        ),
       ),
     };
   });
@@ -384,6 +395,12 @@ const makeStream =
 
       const body = yield* responseBodyStream(request, response);
       const bodyWithTelemetry = body.pipe(
+        (stream) =>
+          applyHttpStreamTimeout(
+            request,
+            stream,
+            request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
+          ),
         Stream.ensuringWith((exit) =>
           Exit.isSuccess(exit)
             ? publishPost("success", undefined)
