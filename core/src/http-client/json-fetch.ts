@@ -10,7 +10,7 @@
  * status semantics (404 -> undefined, non-2xx -> throw).
  */
 
-import { Duration, Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
@@ -27,7 +27,7 @@ export interface HttpJsonOptions {
   readonly headers?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
   /** Redirect mode; defaults to following redirects like the prior fetch calls. */
   readonly redirect?: "follow" | "error" | "manual";
-  /** Optional overall timeout; mirrors call sites that used `AbortSignal.timeout`. */
+  /** Optional overall deadline, enforced by `HttpClientLive` via `HttpRequest.timeoutMs`. */
   readonly timeoutMs?: number;
 }
 
@@ -57,14 +57,11 @@ export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}):
           url,
           redirect: options.redirect ?? "follow",
           ...(options.headers === undefined ? {} : { headers: options.headers }),
+          ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
         });
         const chunks = yield* Stream.runCollect(response.body);
         return { status: response.status, bytes: collectBytes(Array.from(chunks)) };
       }).pipe(
-        (effect) =>
-          options.timeoutMs === undefined
-            ? effect
-            : effect.pipe(Effect.timeout(Duration.millis(options.timeoutMs))),
         Effect.provide(
           Layer.mergeAll(HttpClientLive.pipe(Layer.provide(EventServiceLive)), ConfigServiceLive),
         ),

@@ -38,6 +38,14 @@ describe("HttpClient contract suite", () => {
         withOffline: (effect) => handle.withOffline(effect),
         connectCount: () => Effect.sync(() => handle.connectCount()),
       },
+      timeout: {
+        run: (timeoutMs) => {
+          const url = "https://contract.test/hang.bin";
+          handle.serveHang(url);
+          return handle.service.request({ url, timeoutMs });
+        },
+        reaped: () => Effect.sync(() => handle.pendingHangs() === 0),
+      },
     };
     const result = await run(runHttpClientContract(harness));
     expect(result).toBeUndefined();
@@ -51,6 +59,8 @@ describe("HttpClient contract suite", () => {
     let offline = false;
     let interruptSignal: AbortSignal | undefined;
     let interruptAborted = false;
+    let timeoutSignal: AbortSignal | undefined;
+    let timeoutAborted = false;
 
     const fetchImpl = ((input: string | URL | Request, init?: unknown) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -65,6 +75,15 @@ describe("HttpClient contract suite", () => {
         return new Promise<Response>((_resolve, reject) => {
           requestInit.signal?.addEventListener("abort", () => {
             interruptAborted = true;
+            reject(new Error("aborted"));
+          });
+        });
+      }
+      if (url === "https://contract.test/timeout-hang.bin") {
+        timeoutSignal = requestInit.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          requestInit.signal?.addEventListener("abort", () => {
+            timeoutAborted = true;
             reject(new Error("aborted"));
           });
         });
@@ -131,6 +150,14 @@ describe("HttpClient contract suite", () => {
             Stream.runDrain(response.body),
           ),
         finalized: () => Effect.sync(() => interruptSignal?.aborted === true && interruptAborted),
+      },
+      timeout: {
+        run: (timeoutMs) =>
+          Effect.flatMap(
+            service.stream({ url: "https://contract.test/timeout-hang.bin", timeoutMs }),
+            (response) => Stream.runDrain(response.body),
+          ),
+        reaped: () => Effect.sync(() => timeoutSignal?.aborted === true && timeoutAborted),
       },
     };
     const result = await run(runHttpClientContract(harness));

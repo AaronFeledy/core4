@@ -43,6 +43,7 @@ import {
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
 import { HttpClient, type HttpClientShape } from "./service.ts";
+import { applyHttpTimeout } from "./timeout.ts";
 
 type HttpHeaderRecord = HttpResponse["headers"][number];
 
@@ -351,7 +352,7 @@ const makeStream =
       const startedAt = Date.now();
       yield* events.publish(preEvent(request, origin, events.redact));
 
-      const result = yield* Effect.either(openConnection(fetchImpl, request, url));
+      const result = yield* Effect.either(applyHttpTimeout(request, openConnection(fetchImpl, request, url)));
       if (result._tag === "Left") {
         yield* events.publish(
           postEvent({
