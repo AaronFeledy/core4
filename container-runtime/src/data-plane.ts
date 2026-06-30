@@ -388,6 +388,7 @@ const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: Ephem
   const binds = dataStoreMounts(spec).map(
     (mount) => `${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`,
   );
+  const attachStdin = spec.stdinStream !== undefined;
   return request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -396,9 +397,9 @@ const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: Ephem
       Cmd: spec.command,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       HostConfig: { Binds: binds },
-      OpenStdin: spec.stdinStream !== undefined || spec.stdin === "inherit",
-      AttachStdin: spec.stdinStream !== undefined || spec.stdin === "inherit",
-      StdinOnce: spec.stdinStream !== undefined,
+      OpenStdin: attachStdin,
+      AttachStdin: attachStdin,
+      StdinOnce: attachStdin,
       AttachStdout: spec.captureStdout === true,
     },
   }).pipe(

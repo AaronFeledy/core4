@@ -209,6 +209,45 @@ describe("provider data plane", () => {
     expect(attachAborted).toBe(true);
   });
 
+  test("does not leave ephemeral stdin open without a forwarded stream", async () => {
+    let createBody: { OpenStdin?: boolean; AttachStdin?: boolean; StdinOnce?: boolean } | undefined;
+    let attachCalled = false;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path.startsWith("/containers/create?name=")) createBody = request.body as never;
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => {
+        attachCalled = true;
+        return Stream.empty;
+      },
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "alpine:3.20",
+          command: ["cat"],
+          stdin: "inherit",
+          remove: true,
+        }),
+      ),
+    );
+
+    expect(createBody).toMatchObject({ OpenStdin: false, AttachStdin: false, StdinOnce: false });
+    expect(attachCalled).toBe(false);
+  });
+
   test("decodes Docker multiplexed stdout frames with big-endian lengths", async () => {
     const api: DataPlaneApiClient = {
       request: (request) =>
