@@ -132,16 +132,24 @@ const releaseWebReader = (reader: WebBodyReader) =>
     }
   });
 
-const loadCaPems = (paths: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>> =>
+const loadCaPems = (paths: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, HttpRequestError> =>
   Effect.all(
     paths.map((path) =>
-      Effect.tryPromise(() => readFile(path, "utf-8")).pipe(Effect.catchAll(() => Effect.succeed(undefined))),
+      Effect.tryPromise({
+        try: () => readFile(path, "utf-8"),
+        catch: (cause) =>
+          new HttpRequestError({
+            message: `Failed to read CA certificate: ${path}`,
+            urlOrigin: "unknown",
+            cause,
+          }),
+      }),
     ),
     { concurrency: "unbounded" },
-  ).pipe(Effect.map((pems) => pems.filter((pem): pem is string => pem !== undefined)));
+  );
 
 /** Resolve trust for a request: injected `NetworkTrust` wins, else config+env. */
-const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined> =>
+const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpRequestError> =>
   Effect.gen(function* () {
     const injected = yield* Effect.serviceOption(NetworkTrust);
     if (Option.isSome(injected)) return injected.value;
