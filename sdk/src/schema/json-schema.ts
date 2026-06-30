@@ -989,6 +989,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "HttpRequest.callerId",
   "HttpRequest.headers",
   "HttpRequest.method",
+  "HttpRequest.offline",
   "HttpRequest.onBehalfOf",
   "HttpRequest.redactionTokens",
   "HttpRequest.redirect",

@@ -125,6 +125,21 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
         return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
       }
 
+      if (request.offline === true) {
+        captured.push(
+          PostHttpCallEvent.make({
+            eventName: "post-http-call",
+            urlOrigin: origin,
+            outcome: "failure",
+            durationMs: 0,
+            failureDetail: "offline",
+            ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
+            timestamp: DateTime.unsafeMake(Date.now()),
+          }),
+        );
+        return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
+      }
+
       recordInit(request.url);
       const bytes = sources.get(request.url);
       const status = bytes === undefined ? 404 : 200;

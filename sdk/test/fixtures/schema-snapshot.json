@@ -12614,6 +12614,9 @@
         "method": {
           "type": "string"
         },
+        "offline": {
+          "type": "boolean"
+        },
         "onBehalfOf": {
           "type": "string"
         },

@@ -94,6 +94,12 @@ const unsupportedScheme = (url: string): HttpRequestError =>
 const fileSourceNotPermitted = (url: string): HttpRequestError =>
   new HttpRequestError({ message: "file:// source not permitted", urlOrigin: urlOrigin(url) });
 
+const offlineRequest = (url: string): HttpRequestError =>
+  new HttpRequestError({
+    message: "offline-only request cannot open a connection",
+    urlOrigin: urlOrigin(url),
+  });
+
 const parseUrl = (url: string): URL | undefined => {
   try {
     return new URL(url);
@@ -331,6 +337,7 @@ const makeStream =
       if (url.protocol !== "http:" && url.protocol !== "https:") {
         return yield* Effect.fail(unsupportedScheme(request.url));
       }
+      if (request.offline === true) return yield* Effect.fail(offlineRequest(request.url));
 
       const events = makeHttpCallEvents(eventService, request);
       const origin = urlOrigin(request.url);

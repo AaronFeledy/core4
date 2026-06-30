@@ -6795,7 +6795,7 @@ export const runHttpClientContract = <TrustObject>(
       yield* harness.serveSource(offlineUrl, payload);
       const before = yield* offline.connectCount();
       const offlineResult = yield* Effect.either(
-        offline.withOffline(Effect.scoped(service.request(httpRequest({ url: offlineUrl })))),
+        Effect.scoped(service.request(httpRequest({ url: offlineUrl, offline: true }))),
       );
       const after = yield* offline.connectCount();
       yield* requireHttpClientContract(
@@ -6807,6 +6807,15 @@ export const runHttpClientContract = <TrustObject>(
         after === before,
         "an offline-only request fails before opening a connection",
         { before, after },
+      );
+
+      const unavailableResult = yield* Effect.either(
+        offline.withOffline(Effect.scoped(service.request(httpRequest({ url: offlineUrl })))),
+      );
+      yield* requireHttpClientContract(
+        Either.isLeft(unavailableResult),
+        "a transport-level offline failure is surfaced as a tagged error",
+        unavailableResult,
       );
     }
 
