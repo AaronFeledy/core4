@@ -256,14 +256,35 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const body = container?.body as
             | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
             | undefined;
-          const bind = body?.HostConfig?.Binds?.[0];
-          const volume = bind?.split(":")[0];
+          const binds = body?.HostConfig?.Binds ?? [];
+          const volume = binds[0]?.split(":")[0];
+          const snapshotVolume = binds[1]?.split(":")[0];
           const command = body?.Cmd?.join(" ");
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload") {
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           }
           if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .") {
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          }
+          const snapshotWrite = command?.match(/tar -C \/lando-data -cf \/lando-snapshots\/([^ ]+) \./u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotWrite !== undefined
+          ) {
+            snapshots.set(`${snapshotVolume}/${snapshotWrite}`, volumes.get(volume) ?? new Uint8Array());
+          }
+          const snapshotRead = command?.match(/tar -C \/lando-data -xf \/lando-snapshots\/([^ ]+)/u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotRead !== undefined
+          ) {
+            const snapshot = snapshots.get(`${snapshotVolume}/${snapshotRead}`);
+            if (snapshot === undefined) container.exitCode = 1;
+            else volumes.set(volume, snapshot);
           }
           return { status: 204, body: "" };
         }
@@ -677,8 +698,9 @@ describe("provider-docker RuntimeProvider contract", () => {
             fake.calls.some(
               (call) =>
                 call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "") ===
-                  "tar -C /lando-data -cf - .",
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").startsWith(
+                  "sh -c mkdir -p /lando-snapshots && tar -C /lando-data -cf /lando-snapshots/",
+                ),
             ),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
@@ -1000,7 +1022,12 @@ describe("provider-docker RuntimeProvider contract", () => {
     const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
     expect(volumeCreate?.body).toEqual({
       Name: "lando-cache-npm",
-      Labels: { "dev.lando.storage-kind": "cache" },
+      Labels: {
+        "dev.lando.app": appId,
+        "dev.lando.scope": "global",
+        "dev.lando.storage-kind": "cache",
+        "dev.lando.store": "lando-cache-npm",
+      },
     });
     const containerCreate = fake.calls.find(
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),

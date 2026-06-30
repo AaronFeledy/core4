@@ -733,16 +733,20 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
-const volumeLabels = (store: AppPlan["stores"][number]): Readonly<Record<string, string>> | undefined =>
-  store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
+  "dev.lando.app": plan.id,
+  "dev.lando.store": store.name,
+  "dev.lando.scope": store.scope,
+  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+});
 
-const ensureVolume = (api: DockerApiClient, store: AppPlan["stores"][number]) =>
+const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) =>
   request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      ...(volumeLabels(store) === undefined ? {} : { Labels: volumeLabels(store) }),
+      Labels: volumeLabels(plan, store),
     },
   }).pipe(
     Effect.flatMap((response) =>
@@ -891,7 +895,7 @@ const rollbackPartialApply = (
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
-    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, store), { discard: true });
+    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: string[] = [];
     let changed = false;
