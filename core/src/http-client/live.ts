@@ -158,7 +158,15 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
     if (Option.isNone(config)) return undefined;
 
     const globalConfig = yield* config.value.load.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    const plan = resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network });
+    const plan = yield* Effect.try({
+      try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
+      catch: (cause) =>
+        new HttpRequestError({
+          message: messageFromCause(cause, "Failed to resolve outbound network trust"),
+          urlOrigin: "unknown",
+          cause,
+        }),
+    });
     const caPems = yield* loadCaPems(plan.caCertPaths);
     return { proxy: plan.proxy, caPems };
   });

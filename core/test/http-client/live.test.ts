@@ -311,6 +311,44 @@ describe("HttpClientLive network trust", () => {
     expect(error.message).toContain(missing);
     expect(fetchCalled).toBe(false);
   });
+
+  test("fails before fetch when LANDO_NETWORK_CA_CERTS is invalid JSON", async () => {
+    const prevCaCerts = process.env.LANDO_NETWORK_CA_CERTS;
+    process.env.LANDO_NETWORK_CA_CERTS = "not-valid-json";
+
+    const config: GlobalConfig = {
+      defaultProviderId: ProviderId.make("lando"),
+      telemetry: { enabled: false },
+    };
+    const configLayer = Layer.succeed(ConfigService, {
+      load: Effect.succeed(config),
+      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+    } as never);
+
+    let fetchCalled = false;
+    const fetchImpl = (() => {
+      fetchCalled = true;
+      return Promise.resolve(new Response(new Uint8Array(), { status: 200 }));
+    }) as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) => client.stream({ url: "https://example.com/artifact" })).pipe(
+          Effect.provide(Layer.mergeAll(makeHttpClientLive(fetchImpl), configLayer)),
+        ),
+      ),
+    );
+
+    try {
+      const error = failureOf(exit) as { _tag: string; message?: string };
+      expect(error._tag).toBe("HttpRequestError");
+      expect(error.message).toContain("LANDO_NETWORK_CA_CERTS");
+      expect(fetchCalled).toBe(false);
+    } finally {
+      if (prevCaCerts === undefined) process.env.LANDO_NETWORK_CA_CERTS = undefined;
+      else process.env.LANDO_NETWORK_CA_CERTS = prevCaCerts;
+    }
+  });
 });
 
 describe("HttpClientLive lifecycle events", () => {
