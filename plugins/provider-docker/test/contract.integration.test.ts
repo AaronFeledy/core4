@@ -104,6 +104,7 @@ const makePlan = (service = makeService()): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 });
@@ -570,10 +571,11 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   networks: [],
   stores: opts.includeStores
     ? [
-        { name: "myapp_db_data", scope: "app" as const },
+        { name: "myapp_db_data", scope: "app" as const, kind: "data" as const },
         { name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" },
       ]
     : [],
+  fileSync: [],
   metadata,
   extensions: {},
 });
@@ -603,6 +605,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     try {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
+      if (client.stream === undefined) throw new Error("Docker client stream transport is unavailable");
       const body = await Effect.runPromise(
         client.stream({ method: "GET", path: "/logs" }).pipe(
           Stream.runCollect,
@@ -716,13 +719,15 @@ describe("provider-docker RuntimeProvider contract", () => {
       makeRuntimeProvider({ platform: "linux", dockerApi: makeDataPlaneFakeApi({ failCopyTo: true }).api }),
     );
     const exit = await Effect.runPromiseExit(
-      provider.copyToService(
-        { app: appId, service: serviceName },
-        {
-          sourcePath: AbsolutePath.make(import.meta.path),
-          targetPath: PortablePath.make("/tmp/payload"),
-          overwrite: true,
-        },
+      Effect.scoped(
+        provider.copyToService(
+          { app: appId, service: serviceName },
+          {
+            sourcePath: AbsolutePath.make(import.meta.path),
+            targetPath: PortablePath.make("/tmp/payload"),
+            overwrite: true,
+          },
+        ),
       ),
     );
 
@@ -833,7 +838,9 @@ describe("provider-docker RuntimeProvider contract", () => {
     const stdinStream = (async function* () {
       yield textEncoder.encode("typed\n");
     })();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
         return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
@@ -881,7 +888,9 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("interrupts provider exec streams when the abort signal fires", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) return Stream.never;
       return Stream.empty;
@@ -916,7 +925,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes raw Docker log bytes", async () => {
     const fake = makeFakeApi();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.includes("/logs?")) {
         return Stream.fromIterable([textEncoder.encode("2026-05-17T12:00:00.000Z raw ready\n")]);
@@ -949,7 +960,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes split framed Docker log bytes", async () => {
     const fake = makeFakeApi();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.includes("/logs?")) {
         const frame = attachFrame(1, "2026-05-17T12:00:00.000Z split ready\n");

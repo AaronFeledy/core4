@@ -94,9 +94,10 @@ const plan: AppPlan = {
   routes: [],
   networks: [{ name: "myapp_default", shared: false, driver: "bridge" }],
   stores: [
-    { name: "myapp_database_data", scope: "service" },
+    { name: "myapp_database_data", scope: "service", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
   ],
+  fileSync: [],
   metadata,
   extensions: {},
 };
