@@ -44,15 +44,27 @@ export const mutagenAgentInstallPath = (binDir: string, guest: string): string =
 
 export const mutagenInstalledVersionPath = (binDir: string): string => join(binDir, `.${TOOL_ID}.version`);
 
+const legacyMutagenInstalledVersionPath = (binDir: string): string =>
+  join(binDir, `.${TOOL_ID}-installed-version`);
+
 const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
 
-const readInstalledMutagenVersion = async (binDir: string): Promise<string | undefined> => {
+const readInstalledMutagenVersionFile = async (path: string): Promise<string | undefined> => {
   try {
-    const content = await readFile(mutagenInstalledVersionPath(binDir), "utf-8");
+    const content = await readFile(path, "utf-8");
     return content.trim() || undefined;
   } catch {
     return undefined;
   }
+};
+
+const readInstalledMutagenVersion = async (binDir: string): Promise<string | undefined> => {
+  for (const path of [mutagenInstalledVersionPath(binDir), legacyMutagenInstalledVersionPath(binDir)]) {
+    const version = await readInstalledMutagenVersionFile(path);
+    if (version !== undefined) return version;
+  }
+
+  return undefined;
 };
 
 const fileMatchesRecordedFingerprint = async (path: string): Promise<boolean> => {

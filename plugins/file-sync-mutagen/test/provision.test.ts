@@ -24,7 +24,7 @@ import {
   readInstalledMutagenStatus,
 } from "../src/provision.ts";
 
-const text = (value: string): Uint8Array => new TextEncoder().encode(value);
+const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 
 const HOST_BIN = text("#!/bin/sh\necho mutagen host\n");
 const HOST_EXE = text("MZ-mutagen-host-exe");
@@ -135,6 +135,10 @@ const provision = (input: {
   readonly offline?: boolean;
 }) => Effect.scoped(provisionMutagen(input));
 
+const readBytes = async (path: string): Promise<Array<number>> => Array.from(await readFile(path));
+
+const bytes = (value: Uint8Array): Array<number> => Array.from(value);
+
 const writeFingerprint = async (path: string, bytes: Uint8Array): Promise<void> => {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, bytes);
@@ -200,15 +204,15 @@ describe("provisionMutagen", () => {
 
       expect(exit._tag).toBe("Success");
       expect(dl.downloadCalls()).toBe(1);
-      expect(new Uint8Array(await readFile(join(dirs.binDir, "mutagen")))).toEqual(HOST_BIN);
-      expect(new Uint8Array(await readFile(mutagenAgentInstallPath(dirs.binDir, "linux-amd64")))).toEqual(
-        AGENT_AMD64,
+      expect(await readBytes(join(dirs.binDir, "mutagen"))).toEqual(bytes(HOST_BIN));
+      expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"))).toEqual(
+        bytes(AGENT_AMD64),
       );
-      expect(new Uint8Array(await readFile(mutagenAgentInstallPath(dirs.binDir, "linux-arm64")))).toEqual(
-        AGENT_ARM64,
+      expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-arm64"))).toEqual(
+        bytes(AGENT_ARM64),
       );
-      expect(new Uint8Array(await readFile(mutagenAgentInstallPath(dirs.binDir, "linux-armv7")))).toEqual(
-        AGENT_ARMV7,
+      expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-armv7"))).toEqual(
+        bytes(AGENT_ARMV7),
       );
     } finally {
       patch.restore();
@@ -233,9 +237,9 @@ describe("provisionMutagen", () => {
 
       expect(exit._tag).toBe("Success");
       expect(dl.downloadCalls()).toBe(1);
-      expect(new Uint8Array(await readFile(join(dirs.binDir, "mutagen.exe")))).toEqual(HOST_EXE);
-      expect(new Uint8Array(await readFile(mutagenAgentInstallPath(dirs.binDir, "linux-amd64")))).toEqual(
-        AGENT_AMD64,
+      expect(await readBytes(join(dirs.binDir, "mutagen.exe"))).toEqual(bytes(HOST_EXE));
+      expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"))).toEqual(
+        bytes(AGENT_AMD64),
       );
     } finally {
       patch.restore();
@@ -310,7 +314,7 @@ describe("provisionMutagen", () => {
       );
 
       expect(forced._tag).toBe("Success");
-      expect(new Uint8Array(await readFile(hostPath))).toEqual(HOST_BIN);
+      expect(await readBytes(hostPath)).toEqual(bytes(HOST_BIN));
     } finally {
       patch.restore();
       await dirs.cleanup();
@@ -384,6 +388,10 @@ describe("readInstalledMutagenStatus", () => {
       const missingMarker = await readInstalledMutagenStatus(dirs.binDir, "linux", "x64");
       expect(missingMarker.installedVersion).toBeUndefined();
       expect(missingMarker.isCurrent).toBe(false);
+
+      await writeFile(join(dirs.binDir, ".mutagen-installed-version"), `${MUTAGEN_TOOL_VERSION}\n`, "utf-8");
+      const legacyMarker = await readInstalledMutagenStatus(dirs.binDir, "linux", "x64");
+      expect(legacyMarker).toEqual({ installedVersion: MUTAGEN_TOOL_VERSION, isCurrent: true });
 
       await writeFile(mutagenInstalledVersionPath(dirs.binDir), `${MUTAGEN_TOOL_VERSION}\n`, "utf-8");
       await rm(`${mutagenAgentInstallPath(dirs.binDir, "linux-arm64")}.sha256`, { force: true });
