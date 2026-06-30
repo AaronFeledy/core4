@@ -134,7 +134,10 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
           return new Uint8Array(bytes);
         }).pipe(
           Effect.provide(
-            DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientLive, EventServiceLive))),
+            Layer.mergeAll(
+              DownloaderLive.pipe(Layer.provide(HttpClientLive.pipe(Layer.provide(EventServiceLive)))),
+              ConfigServiceLive,
+            ),
           ),
         ),
       ),

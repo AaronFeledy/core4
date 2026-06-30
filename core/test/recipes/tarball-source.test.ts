@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,6 +79,17 @@ const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetc
 const sha256 = (bytes: Uint8Array): string =>
   require("node:crypto").createHash("sha256").update(bytes).digest("hex");
 
+const withEnv = async (name: string, value: string, run: () => Promise<void>): Promise<void> => {
+  const previous = process.env[name];
+  process.env[name] = value;
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) delete process.env[name];
+    else process.env[name] = previous;
+  }
+};
+
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
@@ -101,11 +113,20 @@ describe("resolveTarballRecipeSource", () => {
 
       expect(calls).toEqual(["https://example.test/recipe.tar.gz"]);
       expect(result.sha256).toBe(sha256(bytes));
-      expect(result.root).toBe(join(userDataRoot, "recipe-cache", "tarball", result.sha256));
-      expect(result.source).toBe(join(result.root, "recipe.yml"));
-      expect(await Bun.file(result.source).exists()).toBe(true);
+      const root = result.root;
+      if (root === undefined) throw new Error("expected tarball recipe root");
+      expect(root).toBe(join(userDataRoot, "recipe-cache", "tarball", result.sha256));
+      const source = result.source;
+      if (source === undefined) throw new Error("expected tarball recipe source path");
+      const manifestYaml =
+        result.manifestYaml ??
+        (() => {
+          throw new Error("expected tarball recipe manifest YAML");
+        })();
+      expect(source).toBe(join(root, "recipe.yml"));
+      expect(await Bun.file(source).exists()).toBe(true);
       const manifest = await Effect.runPromise(
-        Effect.flatMap(RecipeManifestService, (svc) => svc.parse(result.source, result.manifestYaml)).pipe(
+        Effect.flatMap(RecipeManifestService, (svc) => svc.parse(source, manifestYaml)).pipe(
           Effect.provide(RecipeManifestServiceLive),
         ),
       );
@@ -386,7 +407,12 @@ describe("initApp tarball source boundary", () => {
           return true;
         },
         select: async (spec) => {
-          const value = spec.default ?? spec.choices[0]?.value;
+          const firstChoice = spec.choices[0];
+          const fallback =
+            typeof firstChoice === "object" && firstChoice !== null && "value" in firstChoice
+              ? firstChoice.value
+              : firstChoice;
+          const value = spec.default ?? fallback;
           if (value === undefined) throw new Error("select test prompt has no value");
           return value;
         },
@@ -443,6 +469,22 @@ describe("initApp tarball source boundary", () => {
   });
 
   describe("defaultTarballRecipeFetcher", () => {
+    test("applies ConfigService-backed network trust to archive downloads", async () => {
+      await withTempRoot(async (dir) => {
+        const missingCa = join(dir, "missing-ca.pem");
+        await withEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([missingCa]), async () => {
+          let caught: unknown;
+          try {
+            await defaultTarballRecipeFetcher.fetch("https://example.test/archive.tgz");
+          } catch (error) {
+            caught = error;
+          }
+          expect(caught).toBeInstanceOf(Error);
+          expect((caught as Error).message).toContain("Failed to read CA certificate");
+        });
+      });
+    });
+
     test("rejects non-https sources by routing through the Downloader scheme gate", async () => {
       const server = Bun.serve({
         fetch: () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
@@ -450,9 +492,13 @@ describe("initApp tarball source boundary", () => {
         port: 0,
       });
       try {
-        await expect(
-          defaultTarballRecipeFetcher.fetch(`http://127.0.0.1:${server.port}/archive.tgz`),
-        ).rejects.toThrow();
+        let caught: unknown;
+        try {
+          await defaultTarballRecipeFetcher.fetch(`http://127.0.0.1:${server.port}/archive.tgz`);
+        } catch (error) {
+          caught = error;
+        }
+        expect(caught).toBeInstanceOf(Error);
       } finally {
         server.stop(true);
       }
