@@ -478,6 +478,19 @@ export const setupSpec: LandoCommandSpec<
           remediation: "Run `lando start` to finish deferred file-sync setup for accelerated mounts.",
         });
       } else if (provider.capabilities.bindMountPerformance === "slow") {
+        const recordInstalledFileSync = (evidence: string) =>
+          Effect.sync(() => {
+            fileSyncStatus = "installed";
+          }).pipe(
+            Effect.zipRight(
+              recordReadiness({
+                id: "file-sync",
+                status: "installed",
+                evidence,
+              }),
+            ),
+          );
+
         const provisionFileSync = (evidence: string) => {
           if (userDataRoot === undefined) {
             fileSyncStatus = "unavailable";
@@ -498,23 +511,17 @@ export const setupSpec: LandoCommandSpec<
           ).pipe(
             Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
             Effect.tapError((cause) => recordFailure("file-sync", cause)),
-            Effect.tap(() => {
-              fileSyncStatus = "installed";
-              return recordReadiness({
-                id: "file-sync",
-                status: "installed",
-                evidence,
-              });
-            }),
+            Effect.tap(() => recordInstalledFileSync(evidence)),
           );
         };
 
         const fileSync = yield* Effect.serviceOption(FileSyncEngine);
         if (fileSync._tag === "Some") {
           yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
+            Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
             Effect.tapError((cause) => recordFailure("file-sync", cause)),
+            Effect.tap(() => recordInstalledFileSync("File-sync setup installed Mutagen acceleration.")),
           );
-          yield* provisionFileSync("File-sync setup installed Mutagen acceleration.");
         } else {
           yield* provisionFileSync("File-sync setup downloaded Mutagen acceleration.");
         }

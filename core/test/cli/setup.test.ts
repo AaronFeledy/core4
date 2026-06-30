@@ -1050,6 +1050,64 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("runs registered file-sync setup once without falling through to direct Mutagen provisioning", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-engine-"));
+    try {
+      const calls: string[] = [];
+      const observedNetworkTrustTags: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        setup: () =>
+          Effect.sync(() => {
+            calls.push("provider");
+          }),
+      };
+      const fileSync = {
+        ...TestFileSyncEngine,
+        setup: () =>
+          Effect.serviceOption(NetworkTrust).pipe(
+            Effect.tap((trust) =>
+              Effect.sync(() => {
+                observedNetworkTrustTags.push(trust._tag);
+                calls.push("file-sync");
+              }),
+            ),
+            Effect.asVoid,
+          ) as Effect.Effect<void, never, never>,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      expect(calls).toEqual(["provider", "file-sync"]);
+      expect(observedNetworkTrustTags).toEqual(["Some"]);
+      expect(setupSpec.render?.(result)).toContain("file-sync: installed");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("loads configured and environment CA certificate files before provider setup", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-"));
     const configCert = join(tempRoot, "config.pem");
