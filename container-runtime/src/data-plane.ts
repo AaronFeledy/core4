@@ -644,7 +644,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         const command =
           spec.overwrite !== false
             ? "find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
-            : "cd /snapshot && tar -cf - . | tar -C /lando-data -k -xf -";
+            : "test -d /snapshot";
         return runBytes(options, {
           image: nativeSnapshotImage(spec.snapshot.id),
           command: ["sh", "-c", command],
@@ -676,7 +676,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const restoreCommand =
         spec.overwrite !== false
           ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath}`
-          : `test -f ${snapshotPath} && tar -C ${copyModeMountPath} -k -xf ${snapshotPath}`;
+          : `test -f ${snapshotPath}`;
       return runBytes(options, {
         image: copyModeHelperImage,
         command: ["sh", "-c", restoreCommand],

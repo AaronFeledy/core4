@@ -87,7 +87,7 @@ const makeCopySnapshotApi = () => {
             } else if (command.includes("tar -C /lando-data -xf /lando-snapshots/snap.tar")) {
               const snapshot = snapshotFiles.get(`${snapshotStore}/snap.tar`);
               if (snapshot === undefined) container.exitCode = 1;
-              else if (!command.includes(" -k ") || !volumes.has(dataStore)) volumes.set(dataStore, snapshot);
+              else volumes.set(dataStore, snapshot);
             }
           }
           return { status: 204, body: "" };
