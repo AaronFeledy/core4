@@ -88,4 +88,13 @@ tags: [beta, docs, providers, setup, selection]
       />
     </Step>
   </Scenario>
+
+  <Scenario id="provider-data-plane-capabilities" render={false} reason="Provider data-plane behavior is contract-tested; this guide keeps the provider capability matrix user-visible without requiring a live runtime">
+    <Step name="data-plane-capabilities">
+      <Variable name="landoSnapshot" value="native" display="provider-lando advertises native volume snapshots through the managed runtime data plane" />
+      <Variable name="dockerPodmanSnapshot" value="copy" display="provider-docker and provider-podman advertise copy-mode volume snapshots over their Docker-compatible APIs" />
+      <Variable name="serviceCopy" value="native" display="All bundled providers advertise native service file copy for host↔container byte movement" />
+      <Variable name="artifactImportExport" value="enabled" display="All bundled providers advertise image artifact import and export when their runtime API is available" />
+    </Step>
+  </Scenario>
 </Guide>
