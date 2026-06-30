@@ -161,12 +161,25 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
           const container = containers.get(name);
           const body = container?.body as
-            | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+            | { Cmd?: ReadonlyArray<string>; Image?: string; HostConfig?: { Binds?: ReadonlyArray<string> } }
             | undefined;
           const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
           const command = body?.Cmd?.join(" ");
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            command === "sh -c rm -rf /snapshot && mkdir -p /snapshot && cp -a /lando-data/. /snapshot/"
+          )
+            container.stdout = volumes.get(volume) ?? new Uint8Array();
+          if (
+            volume !== undefined &&
+            body?.Image?.startsWith("localhost/lando-volume-snapshot:") === true &&
+            command ===
+              "sh -c find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
+          )
+            volumes.set(volume, snapshots.get(body.Image) ?? new Uint8Array());
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
@@ -179,28 +192,16 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           request.method === "DELETE"
         )
           return { status: 204, body: "" };
-        if (
-          request.path.startsWith("/libpod/volumes/") &&
-          request.path.endsWith("/snapshot") &&
-          request.method === "POST"
-        ) {
-          const name = decodeURIComponent(request.path.slice("/libpod/volumes/".length, -"/snapshot".length));
+        if (request.path.startsWith("/commit?") && request.method === "POST") {
           snapshotCount += 1;
-          const id = `native:${snapshotCount}`;
-          snapshots.set(id, volumes.get(name) ?? new Uint8Array());
-          return { status: 201, body: JSON.stringify({ id }) };
-        }
-        if (
-          request.path.startsWith("/libpod/volumes/") &&
-          request.path.includes("/restore?") &&
-          request.method === "POST"
-        ) {
-          const name = decodeURIComponent(
-            request.path.slice("/libpod/volumes/".length, request.path.indexOf("/restore?")),
-          );
           const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
-          volumes.set(name, snapshots.get(params.get("snapshot") ?? "") ?? new Uint8Array());
-          return { status: 200, body: "{}" };
+          const container = containers.get(params.get("container") ?? "");
+          const body = container?.body as { HostConfig?: { Binds?: ReadonlyArray<string> } } | undefined;
+          const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
+          const repo = params.get("repo") ?? "localhost/lando-volume-snapshot";
+          const tag = params.get("tag") ?? `native-${snapshotCount}`;
+          snapshots.set(`${repo}:${tag}`, volumes.get(volume ?? "") ?? new Uint8Array());
+          return { status: 201, body: JSON.stringify({ id: `${repo}:${tag}` }) };
         }
         if (request.path === "/volumes" && request.method === "GET")
           return {
@@ -212,7 +213,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         if (
           request.path.startsWith("/containers/") &&
           request.path.includes("/archive?") &&
-          request.method === "POST"
+          request.method === "PUT"
         ) {
           if (options.failCopyTo === true)
             return { status: 500, body: JSON.stringify({ message: "forced copy failure" }) };
@@ -272,7 +273,13 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
         );
         const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
-        return Stream.make(serviceFiles.get(`${container}:${params.get("path") ?? ""}`) ?? new Uint8Array());
+        const path = params.get("path") ?? "";
+        const directory = path.slice(0, path.lastIndexOf("/")) || "/";
+        return Stream.make(
+          serviceFiles.get(`${container}:${path}`) ??
+            serviceFiles.get(`${container}:${directory}`) ??
+            new Uint8Array(),
+        );
       }
       if (request.path.startsWith("/images/") && request.path.endsWith("/get")) {
         const ref = decodeURIComponent(request.path.slice("/images/".length, -"/get".length));
@@ -315,9 +322,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         factory: () => RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
         observations: {
           usedNativeVolumeSnapshot: () =>
-            fake.calls.some(
-              (call) => call.path.startsWith("/libpod/volumes/") && call.path.endsWith("/snapshot"),
-            ),
+            fake.calls.some((call) => call.method === "POST" && call.path.startsWith("/commit?")),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
               (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),

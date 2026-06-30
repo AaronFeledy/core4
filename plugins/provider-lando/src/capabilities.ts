@@ -33,9 +33,10 @@ export interface PodmanApiRequest {
 }
 
 export interface PodmanHttpRequest {
-  readonly method: "GET" | "POST" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
 }
@@ -188,6 +189,9 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
 
       if (request.body !== undefined) {
         args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
+      }
+      for (const [key, value] of Object.entries(request.headers ?? {})) {
+        args.push("--header", `${key}: ${value}`);
       }
       if (request.stdin !== undefined) {
         args.push("--data-binary", "@-");

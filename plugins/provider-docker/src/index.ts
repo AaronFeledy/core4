@@ -95,9 +95,10 @@ const withApiReason = (message: string, details: unknown): string => {
   return reason === undefined ? message : `${message} ${reason}`;
 };
 export interface DockerHttpRequest {
-  readonly method: "GET" | "POST" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
 }
@@ -511,6 +512,9 @@ const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
       ];
       if (input.body !== undefined) {
         args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
+      }
+      for (const [key, value] of Object.entries(input.headers ?? {})) {
+        args.push("--header", `${key}: ${value}`);
       }
       if (input.stdin !== undefined) {
         args.push("--data-binary", "@-");

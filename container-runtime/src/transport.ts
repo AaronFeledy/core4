@@ -7,6 +7,7 @@ export interface SocketHttpRequest {
   readonly method: string;
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Bytes>;
 }
@@ -150,6 +151,7 @@ export const socketHttpRequestText = (
     `Host: ${options.hostHeader ?? "localhost"}`,
     "Connection: close",
     ...Object.entries(options.defaultHeaders ?? {}).map(([key, value]) => `${key}: ${value}`),
+    ...Object.entries(request.headers ?? {}).map(([key, value]) => `${key}: ${value}`),
   ];
   if (body !== undefined) {
     headers.push("Content-Type: application/json", `Content-Length: ${textEncoder.encode(body).length}`);
@@ -352,7 +354,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
-    if (input.stdin !== undefined) {
+    const startStdinPump = () => {
+      if (input.stdin === undefined || stdinPump !== undefined) return;
       stdinIterator = input.stdin[Symbol.asyncIterator]();
       stdinPump = (async () => {
         while (true) {
@@ -363,7 +366,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
         }
       })();
       stdinPump.catch(() => connection.destroy());
-    }
+    };
     try {
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
@@ -376,6 +379,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           const merged = concatBytes(initialChunks);
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
+          startStdinPump();
           if (parsed.status < 200 || parsed.status >= 300) {
             throw fail(
               "http",

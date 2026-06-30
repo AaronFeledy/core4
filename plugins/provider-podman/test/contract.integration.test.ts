@@ -213,6 +213,8 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const command = body?.Cmd?.join(" ");
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .")
+            container.stdout = volumes.get(volume) ?? new Uint8Array();
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
@@ -251,7 +253,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         if (
           request.path.startsWith("/containers/") &&
           request.path.includes("/archive?") &&
-          request.method === "POST"
+          request.method === "PUT"
         ) {
           if (options.failCopyTo === true)
             return { status: 500, body: JSON.stringify({ message: "forced copy failure" }) };
@@ -302,6 +304,13 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             ) {
               volumes.set(volume, await collectAsyncBytes(request.stdin));
             }
+            if (
+              container !== undefined &&
+              volume !== undefined &&
+              body?.Cmd?.join(" ") === "tar -C /lando-data -xf -"
+            ) {
+              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            }
             return Stream.empty;
           }),
         );
@@ -320,7 +329,13 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
         );
         const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
-        return Stream.make(serviceFiles.get(`${container}:${params.get("path") ?? ""}`) ?? new Uint8Array());
+        const path = params.get("path") ?? "";
+        const directory = path.slice(0, path.lastIndexOf("/")) || "/";
+        return Stream.make(
+          serviceFiles.get(`${container}:${path}`) ??
+            serviceFiles.get(`${container}:${directory}`) ??
+            new Uint8Array(),
+        );
       }
       if (request.path.startsWith("/images/") && request.path.endsWith("/get")) {
         const ref = decodeURIComponent(request.path.slice("/images/".length, -"/get".length));
@@ -484,7 +499,12 @@ describe("provider-podman RuntimeProvider contract", () => {
           ),
         observations: {
           usedCopyVolumeSnapshot: () =>
-            fake.calls.some((call) => call.method === "GET" && call.path.endsWith("/archive")),
+            fake.calls.some(
+              (call) =>
+                call.path.startsWith("/containers/create?name=") &&
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "") ===
+                  "tar -C /lando-data -cf - .",
+            ),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
               (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),
