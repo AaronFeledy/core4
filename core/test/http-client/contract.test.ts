@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities } from "@lando/sdk/schema";
+import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { type HttpClientContractHarness, runHttpClientContract } from "@lando/sdk/test";
 
@@ -49,11 +49,26 @@ describe("HttpClient contract suite", () => {
     let lastInit: { url: string; proxy?: string; tls?: { ca?: ReadonlyArray<string> } } | undefined;
     let connectCount = 0;
     let offline = false;
+    let interruptSignal: AbortSignal | undefined;
+    let interruptAborted = false;
 
     const fetchImpl = ((input: string | URL | Request, init?: unknown) => {
       const url = typeof input === "string" ? input : input.toString();
       if (offline) return Promise.reject(new Error("offline"));
-      const requestInit = (init ?? {}) as { proxy?: string; tls?: { ca?: ReadonlyArray<string> } };
+      const requestInit = (init ?? {}) as {
+        proxy?: string;
+        signal?: AbortSignal;
+        tls?: { ca?: ReadonlyArray<string> };
+      };
+      if (url === "https://contract.test/interrupt.bin") {
+        interruptSignal = requestInit.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          requestInit.signal?.addEventListener("abort", () => {
+            interruptAborted = true;
+            reject(new Error("aborted"));
+          });
+        });
+      }
       lastInit = {
         url,
         ...(requestInit.proxy === undefined ? {} : { proxy: requestInit.proxy }),
@@ -110,6 +125,13 @@ describe("HttpClient contract suite", () => {
           ),
         connectCount: () => Effect.sync(() => connectCount),
       },
+      interruption: {
+        run: () =>
+          Effect.flatMap(service.stream({ url: "https://contract.test/interrupt.bin" }), (response) =>
+            Stream.runDrain(response.body),
+          ),
+        finalized: () => Effect.sync(() => interruptSignal?.aborted === true && interruptAborted),
+      },
     };
     const result = await run(runHttpClientContract(harness));
     expect(result).toBeUndefined();
@@ -123,10 +145,7 @@ describe("HttpClient contract suite", () => {
       const parsed = new URL(url);
       return `${parsed.protocol}//${parsed.host}`;
     };
-    const emitEvents = (
-      request: { url: string; redactionTokens?: ReadonlyArray<string> },
-      status: number,
-    ) => {
+    const emitEvents = (request: HttpRequest, status: number) => {
       events.push({
         _tag: "pre-http-call",
         eventName: "pre-http-call",

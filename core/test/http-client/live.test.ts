@@ -126,7 +126,8 @@ describe("HttpClientLive streaming", () => {
     );
     const error = failureOf(exit) as { _tag: string };
     expect(error._tag).toBe("HttpRequestError");
-    await expect(readFile(file, "utf8")).resolves.toBe("not read\n");
+    const content = await readFile(file, "utf8");
+    expect(content).toBe("not read\n");
   });
 
   test("rejects unsupported schemes", async () => {
@@ -274,5 +275,24 @@ describe("HttpClientLive lifecycle events", () => {
     expect(post?.status).toBe(500);
     expect(post?.urlOrigin).toBe("https://evt.test");
     expect(JSON.stringify(cap.events())).not.toContain(secret);
+  });
+
+  test("request failures use redacted-origin messages", async () => {
+    const secret = "ERRSECRET-abc";
+    const url = `https://user:${secret}@evt.test/missing?token=${secret}`;
+    const failFetch = (() => Promise.reject(new Error(""))) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) => client.request({ url, redactionTokens: [secret] })).pipe(
+          Effect.provide(makeHttpClientLive(failFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { message?: string; urlOrigin?: string };
+    expect(error.message).toBe("Failed to fetch https://evt.test");
+    expect(error.urlOrigin).toBe("https://evt.test");
+    expect(JSON.stringify(error)).not.toContain(secret);
   });
 });

@@ -6624,6 +6624,10 @@ export interface HttpClientContractHarness<TrustObject = unknown> {
     readonly withOffline: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     readonly connectCount: () => Effect.Effect<number>;
   };
+  readonly interruption?: {
+    readonly run: () => Effect.Effect<unknown, unknown, Scope.Scope>;
+    readonly finalized: () => Effect.Effect<boolean>;
+  };
 }
 
 const httpRequest = (overrides: Partial<HttpRequest> & { readonly url: string }): HttpRequest => overrides;
@@ -6803,6 +6807,19 @@ export const runHttpClientContract = <TrustObject>(
         after === before,
         "an offline-only request fails before opening a connection",
         { before, after },
+      );
+    }
+
+    if (harness.interruption) {
+      const probe = harness.interruption;
+      const fiber = yield* Effect.fork(Effect.scoped(probe.run()));
+      yield* Effect.sleep(Duration.millis(10));
+      yield* Fiber.interrupt(fiber);
+      const finalized = yield* probe.finalized();
+      yield* requireHttpClientContract(
+        finalized,
+        "an interrupted stream finalizes in-flight transfer resources",
+        finalized,
       );
     }
   });

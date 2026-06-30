@@ -240,7 +240,7 @@ const openConnection = (
           signal: controller.signal,
           ...trustInit,
         }),
-      catch: (cause) => requestError(request.url, `Failed to fetch ${url.href}`, cause),
+      catch: (cause) => requestError(request.url, `Failed to fetch ${urlOrigin(url.href)}`, cause),
     });
     return { response };
   });
