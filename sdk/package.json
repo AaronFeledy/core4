@@ -32,6 +32,7 @@
     "./renderer": "./src/renderer/index.ts",
     "./secrets": "./src/secrets/index.ts",
     "./template": "./src/template/index.ts",
+    "./tool-provisioning": "./src/tool-provisioning/index.ts",
     "./verified-stream": "./src/verified-stream/index.ts",
     "./test": "./src/test/index.ts"
   },

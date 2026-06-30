@@ -27,10 +27,17 @@ import {
   type FileSyncSetupOptions,
   PluginManifest,
 } from "@lando/sdk/schema";
-import { FileSyncEngine, type FileSyncEngineShape, type FileSyncError } from "@lando/sdk/services";
+import {
+  Downloader,
+  FileSyncEngine,
+  type FileSyncEngineShape,
+  type FileSyncError,
+  PathsService,
+} from "@lando/sdk/services";
+import type { ToolError } from "@lando/sdk/tool-provisioning";
 
-import { type MutagenDownloader, makeMutagenDownloader } from "./download.ts";
 import { type MutagenClient, makeUnavailableMutagenClient, toFileSyncSessionInfo } from "./mutagen-client.ts";
+import { MUTAGEN_TOOL_VERSION, provisionMutagen } from "./provision.ts";
 import { mutagenSessionName, mutagenSessionRef } from "./session-name.ts";
 
 export const PLUGIN_NAME = "@lando/file-sync-mutagen" as const;
@@ -76,17 +83,9 @@ export interface MakeFileSyncEngineOptions {
    *  `makeFakeMutagenClient()`; the default client fails closed until the
    *  host-CLI-backed client is available. */
   readonly client?: MutagenClient;
-  /**
-   * When provided, `setup()` downloads the Mutagen host CLI and agent
-   * binaries to `<userDataRoot>/bin/` from the pinned manifest.
-   * Omit when using a fake client in tests that do not exercise the download path.
-   */
-  readonly userDataRoot?: string;
-  /**
-   * Override the binary downloader used by `setup()`. Defaults to
-   * `makeMutagenDownloader()`, and tests can inject a fake downloader.
-   */
-  readonly downloader?: MutagenDownloader;
+  readonly setup?:
+    | ((options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>)
+    | undefined;
 }
 
 /**
@@ -131,15 +130,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
       Effect.as(true),
       Effect.catchAll(() => Effect.succeed(false)),
     ),
-    setup: (setupOptions: FileSyncSetupOptions) => {
-      const { userDataRoot } = options;
-      if (userDataRoot === undefined) return Effect.void;
-      const downloader = options.downloader ?? makeMutagenDownloader();
-      return downloader.setup({
-        userDataRoot,
-        force: setupOptions.force,
-      }) as Effect.Effect<void, FileSyncError, never>;
-    },
+    setup: options.setup ?? (() => Effect.void),
 
     createSession,
 
@@ -165,7 +156,29 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
  * `lando setup`. The default client fails closed until a real Mutagen client
  * is supplied by a later layer.
  */
-export const engine = Layer.succeed(FileSyncEngine, makeFileSyncEngine());
+const provisionError = (cause: ToolError): FileSyncStartError =>
+  new FileSyncStartError({
+    engineId: ENGINE_ID,
+    message: `Failed to provision Mutagen ${MUTAGEN_TOOL_VERSION}.`,
+    remediation: "Retry `lando setup`; if the problem persists, inspect the Mutagen tool manifest.",
+    cause,
+  });
+
+export const engine = Layer.effect(
+  FileSyncEngine,
+  Effect.gen(function* () {
+    const paths = yield* PathsService;
+    const downloader = yield* Downloader;
+    return makeFileSyncEngine({
+      setup: (setupOptions) =>
+        provisionMutagen({
+          binDir: paths.binDir,
+          toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
+          force: setupOptions.force,
+        }).pipe(Effect.provideService(Downloader, downloader), Effect.mapError(provisionError)),
+    });
+  }),
+);
 
 /** Test seam for building the Layer against a caller-supplied client. */
 export const makeEngineLayer = (options: MakeFileSyncEngineOptions = {}) =>
@@ -202,21 +215,14 @@ export {
 } from "./session-name.ts";
 
 export {
-  type ExtractImpl,
-  type MutagenBinaryEntry,
-  type MutagenDownloader,
-  type MutagenSetupOptions,
-  type MutagenVersionsManifest,
-  MutagenBinaryChecksumError,
-  MutagenBinaryDownloadError,
-  MutagenBinaryUnsupportedPlatformError,
-  MUTAGEN_VERSIONS_MANIFEST,
-  defaultExtract,
-  hostPlatformKey,
-  makeMutagenDownloader,
-  mutagenAgentBinaryPath,
-  mutagenHostBinaryPath,
+  MUTAGEN_TOOL_MANIFEST,
+  MUTAGEN_TOOL_VERSION,
+  type InstalledMutagenStatus,
+  type ProvisionMutagenInput,
+  mutagenAgentInstallPath,
+  mutagenHostInstallName,
+  mutagenHostInstallPath,
   mutagenInstalledVersionPath,
+  provisionMutagen,
   readInstalledMutagenStatus,
-  readInstalledMutagenVersion,
-} from "./download.ts";
+} from "./provision.ts";

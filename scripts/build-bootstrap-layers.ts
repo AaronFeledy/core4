@@ -268,7 +268,7 @@ const renderApp = (): string =>
     "    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, providerBase))),",
     "    AppPlannerLive.pipe(Layer.provide(providerBase)),",
     "    ProviderExecToolingEngineLive,",
-    "    FileSyncEngineLive,",
+    "    FileSyncEngineLive.pipe(Layer.provide(providerBase)),",
     "  );",
     "};",
     "",

@@ -2386,7 +2386,7 @@
         "Lint passes."
       ],
       "priority": 133,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-09 network primitives. Depends on Downloader (US-286/US-287); pairs with US-287's Mutagen migration."
     },
     {

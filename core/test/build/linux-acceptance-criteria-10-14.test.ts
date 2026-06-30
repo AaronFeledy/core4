@@ -40,7 +40,7 @@ const expectPassingSpotCheck = async (testPath: string, nameFilter: string): Pro
 
 const longHarness = { timeout: 180_000 };
 
-describe("§17.9 acceptance criteria 10-14 on linux-x64", () => {
+describe("linux-x64 acceptance criteria 10-14", () => {
   test(
     "criterion 10: install.sh verifies GPG trust root, installs binary, runs version, and matches shellenv PATH",
     async () => {
@@ -92,19 +92,19 @@ describe("§17.9 acceptance criteria 10-14 on linux-x64", () => {
   );
 
   test("criterion 13: Mutagen manifest and download policy ship without embedding agent binaries", async () => {
-    const [downloadSource, manifestJson] = await Promise.all([
-      readFile(resolve(repoRoot, "plugins/file-sync-mutagen/src/download.ts"), "utf8"),
+    const [provisionSource, manifestJson] = await Promise.all([
+      readFile(resolve(repoRoot, "plugins/file-sync-mutagen/src/provision.ts"), "utf8"),
       readFile(resolve(repoRoot, "plugins/file-sync-mutagen/mutagen-versions.json"), "utf8"),
     ]);
 
-    expect(downloadSource).toContain("mutagen-versions.json");
-    expect(downloadSource).toContain("mutagen-agents");
-    expect(manifestJson).toContain("mutagenVersion");
+    expect(provisionSource).toContain("mutagen-versions.json");
+    expect(provisionSource).toContain("linux-armv7");
+    expect(manifestJson).toContain("toolVersion");
     expect(manifestJson).toContain("linux-amd64");
 
     await expectPassingSpotCheck(
-      "plugins/file-sync-mutagen/test/download.test.ts",
-      "installs host binary \\+ all agent binaries and writes version marker",
+      "plugins/file-sync-mutagen/test/provision.test.ts",
+      "installs host CLI plus all three agents from one shared host tar.gz",
     );
   });
 

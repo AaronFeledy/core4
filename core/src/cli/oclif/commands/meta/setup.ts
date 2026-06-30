@@ -12,12 +12,14 @@ import { fileURLToPath } from "node:url";
 import { Flags } from "@oclif/core";
 import { Data, DateTime, Effect, Schema } from "effect";
 
-import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
+import { makeLandoPaths } from "@lando/core/paths";
+import { provisionMutagen } from "@lando/file-sync-mutagen";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   ConfigService,
+  type Downloader,
   FileSyncEngine,
   type HttpClient,
   PrivilegeService,
@@ -271,7 +273,7 @@ const buildSetupSummary = (providerId: string, installDir: string, status: strin
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
-  ConfigService | RuntimeProviderRegistry | HttpClient
+  ConfigService | RuntimeProviderRegistry | HttpClient | Downloader
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -476,38 +478,52 @@ export const setupSpec: LandoCommandSpec<
           remediation: "Run `lando start` to finish deferred file-sync setup for accelerated mounts.",
         });
       } else if (provider.capabilities.bindMountPerformance === "slow") {
-        const fileSync = yield* Effect.serviceOption(FileSyncEngine);
-        if (fileSync._tag === "Some") {
-          yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
-            Effect.tapError((cause) => recordFailure("file-sync", cause)),
-          );
-          fileSyncStatus = "installed";
-          yield* recordReadiness({
-            id: "file-sync",
-            status: "installed",
-            evidence: "File-sync setup installed Mutagen acceleration.",
-          });
-        } else {
-          if (userDataRoot !== undefined) {
-            const downloader = makeMutagenDownloader();
-            yield* downloader
-              .setup({ userDataRoot, network })
-              .pipe(Effect.tapError((cause) => recordFailure("file-sync", cause)));
+        const recordInstalledFileSync = (evidence: string) =>
+          Effect.sync(() => {
             fileSyncStatus = "installed";
-            yield* recordReadiness({
-              id: "file-sync",
-              status: "installed",
-              evidence: "File-sync setup downloaded Mutagen acceleration.",
-            });
-          } else {
+          }).pipe(
+            Effect.zipRight(
+              recordReadiness({
+                id: "file-sync",
+                status: "installed",
+                evidence,
+              }),
+            ),
+          );
+
+        const provisionFileSync = (evidence: string) => {
+          if (userDataRoot === undefined) {
             fileSyncStatus = "unavailable";
-            yield* recordReadiness({
+            return recordReadiness({
               id: "file-sync",
               status: "unavailable",
               evidence: "File-sync setup could not run because userDataRoot is not configured.",
               remediation: "Configure userDataRoot and rerun `lando setup`.",
             });
           }
+          const paths = makeLandoPaths({ userDataRoot });
+          return Effect.scoped(
+            provisionMutagen({
+              binDir: paths.binDir,
+              toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
+              force: false,
+            }),
+          ).pipe(
+            Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
+            Effect.tapError((cause) => recordFailure("file-sync", cause)),
+            Effect.tap(() => recordInstalledFileSync(evidence)),
+          );
+        };
+
+        const fileSync = yield* Effect.serviceOption(FileSyncEngine);
+        if (fileSync._tag === "Some") {
+          yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
+            Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
+            Effect.tapError((cause) => recordFailure("file-sync", cause)),
+            Effect.tap(() => recordInstalledFileSync("File-sync setup installed Mutagen acceleration.")),
+          );
+        } else {
+          yield* provisionFileSync("File-sync setup downloaded Mutagen acceleration.");
         }
       } else {
         yield* recordReadiness({

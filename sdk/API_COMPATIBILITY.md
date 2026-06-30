@@ -192,6 +192,8 @@
 - `TabsProps`
 - `TelemetryConfig`
 - `TemplateRenderContext`
+- `ToolArtifactEntry`
+- `ToolManifest`
 - `ToolingArgShape`
 - `ToolingFlagShape`
 - `ToolingTaskShape`
@@ -389,6 +391,9 @@
 - `AppFeatureCycleError`
 - `ServiceTypeCollisionError`
 - `StateStoreError`
+- `ToolManifestError`
+- `ToolExtractError`
+- `ToolInstallPathError`
 
 ## Additive Alpha service tags
 

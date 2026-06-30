@@ -37,7 +37,7 @@ CI fails if generated schema snapshots or bundled plugin/recipe tables drift. Up
 bun run codegen
 ```
 
-For focused local checks, CI runs `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, and `bun run codegen:bundled-recipes`, then verifies the outputs with `git diff --exit-code`. The `schema-snapshot` job also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current.
+For focused local checks, CI runs `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`, then verifies the outputs with `git diff --exit-code`. The `schema-snapshot` job also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current.
 
 ## Library API and recipe test layers
 

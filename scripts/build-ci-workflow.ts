@@ -522,8 +522,11 @@ ${setupBunSteps}
       - name: Regenerate bootstrap layers
         run: bun run codegen:bootstrap-layers
 
+      - name: Regenerate Mutagen versions manifest
+        run: bun run codegen:mutagen-versions
+
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json
 
 ${timingNoticeStep("bundled-codegen", 15)}
 
