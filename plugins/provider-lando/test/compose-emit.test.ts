@@ -140,7 +140,9 @@ describe("provider-lando Compose emission", () => {
     expect(content).toContain("  lando-myapp:\n");
     expect(content).toContain('    driver: "bridge"\n');
     expect(content).toContain("volumes:\n  myapp_database_data:\n");
-    expect(content).toContain('  lando-cache-npm:\n    labels:\n      dev.lando.storage-kind: "cache"\n');
+    expect(content).toContain(
+      '  lando-cache-npm:\n    labels:\n      dev.lando.app: "myapp"\n      dev.lando.scope: "global"\n      dev.lando.storage-kind: "cache"\n      dev.lando.store: "lando-cache-npm"\n',
+    );
   });
 
   test("keeps Compose output inside the MVP key allowlist", () => {
