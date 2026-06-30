@@ -10,6 +10,7 @@ import {
   PortablePath,
   ProviderId,
   type ServiceName,
+  type StorageScope,
 } from "@lando/sdk/schema";
 import type {
   ArtifactRef,
@@ -134,7 +135,7 @@ const decodeDockerMultiplexedStdout = (payload: Uint8Array): Uint8Array => {
     const reserved2 = payload[offset + 2] ?? -1;
     const reserved3 = payload[offset + 3] ?? -1;
     if (reserved1 !== 0 || reserved2 !== 0 || reserved3 !== 0) return payload;
-    const length = new DataView(payload.buffer, payload.byteOffset + offset + 4, 4).getUint32(0);
+    const length = new DataView(payload.buffer, payload.byteOffset + offset + 4, 4).getUint32(0, false);
     const start = offset + 8;
     const end = start + length;
     if (length < 0 || end > payload.byteLength) return payload;
@@ -189,13 +190,18 @@ const serviceContainerName = (target: {
   readonly app: AppId;
   readonly service: ServiceName;
   readonly plan?: AppPlan;
-}): string =>
-  `lando-${sanitize(target.plan?.slug ?? String(target.app))}-${sanitize(String(target.service))}`;
+}): string | undefined =>
+  target.plan === undefined
+    ? undefined
+    : `lando-${sanitize(target.plan.slug)}-${sanitize(String(target.service))}`;
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
 
 const firstDataStoreMount = (spec: EphemeralRunSpec): DataStoreMountPlan | undefined =>
   spec.mounts?.find((mount): mount is DataStoreMountPlan => "store" in mount);
+
+const dataStoreMounts = (spec: EphemeralRunSpec): ReadonlyArray<DataStoreMountPlan> =>
+  spec.mounts?.filter((mount): mount is DataStoreMountPlan => "store" in mount) ?? [];
 
 const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> | undefined =>
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
@@ -203,7 +209,13 @@ const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArr
 const copyModeHelperImage = "alpine:3.20";
 const copyModeMountPath = "/lando-data";
 const copyModeMountTarget = PortablePath.make(copyModeMountPath);
+const copyModeSnapshotMountPath = "/lando-snapshots";
+const copyModeSnapshotMountTarget = PortablePath.make(copyModeSnapshotMountPath);
 const nativeSnapshotRepo = "localhost/lando-volume-snapshot";
+
+const copyModeSnapshotStore = (providerId: string): string => `lando-${sanitize(providerId)}-copy-snapshots`;
+
+const copyModeSnapshotFile = (snapshotId: string): string => `${sanitize(snapshotId)}.tar`;
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
 
@@ -261,6 +273,85 @@ const artifactError = (
     ...(artifactRef === undefined ? {} : { artifactRef }),
   });
 
+const requireServiceContainerName = (
+  options: ProviderDataPlaneOptions,
+  operation: "copyToService" | "copyFromService",
+  target: { readonly app: AppId; readonly service: ServiceName; readonly plan?: AppPlan },
+): Effect.Effect<string, ServiceCopyError> => {
+  const name = serviceContainerName(target);
+  return name === undefined
+    ? Effect.fail(
+        copyError(
+          options,
+          operation,
+          "Provider service copy requires an applied app plan.",
+          { app: target.app, service: target.service },
+          undefined,
+          target.service,
+        ),
+      )
+    : Effect.succeed(name);
+};
+
+interface EngineVolume {
+  readonly Name?: string;
+  readonly Labels?: Readonly<Record<string, string>>;
+}
+
+const landoVolumeLabels = {
+  app: "dev.lando.app",
+  store: "dev.lando.store",
+  scope: "dev.lando.scope",
+} as const;
+
+const storageScopeFromLabel = (value: string | undefined): StorageScope | undefined =>
+  value === "service" || value === "app" || value === "global" ? value : undefined;
+
+const labelsMatch = (
+  actual: Readonly<Record<string, string>>,
+  expected: Readonly<Record<string, string>> | undefined,
+): boolean =>
+  expected === undefined || Object.entries(expected).every(([key, value]) => actual[key] === value);
+
+const volumeInfoFromEngineVolume = (
+  volume: EngineVolume,
+  filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
+) => {
+  const labels = volume.Labels ?? {};
+  const labelApp = labels[landoVolumeLabels.app];
+  const labelStore = labels[landoVolumeLabels.store];
+  const labelScope = storageScopeFromLabel(labels[landoVolumeLabels.scope]);
+  const store = labelStore ?? volume.Name;
+  if (store === undefined || store.length === 0) return undefined;
+  if (filter.app !== undefined && labelApp !== String(filter.app)) return undefined;
+  if (filter.store !== undefined && filter.store !== store && filter.store !== volume.Name) return undefined;
+  if (filter.scope !== undefined && labelScope !== filter.scope) return undefined;
+  if (!labelsMatch(labels, filter.labels)) return undefined;
+  const hasLandoLabel =
+    labelApp !== undefined || labelStore !== undefined || labels[landoVolumeLabels.scope] !== undefined;
+  if (
+    filter.app === undefined &&
+    filter.store === undefined &&
+    filter.scope === undefined &&
+    filter.labels === undefined &&
+    !hasLandoLabel
+  ) {
+    return undefined;
+  }
+  return {
+    ref: {
+      app: AppId.make(labelApp ?? String(filter.app ?? "unknown")),
+      store,
+      ...(labelScope === undefined
+        ? filter.scope === undefined
+          ? {}
+          : { scope: filter.scope }
+        : { scope: labelScope }),
+    },
+    ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
+  };
+};
+
 const request = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.request === undefined
     ? Effect.fail(volumeError(options, operation, "Provider API request client is missing."))
@@ -305,8 +396,9 @@ const ensure2xx = (
 const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
-  const binds =
-    mount === undefined ? [] : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`];
+  const binds = dataStoreMounts(spec).map(
+    (mount) => `${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`,
+  );
   return request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
@@ -480,8 +572,6 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   );
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
-  const copyModeSnapshots = new Map<string, Uint8Array>();
-
   return {
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
       runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false }).pipe(
@@ -517,15 +607,35 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ),
         );
       }
+      const snapshotStore = copyModeSnapshotStore(options.providerId);
+      const snapshotFile = copyModeSnapshotFile(id);
       return runBytes(options, {
         image: copyModeHelperImage,
-        command: ["tar", "-C", copyModeMountPath, "-cf", "-", "."],
-        mounts: [{ store: name, target: copyModeMountTarget, readOnly: true }],
-        captureStdout: true,
+        command: [
+          "sh",
+          "-c",
+          `mkdir -p ${copyModeSnapshotMountPath} && tar -C ${copyModeMountPath} -cf ${copyModeSnapshotMountPath}/${snapshotFile} .`,
+        ],
+        mounts: [
+          { store: name, target: copyModeMountTarget, readOnly: true },
+          { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: false },
+        ],
         remove: true,
       }).pipe(
-        Effect.map(({ stdout }) => stdout),
-        Effect.tap((payload) => Effect.sync(() => copyModeSnapshots.set(id, payload))),
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.void
+            : Effect.fail(
+                volumeError(
+                  options,
+                  "snapshotVolume",
+                  "Provider volume snapshot helper failed.",
+                  result,
+                  undefined,
+                  store,
+                ),
+              ),
+        ),
         Effect.as({ provider: ProviderId.make(options.providerId), id }),
         Effect.mapError((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
@@ -565,24 +675,19 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ),
         );
       }
-      const payload = copyModeSnapshots.get(spec.snapshot.id);
-      if (payload === undefined) {
-        return Effect.fail(
-          volumeError(
-            options,
-            "restoreVolume",
-            "Provider copy-mode snapshot was not found.",
-            undefined,
-            undefined,
-            store,
-          ),
-        );
-      }
+      const snapshotStore = copyModeSnapshotStore(options.providerId);
+      const snapshotFile = copyModeSnapshotFile(spec.snapshot.id);
       return runBytes(options, {
         image: copyModeHelperImage,
-        command: ["tar", "-C", copyModeMountPath, "-xf", "-"],
-        mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
-        stdinStream: oneChunk(payload),
+        command: [
+          "sh",
+          "-c",
+          `test -f ${copyModeSnapshotMountPath}/${snapshotFile} && tar -C ${copyModeMountPath} -xf ${copyModeSnapshotMountPath}/${snapshotFile}`,
+        ],
+        mounts: [
+          { store: name, target: copyModeMountTarget, readOnly: false },
+          { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
+        ],
         remove: true,
       }).pipe(
         Effect.flatMap((result) =>
@@ -592,7 +697,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 volumeError(
                   options,
                   "restoreVolume",
-                  "Provider volume restore helper failed.",
+                  "Provider volume restore helper failed or snapshot was not found.",
                   result,
                   undefined,
                   store,
@@ -612,16 +717,11 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             response.body.length === 0
               ? { Volumes: [] }
               : (JSON.parse(response.body) as {
-                  Volumes?: ReadonlyArray<{ Name?: string; Labels?: Readonly<Record<string, string>> }>;
+                  Volumes?: ReadonlyArray<EngineVolume>;
                 });
-          return (parsed.Volumes ?? []).map((volume) => ({
-            ref: {
-              app: filter.app ?? AppId.make("unknown"),
-              store: volume.Name ?? filter.store ?? "data",
-              ...(filter.scope === undefined ? {} : { scope: filter.scope }),
-            },
-            ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
-          }));
+          return (parsed.Volumes ?? [])
+            .map((volume) => volumeInfoFromEngineVolume(volume, filter))
+            .filter((volume): volume is NonNullable<typeof volume> => volume !== undefined);
         }),
         Effect.mapError((cause) =>
           volumeError(options, "listVolumes", "Provider volume list failed.", undefined, cause, filter.store),
@@ -667,20 +767,24 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             : Effect.succeed(archive);
         }),
         Effect.flatMap((payload) =>
-          request(options, "copyToService", {
-            method: "PUT",
-            path: `/containers/${encodeURIComponent(serviceContainerName(target))}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
-            headers: { "Content-Type": "application/x-tar" },
-            stdin: oneChunk(payload),
-          }).pipe(
-            Effect.mapError((cause) =>
-              copyError(
-                options,
-                "copyToService",
-                "Provider service copy-in failed.",
-                undefined,
-                cause,
-                target.service,
+          requireServiceContainerName(options, "copyToService", target).pipe(
+            Effect.flatMap((containerName) =>
+              request(options, "copyToService", {
+                method: "PUT",
+                path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
+                headers: { "Content-Type": "application/x-tar" },
+                stdin: oneChunk(payload),
+              }).pipe(
+                Effect.mapError((cause) =>
+                  copyError(
+                    options,
+                    "copyToService",
+                    "Provider service copy-in failed.",
+                    undefined,
+                    cause,
+                    target.service,
+                  ),
+                ),
               ),
             ),
           ),
@@ -703,36 +807,40 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["copyToService"],
     copyFromService: ((target, spec) =>
       Stream.unwrap(
-        collectStreamBytes(
-          stream(options, "copyFromService", {
-            method: "GET",
-            path: `/containers/${encodeURIComponent(serviceContainerName(target))}/archive?path=${encodeURIComponent(spec.sourcePath)}`,
-          }),
-        ).pipe(
-          Effect.flatMap((archive) => {
-            const payload = extractFirstTarFile(archive);
-            return payload === undefined
-              ? Effect.fail(
-                  copyError(
-                    options,
-                    "copyFromService",
-                    "Failed to extract provider service copy archive.",
-                    { sourcePath: spec.sourcePath },
-                    undefined,
-                    target.service,
-                  ),
-                )
-              : Effect.succeed(payload);
-          }),
-          Effect.map((payload) => Stream.make(payload)),
-          Effect.mapError((cause) =>
-            copyError(
-              options,
-              "copyFromService",
-              "Provider service copy-out failed.",
-              undefined,
-              cause,
-              target.service,
+        requireServiceContainerName(options, "copyFromService", target).pipe(
+          Effect.flatMap((containerName) =>
+            collectStreamBytes(
+              stream(options, "copyFromService", {
+                method: "GET",
+                path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(spec.sourcePath)}`,
+              }),
+            ).pipe(
+              Effect.flatMap((archive) => {
+                const payload = extractFirstTarFile(archive);
+                return payload === undefined
+                  ? Effect.fail(
+                      copyError(
+                        options,
+                        "copyFromService",
+                        "Failed to extract provider service copy archive.",
+                        { sourcePath: spec.sourcePath },
+                        undefined,
+                        target.service,
+                      ),
+                    )
+                  : Effect.succeed(payload);
+              }),
+              Effect.map((payload) => Stream.make(payload)),
+              Effect.mapError((cause) =>
+                copyError(
+                  options,
+                  "copyFromService",
+                  "Provider service copy-out failed.",
+                  undefined,
+                  cause,
+                  target.service,
+                ),
+              ),
             ),
           ),
         ),
