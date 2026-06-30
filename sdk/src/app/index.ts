@@ -65,6 +65,7 @@ import type {
   CacheService,
   CommandRegistry,
   ConfigService,
+  DataMover,
   DataMoverError,
   DatasetServiceError,
   Downloader,
@@ -116,6 +117,7 @@ export type LandoRuntimeServices =
   | LandofileService
   | CommandRegistry
   | AppPlanner
+  | DataMover
   | EventService
   | ToolingEngine;
 

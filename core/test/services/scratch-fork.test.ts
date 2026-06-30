@@ -9,12 +9,16 @@ import { type AppPlan, type ProviderCapabilities, ProviderId, landoAppNetworkNam
 import {
   AppPlanner,
   LandofileService,
+  PathsService,
+  RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
+import { makeLandoPaths } from "../../src/config/paths.ts";
+import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistry, ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
@@ -23,6 +27,7 @@ import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -192,6 +197,15 @@ const makeScratchForkLayer = (
       },
     });
   })();
+  const dataMoverLive = DataMoverLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        StateStoreLive,
+        Layer.succeed(PathsService, makeLandoPaths()),
+        Layer.succeed(RuntimeProvider, provider),
+      ),
+    ),
+  );
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
@@ -199,6 +213,7 @@ const makeScratchForkLayer = (
     registryLive,
     scratchRegistryLive,
     ScratchResourceScannerLive,
+    dataMoverLive,
   );
 
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));

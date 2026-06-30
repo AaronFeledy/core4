@@ -5,12 +5,20 @@ import { join } from "node:path";
 import { Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape, ScratchAppService } from "@lando/core/services";
+import {
+  PathsService,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  ScratchAppService,
+} from "@lando/core/services";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
+import { makeLandoPaths } from "../../src/config/paths.ts";
+import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
@@ -19,6 +27,7 @@ import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -160,6 +169,15 @@ const makeRecordingLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[]
     registryLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
+    DataMoverLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          StateStoreLive,
+          Layer.succeed(PathsService, makeLandoPaths()),
+          Layer.succeed(RuntimeProvider, provider),
+        ),
+      ),
+    ),
   );
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
 };
