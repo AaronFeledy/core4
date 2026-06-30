@@ -119,6 +119,11 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
   buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
+    volumeSnapshot: "native",
+    serviceFileCopy: "native",
+    artifactExport: true,
+    artifactImport: true,
+    ephemeralMounts: true,
     tlsCertificates: "lando",
     rootless: true,
     composeSpec: "portable",

@@ -2,6 +2,7 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -402,6 +403,11 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
   buildProviderCapabilities({
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    volumeSnapshot: "copy",
+    serviceFileCopy: "native",
+    artifactExport: true,
+    artifactImport: true,
+    ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: false,
     composeSpec: "portable",
@@ -1211,6 +1217,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.dockerApi === undefined && options.dockerApiFactory === undefined
       ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
       : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const dataPlane = makeProviderDataPlane({
+    providerId: PROVIDER_ID,
+    api: dockerApi,
+    snapshotMode: "copy",
+    redactDetails,
+  });
 
   const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
     target.plan ?? plans.get(target.app);
@@ -1263,8 +1275,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ? Stream.fail(makeUnavailable("execStream"))
             : execStream(plan, target, command, dockerApi);
         },
-        run: () => Effect.fail(makeUnavailable("run")),
-        runStream: () => Stream.fail(makeUnavailable("runStream")),
+        run: dataPlane.run,
+        runStream: dataPlane.runStream,
         logs: (target, logOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined
@@ -1290,14 +1302,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 : snapshots.filter((snapshot) => snapshot.app === filter.app),
             ),
           ),
-        snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
-        restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
-        removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
-        copyToService: () => Effect.fail(makeUnavailable("copyToService")),
-        copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
-        exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
-        importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+        snapshotVolume: dataPlane.snapshotVolume,
+        restoreVolume: dataPlane.restoreVolume,
+        listVolumes: dataPlane.listVolumes,
+        removeVolume: dataPlane.removeVolume,
+        copyToService: dataPlane.copyToService,
+        copyFromService: dataPlane.copyFromService,
+        exportArtifact: dataPlane.exportArtifact,
+        importArtifact: dataPlane.importArtifact,
       }),
     ),
   );

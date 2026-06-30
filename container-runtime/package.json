@@ -22,6 +22,7 @@
     "./transport": "./src/transport.ts",
     "./streams": "./src/streams.ts",
     "./plan": "./src/plan.ts",
+    "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
