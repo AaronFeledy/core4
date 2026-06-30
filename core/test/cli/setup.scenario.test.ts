@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider } from "@lando/provider-lando";
@@ -13,6 +13,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 import { ConfigService, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import { makeHttpClientLive } from "../../src/http-client/live.ts";
 
 interface EventSink {
   readonly events: LandoEvent[];
@@ -65,10 +66,16 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
   };
+  const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
+    void init;
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }) as unknown as typeof fetch;
+
   return Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     makeEventServiceLayer(sink),
     makeConfigServiceLayer(),
+    makeHttpClientLive(okProbeFetch),
   );
 };
 
@@ -85,6 +92,27 @@ const makeConfigServiceLayer = () => {
 };
 
 describe("meta:setup task tree progress", () => {
+  const originalNetworkEnv = {
+    HTTP_PROXY: process.env.HTTP_PROXY,
+    HTTPS_PROXY: process.env.HTTPS_PROXY,
+    NO_PROXY: process.env.NO_PROXY,
+    http_proxy: process.env.http_proxy,
+    https_proxy: process.env.https_proxy,
+    no_proxy: process.env.no_proxy,
+    LANDO_NETWORK_CA_CERTS: process.env.LANDO_NETWORK_CA_CERTS,
+  };
+
+  beforeEach(() => {
+    for (const key of Object.keys(originalNetworkEnv)) Reflect.deleteProperty(process.env, key);
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(originalNetworkEnv)) {
+      if (value === undefined) Reflect.deleteProperty(process.env, key);
+      else process.env[key] = value;
+    }
+  });
+
   test("publishes tree.start, per-step task.start/complete, and tree.complete on the happy path", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-setup-scenario-"));
     try {

@@ -167,6 +167,17 @@ const makeIsolatedEnv = (): { readonly env: Record<string, string>; readonly cle
     LANDO_USER_CACHE_ROOT: join(root, "cache"),
     LANDO_USER_CONF_ROOT: join(root, "conf"),
   } as Record<string, string>;
+  for (const key of [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "LANDO_NETWORK_CA_CERTS",
+  ]) {
+    Reflect.deleteProperty(env, key);
+  }
   return { env, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 };
 
