@@ -318,6 +318,54 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+### US-368: Honor `HttpRequest.timeoutMs` in `HttpClientLive`
+
+**Description:** As a plugin author, when I set `timeoutMs` on an `HttpRequest`, the live HttpClient enforces the deadline, so the published schema field is not a silent no-op that every caller must work around.
+
+**Acceptance Criteria:**
+
+- [ ] `HttpClientLive` (`core/src/http-client/live.ts`) honors `HttpRequest.timeoutMs` on `request`, `stream`, and `upload`: a transfer that exceeds the deadline fails with a tagged timeout error and reaps the in-flight connection under `Scope`.
+- [ ] A `0` or unset `timeoutMs` preserves the current unbounded behavior; the timeout composes correctly with `Effect.interrupt` and the offline fail-fast path, with no leaked sockets and no double-fire.
+- [ ] The plain-async bridge `core/src/http-client/json-fetch.ts` no longer needs its caller-side `AbortSignal.timeout` workaround for correctness; it is removed or retained only as documented defense-in-depth without a double-timeout regression.
+- [ ] The `HttpClient` contract suite in `@lando/sdk/test` gains a timeout case asserting enforcement against `HttpClientLive` and `TestHttpClient`.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-331 learnings): `HttpRequest.timeoutMs` is declared in the schema but not honored by `live.ts`, forcing each caller (e.g. the recipe/npm/registry metadata bridge) to wrap its own `AbortSignal.timeout`. No owning story existed before this entry.
+
+### US-369: Implement `network.ca.trustHost` host-store + custom-CA merge semantics
+
+**Description:** As a user behind TLS interception, `network.ca.trustHost` augments the system CA store with my configured CAs instead of replacing it, so Lando trusts both default roots and my corporate CA.
+
+**Acceptance Criteria:**
+
+- [ ] `network.ca.trustHost` semantics are defined against Bun's `tls.ca` behavior (which overrides the default CA list): enabling host trust merges the system roots with configured `network.ca.certs` / `LANDO_NETWORK_CA_CERTS` PEMs rather than dropping system roots.
+- [ ] `HttpClientLive` and the canonical `@lando/sdk/network-trust` resolver apply the merged CA set; a test proves a request succeeds against both a system-rooted host and a custom-CA host when `trustHost` is enabled, and fails closed against an untrusted host.
+- [ ] The `lando setup` network-trust preflight reports `trustHost` resolution consistently with the runtime client, with no setup/runtime divergence.
+- [ ] Any schema or enum change is reflected in `API_COMPATIBILITY.md` and the schema snapshot is regenerated; if no public shape changes, the snapshot stays clean.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-331/US-332 review notes): trustHost host-store + custom-CA semantics were deferred past US-332 as needing a dedicated Bun TLS design, with no successor story.
+
+### US-370: Cap untrusted decompression and Landofile parser inputs (DoS hardening)
+
+**Description:** As a maintainer, untrusted or compressed inputs enforce size and depth caps so a malicious or malformed artifact cannot exhaust memory before validation completes.
+
+**Acceptance Criteria:**
+
+- [ ] Runtime-bundle decompression/extraction enforces a configurable maximum decompressed-size cap and rejects an over-cap archive with a tagged remediation error before exhausting memory, layered on top of the existing checksum gate.
+- [ ] The Landofile subset parser (`@lando/sdk/landofile` `parser.ts`) enforces a maximum input size and maximum nesting depth, rejecting over-limit input with a tagged parse error instead of unbounded recursion or allocation.
+- [ ] Any other host-side untrusted-archive unpack path (e.g. the Data-Mover `tar` helper) inherits the same cap or documents why it is exempt.
+- [ ] Caps are covered by tests proving rejection at the boundary and acceptance just under the cap; normal-sized inputs are byte-for-byte unchanged.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story.
+
 ## Functional Requirements
 
 - FR-1: Every release artifact MUST have a CycloneDX SBOM named `dist/lando-${V}-sbom.cdx.json` or an artifact-specific equivalent linked from the release manifest.

@@ -211,6 +211,22 @@ Depends on: **BETA1-01** (setup/uninstall consume roots and derived paths), **BE
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+### US-371: Static boundary gates also catch dynamic-import and barrel re-export escapes
+
+**Description:** As a maintainer, the static boundary gates detect dynamic `import()` and barrel re-export escape hatches, so a banned dependency cannot slip past a gate via `await import(...)` or a re-export.
+
+**Acceptance Criteria:**
+
+- [ ] The shared boundary-gate AST scanners detect dynamic `import()` call expressions (constructed or statically resolvable specifiers) in addition to static `import`/`require`, for at least `check:env-helper-boundary` and the `import-boundary` walker.
+- [ ] Barrel re-export escape hatches (`export * from` / `export { x } from` re-exporting a banned module) are flagged wherever a direct import would be.
+- [ ] `mkdtemp` negative fixtures prove each hardened gate fires on a dynamic-import offender and a re-export offender, and the real working tree passes clean.
+- [ ] Intentionally-allowed dynamic imports (e.g. the OpenTUI constructed-specifier boundary) remain allowlisted and are not broken.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
+**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story. `Bun.Transpiler().scan()` erases `import type` edges and does not surface dynamic `import()`, so the walker needs a dedicated AST pass for the dynamic and re-export cases.
+
 ## Functional Requirements
 
 ### Paths/Roots functional requirements
