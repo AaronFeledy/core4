@@ -356,6 +356,7 @@ const resolveDataHelperImage = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
 ): Effect.Effect<string, DataTransferError> => {
   const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
+  if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
   return provider.pullArtifact({ ref: pinnedRef }).pipe(
     Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
     Effect.flatMap((ref) => {

@@ -1752,7 +1752,8 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
 
 describe("DataMoverLive pinned helper image resolution", () => {
   const pinned = providerImages.images.dataHelper;
-  const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true });
+  const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
+  const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
 
   const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
     dataMover.transfer({
@@ -1795,6 +1796,48 @@ describe("DataMoverLive pinned helper image resolution", () => {
       );
 
       expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
+      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
+    });
+  });
+
+  test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let ranImage: string | undefined;
+      let pullCalls = 0;
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCapsWithoutPull,
+              pullArtifact: () =>
+                Effect.sync(() => {
+                  pullCalls += 1;
+                  return new ProviderUnavailableError({
+                    providerId: "test",
+                    operation: "pullArtifact",
+                    message: "pullArtifact is unavailable",
+                  });
+                }).pipe(Effect.flatMap((error) => Effect.fail(error))),
+              run: (spec) => {
+                ranImage = spec.image;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(pullCalls).toBe(0);
       expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
     });
   });
