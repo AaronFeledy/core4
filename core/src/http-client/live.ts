@@ -22,7 +22,7 @@ import type { ReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { type FileHandle, open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { type Context, DateTime, Effect, Exit, Layer, Option, type Scope, Stream } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Option, type Scope, Stream } from "effect";
 
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
@@ -277,6 +277,13 @@ const responseBodyStream = (
   );
 };
 
+const bodyFailureDetail = (exit: Exit.Exit<unknown, unknown>): string => {
+  if (!("cause" in exit)) return "body-read-failed";
+  const failure = Cause.failureOption(exit.cause);
+  if (Option.isSome(failure)) return messageFromCause(failure.value, "body-read-failed");
+  return Cause.isInterruptedOnly(exit.cause) ? "body-read-interrupted" : "body-read-failed";
+};
+
 const filePathFromUrl = (url: URL): Effect.Effect<string, HttpRequestError> =>
   Effect.try({
     try: () => fileURLToPath(url),
@@ -376,9 +383,10 @@ const makeStream =
 
       const body = yield* responseBodyStream(request, response);
       const bodyWithTelemetry = body.pipe(
-        Stream.tapError((error) => publishPost("failure", messageFromCause(error, "body-read-failed"))),
         Stream.ensuringWith((exit) =>
-          Exit.isSuccess(exit) ? publishPost("success", undefined) : Effect.void,
+          Exit.isSuccess(exit)
+            ? publishPost("success", undefined)
+            : publishPost("failure", bodyFailureDetail(exit)),
         ),
       );
       return { status: response.status, headers: headerRecords(response.headers), body: bodyWithTelemetry };

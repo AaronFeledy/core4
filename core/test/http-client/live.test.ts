@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Cause, Effect, Exit, Layer, type Scope, Stream } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Layer, type Scope, Stream } from "effect";
 
 import type { HttpRequest, HttpStreamResponse } from "@lando/sdk/schema";
 import type { GlobalConfig } from "@lando/sdk/schema";
@@ -265,7 +265,7 @@ describe("HttpClientLive network trust", () => {
     };
     const configLayer = Layer.succeed(ConfigService, {
       load: Effect.succeed(config),
-      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+      get: (key: keyof GlobalConfig) => Effect.map(Effect.succeed(config), (c) => c[key]),
     } as never);
 
     const capture = captureFetch();
@@ -289,14 +289,14 @@ describe("HttpClientLive network trust", () => {
     };
     const configLayer = Layer.succeed(ConfigService, {
       load: Effect.succeed(config),
-      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+      get: (key: keyof GlobalConfig) => Effect.map(Effect.succeed(config), (c) => c[key]),
     } as never);
 
     let fetchCalled = false;
     const fetchImpl = (() => {
       fetchCalled = true;
       return Promise.resolve(new Response(new Uint8Array(), { status: 200 }));
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
@@ -322,14 +322,14 @@ describe("HttpClientLive network trust", () => {
     };
     const configLayer = Layer.succeed(ConfigService, {
       load: Effect.succeed(config),
-      get: (key) => Effect.map(Effect.succeed(config), (c) => c[key]),
+      get: (key: keyof GlobalConfig) => Effect.map(Effect.succeed(config), (c) => c[key]),
     } as never);
 
     let fetchCalled = false;
     const fetchImpl = (() => {
       fetchCalled = true;
       return Promise.resolve(new Response(new Uint8Array(), { status: 200 }));
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
@@ -438,6 +438,42 @@ describe("HttpClientLive lifecycle events", () => {
     );
     const post = cap.events().find((e) => e._tag === "post-http-call") as { outcome?: string } | undefined;
     expect(post?.outcome).toBe("success");
+  });
+
+  test("post-http-call reports failure when body streaming is interrupted", async () => {
+    const cap = captureEvents();
+    const hangingBodyFetch = (() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              controller.enqueue(new Uint8Array([1]));
+            },
+          }),
+          { status: 200 },
+        ),
+      )) as unknown as typeof fetch;
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* streamAndCollect({ url: "https://evt.test/interrupted" }).pipe(Effect.fork);
+          yield* Effect.sleep(Duration.millis(10));
+          yield* Fiber.interrupt(fiber);
+        }).pipe(Effect.provide(makeHttpClientLive(hangingBodyFetch).pipe(Layer.provide(cap.layer)))),
+      ),
+    );
+
+    const posts = cap.events().filter((e) => e._tag === "post-http-call") as ReadonlyArray<{
+      outcome?: string;
+      status?: number;
+      failureDetail?: string;
+    }>;
+    expect(posts.length).toBe(1);
+    expect(posts[0]?.outcome).toBe("failure");
+    expect(posts[0]?.status).toBe(200);
+    expect(posts[0]?.failureDetail).toBe("body-read-interrupted");
   });
 
   test("post-http-call reports a failure outcome without leaking the URL", async () => {
