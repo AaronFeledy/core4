@@ -283,6 +283,33 @@ describe("provisionMutagen", () => {
     }
   });
 
+  test("legacy installed marker plus current fingerprints skips before touching the downloader", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    try {
+      await writeFingerprint(mutagenHostInstallPath(dirs.binDir, "linux"), HOST_BIN);
+      await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"), AGENT_AMD64);
+      await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-arm64"), AGENT_ARM64);
+      await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-armv7"), AGENT_ARMV7);
+      await writeFile(join(dirs.binDir, ".mutagen-installed-version"), `${MUTAGEN_TOOL_VERSION}\n`, "utf-8");
+
+      const exit = await run(
+        provision({
+          binDir: dirs.binDir,
+          toolDownloadsDir: dirs.toolDownloadsDir,
+          platform: "linux",
+          arch: "x64",
+          offline: true,
+        }).pipe(Effect.provide(dl.layer)),
+      );
+
+      expect(exit._tag).toBe("Success");
+      expect(dl.downloadCalls()).toBe(0);
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
   test("force re-provisions binaries even when marker and fingerprints match", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();

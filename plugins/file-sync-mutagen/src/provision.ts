@@ -113,6 +113,12 @@ export const provisionMutagen = (
     const platform = input.platform ?? process.platform;
     const arch = input.arch ?? process.arch;
     const hostKey = resolveHostKey(platform, arch);
+
+    if (input.force !== true) {
+      const installed = yield* Effect.promise(() => readInstalledMutagenStatus(input.binDir, platform, arch));
+      if (installed.isCurrent) return;
+    }
+
     const common = {
       manifest: MUTAGEN_TOOL_MANIFEST,
       toolId: TOOL_ID,
