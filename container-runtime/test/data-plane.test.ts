@@ -3,6 +3,7 @@ import { Effect, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { VolumeOperationError } from "@lando/sdk/errors";
+import { AppId } from "@lando/sdk/schema";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
@@ -26,6 +27,54 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 };
 
 describe("provider data plane", () => {
+  test("imports artifacts from newline-delimited provider load progress", async () => {
+    const api: DataPlaneApiClient = {
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: `${JSON.stringify({ stream: "Loading layer 1/1\n" })}\n${JSON.stringify({ stream: "Loaded image: example/app:latest\n" })}\n`,
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
+
+    expect(ref.providerId).toBe("test");
+    expect(ref.ref).toBe("example/app:latest");
+  });
+
+  test("treats native snapshot wait responses without StatusCode as successful", async () => {
+    const paths: string[] = [];
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        paths.push(request.path);
+        if (request.path.includes("/wait")) return Effect.succeed({ status: 200, body: "{}" });
+        return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
+      },
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "native",
+      redactDetails: (value) => value,
+    });
+
+    const snapshot = await Effect.runPromise(
+      Effect.scoped(
+        provider.snapshotVolume({ volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" }),
+      ),
+    );
+
+    expect(snapshot.provider).toBe("test");
+    expect(snapshot.id).toBe("snap");
+    expect(paths.some((path) => path.includes("/commit?"))).toBe(true);
+  });
+
   test("closes ephemeral attach streams after stdin is consumed", async () => {
     let attached = "";
     let attachAborted = false;

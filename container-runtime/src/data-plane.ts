@@ -163,6 +163,26 @@ const dirname = (path: string): string => {
   return normalized.slice(0, index);
 };
 
+const parseImportArtifactResponse = (body: string): { ref?: string } => {
+  let ref: string | undefined;
+  const streams: string[] = [];
+  for (const line of body.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as { ref?: unknown; stream?: unknown };
+      if (typeof parsed.ref === "string" && parsed.ref.length > 0) ref = parsed.ref;
+      if (typeof parsed.stream === "string") streams.push(parsed.stream);
+    } catch {
+      streams.push(trimmed);
+    }
+  }
+  const loadedRef = streams.join("").match(/Loaded image:\s*(\S+)/u)?.[1];
+  if (ref !== undefined) return { ref };
+  if (loadedRef !== undefined) return { ref: loadedRef };
+  return {};
+};
+
 const sanitize = (value: string): string => value.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 const volumeName = (store: string): string => store;
 const serviceContainerName = (target: {
@@ -442,7 +462,7 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
         });
         yield* ensure2xx(options, "snapshotVolume", wait, store);
         const parsed = wait.body.length === 0 ? {} : (JSON.parse(wait.body) as { StatusCode?: number });
-        if (parsed.StatusCode !== 0) {
+        if (parsed.StatusCode !== undefined && parsed.StatusCode !== 0) {
           return yield* Effect.fail(
             volumeError(
               options,
@@ -769,14 +789,10 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
               ),
         ),
         Effect.map((response) => {
-          const parsed =
-            response.body.length === 0
-              ? {}
-              : (JSON.parse(response.body) as { ref?: string; stream?: string });
-          const loadedRef = parsed.stream?.match(/Loaded image:\s*(\S+)/u)?.[1];
+          const parsed = parseImportArtifactResponse(response.body);
           return {
             providerId: ProviderId.make(options.providerId),
-            ref: parsed.ref ?? loadedRef ?? `imported:${randomUUID()}`,
+            ref: parsed.ref ?? `imported:${randomUUID()}`,
           };
         }),
       )) satisfies RuntimeProviderShape["importArtifact"],
