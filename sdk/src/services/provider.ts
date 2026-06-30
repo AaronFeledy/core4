@@ -74,6 +74,7 @@ export interface ArtifactBuildSpec {
 export interface ArtifactRef {
   readonly providerId: ProviderId;
   readonly ref: string;
+  readonly digest?: string;
 }
 
 export interface ArtifactPullSpec {

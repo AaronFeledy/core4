@@ -55,6 +55,7 @@ import {
 import type { LandoPaths } from "../config/paths.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
+import { providerImages } from "./generated/provider-images.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -348,6 +349,31 @@ const providerFailure = (operation: string, cause: unknown): DataTransferError =
     cause,
     remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
   });
+
+const dataHelperImage = providerImages.images.dataHelper;
+
+const resolveDataHelperImage = (
+  provider: Context.Tag.Service<typeof RuntimeProvider>,
+): Effect.Effect<string, DataTransferError> => {
+  const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
+  return provider.pullArtifact({ ref: pinnedRef }).pipe(
+    Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
+    Effect.flatMap((ref) => {
+      if (ref.digest !== dataHelperImage.digest) {
+        return Effect.fail(
+          new DataTransferError({
+            message: "Pinned data-helper image digest could not be verified.",
+            operation: "resolve-helper-image",
+            cause: { expectedDigest: dataHelperImage.digest, actualDigest: ref.digest },
+            remediation:
+              "The provider returned a different image digest than the pinned manifest; refuse to run an unverified helper image.",
+          }),
+        );
+      }
+      return Effect.succeed(pinnedRef);
+    }),
+  );
+};
 
 const octal = (value: number, width: number): string => {
   const text = value.toString(8);
@@ -885,14 +911,17 @@ const streamFromEndpoint = (
         );
       }
       return Stream.unwrap(
-        collectExecStdout(
-          provider.runStream({
-            image: "lando-data-helper",
-            command: ["sh", "-c", `cat ${helperPayload}`],
-            mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
-            remove: true,
-          }),
-        ).pipe(
+        resolveDataHelperImage(provider).pipe(
+          Effect.flatMap((image) =>
+            collectExecStdout(
+              provider.runStream({
+                image,
+                command: ["sh", "-c", `cat ${helperPayload}`],
+                mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
+                remove: true,
+              }),
+            ),
+          ),
           Effect.mapError((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
@@ -1033,9 +1062,10 @@ const writeStreamToEndpoint = (
           body: Stream.make(payload),
           expectedSha256: spec.expectedDigest,
         }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const helperImage = yield* resolveDataHelperImage(provider);
         const result = yield* provider
           .run({
-            image: "lando-data-helper",
+            image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
             stdinStream: asyncIterableFromBytes(payload),

@@ -38,6 +38,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { makeLandoPaths } from "../../src/config/paths.ts";
+import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 import { DataMoverLive, __testOnlyEncodeTarOctal } from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
@@ -88,12 +89,18 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
   ...overrides,
 });
 
+const pinnedHelper = providerImages.images.dataHelper;
+
+const verifyingPullArtifact: Context.Tag.Service<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
+  Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
+
 const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
     StateStoreLive,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(RuntimeProvider, {
       ...TestRuntimeProvider,
+      pullArtifact: verifyingPullArtifact,
       ...overrides,
       capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
     }),
@@ -1739,6 +1746,164 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
       if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
         expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
       }
+    });
+  });
+});
+
+describe("DataMoverLive pinned helper image resolution", () => {
+  const pinned = providerImages.images.dataHelper;
+  const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true });
+
+  const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
+    dataMover.transfer({
+      from: { _tag: "hostPath", path: absolute(source) },
+      to: { _tag: "volume", app, store: "data" },
+      overwrite: true,
+    });
+
+  test("pulls and runs the digest-qualified pinned ref before the helper container runs", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let pulledRef: string | undefined;
+      let ranImage: string | undefined;
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) =>
+                Effect.sync(() => {
+                  pulledRef = spec.ref;
+                  return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
+                }),
+              run: (spec) => {
+                ranImage = spec.image;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
+      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
+    });
+  });
+
+  test("fails loudly before running the helper when the returned digest mismatches", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let runCalls = 0;
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) =>
+                Effect.succeed({
+                  providerId: ProviderId.make("test"),
+                  ref: spec.ref,
+                  digest: `sha256:${"f".repeat(64)}`,
+                }),
+              run: (spec) => {
+                runCalls += 1;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(runCalls).toBe(0);
+    });
+  });
+
+  test("fails loudly before running the helper when the returned digest is missing", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let runCalls = 0;
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) => Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref }),
+              run: (spec) => {
+                runCalls += 1;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(runCalls).toBe(0);
+    });
+  });
+
+  test("warm cache resolves with no network access and runs idempotently", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let networkPulls = 0;
+      const warmCache = new Set<string>();
+
+      const provider = providerLayer({
+        capabilities: volumeCaps,
+        pullArtifact: (spec) =>
+          Effect.sync(() => {
+            if (!warmCache.has(spec.ref)) {
+              networkPulls += 1;
+              warmCache.add(spec.ref);
+            }
+            return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
+          }),
+      });
+
+      const runImport = Effect.scoped(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* importToVolume(dataMover, source);
+        }),
+      ).pipe(
+        Effect.provide(DataMoverLive),
+        Effect.provide(provider),
+        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+      );
+
+      await Effect.runPromise(runImport);
+      await Effect.runPromise(runImport);
+
+      expect(networkPulls).toBe(1);
     });
   });
 });
