@@ -6,6 +6,11 @@ import type { ProviderCapabilities as ProviderCapabilitiesShape } from "@lando/s
 export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];
+  readonly volumeSnapshot?: ProviderCapabilitiesShape["volumeSnapshot"];
+  readonly serviceFileCopy?: ProviderCapabilitiesShape["serviceFileCopy"];
+  readonly artifactExport?: ProviderCapabilitiesShape["artifactExport"];
+  readonly artifactImport?: ProviderCapabilitiesShape["artifactImport"];
+  readonly ephemeralMounts?: ProviderCapabilitiesShape["ephemeralMounts"];
   readonly tlsCertificates: ProviderCapabilitiesShape["tlsCertificates"];
   readonly rootless: ProviderCapabilitiesShape["rootless"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
@@ -31,11 +36,11 @@ export const buildProviderCapabilities = (
     bindMountPerformance: constants.bindMountPerformance,
     copyMounts: false,
     copyOnWriteAppRoot: false,
-    volumeSnapshot: "none",
-    serviceFileCopy: "exec",
-    artifactExport: false,
-    artifactImport: false,
-    ephemeralMounts: false,
+    volumeSnapshot: constants.volumeSnapshot ?? "none",
+    serviceFileCopy: constants.serviceFileCopy ?? "exec",
+    artifactExport: constants.artifactExport ?? false,
+    artifactImport: constants.artifactImport ?? false,
+    ephemeralMounts: constants.ephemeralMounts ?? false,
     hostPortPublish: "proxy",
     routeProvider: false,
     tlsCertificates: constants.tlsCertificates,

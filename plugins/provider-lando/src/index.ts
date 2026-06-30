@@ -3,6 +3,7 @@
  */
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -27,6 +28,7 @@ import {
   buildPodmanServiceArgs,
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
+import { redactDetails } from "./redact.ts";
 import type { RootlessProbes } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
@@ -291,6 +293,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     shouldProbeCapabilities && podmanApi !== undefined
       ? introspectProviderCapabilities(podmanApi, platform)
       : Effect.succeed(mvpProviderCapabilities(platform));
+  const dataPlane =
+    podmanApi === undefined
+      ? undefined
+      : makeProviderDataPlane({
+          providerId: "lando",
+          api: podmanApi,
+          snapshotMode: "native",
+          redactDetails,
+        });
 
   const resolvePlan = (target: AppSelector): Effect.Effect<AppPlan | undefined, never> => {
     if (target.plan !== undefined) return Effect.succeed(target.plan);
@@ -510,8 +521,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 ),
               ),
             ),
-          run: () => Effect.fail(makeUnavailable("run")),
-          runStream: () => Stream.fail(makeUnavailable("runStream")),
+          run: dataPlane === undefined ? () => Effect.fail(makeUnavailable("run")) : dataPlane.run,
+          runStream:
+            dataPlane === undefined ? () => Stream.fail(makeUnavailable("runStream")) : dataPlane.runStream,
           logs: (target, logOptions) =>
             Stream.unwrap(
               resolvePlan(target).pipe(
@@ -557,14 +569,50 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   : snapshots.filter((snapshot) => snapshot.app === filter.app),
               ),
             ),
-          snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
-          restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-          listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
-          removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
-          copyToService: () => Effect.fail(makeUnavailable("copyToService")),
-          copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
-          exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
-          importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+          snapshotVolume:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("snapshotVolume"))
+              : dataPlane.snapshotVolume,
+          restoreVolume:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("restoreVolume"))
+              : dataPlane.restoreVolume,
+          listVolumes:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("listVolumes"))
+              : dataPlane.listVolumes,
+          removeVolume:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("removeVolume"))
+              : dataPlane.removeVolume,
+          copyToService:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("copyToService"))
+              : (target, spec) =>
+                  resolvePlan(target).pipe(
+                    Effect.flatMap((plan) =>
+                      dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+                    ),
+                  ),
+          copyFromService:
+            dataPlane === undefined
+              ? () => Stream.fail(makeUnavailable("copyFromService"))
+              : (target, spec) =>
+                  Stream.unwrap(
+                    resolvePlan(target).pipe(
+                      Effect.map((plan) =>
+                        dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+                      ),
+                    ),
+                  ),
+          exportArtifact:
+            dataPlane === undefined
+              ? () => Stream.fail(makeUnavailable("exportArtifact"))
+              : dataPlane.exportArtifact,
+          importArtifact:
+            dataPlane === undefined
+              ? () => Effect.fail(makeUnavailable("importArtifact"))
+              : dataPlane.importArtifact,
         };
 
         return provider satisfies RuntimeProviderShape;

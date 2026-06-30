@@ -7,6 +7,7 @@ export interface SocketHttpRequest {
   readonly method: string;
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Bytes>;
 }
@@ -143,15 +144,19 @@ export const socketHttpRequestText = (
   request: SocketHttpRequest,
   options: Pick<SocketHttpClientOptions, "apiPrefix" | "hostHeader" | "defaultHeaders">,
   body = requestBody(request),
+  rawBodyLength?: number,
 ): string => {
   const headers = [
     `${request.method} ${options.apiPrefix}${request.path} HTTP/1.1`,
     `Host: ${options.hostHeader ?? "localhost"}`,
     "Connection: close",
     ...Object.entries(options.defaultHeaders ?? {}).map(([key, value]) => `${key}: ${value}`),
+    ...Object.entries(request.headers ?? {}).map(([key, value]) => `${key}: ${value}`),
   ];
   if (body !== undefined) {
     headers.push("Content-Type: application/json", `Content-Length: ${textEncoder.encode(body).length}`);
+  } else if (rawBodyLength !== undefined) {
+    headers.push(`Content-Length: ${rawBodyLength}`);
   }
   return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
 };
@@ -288,9 +293,18 @@ const writeRequest = (
   connection: SocketHttpConnection,
   request: SocketHttpRequest,
   options: SocketHttpClientOptions,
+  stdinPayload?: Bytes,
 ): void => {
   try {
-    connection.write(socketHttpRequestText(request, options));
+    connection.write(
+      socketHttpRequestText(
+        request,
+        options,
+        stdinPayload === undefined ? requestBody(request) : undefined,
+        stdinPayload?.length,
+      ),
+    );
+    if (stdinPayload !== undefined) connection.write(stdinPayload);
   } catch (cause) {
     throw mapError(
       options,
@@ -310,7 +324,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
   const request = async (input: SocketHttpRequest): Promise<SocketHttpResponse> => {
     const connection = await connect(options, input);
-    writeRequest(connection, input, options);
+    const stdinPayload = input.stdin === undefined ? undefined : await collectBytes(input.stdin);
+    writeRequest(connection, input, options, stdinPayload);
     try {
       const responseBytes = await collectBytes(connection);
       const parsed = parseHttpHead(responseBytes, operation);
@@ -339,7 +354,8 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
-    if (input.stdin !== undefined) {
+    const startStdinPump = () => {
+      if (input.stdin === undefined || stdinPump !== undefined) return;
       stdinIterator = input.stdin[Symbol.asyncIterator]();
       stdinPump = (async () => {
         while (true) {
@@ -350,7 +366,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
         }
       })();
       stdinPump.catch(() => connection.destroy());
-    }
+    };
     try {
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
@@ -363,6 +379,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           const merged = concatBytes(initialChunks);
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
+          startStdinPump();
           if (parsed.status < 200 || parsed.status >= 300) {
             throw fail(
               "http",

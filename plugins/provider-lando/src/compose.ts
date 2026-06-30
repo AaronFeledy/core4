@@ -204,12 +204,17 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
   const volumes = Object.fromEntries([
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
-        const labels = store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+        const labels = {
+          "dev.lando.app": plan.id,
+          "dev.lando.store": store.name,
+          "dev.lando.scope": store.scope,
+          ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+        };
         return [
           store.name,
           {
             ...(store.driver === undefined ? {} : { driver: store.driver }),
-            ...(labels === undefined ? {} : { labels }),
+            labels,
           },
         ];
       },

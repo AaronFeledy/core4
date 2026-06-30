@@ -75,6 +75,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -283,7 +284,12 @@ describe("provider-lando bringUp", () => {
     const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
     expect(volumeCreate?.body).toEqual({
       Name: "lando-cache-npm",
-      Labels: { "dev.lando.storage-kind": "cache" },
+      Labels: {
+        "dev.lando.app": appId,
+        "dev.lando.scope": "global",
+        "dev.lando.storage-kind": "cache",
+        "dev.lando.store": "lando-cache-npm",
+      },
     });
     const nodeCreate = fake.calls.find(
       (call) =>

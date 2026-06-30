@@ -94,9 +94,10 @@ const plan: AppPlan = {
   routes: [],
   networks: [{ name: "myapp_default", shared: false, driver: "bridge" }],
   stores: [
-    { name: "myapp_database_data", scope: "service" },
+    { name: "myapp_database_data", scope: "service", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
   ],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -140,7 +141,9 @@ describe("provider-lando Compose emission", () => {
     expect(content).toContain("  lando-myapp:\n");
     expect(content).toContain('    driver: "bridge"\n');
     expect(content).toContain("volumes:\n  myapp_database_data:\n");
-    expect(content).toContain('  lando-cache-npm:\n    labels:\n      dev.lando.storage-kind: "cache"\n');
+    expect(content).toContain(
+      '  lando-cache-npm:\n    labels:\n      dev.lando.app: "myapp"\n      dev.lando.scope: "global"\n      dev.lando.storage-kind: "cache"\n      dev.lando.store: "lando-cache-npm"\n',
+    );
   });
 
   test("keeps Compose output inside the MVP key allowlist", () => {

@@ -2512,7 +2512,7 @@
         "Lint passes."
       ],
       "priority": 140,
-      "passes": false,
+      "passes": true,
       "notes": "Data-movement primitive (spec \u00a75.4, \u00a75.8). Depends on US-335, US-337."
     },
     {

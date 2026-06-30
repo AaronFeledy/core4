@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ProviderUnavailableError, type ServiceStartError } from "@lando/sdk/errors";
+import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
 import {
@@ -13,6 +13,7 @@ import {
   linuxDockerCapabilities,
   makeDockerApiClient,
   makeProviderLayer,
+  makeRuntimeProvider,
   renderCompose,
 } from "@lando/provider-docker";
 import {
@@ -25,7 +26,11 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
+import {
+  runProviderContract,
+  runProviderContractMatrix,
+  runProviderDataPlaneContract,
+} from "@lando/sdk/test";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -99,6 +104,7 @@ const makePlan = (service = makeService()): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 });
@@ -202,6 +208,223 @@ const makeFakeApi = () => {
       }
       if (request.path.includes("/logs?")) {
         return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+      }
+      return Stream.empty;
+    },
+  };
+
+  return { api, calls };
+};
+
+const concatBytes = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
+  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+};
+
+const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): Promise<Uint8Array> => {
+  const chunks: Uint8Array[] = [];
+  if (input !== undefined) for await (const chunk of input) chunks.push(chunk);
+  return concatBytes(chunks);
+};
+
+const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
+  const calls: DockerHttpRequest[] = [];
+  const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
+  const volumes = new Map<string, Uint8Array>();
+  const snapshots = new Map<string, Uint8Array>();
+  const serviceFiles = new Map<string, Uint8Array>();
+  const artifacts = new Map<string, Uint8Array>();
+  let artifactCount = 0;
+
+  const api: DockerApiClient = {
+    info: Effect.succeed({}),
+    request: (request) =>
+      Effect.promise(async (): Promise<DockerHttpResponse> => {
+        calls.push(request);
+        if (request.path.startsWith("/containers/create?name=")) {
+          const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
+          containers.set(name, { body: request.body, stdout: new Uint8Array(), exitCode: 0 });
+          return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
+        }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/start")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
+          const container = containers.get(name);
+          const body = container?.body as
+            | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+            | undefined;
+          const binds = body?.HostConfig?.Binds ?? [];
+          const volume = binds[0]?.split(":")[0];
+          const snapshotVolume = binds[1]?.split(":")[0];
+          const command = body?.Cmd?.join(" ");
+          if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload") {
+            container.stdout = volumes.get(volume) ?? new Uint8Array();
+          }
+          if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .") {
+            container.stdout = volumes.get(volume) ?? new Uint8Array();
+          }
+          const snapshotWrite = command?.match(/tar -C \/lando-data -cf \/lando-snapshots\/([^ ]+) \./u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotWrite !== undefined
+          ) {
+            snapshots.set(`${snapshotVolume}/${snapshotWrite}`, volumes.get(volume) ?? new Uint8Array());
+          }
+          const snapshotRead = command?.match(/tar -C \/lando-data -xf \/lando-snapshots\/([^ ]+)/u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotRead !== undefined
+          ) {
+            const snapshot = snapshots.get(`${snapshotVolume}/${snapshotRead}`);
+            if (snapshot === undefined) container.exitCode = 1;
+            else volumes.set(volume, snapshot);
+          }
+          return { status: 204, body: "" };
+        }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait")) {
+          return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
+        }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          return {
+            status: containers.has(name) ? 200 : 404,
+            body: JSON.stringify({ State: { ExitCode: containers.get(name)?.exitCode ?? 0 } }),
+          };
+        }
+        if (
+          request.path.startsWith("/containers/") &&
+          request.path.endsWith("?force=true") &&
+          request.method === "DELETE"
+        ) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          containers.delete(name);
+          return { status: 204, body: "" };
+        }
+        if (request.path.startsWith("/volumes/snapshots/") && request.method === "POST") {
+          const id = decodeURIComponent(request.path.slice("/volumes/snapshots/".length));
+          snapshots.set(id, await collectAsyncBytes(request.stdin));
+          return { status: 201, body: "{}" };
+        }
+        if (
+          request.path.startsWith("/volumes/") &&
+          request.path.includes("/archive?") &&
+          request.method === "POST"
+        ) {
+          const name = decodeURIComponent(
+            request.path.slice("/volumes/".length, request.path.indexOf("/archive?")),
+          );
+          volumes.set(name, await collectAsyncBytes(request.stdin));
+          return { status: 200, body: "{}" };
+        }
+        if (request.path === "/volumes" && request.method === "GET") {
+          return {
+            status: 200,
+            body: JSON.stringify({ Volumes: Array.from(volumes.keys()).map((Name) => ({ Name })) }),
+          };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
+          volumes.delete(decodeURIComponent(request.path.slice("/volumes/".length)));
+          return { status: 204, body: "" };
+        }
+        if (
+          request.path.startsWith("/containers/") &&
+          request.path.includes("/archive?") &&
+          request.method === "PUT"
+        ) {
+          if (options.failCopyTo === true)
+            return { status: 500, body: JSON.stringify({ message: "forced copy failure" }) };
+          const container = decodeURIComponent(
+            request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
+          );
+          const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
+          serviceFiles.set(
+            `${container}:${params.get("path") ?? ""}`,
+            await collectAsyncBytes(request.stdin),
+          );
+          return { status: 200, body: "{}" };
+        }
+        if (request.path === "/images/load" && request.method === "POST") {
+          artifactCount += 1;
+          const ref = `imported:${artifactCount}`;
+          artifacts.set(ref, await collectAsyncBytes(request.stdin));
+          return { status: 200, body: JSON.stringify({ ref }) };
+        }
+        return {
+          status: 500,
+          body: JSON.stringify({ message: `unhandled ${request.method} ${request.path}` }),
+        };
+      }),
+    stream: (request) => {
+      calls.push(request);
+      if (request.path.startsWith("/containers/") && request.path.includes("/logs?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
+        );
+        return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
+      }
+      if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/attach?")),
+        );
+        return Stream.unwrap(
+          Effect.promise(async () => {
+            const container = containers.get(name);
+            const body = container?.body as
+              | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
+              | undefined;
+            const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
+            if (
+              container !== undefined &&
+              volume !== undefined &&
+              body?.Cmd?.join(" ") === "sh -c cat > /data/payload"
+            ) {
+              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            }
+            if (
+              container !== undefined &&
+              volume !== undefined &&
+              body?.Cmd?.join(" ") === "tar -C /lando-data -xf -"
+            ) {
+              volumes.set(volume, await collectAsyncBytes(request.stdin));
+            }
+            return Stream.empty;
+          }),
+        );
+      }
+      if (request.path.startsWith("/volumes/") && request.path.endsWith("/archive")) {
+        const name = decodeURIComponent(request.path.slice("/volumes/".length, -"/archive".length));
+        return Stream.make(volumes.get(name) ?? new Uint8Array());
+      }
+      if (request.path.startsWith("/volumes/snapshots/")) {
+        return Stream.make(
+          snapshots.get(decodeURIComponent(request.path.slice("/volumes/snapshots/".length))) ??
+            new Uint8Array(),
+        );
+      }
+      if (request.path.startsWith("/containers/") && request.path.includes("/archive?")) {
+        const container = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/archive?")),
+        );
+        const params = new URLSearchParams(request.path.slice(request.path.indexOf("?") + 1));
+        const path = params.get("path") ?? "";
+        const directory = path.slice(0, path.lastIndexOf("/")) || "/";
+        return Stream.make(
+          serviceFiles.get(`${container}:${path}`) ??
+            serviceFiles.get(`${container}:${directory}`) ??
+            new Uint8Array(),
+        );
+      }
+      if (request.path.startsWith("/images/") && request.path.endsWith("/get")) {
+        const ref = decodeURIComponent(request.path.slice("/images/".length, -"/get".length));
+        return Stream.make(artifacts.get(ref) ?? new Uint8Array());
       }
       return Stream.empty;
     },
@@ -348,10 +571,11 @@ const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan =
   networks: [],
   stores: opts.includeStores
     ? [
-        { name: "myapp_db_data", scope: "app" as const },
+        { name: "myapp_db_data", scope: "app" as const, kind: "data" as const },
         { name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" },
       ]
     : [],
+  fileSync: [],
   metadata,
   extensions: {},
 });
@@ -381,6 +605,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     try {
       const client = makeDockerApiClient(`npipe:${socketPath}`);
+      if (client.stream === undefined) throw new Error("Docker client stream transport is unavailable");
       const body = await Effect.runPromise(
         client.stream({ method: "GET", path: "/logs" }).pipe(
           Stream.runCollect,
@@ -410,20 +635,107 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
   });
 
-  test("fails closed for unsupported volume listing", async () => {
+  test("lists volumes through the Docker Engine API", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: makeFakeApi().api })),
+        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: makeDataPlaneFakeApi().api })),
       ),
     );
 
-    const exit = await Effect.runPromiseExit(provider.listVolumes({ app: appId }));
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: appId }));
+
+    expect(volumes).toEqual([]);
+  });
+
+  test("data-plane copies use the applied plan slug for service container names", async () => {
+    const fake = makeDataPlaneFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const plan = { ...makePlan(), slug: "custom-slug" };
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.copyToService(
+          { app: appId, service: serviceName, plan },
+          {
+            sourcePath: AbsolutePath.make(import.meta.path),
+            targetPath: PortablePath.make("/tmp/payload"),
+            overwrite: true,
+          },
+        ),
+      ),
+    );
+
+    expect(
+      fake.calls.some((call) => call.path.startsWith("/containers/lando-custom-slug-web/archive?")),
+    ).toBe(true);
+  });
+
+  test("ephemeral data-store mounts use the canonical store name", async () => {
+    const fake = makeDataPlaneFakeApi();
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "alpine:3.20",
+          command: ["sh", "-c", "true"],
+          mounts: [{ store: "cache-data", target: PortablePath.make("/data"), readOnly: false }],
+        }),
+      ),
+    );
+
+    const createCall = fake.calls.find((call) => call.path.startsWith("/containers/create?name="));
+    expect(
+      (createCall?.body as { HostConfig?: { Binds?: ReadonlyArray<string> } } | undefined)?.HostConfig?.Binds,
+    ).toEqual(["cache-data:/data"]);
+  });
+
+  test("runs the provider data-plane contract through the Docker Engine API", async () => {
+    const fake = makeDataPlaneFakeApi();
+    await Effect.runPromise(
+      runProviderDataPlaneContract({
+        providerName: "docker",
+        factory: () => makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }),
+        observations: {
+          usedCopyVolumeSnapshot: () =>
+            fake.calls.some(
+              (call) =>
+                call.path.startsWith("/containers/create?name=") &&
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").startsWith(
+                  "sh -c mkdir -p /lando-snapshots && tar -C /lando-data -cf /lando-snapshots/",
+                ),
+            ),
+          usedNativeServiceFileCopy: () =>
+            fake.calls.some(
+              (call) => call.path.startsWith("/containers/") && call.path.includes("/archive?"),
+            ),
+        },
+      }),
+    );
+  });
+
+  test("emits ServiceCopyError for copyToService failures", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", dockerApi: makeDataPlaneFakeApi({ failCopyTo: true }).api }),
+    );
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.copyToService(
+          { app: appId, service: serviceName },
+          {
+            sourcePath: AbsolutePath.make(import.meta.path),
+            targetPath: PortablePath.make("/tmp/payload"),
+            overwrite: true,
+          },
+        ),
+      ),
+    );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(exit.cause.toString()).toContain("ProviderUnavailableError");
-    expect(exit.cause.toString()).toContain("listVolumes");
     if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
+      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
+      expect(exit.cause.error._tag).toBe("ServiceCopyError");
+      expect(exit.cause.error.providerId).toBe("docker");
     }
   });
 
@@ -526,7 +838,9 @@ describe("provider-docker RuntimeProvider contract", () => {
     const stdinStream = (async function* () {
       yield textEncoder.encode("typed\n");
     })();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
         return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
@@ -574,7 +888,9 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("interrupts provider exec streams when the abort signal fires", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) return Stream.never;
       return Stream.empty;
@@ -609,7 +925,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes raw Docker log bytes", async () => {
     const fake = makeFakeApi();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.includes("/logs?")) {
         return Stream.fromIterable([textEncoder.encode("2026-05-17T12:00:00.000Z raw ready\n")]);
@@ -642,7 +960,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("decodes split framed Docker log bytes", async () => {
     const fake = makeFakeApi();
-    fake.api.stream = (request) => {
+    (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
+      request: DockerHttpRequest,
+    ) => {
       fake.calls.push(request);
       if (request.path.includes("/logs?")) {
         const frame = attachFrame(1, "2026-05-17T12:00:00.000Z split ready\n");
@@ -715,7 +1035,12 @@ describe("provider-docker RuntimeProvider contract", () => {
     const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
     expect(volumeCreate?.body).toEqual({
       Name: "lando-cache-npm",
-      Labels: { "dev.lando.storage-kind": "cache" },
+      Labels: {
+        "dev.lando.app": appId,
+        "dev.lando.scope": "global",
+        "dev.lando.storage-kind": "cache",
+        "dev.lando.store": "lando-cache-npm",
+      },
     });
     const containerCreate = fake.calls.find(
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),

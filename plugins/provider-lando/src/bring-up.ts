@@ -227,11 +227,16 @@ const ensureNetwork = (
   );
 };
 
-const volumeLabels = (store: AppPlan["stores"][number]): Readonly<Record<string, string>> | undefined =>
-  store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
+  "dev.lando.app": plan.id,
+  "dev.lando.store": store.name,
+  "dev.lando.scope": store.scope,
+  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+});
 
 const ensureVolume = (
   api: PodmanApiClient,
+  plan: AppPlan,
   store: AppPlan["stores"][number],
 ): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> =>
   request(api, {
@@ -239,7 +244,7 @@ const ensureVolume = (
     path: "/volumes/create",
     body: {
       Name: store.name,
-      ...(volumeLabels(store) === undefined ? {} : { Labels: volumeLabels(store) }),
+      Labels: volumeLabels(plan, store),
     },
   }).pipe(
     Effect.flatMap((response) => {
@@ -457,7 +462,7 @@ export const bringUp = (
     }
     let changed = false;
     for (const store of plan.stores) {
-      changed = (yield* ensureVolume(resolvedApi, store)) || changed;
+      changed = (yield* ensureVolume(resolvedApi, plan, store)) || changed;
     }
     const touched: string[] = [];
     for (const service of Object.values(plan.services)) {

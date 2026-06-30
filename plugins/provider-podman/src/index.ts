@@ -18,6 +18,7 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -45,7 +46,7 @@ import {
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
-import { redactString } from "./redact.ts";
+import { redactDetails, redactString } from "./redact.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
@@ -257,6 +258,11 @@ export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
   buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
+    volumeSnapshot: "copy",
+    serviceFileCopy: "native",
+    artifactExport: true,
+    artifactImport: true,
+    ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: true,
     composeSpec: "portable",
@@ -583,6 +589,12 @@ export const makeRuntimeProvider = (
       return cause;
     }),
   );
+  const dataPlane = makeProviderDataPlane({
+    providerId: PROVIDER_ID,
+    api: podmanApi,
+    snapshotMode: "copy",
+    redactDetails,
+  });
 
   const resolvePlan = (target: AppSelector): Effect.Effect<AppPlan | undefined, never> => {
     if (target.plan !== undefined) return Effect.succeed(target.plan);
@@ -667,8 +679,8 @@ export const makeRuntimeProvider = (
               ),
             ),
           ),
-        run: () => Effect.fail(makeUnavailable("run")),
-        runStream: () => Stream.fail(makeUnavailable("runStream")),
+        run: dataPlane.run,
+        runStream: dataPlane.runStream,
         logs: (target, logOptions) =>
           Stream.unwrap(
             resolvePlan(target).pipe(
@@ -721,14 +733,26 @@ export const makeRuntimeProvider = (
             const flat = snapshots.flat();
             return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
           }),
-        snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
-        restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
-        removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
-        copyToService: () => Effect.fail(makeUnavailable("copyToService")),
-        copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
-        exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
-        importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+        snapshotVolume: dataPlane.snapshotVolume,
+        restoreVolume: dataPlane.restoreVolume,
+        listVolumes: dataPlane.listVolumes,
+        removeVolume: dataPlane.removeVolume,
+        copyToService: (target, spec) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+            ),
+          ),
+        copyFromService: (target, spec) =>
+          Stream.unwrap(
+            resolvePlan(target).pipe(
+              Effect.map((plan) =>
+                dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+              ),
+            ),
+          ),
+        exportArtifact: dataPlane.exportArtifact,
+        importArtifact: dataPlane.importArtifact,
       }),
     ),
   );

@@ -2,6 +2,7 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -94,9 +95,10 @@ const withApiReason = (message: string, details: unknown): string => {
   return reason === undefined ? message : `${message} ${reason}`;
 };
 export interface DockerHttpRequest {
-  readonly method: "GET" | "POST" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
 }
@@ -238,6 +240,39 @@ const parseInfoJson = (response: DockerHttpResponse) =>
         cause,
       }),
   });
+
+const collectRequestStdin = async (
+  stdin: AsyncIterable<Uint8Array> | undefined,
+): Promise<Uint8Array | undefined> => {
+  if (stdin === undefined) return undefined;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of stdin) {
+    chunks.push(chunk);
+    size += chunk.byteLength;
+  }
+  const payload = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    payload.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return payload;
+};
+
+interface WritableStdinSink {
+  write(payload: Uint8Array): unknown;
+  end(): unknown;
+}
+
+const writeStdinPayload = (
+  stdin: WritableStdinSink | null | undefined,
+  payload: Uint8Array | undefined,
+): void => {
+  if (stdin === undefined || stdin === null || payload === undefined) return;
+  stdin.write(payload);
+  stdin.end();
+};
 
 const request = (
   api: DockerApiClient,
@@ -402,6 +437,11 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
   buildProviderCapabilities({
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    volumeSnapshot: "copy",
+    serviceFileCopy: "native",
+    artifactExport: true,
+    artifactImport: true,
+    ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: false,
     composeSpec: "portable",
@@ -473,11 +513,23 @@ const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
       if (input.body !== undefined) {
         args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
       }
+      for (const [key, value] of Object.entries(input.headers ?? {})) {
+        args.push("--header", `${key}: ${value}`);
+      }
+      if (input.stdin !== undefined) {
+        args.push("--data-binary", "@-");
+      }
       args.push(`http://localhost/v1.43${input.path}`);
 
       const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
         try: async () => {
-          const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
+          const payload = await collectRequestStdin(input.stdin);
+          const proc = Bun.spawn(["curl", ...args], {
+            stderr: "pipe",
+            stdin: payload === undefined ? "ignore" : "pipe",
+            stdout: "pipe",
+          });
+          writeStdinPayload(proc.stdin as WritableStdinSink | null | undefined, payload);
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(proc.stdout).text(),
             new Response(proc.stderr).text(),
@@ -681,16 +733,20 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
-const volumeLabels = (store: AppPlan["stores"][number]): Readonly<Record<string, string>> | undefined =>
-  store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : undefined;
+const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
+  "dev.lando.app": plan.id,
+  "dev.lando.store": store.name,
+  "dev.lando.scope": store.scope,
+  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+});
 
-const ensureVolume = (api: DockerApiClient, store: AppPlan["stores"][number]) =>
+const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) =>
   request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      ...(volumeLabels(store) === undefined ? {} : { Labels: volumeLabels(store) }),
+      Labels: volumeLabels(plan, store),
     },
   }).pipe(
     Effect.flatMap((response) =>
@@ -839,7 +895,7 @@ const rollbackPartialApply = (
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
-    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, store), { discard: true });
+    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: string[] = [];
     let changed = false;
@@ -1211,6 +1267,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.dockerApi === undefined && options.dockerApiFactory === undefined
       ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
       : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const dataPlane = makeProviderDataPlane({
+    providerId: PROVIDER_ID,
+    api: dockerApi,
+    snapshotMode: "copy",
+    redactDetails,
+  });
 
   const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
     target.plan ?? plans.get(target.app);
@@ -1263,8 +1325,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ? Stream.fail(makeUnavailable("execStream"))
             : execStream(plan, target, command, dockerApi);
         },
-        run: () => Effect.fail(makeUnavailable("run")),
-        runStream: () => Stream.fail(makeUnavailable("runStream")),
+        run: dataPlane.run,
+        runStream: dataPlane.runStream,
         logs: (target, logOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined
@@ -1290,14 +1352,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 : snapshots.filter((snapshot) => snapshot.app === filter.app),
             ),
           ),
-        snapshotVolume: () => Effect.fail(makeUnavailable("snapshotVolume")),
-        restoreVolume: () => Effect.fail(makeUnavailable("restoreVolume")),
-        listVolumes: () => Effect.fail(makeUnavailable("listVolumes")),
-        removeVolume: () => Effect.fail(makeUnavailable("removeVolume")),
-        copyToService: () => Effect.fail(makeUnavailable("copyToService")),
-        copyFromService: () => Stream.fail(makeUnavailable("copyFromService")),
-        exportArtifact: () => Stream.fail(makeUnavailable("exportArtifact")),
-        importArtifact: () => Effect.fail(makeUnavailable("importArtifact")),
+        snapshotVolume: dataPlane.snapshotVolume,
+        restoreVolume: dataPlane.restoreVolume,
+        listVolumes: dataPlane.listVolumes,
+        removeVolume: dataPlane.removeVolume,
+        copyToService: (target, spec) => {
+          const plan = resolvePlan(target);
+          return dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec);
+        },
+        copyFromService: (target, spec) => {
+          const plan = resolvePlan(target);
+          return dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec);
+        },
+        exportArtifact: dataPlane.exportArtifact,
+        importArtifact: dataPlane.importArtifact,
       }),
     ),
   );

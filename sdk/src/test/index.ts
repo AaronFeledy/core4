@@ -911,6 +911,11 @@ export const runProviderContractMatrix = (
 export interface ProviderDataPlaneContractInput {
   readonly providerName?: string;
   readonly factory: () => Effect.Effect<RuntimeProviderShape, unknown>;
+  readonly observations?: {
+    readonly usedNativeVolumeSnapshot?: () => boolean;
+    readonly usedCopyVolumeSnapshot?: () => boolean;
+    readonly usedNativeServiceFileCopy?: () => boolean;
+  };
 }
 
 const endpointKind = (endpoint: DataEndpoint): string => endpoint._tag;
@@ -1020,6 +1025,11 @@ export const runProviderDataPlaneContract = (
           ),
         );
       const store = nextContractRunId();
+      const serviceTarget = {
+        app: TEST_APP_ID,
+        service: TEST_SERVICE_NAME,
+        plan: makeTestAppPlan(ProviderId.make(provider.id)),
+      };
       const volumePayload = sampleBytes(0, 1, 2, 3, 128, 255);
       const mutatedPayload = sampleBytes(255, 128, 3, 2, 1, 0);
       const servicePayload = sampleBytes(9, 8, 7, 6, 5, 4);
@@ -1088,6 +1098,26 @@ export const runProviderDataPlaneContract = (
       const snapshot = yield* provider
         .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
         .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
+      if (
+        provider.capabilities.volumeSnapshot === "native" &&
+        input.observations?.usedNativeVolumeSnapshot !== undefined
+      ) {
+        yield* requireContract(
+          input.observations.usedNativeVolumeSnapshot(),
+          "native volume snapshots use the provider-native path",
+          provider.capabilities,
+        );
+      }
+      if (
+        provider.capabilities.volumeSnapshot === "copy" &&
+        input.observations?.usedCopyVolumeSnapshot !== undefined
+      ) {
+        yield* requireContract(
+          input.observations.usedCopyVolumeSnapshot(),
+          "copy-mode volume snapshots use the verified archive path",
+          provider.capabilities,
+        );
+      }
       yield* writeMountedVolume(provider, store, mutatedPayload).pipe(
         Effect.mapError(
           mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
@@ -1110,16 +1140,20 @@ export const runProviderDataPlaneContract = (
       );
 
       yield* withTempCopySource(servicePayload, (sourcePath) =>
-        provider.copyToService(
-          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
-          { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true },
-        ),
+        provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),
       ).pipe(Effect.mapError(mapProviderFailure("copyToService succeeds")));
+      if (
+        provider.capabilities.serviceFileCopy === "native" &&
+        input.observations?.usedNativeServiceFileCopy !== undefined
+      ) {
+        yield* requireContract(
+          input.observations.usedNativeServiceFileCopy(),
+          "native service file copy uses the provider-native path",
+          provider.capabilities,
+        );
+      }
       const copiedServiceBytes = yield* collectByteStream(
-        provider.copyFromService(
-          { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
-          { sourcePath: TEST_VOLUME_PATH },
-        ),
+        provider.copyFromService(serviceTarget, { sourcePath: TEST_VOLUME_PATH }),
       ).pipe(Effect.mapError(mapProviderFailure("copyFromService succeeds")));
       yield* requireContract(
         bytesEqual(copiedServiceBytes, servicePayload),
