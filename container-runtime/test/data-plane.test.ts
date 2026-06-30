@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
-import { ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
+import { ArtifactTransferError, ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
@@ -87,7 +87,7 @@ const makeCopySnapshotApi = () => {
             } else if (command.includes("tar -C /lando-data -xf /lando-snapshots/snap.tar")) {
               const snapshot = snapshotFiles.get(`${snapshotStore}/snap.tar`);
               if (snapshot === undefined) container.exitCode = 1;
-              else volumes.set(dataStore, snapshot);
+              else if (!command.includes(" -k ") || !volumes.has(dataStore)) volumes.set(dataStore, snapshot);
             }
           }
           return { status: 204, body: "" };
@@ -131,6 +131,45 @@ describe("provider data plane", () => {
 
     expect(ref.providerId).toBe(ProviderId.make("test"));
     expect(ref.ref).toBe("example/app:latest");
+  });
+
+  test("imports artifacts from image-load aux ids", async () => {
+    const api: DataPlaneApiClient = {
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: `${JSON.stringify({ stream: "Loading layer 1/1\n" })}\n${JSON.stringify({ aux: { ID: "sha256:abc123" } })}\n`,
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const ref = await Effect.runPromise(provider.importArtifact(Stream.make(bytes("tar payload"))));
+
+    expect(ref.ref).toBe("sha256:abc123");
+  });
+
+  test("fails artifact imports when the provider omits an image ref", async () => {
+    const api: DataPlaneApiClient = {
+      request: () => Effect.succeed({ status: 200, body: JSON.stringify({ stream: "Loading layer 1/1\n" }) }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const exit = await Effect.runPromiseExit(provider.importArtifact(Stream.make(bytes("tar payload"))));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    }
   });
 
   test("treats native snapshot wait responses without StatusCode as successful", async () => {
@@ -310,6 +349,37 @@ describe("provider data plane", () => {
     );
 
     expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("original");
+  });
+
+  test("preserves existing copy-mode volume data when restore overwrite is false", async () => {
+    const fake = makeCopySnapshotApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api: fake.api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const snapshot = await Effect.runPromise(
+      Effect.scoped(
+        provider.snapshotVolume({
+          volume: { app: AppId.make("app"), store: "data" },
+          snapshotId: "snap",
+        }),
+      ),
+    );
+    fake.volumes.set("data", bytes("changed"));
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.restoreVolume({
+          snapshot,
+          target: { app: AppId.make("app"), store: "data" },
+          overwrite: false,
+        }),
+      ),
+    );
+
+    expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("changed");
   });
 
   test("filters volume listings to matching Lando labels", async () => {

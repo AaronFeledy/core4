@@ -171,8 +171,13 @@ const parseImportArtifactResponse = (body: string): { ref?: string } => {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     try {
-      const parsed = JSON.parse(trimmed) as { ref?: unknown; stream?: unknown };
+      const parsed = JSON.parse(trimmed) as {
+        ref?: unknown;
+        stream?: unknown;
+        aux?: { readonly ID?: unknown };
+      };
       if (typeof parsed.ref === "string" && parsed.ref.length > 0) ref = parsed.ref;
+      if (typeof parsed.aux?.ID === "string" && parsed.aux.ID.length > 0) ref = parsed.aux.ID;
       if (typeof parsed.stream === "string") streams.push(parsed.stream);
     } catch {
       streams.push(trimmed);
@@ -636,13 +641,13 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const store = spec.target.store;
       const name = volumeName(store);
       if (options.snapshotMode === "native") {
+        const command =
+          spec.overwrite !== false
+            ? "find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
+            : "cd /snapshot && tar -cf - . | tar -C /lando-data -k -xf -";
         return runBytes(options, {
           image: nativeSnapshotImage(spec.snapshot.id),
-          command: [
-            "sh",
-            "-c",
-            "find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/",
-          ],
+          command: ["sh", "-c", command],
           mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
           remove: true,
         }).pipe(
@@ -667,13 +672,14 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       }
       const snapshotStore = copyModeSnapshotStore(options.providerId);
       const snapshotFile = copyModeSnapshotFile(spec.snapshot.id);
+      const snapshotPath = `${copyModeSnapshotMountPath}/${snapshotFile}`;
+      const restoreCommand =
+        spec.overwrite !== false
+          ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath}`
+          : `test -f ${snapshotPath} && tar -C ${copyModeMountPath} -k -xf ${snapshotPath}`;
       return runBytes(options, {
         image: copyModeHelperImage,
-        command: [
-          "sh",
-          "-c",
-          `test -f ${copyModeSnapshotMountPath}/${snapshotFile} && tar -C ${copyModeMountPath} -xf ${copyModeSnapshotMountPath}/${snapshotFile}`,
-        ],
+        command: ["sh", "-c", restoreCommand],
         mounts: [
           { store: name, target: copyModeMountTarget, readOnly: false },
           { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
@@ -886,12 +892,21 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 ),
               ),
         ),
-        Effect.map((response) => {
+        Effect.flatMap((response) => {
           const parsed = parseImportArtifactResponse(response.body);
-          return {
-            providerId: ProviderId.make(options.providerId),
-            ref: parsed.ref ?? `imported:${randomUUID()}`,
-          };
+          return parsed.ref === undefined
+            ? Effect.fail(
+                artifactError(
+                  options,
+                  "importArtifact",
+                  "Provider artifact import did not return an image reference.",
+                  response,
+                ),
+              )
+            : Effect.succeed({
+                providerId: ProviderId.make(options.providerId),
+                ref: parsed.ref,
+              });
         }),
       )) satisfies RuntimeProviderShape["importArtifact"],
   };
