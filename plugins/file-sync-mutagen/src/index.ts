@@ -27,9 +27,17 @@ import {
   type FileSyncSetupOptions,
   PluginManifest,
 } from "@lando/sdk/schema";
-import { FileSyncEngine, type FileSyncEngineShape, type FileSyncError } from "@lando/sdk/services";
+import {
+  Downloader,
+  FileSyncEngine,
+  type FileSyncEngineShape,
+  type FileSyncError,
+  PathsService,
+} from "@lando/sdk/services";
+import type { ToolError } from "@lando/sdk/tool-provisioning";
 
 import { type MutagenClient, makeUnavailableMutagenClient, toFileSyncSessionInfo } from "./mutagen-client.ts";
+import { MUTAGEN_TOOL_VERSION, provisionMutagen } from "./provision.ts";
 import { mutagenSessionName, mutagenSessionRef } from "./session-name.ts";
 
 export const PLUGIN_NAME = "@lando/file-sync-mutagen" as const;
@@ -75,6 +83,9 @@ export interface MakeFileSyncEngineOptions {
    *  `makeFakeMutagenClient()`; the default client fails closed until the
    *  host-CLI-backed client is available. */
   readonly client?: MutagenClient;
+  readonly setup?:
+    | ((options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>)
+    | undefined;
 }
 
 /**
@@ -119,7 +130,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
       Effect.as(true),
       Effect.catchAll(() => Effect.succeed(false)),
     ),
-    setup: (_setupOptions: FileSyncSetupOptions) => Effect.void,
+    setup: options.setup ?? (() => Effect.void),
 
     createSession,
 
@@ -145,7 +156,29 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
  * `lando setup`. The default client fails closed until a real Mutagen client
  * is supplied by a later layer.
  */
-export const engine = Layer.succeed(FileSyncEngine, makeFileSyncEngine());
+const provisionError = (cause: ToolError): FileSyncStartError =>
+  new FileSyncStartError({
+    engineId: ENGINE_ID,
+    message: `Failed to provision Mutagen ${MUTAGEN_TOOL_VERSION}.`,
+    remediation: "Retry `lando setup`; if the problem persists, inspect the Mutagen tool manifest.",
+    cause,
+  });
+
+export const engine = Layer.effect(
+  FileSyncEngine,
+  Effect.gen(function* () {
+    const paths = yield* PathsService;
+    const downloader = yield* Downloader;
+    return makeFileSyncEngine({
+      setup: (setupOptions) =>
+        provisionMutagen({
+          binDir: paths.binDir,
+          toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
+          force: setupOptions.force,
+        }).pipe(Effect.provideService(Downloader, downloader), Effect.mapError(provisionError)),
+    });
+  }),
+);
 
 /** Test seam for building the Layer against a caller-supplied client. */
 export const makeEngineLayer = (options: MakeFileSyncEngineOptions = {}) =>
