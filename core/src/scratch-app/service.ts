@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { cp, readdir, rm } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Cause, type Context, Effect, Layer, Schema, type Scope } from "effect";
@@ -23,6 +23,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  DataMover,
   FileSystem,
   LandofileService,
   RuntimeProviderRegistry,
@@ -178,19 +179,6 @@ const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
     suggestions: [],
     remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
   });
-
-const reflinkCopyAppRoot = async (source: string, destination: string): Promise<boolean> => {
-  if (process.platform !== "linux") return false;
-  try {
-    const proc = Bun.spawn(["cp", "-a", "--reflink=auto", `${source}/.`, destination], {
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    return (await proc.exited) === 0;
-  } catch {
-    return false;
-  }
-};
 
 const sanitizeBase = (base: string): string => {
   const cleaned = base
@@ -446,6 +434,7 @@ const makeScratchAppService = (
   providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
   scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
+  dataMover: Context.Tag.Service<typeof DataMover>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
   const root = Effect.sync(() => AbsolutePath.make(makeLandoPaths().scratchDir));
 
@@ -567,18 +556,24 @@ const makeScratchAppService = (
   };
 
   const copyAppRoot = (source: string, destination: string) =>
-    Effect.tryPromise({
-      try: async () => {
-        if (await reflinkCopyAppRoot(source, destination)) return;
-        await cp(source, destination, { recursive: true });
-      },
-      catch: (cause) =>
-        scratchAppError(
-          "materialize",
-          `Unable to copy the source app root into the scratch app at ${destination}.`,
-          cause,
-        ),
-    });
+    Effect.scoped(
+      dataMover.transfer({
+        from: { _tag: "hostPath", path: AbsolutePath.make(source) },
+        to: { _tag: "hostPath", path: AbsolutePath.make(destination) },
+        overwrite: true,
+      }),
+    ).pipe(
+      Effect.asVoid,
+      Effect.mapError((cause) =>
+        cause instanceof ScratchAppError
+          ? cause
+          : scratchAppError(
+              "materialize",
+              `Unable to copy the source app root into the scratch app at ${destination}.`,
+              cause,
+            ),
+      ),
+    );
 
   const startScratchPlan = (
     scratchId: string,
@@ -956,6 +951,7 @@ export const ScratchAppServiceLive = Layer.effect(
     const providerRegistry = yield* RuntimeProviderRegistry;
     const scratchRegistry = yield* ScratchRegistry;
     const scanner = yield* ScratchResourceScanner;
+    const dataMover = yield* DataMover;
     return makeScratchAppService(
       fileSystem,
       landofileService,
@@ -963,6 +959,7 @@ export const ScratchAppServiceLive = Layer.effect(
       providerRegistry,
       scratchRegistry,
       scanner,
+      dataMover,
     );
   }),
 );

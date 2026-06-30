@@ -525,8 +525,11 @@ ${setupBunSteps}
       - name: Regenerate Mutagen versions manifest
         run: bun run codegen:mutagen-versions
 
+      - name: Regenerate provider images manifest
+        run: bun run codegen:provider-images
+
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts
 
 ${timingNoticeStep("bundled-codegen", 15)}
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -38,6 +38,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { makeLandoPaths } from "../../src/config/paths.ts";
+import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 import { DataMoverLive, __testOnlyEncodeTarOctal } from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
@@ -88,12 +89,18 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
   ...overrides,
 });
 
+const pinnedHelper = providerImages.images.dataHelper;
+
+const verifyingPullArtifact: Context.Tag.Service<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
+  Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
+
 const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
     StateStoreLive,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(RuntimeProvider, {
       ...TestRuntimeProvider,
+      pullArtifact: verifyingPullArtifact,
       ...overrides,
       capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
     }),
@@ -1525,5 +1532,454 @@ describe("DataMover helpers", () => {
     expect(verified.sha256).toHaveLength(64);
     expect(text(bytes("payload"))).toBe("payload");
     expect(String(portable("/data/payload"))).toBe("/data/payload");
+  });
+});
+
+describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
+  const countingProviderLayer = (counters: {
+    pullArtifact: number;
+    run: number;
+    runStream: number;
+  }) =>
+    Layer.succeed(RuntimeProvider, {
+      ...TestRuntimeProvider,
+      pullArtifact: (spec) =>
+        Effect.sync(() => {
+          counters.pullArtifact += 1;
+          return { providerId: ProviderId.make("lando"), ref: spec.ref };
+        }),
+      run: (spec) => {
+        counters.run += 1;
+        return TestRuntimeProvider.run(spec);
+      },
+      runStream: (spec) => {
+        counters.runStream += 1;
+        return TestRuntimeProvider.runStream(spec);
+      },
+    } satisfies Context.Tag.Service<typeof RuntimeProvider>);
+
+  const runWithScratchDir = <A, E>(
+    scratchDir: string,
+    counters: { pullArtifact: number; run: number; runStream: number },
+    effect: Effect.Effect<A, E, DataMover | Scope.Scope>,
+  ) =>
+    Effect.runPromiseExit(
+      Effect.scoped(effect).pipe(
+        Effect.provide(
+          DataMoverLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                StateStoreLive,
+                Layer.succeed(PathsService, { ...makeLandoPaths(), scratchDir }),
+                countingProviderLayer(counters),
+                captureEvents().layer,
+                redactionLayer,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+  test("copies a directory tree into a scratch-dir target and never calls the provider", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const scratchRoot = join(dir, "scratch");
+      const source = join(appRoot, "src");
+      const target = join(scratchRoot, "inst-1", "root");
+      await mkdir(join(source, "nested"), { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: tree-app\n");
+      await writeFile(join(source, "marker.txt"), "source-content");
+      await writeFile(join(source, "nested", "deep.txt"), "deep-content");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      if (exit._tag === "Success") {
+        expect(exit.value.accelerated).toBe(true);
+        expect(exit.value.digest).toBeUndefined();
+      }
+      expect(await readFile(join(target, "marker.txt"), "utf8")).toBe("source-content");
+      expect(await readFile(join(target, "nested", "deep.txt"), "utf8")).toBe("deep-content");
+      expect(await readFile(join(source, "marker.txt"), "utf8")).toBe("source-content");
+      expect(counters).toEqual({ pullArtifact: 0, run: 0, runStream: 0 });
+    });
+  });
+
+  test("preserves symlinks in the copied tree without dereferencing them", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const scratchRoot = join(dir, "scratch");
+      const source = join(appRoot, "src");
+      const target = join(scratchRoot, "inst-2", "root");
+      await mkdir(source, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: link-app\n");
+      await writeFile(join(source, "real.txt"), "real-content");
+      await symlink("real.txt", join(source, "link.txt"));
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      const linkStat = await lstat(join(target, "link.txt"));
+      expect(linkStat.isSymbolicLink()).toBe(true);
+      expect(await readlink(join(target, "link.txt"))).toBe("real.txt");
+    });
+  });
+
+  test("preserves single-file digest behavior for a regular-file host -> host copy", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const scratchRoot = join(dir, "scratch");
+      const source = join(appRoot, "payload.txt");
+      const target = join(scratchRoot, "inst-3", "payload.txt");
+      await mkdir(appRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: file-app\n");
+      await writeFile(source, "file-payload");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      if (exit._tag === "Success") {
+        expect(exit.value.digest).toHaveLength(64);
+      }
+      expect(await readFile(target, "utf8")).toBe("file-payload");
+      expect(counters).toEqual({ pullArtifact: 0, run: 0, runStream: 0 });
+    });
+  });
+
+  test("accepts a scratch-dir target built under a configured symlink root", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const actualScratchRoot = join(dir, "actual-scratch");
+      const scratchRoot = join(dir, "scratch-link");
+      const source = join(appRoot, "src");
+      const target = join(scratchRoot, "inst-symlink", "root");
+      await mkdir(source, { recursive: true });
+      await mkdir(actualScratchRoot, { recursive: true });
+      await symlink(actualScratchRoot, scratchRoot);
+      await writeFile(join(appRoot, ".lando.yml"), "name: symlink-scratch-app\n");
+      await writeFile(join(source, "marker.txt"), "source-content");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      expect(await readFile(join(target, "marker.txt"), "utf8")).toBe("source-content");
+      expect(counters).toEqual({ pullArtifact: 0, run: 0, runStream: 0 });
+    });
+  });
+
+  test("rejects a host -> host copy whose target escapes both app root and scratch dir", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const scratchRoot = join(dir, "scratch");
+      const source = join(appRoot, "src");
+      const outsideTarget = join(dir, "outside", "root");
+      await mkdir(source, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: escape-app\n");
+      await writeFile(join(source, "marker.txt"), "x");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(outsideTarget) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      }
+    });
+  });
+
+  test("rejects a scratch-dir target whose parent escapes via a symlink", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const scratchRoot = join(dir, "scratch");
+      const outsideDir = join(dir, "outside");
+      const source = join(appRoot, "src");
+      await mkdir(source, { recursive: true });
+      await mkdir(scratchRoot, { recursive: true });
+      await mkdir(outsideDir, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: symlink-escape-app\n");
+      await writeFile(join(source, "marker.txt"), "x");
+      await symlink(outsideDir, join(scratchRoot, "evil"));
+      const target = join(scratchRoot, "evil", "root");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      }
+    });
+  });
+});
+
+describe("DataMoverLive pinned helper image resolution", () => {
+  const pinned = providerImages.images.dataHelper;
+  const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
+  const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
+
+  const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
+    dataMover.transfer({
+      from: { _tag: "hostPath", path: absolute(source) },
+      to: { _tag: "volume", app, store: "data" },
+      overwrite: true,
+    });
+
+  test("pulls and runs the digest-qualified pinned ref before the helper container runs", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let pulledRef: string | undefined;
+      let ranImage: string | undefined;
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) =>
+                Effect.sync(() => {
+                  pulledRef = spec.ref;
+                  return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
+                }),
+              run: (spec) => {
+                ranImage = spec.image;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
+      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
+    });
+  });
+
+  test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let ranImage: string | undefined;
+      let pullCalls = 0;
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCapsWithoutPull,
+              pullArtifact: () =>
+                Effect.sync(() => {
+                  pullCalls += 1;
+                  return new ProviderUnavailableError({
+                    providerId: "test",
+                    operation: "pullArtifact",
+                    message: "pullArtifact is unavailable",
+                  });
+                }).pipe(Effect.flatMap((error) => Effect.fail(error))),
+              run: (spec) => {
+                ranImage = spec.image;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(pullCalls).toBe(0);
+      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
+    });
+  });
+
+  test("fails loudly before running the helper when the returned digest mismatches", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let runCalls = 0;
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) =>
+                Effect.succeed({
+                  providerId: ProviderId.make("test"),
+                  ref: spec.ref,
+                  digest: `sha256:${"f".repeat(64)}`,
+                }),
+              run: (spec) => {
+                runCalls += 1;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(runCalls).toBe(0);
+    });
+  });
+
+  test("fails loudly before running the helper when the returned digest is missing", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let runCalls = 0;
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* importToVolume(dataMover, source);
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              capabilities: volumeCaps,
+              pullArtifact: (spec) => Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref }),
+              run: (spec) => {
+                runCalls += 1;
+                return TestRuntimeProvider.run(spec);
+              },
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(runCalls).toBe(0);
+    });
+  });
+
+  test("warm cache resolves with no network access and runs idempotently", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "seed.txt");
+      await writeFile(source, "pinned-helper-payload");
+      let networkPulls = 0;
+      const warmCache = new Set<string>();
+
+      const provider = providerLayer({
+        capabilities: volumeCaps,
+        pullArtifact: (spec) =>
+          Effect.sync(() => {
+            if (!warmCache.has(spec.ref)) {
+              networkPulls += 1;
+              warmCache.add(spec.ref);
+            }
+            return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
+          }),
+      });
+
+      const runImport = Effect.scoped(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* importToVolume(dataMover, source);
+        }),
+      ).pipe(
+        Effect.provide(DataMoverLive),
+        Effect.provide(provider),
+        Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+      );
+
+      await Effect.runPromise(runImport);
+      await Effect.runPromise(runImport);
+
+      expect(networkPulls).toBe(1);
+    });
   });
 });

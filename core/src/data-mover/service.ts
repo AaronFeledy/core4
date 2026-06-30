@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, realpath, unlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
@@ -55,6 +55,7 @@ import {
 import type { LandoPaths } from "../config/paths.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
+import { providerImages } from "./generated/provider-images.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -349,6 +350,32 @@ const providerFailure = (operation: string, cause: unknown): DataTransferError =
     remediation: "Inspect provider diagnostics and retry after the runtime is healthy.",
   });
 
+const dataHelperImage = providerImages.images.dataHelper;
+
+const resolveDataHelperImage = (
+  provider: Context.Tag.Service<typeof RuntimeProvider>,
+): Effect.Effect<string, DataTransferError> => {
+  const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
+  if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
+  return provider.pullArtifact({ ref: pinnedRef }).pipe(
+    Effect.mapError((cause) => providerFailure("pullArtifact", cause)),
+    Effect.flatMap((ref) => {
+      if (ref.digest !== dataHelperImage.digest) {
+        return Effect.fail(
+          new DataTransferError({
+            message: "Pinned data-helper image digest could not be verified.",
+            operation: "resolve-helper-image",
+            cause: { expectedDigest: dataHelperImage.digest, actualDigest: ref.digest },
+            remediation:
+              "The provider returned a different image digest than the pinned manifest; refuse to run an unverified helper image.",
+          }),
+        );
+      }
+      return Effect.succeed(pinnedRef);
+    }),
+  );
+};
+
 const octal = (value: number, width: number): string => {
   const text = value.toString(8);
   if (text.length > width - 1) {
@@ -615,7 +642,65 @@ const ensureInsideRoot = (path: string, root: string) =>
     );
   });
 
-const validateHostEndpoints = (spec: DataTransferSpec) => {
+const lexicallyInside = (path: string, base: string): boolean => {
+  const rel = relative(base, resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+};
+
+const ensureInsideScratch = (path: string, scratchDir: string) =>
+  Effect.gen(function* () {
+    const configuredBase = resolve(scratchDir);
+    const realBase = yield* Effect.tryPromise({
+      try: async () => {
+        try {
+          return await realpath(scratchDir);
+        } catch {
+          return configuredBase;
+        }
+      },
+      catch: () =>
+        new DataSourceOutsideRootError({
+          message: "Failed to resolve the scratch storage root for data endpoint validation.",
+          path: scratchDir,
+        }),
+    });
+    const escapes = new DataSourceOutsideRootError({
+      message: "Host data endpoint escapes the permitted scratch storage root.",
+      path,
+      base: configuredBase,
+      remediation: "Scratch materialization may only target the Lando-owned scratch storage root.",
+    });
+    if (!lexicallyInside(path, configuredBase) && !lexicallyInside(path, realBase))
+      return yield* Effect.fail(escapes);
+    const existing = yield* Effect.tryPromise({
+      try: () => realpathNearestExisting(resolve(path)),
+      catch: () => escapes,
+    });
+    if (!lexicallyInside(existing, realBase) && !lexicallyInside(realBase, existing))
+      return yield* Effect.fail(escapes);
+  });
+
+const validateHostEndpoints = (spec: DataTransferSpec, scratchDir: string) => {
+  const scratchHostCopy =
+    spec.from._tag === "hostPath" &&
+    spec.to._tag === "hostPath" &&
+    lexicallyInside(spec.to.path, resolve(scratchDir))
+      ? { from: spec.from, to: spec.to }
+      : undefined;
+  if (scratchHostCopy !== undefined) {
+    return Effect.gen(function* () {
+      const root = yield* Effect.tryPromise({
+        try: () => resolveAppRoot([scratchHostCopy.from.path]),
+        catch: () =>
+          new DataSourceOutsideRootError({
+            message: "Failed to resolve the app root for data endpoint validation.",
+            path: scratchHostCopy.from.path,
+          }),
+      });
+      yield* ensureInsideRoot(scratchHostCopy.from.path, root);
+      yield* ensureInsideScratch(scratchHostCopy.to.path, scratchDir);
+    });
+  }
   const endpoints = [spec.from, spec.to].filter(
     (endpoint): endpoint is Extract<DataEndpoint, { readonly _tag: "hostPath" | "hostArchive" }> =>
       endpoint._tag === "hostPath" || endpoint._tag === "hostArchive",
@@ -636,6 +721,71 @@ const validateHostEndpoints = (spec: DataTransferSpec) => {
     );
   });
 };
+
+const reflinkCopyTree = async (source: string, destination: string): Promise<boolean> => {
+  if (process.platform !== "linux") return false;
+  try {
+    const proc = Bun.spawn(["cp", "-a", "--reflink=auto", `${source}/.`, destination], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
+  }
+};
+
+const directorySizeBytes = async (root: string): Promise<number> => {
+  let total = 0;
+  const walk = async (dir: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(entryPath);
+      } else if (entry.isFile()) {
+        total += (await stat(entryPath)).size;
+      }
+    }
+  };
+  await walk(root);
+  return total;
+};
+
+const copyHostTree = (
+  source: string,
+  destination: string,
+): Effect.Effect<DataTransferResult, DataTransferError> =>
+  Effect.tryPromise({
+    try: async () => {
+      await mkdir(destination, { recursive: true });
+      if (!(await reflinkCopyTree(source, destination))) {
+        await cp(source, destination, { recursive: true, dereference: false, force: true });
+      }
+      return { accelerated: true, sizeBytes: await directorySizeBytes(destination) };
+    },
+    catch: (cause) =>
+      new DataTransferError({
+        message: "Failed to copy host directory tree.",
+        fromEndpoint: `hostPath:${source}`,
+        toEndpoint: `hostPath:${destination}`,
+        operation: "copy-host-tree",
+        cause,
+        remediation: "Verify the source path is readable and the destination is writable, then retry.",
+      }),
+  });
+
+const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransferError> =>
+  Effect.tryPromise({
+    try: () => stat(path),
+    catch: (cause) =>
+      new DataTransferError({
+        message: "Failed to inspect host source endpoint.",
+        fromEndpoint: `hostPath:${path}`,
+        operation: "stat-host",
+        cause,
+      }),
+  }).pipe(Effect.map((info) => info.isDirectory()));
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
   Stream.unwrap(
@@ -764,14 +914,17 @@ const streamFromEndpoint = (
         );
       }
       return Stream.unwrap(
-        collectExecStdout(
-          provider.runStream({
-            image: "lando-data-helper",
-            command: ["sh", "-c", `cat ${helperPayload}`],
-            mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
-            remove: true,
-          }),
-        ).pipe(
+        resolveDataHelperImage(provider).pipe(
+          Effect.flatMap((image) =>
+            collectExecStdout(
+              provider.runStream({
+                image,
+                command: ["sh", "-c", `cat ${helperPayload}`],
+                mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
+                remove: true,
+              }),
+            ),
+          ),
           Effect.mapError((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
@@ -912,9 +1065,10 @@ const writeStreamToEndpoint = (
           body: Stream.make(payload),
           expectedSha256: spec.expectedDigest,
         }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const helperImage = yield* resolveDataHelperImage(provider);
         const result = yield* provider
           .run({
-            image: "lando-data-helper",
+            image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
             stdinStream: asyncIterableFromBytes(payload),
@@ -1005,7 +1159,22 @@ export const makeDataMoverService = (
     });
 
     const run = Effect.gen(function* () {
-      yield* validateHostEndpoints(spec);
+      yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
+      const hostToHost = spec.from._tag === "hostPath" && spec.to._tag === "hostPath";
+      const treeCopy = hostToHost ? yield* hostSourceIsDirectory(spec.from.path) : false;
+      if (treeCopy && spec.from._tag === "hostPath" && spec.to._tag === "hostPath") {
+        const treeResult = yield* copyHostTree(spec.from.path, spec.to.path);
+        yield* events.publish(
+          DataTransferProgressEvent.make({
+            eventName: "data-transfer-progress",
+            fromEndpoint,
+            toEndpoint,
+            transferredBytes: treeResult.sizeBytes ?? 0,
+            timestamp: timestamp(),
+          }),
+        );
+        return treeResult;
+      }
       const nativeServiceCopy =
         provider.capabilities.serviceFileCopy === "native" &&
         ((spec.from._tag === "hostPath" && spec.to._tag === "servicePath") ||

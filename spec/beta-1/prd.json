@@ -2530,8 +2530,8 @@
         "Lint passes."
       ],
       "priority": 141,
-      "passes": false,
-      "notes": "Data-movement primitive (spec \u00a710.11.2, \u00a721.7). Depends on US-337, US-339."
+      "passes": true,
+      "notes": "Scratch --isolate=full now materializes through DataMover.transfer(hostPath\u2192hostPath); the inline reflink/node:fs copy moved into DataMover as an internal directory-tree host-FS adapter, gated by a narrow validateHostEndpoints exception that allows a scratchDir-contained target while keeping the \u00a721.7 teardown invariant (instanceRoot-only). The generic-fallback tar helper image is pinned in a generated {image,digest} manifest (codegen:provider-images + CI git diff staleness gate) and resolved through pullArtifact with digest verification before the helper runs; mismatch/missing digest fail loudly with the run counter at zero, and warm-cache reuse is a no-network no-op. Verified end-to-end with driver scripts (tree copy + pinned helper resolution)."
     },
     {
       "id": "US-341",

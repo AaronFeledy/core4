@@ -24,6 +24,7 @@ import type {
   CacheService,
   CommandRegistry,
   ConfigService,
+  DataMover,
   Downloader,
   EventService,
   FileSystem,
@@ -155,6 +156,7 @@ type ProviderRuntimeServices =
   | PluginRegistry
   | RuntimeProvider
   | RuntimeProviderRegistry
+  | DataMover
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
 type ScratchRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner | ScratchAppService;

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
+import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");
@@ -59,6 +60,9 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     for (const pluginName of expectedBundledPluginNames) {
       expect(binaryText).toContain(pluginName);
     }
+    const dataHelper = providerImages.images.dataHelper;
+    expect(binaryText).toContain(dataHelper.image);
+    expect(binaryText).toContain(dataHelper.digest);
 
     const version = await runCommand([binaryPath, "--version"]);
     expect(version.exitCode).toBe(0);
