@@ -1683,6 +1683,39 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
     });
   });
 
+  test("accepts a scratch-dir target built under a configured symlink root", async () => {
+    await withTempDir(async (dir) => {
+      const appRoot = join(dir, "app");
+      const actualScratchRoot = join(dir, "actual-scratch");
+      const scratchRoot = join(dir, "scratch-link");
+      const source = join(appRoot, "src");
+      const target = join(scratchRoot, "inst-symlink", "root");
+      await mkdir(source, { recursive: true });
+      await mkdir(actualScratchRoot, { recursive: true });
+      await symlink(actualScratchRoot, scratchRoot);
+      await writeFile(join(appRoot, ".lando.yml"), "name: symlink-scratch-app\n");
+      await writeFile(join(source, "marker.txt"), "source-content");
+
+      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+      const exit = await runWithScratchDir(
+        scratchRoot,
+        counters,
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          return yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "hostPath", path: absolute(target) },
+            overwrite: true,
+          });
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      expect(await readFile(join(target, "marker.txt"), "utf8")).toBe("source-content");
+      expect(counters).toEqual({ pullArtifact: 0, run: 0, runStream: 0 });
+    });
+  });
+
   test("rejects a host -> host copy whose target escapes both app root and scratch dir", async () => {
     await withTempDir(async (dir) => {
       const appRoot = join(dir, "app");

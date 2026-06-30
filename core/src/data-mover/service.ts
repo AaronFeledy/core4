@@ -649,12 +649,13 @@ const lexicallyInside = (path: string, base: string): boolean => {
 
 const ensureInsideScratch = (path: string, scratchDir: string) =>
   Effect.gen(function* () {
-    const base = yield* Effect.tryPromise({
+    const configuredBase = resolve(scratchDir);
+    const realBase = yield* Effect.tryPromise({
       try: async () => {
         try {
           return await realpath(scratchDir);
         } catch {
-          return resolve(scratchDir);
+          return configuredBase;
         }
       },
       catch: () =>
@@ -666,15 +667,16 @@ const ensureInsideScratch = (path: string, scratchDir: string) =>
     const escapes = new DataSourceOutsideRootError({
       message: "Host data endpoint escapes the permitted scratch storage root.",
       path,
-      base,
+      base: configuredBase,
       remediation: "Scratch materialization may only target the Lando-owned scratch storage root.",
     });
-    if (!lexicallyInside(path, base)) return yield* Effect.fail(escapes);
+    if (!lexicallyInside(path, configuredBase) && !lexicallyInside(path, realBase))
+      return yield* Effect.fail(escapes);
     const existing = yield* Effect.tryPromise({
       try: () => realpathNearestExisting(resolve(path)),
       catch: () => escapes,
     });
-    if (!lexicallyInside(existing, base) && !lexicallyInside(base, existing))
+    if (!lexicallyInside(existing, realBase) && !lexicallyInside(realBase, existing))
       return yield* Effect.fail(escapes);
   });
 
