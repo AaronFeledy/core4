@@ -209,18 +209,44 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           const body = container?.body as
             | { Cmd?: ReadonlyArray<string>; HostConfig?: { Binds?: ReadonlyArray<string> } }
             | undefined;
-          const volume = body?.HostConfig?.Binds?.[0]?.split(":")[0];
+          const binds = body?.HostConfig?.Binds ?? [];
+          const volume = binds[0]?.split(":")[0];
+          const snapshotVolume = binds[1]?.split(":")[0];
           const command = body?.Cmd?.join(" ");
           if (container !== undefined && volume !== undefined && command === "sh -c cat /data/payload")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          const snapshotWrite = command?.match(/tar -C \/lando-data -cf \/lando-snapshots\/([^ ]+) \./u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotWrite !== undefined
+          )
+            snapshots.set(`${snapshotVolume}/${snapshotWrite}`, volumes.get(volume) ?? new Uint8Array());
+          const snapshotRead = command?.match(/tar -C \/lando-data -xf \/lando-snapshots\/([^ ]+)/u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotRead !== undefined
+          ) {
+            const snapshot = snapshots.get(`${snapshotVolume}/${snapshotRead}`);
+            if (snapshot === undefined) container.exitCode = 1;
+            else volumes.set(volume, snapshot);
+          }
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
           return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
-        if (request.path.startsWith("/containers/") && request.path.endsWith("/json"))
-          return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          return {
+            status: 200,
+            body: JSON.stringify({ State: { ExitCode: containers.get(name)?.exitCode ?? 0 } }),
+          };
+        }
         if (
           request.path.startsWith("/containers/") &&
           request.path.endsWith("?force=true") &&
@@ -502,8 +528,9 @@ describe("provider-podman RuntimeProvider contract", () => {
             fake.calls.some(
               (call) =>
                 call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "") ===
-                  "tar -C /lando-data -cf - .",
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").startsWith(
+                  "sh -c mkdir -p /lando-snapshots && tar -C /lando-data -cf /lando-snapshots/",
+                ),
             ),
           usedNativeServiceFileCopy: () =>
             fake.calls.some(
