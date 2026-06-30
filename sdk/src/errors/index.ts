@@ -26,5 +26,6 @@ export * from "./service.ts";
 export * from "./shell.ts";
 export * from "./ssh.ts";
 export * from "./state-store.ts";
+export * from "./tool.ts";
 export * from "./tooling.ts";
 export * from "./tunnel.ts";

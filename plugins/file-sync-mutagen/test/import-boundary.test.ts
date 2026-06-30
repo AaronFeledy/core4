@@ -6,7 +6,7 @@ import ts from "typescript";
 const PACKAGE_ROOT = path.resolve(import.meta.dir, "..");
 const SOURCE_ROOT = path.join(PACKAGE_ROOT, "src");
 const REPO_ROOT = path.resolve(PACKAGE_ROOT, "..", "..");
-const FORBIDDEN_PREFIXES = ["@oclif/core", "@oclif/"];
+const FORBIDDEN_PREFIXES = ["@lando/core", "@oclif/core", "@oclif/"];
 const FORBIDDEN_CORE_CLI_SEGMENT = `${path.sep}core${path.sep}src${path.sep}cli${path.sep}`;
 
 type ImportBoundaryViolation = {
@@ -70,7 +70,7 @@ const importViolations = async () => {
 };
 
 describe("@lando/file-sync-mutagen import boundary", () => {
-  test("does not import OCLIF or core CLI internals", async () => {
+  test("does not import @lando/core, OCLIF, or core CLI internals", async () => {
     expect(await importViolations()).toEqual([]);
   });
 });

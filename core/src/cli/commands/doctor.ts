@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
-import { MUTAGEN_VERSIONS_MANIFEST, readInstalledMutagenStatus } from "@lando/file-sync-mutagen";
+import { makeLandoPaths } from "@lando/core/paths";
+import { MUTAGEN_TOOL_VERSION, readInstalledMutagenStatus } from "@lando/file-sync-mutagen";
 import type { ProviderLandoStateError } from "@lando/provider-podman";
 import type {
   ConfigError,
@@ -248,10 +249,10 @@ const buildFileSyncDoctorCheck = (
     const installStatus =
       userDataRoot === undefined
         ? undefined
-        : yield* Effect.promise(() => readInstalledMutagenStatus(userDataRoot));
+        : yield* Effect.promise(() => readInstalledMutagenStatus(makeLandoPaths({ userDataRoot }).binDir));
     const installedVersion = installStatus?.installedVersion;
 
-    const expectedVersion = MUTAGEN_VERSIONS_MANIFEST.mutagenVersion;
+    const expectedVersion = MUTAGEN_TOOL_VERSION;
     const isCurrent = installStatus?.isCurrent === true;
     const checkStatus: DoctorStatus = isCurrent ? "pass" : "warn";
     const kind = providerKindFor(provider.id);

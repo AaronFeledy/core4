@@ -29,6 +29,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "mutagen-versions",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-mutagen-versions.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "bundled-recipes",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-recipes.ts`],
     cwd: REPO_ROOT,
