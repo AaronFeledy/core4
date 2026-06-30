@@ -962,3 +962,10 @@ This period moved Beta-1 from provider/runtime readiness into the public SDK con
 - Review feedback: fixed guide-scenario drift by adding HttpClient coverage to plugin discovery and SDK compatibility guides
 - Merge: merged (squash)
 ---
+
+## 2026-06-29 20:20 CDT - US-331 Review
+- Reviewed the US-331 HttpClient/network-trust/egress-boundary implementation and fixed confirmed blockers: HttpClient request fallback errors now report only the redacted URL origin, the shared HttpClient contract suite now has an explicit interruption finalization probe exercised by HttpClientLive, and stale core agent guidance now reflects the implemented Downloader progress/redaction/egress-fence contracts.
+- Review notes (deferred/rejected): Mutagen still using `fetchImpl` is deferred to US-332/tool-provisioning because US-331 removed duplicate trust helpers but did not own the full Mutagen downloader migration; `network.ca.trustHost` host-store semantics need a dedicated Bun TLS design rather than a speculative review patch; `HttpRequest.timeoutMs` full live-client support remains a known follow-up while the plain-async bridge keeps its timeout wrapper; plugin-abstraction coverage for `run*Contract` suites is not fixed here because the current manifest gate is keyed to `make*ContractSuite` exports.
+- Verification: typecheck passed; lint passed; `check:network-boundary` passed; focused spot checks passed for HttpClient/network-trust/boundary/downloader (74 pass, 1 existing todo) and setup/artifact-download/CI adjacency (86 pass).
+- **Learnings for future iterations:** HttpClient contract suites that document cancellation guarantees need an explicit optional interruption probe, not just implementation-local abort finalizers; user-facing HttpClient errors should use `urlOrigin`, never fallback strings built from full URLs.
+---
