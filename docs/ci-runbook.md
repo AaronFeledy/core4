@@ -19,6 +19,7 @@ bun run check:env-helper-boundary
 bun run check:paths-boundary
 bun run check:state-store-boundary
 bun run check:probe-boundary
+bun run check:network-boundary
 bun run check:machine-output
 ```
 

@@ -24,7 +24,8 @@ import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { DownloaderLive } from "../../downloader/service.ts";
-import { HttpClientBasicLive } from "../../http-client/live.ts";
+import { HttpClientLive } from "../../http-client/live.ts";
+import { ConfigServiceLive } from "../../services/config.ts";
 import { EventServiceLive } from "../../services/event-service.ts";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "../../telemetry/events.ts";
 import { scrubTelemetryValue } from "../../telemetry/redaction.ts";
@@ -277,7 +278,10 @@ export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
         return new Uint8Array(bytes);
       }).pipe(
         Effect.provide(
-          DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientBasicLive, EventServiceLive))),
+          Layer.mergeAll(
+            DownloaderLive.pipe(Layer.provide(HttpClientLive.pipe(Layer.provide(EventServiceLive)))),
+            ConfigServiceLive,
+          ),
         ),
       ),
     ),

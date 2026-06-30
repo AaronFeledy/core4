@@ -298,6 +298,29 @@ const makeNamedPipeTransportClient = (pipePath: string) =>
     },
   });
 
+const makeTcpTransportClient = (baseUrl: string) => {
+  const parsed = new URL(baseUrl);
+  const secure = parsed.protocol === "https:";
+  return makeSocketHttpClient({
+    apiPrefix: parsed.pathname.replace(/\/+$/u, "") || "/v1.43",
+    operation: "docker-api",
+    hostHeader: parsed.host,
+    connect: async () => {
+      const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
+      const socket = secure
+        ? createTlsConnection({
+            host: parsed.hostname,
+            port,
+            ...(isIP(parsed.hostname) === 0 ? { servername: parsed.hostname } : {}),
+            rejectUnauthorized: process.env.DOCKER_TLS_VERIFY !== "0",
+          })
+        : createConnection({ host: parsed.hostname, port });
+      await connectSocket(socket);
+      return socket as unknown as SocketHttpConnection;
+    },
+  });
+};
+
 async function* streamUnixSocketRequest(
   socketPath: string,
   request: DockerHttpRequest,
@@ -316,26 +339,8 @@ async function* streamUnixSocketRequest(
 
 async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): AsyncGenerator<Uint8Array> {
   const parsed = new URL(baseUrl);
-  if (request.stdin !== undefined && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
-    const secure = parsed.protocol === "https:";
-    const client = makeSocketHttpClient({
-      apiPrefix: parsed.pathname.replace(/\/+$/u, "") || "/v1.43",
-      operation: "docker-api",
-      hostHeader: parsed.host,
-      connect: async () => {
-        const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
-        const socket = secure
-          ? createTlsConnection({
-              host: parsed.hostname,
-              port,
-              ...(isIP(parsed.hostname) === 0 ? { servername: parsed.hostname } : {}),
-              rejectUnauthorized: process.env.DOCKER_TLS_VERIFY !== "0",
-            })
-          : createConnection({ host: parsed.hostname, port });
-        await connectSocket(socket);
-        return socket as unknown as SocketHttpConnection;
-      },
-    });
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    const client = makeTcpTransportClient(baseUrl);
     yield* client.stream(request);
     return;
   }
@@ -351,37 +356,11 @@ async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): 
     );
   }
 
-  const response = await fetch(`${baseUrl}${request.path}`, {
+  throw unavailable("docker-api", "Docker stream transport does not support this Docker host URL.", {
     method: request.method,
-    ...(request.signal === undefined ? {} : { signal: request.signal }),
-    ...(request.body === undefined
-      ? {}
-      : { body: JSON.stringify(request.body), headers: { "Content-Type": "application/json" } }),
+    path: request.path,
+    protocol: parsed.protocol,
   });
-
-  if (response.body === null) {
-    throw unavailable("docker-api", "Docker API stream response did not include a body.", request);
-  }
-  if (!response.ok) {
-    throw unavailable(
-      "docker-api",
-      `Docker API stream request failed with HTTP ${response.status}.`,
-      request,
-    );
-  }
-
-  const reader = response.body.getReader();
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        return;
-      }
-      yield result.value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 const dockerHttpBase = (dockerHost: string): string => {
@@ -570,15 +549,7 @@ const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
     Stream.fromAsyncIterable(streamHttpRequest(baseUrl, input), (cause) => dockerApiFailure(input, cause)),
   request: (input) =>
     Effect.tryPromise({
-      try: async () => {
-        const response = await fetch(`${baseUrl}${input.path}`, {
-          method: input.method,
-          ...(input.body === undefined
-            ? {}
-            : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
-        });
-        return { status: response.status, body: await response.text() };
-      },
+      try: () => makeTcpTransportClient(baseUrl).request(input),
       catch: (cause) => dockerApiFailure(input, cause),
     }),
   info: Effect.gen(function* () {

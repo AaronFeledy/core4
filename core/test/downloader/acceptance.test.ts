@@ -8,9 +8,20 @@ import { Effect, Layer, Stream } from "effect";
 
 import { Downloader } from "@lando/sdk/services";
 
+import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
+import type { HttpClientCapabilities } from "@lando/sdk/schema";
+
 import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClient, type HttpClientShape, HttpStreamError } from "../../src/http-client/service.ts";
+import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
 import { makeArtifactDownload } from "../../src/providers/registry.ts";
+
+const ACCEPTANCE_HTTP_CAPABILITIES: HttpClientCapabilities = {
+  schemes: ["https", "http", "file"],
+  streaming: true,
+  upload: false,
+  customCa: true,
+  proxyAware: true,
+};
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
@@ -37,19 +48,28 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
         let bytesStreamed = 0;
         const http: HttpClientShape = {
           id: "acceptance-http",
+          capabilities: ACCEPTANCE_HTTP_CAPABILITIES,
+          request: (request) =>
+            Effect.fail(
+              new HttpRequestError({ message: "request unsupported in fake", urlOrigin: request.url }),
+            ),
           stream: (request) =>
             Effect.suspend(() => {
               streamCalls += 1;
               if (request.url !== url) {
-                return Effect.fail(new HttpStreamError({ message: "miss", url: request.url, status: 404 }));
+                return Effect.fail(
+                  new HttpRequestError({ message: "miss", urlOrigin: request.url, status: 404 }),
+                );
               }
               bytesStreamed += bundle.length;
               return Effect.succeed({
                 status: 200,
-                headers: new Map<string, string>(),
+                headers: [],
                 body: Stream.fromIterable([bundle]),
               });
             }),
+          upload: (request) =>
+            Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
         };
 
         const result = await Effect.runPromise(

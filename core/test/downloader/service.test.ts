@@ -9,41 +9,52 @@ import { Effect, Either, Fiber, Layer, Stream } from "effect";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";
 
+import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
+import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
+
 import { DownloaderLive } from "../../src/downloader/service.ts";
-import {
-  HttpClient,
-  type HttpClientShape,
-  HttpStreamError,
-  type HttpStreamRequest,
-} from "../../src/http-client/service.ts";
+import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
+
+const FAKE_HTTP_CAPABILITIES: HttpClientCapabilities = {
+  schemes: ["https", "http", "file"],
+  streaming: true,
+  upload: false,
+  customCa: true,
+  proxyAware: true,
+};
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 interface FakeOptions {
-  readonly bodies?: Record<string, () => Stream.Stream<Uint8Array, HttpStreamError>>;
+  readonly bodies?: Record<string, () => Stream.Stream<Uint8Array, HttpRequestError>>;
   readonly status?: number;
 }
 
 const makeFakeHttpClient = (options: FakeOptions = {}) => {
-  const calls: HttpStreamRequest[] = [];
+  const calls: HttpRequest[] = [];
   const service: HttpClientShape = {
     id: "fake-http",
+    capabilities: FAKE_HTTP_CAPABILITIES,
+    request: (request) =>
+      Effect.fail(new HttpRequestError({ message: "request unsupported in fake", urlOrigin: request.url })),
     stream: (request) =>
       Effect.suspend(() => {
         calls.push(request);
         const factory = options.bodies?.[request.url];
         if (factory === undefined) {
           return Effect.fail(
-            new HttpStreamError({ message: "no fake response", url: request.url, status: 404 }),
+            new HttpRequestError({ message: "no fake response", urlOrigin: request.url, status: 404 }),
           );
         }
         return Effect.succeed({
           status: options.status ?? 200,
-          headers: new Map<string, string>(),
+          headers: [],
           body: factory(),
         });
       }),
+    upload: (request) =>
+      Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
   };
   return { layer: Layer.succeed(HttpClient, service), calls };
 };
@@ -262,7 +273,7 @@ describe("DownloaderLive", () => {
           [url]: () =>
             Stream.concat(
               Stream.fromIterable([bytes("partial")]),
-              Stream.fail(new HttpStreamError({ message: "connection reset", url })),
+              Stream.fail(new HttpRequestError({ message: "connection reset", urlOrigin: url })),
             ),
         },
       });

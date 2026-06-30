@@ -72,6 +72,9 @@ ${setupBunSteps}
       - name: Probe boundary lint
         run: bun run check:probe-boundary
 
+      - name: Network boundary lint
+        run: bun run check:network-boundary
+
       - name: Machine output boundary lint
         run: bun run check:machine-output
 

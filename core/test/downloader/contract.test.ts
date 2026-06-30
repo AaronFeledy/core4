@@ -10,11 +10,22 @@ import type { AbsolutePath, DownloadRequest, DownloadResult } from "@lando/sdk/s
 import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
 import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sdk/test";
 
+import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
+import type { HttpClientCapabilities } from "@lando/sdk/schema";
+
 import { DownloaderLive } from "../../src/downloader/service.ts";
-import { makeHttpClientBasicLive } from "../../src/http-client/live.ts";
+import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
-import { HttpClient, type HttpClientShape, HttpStreamError } from "../../src/http-client/service.ts";
+import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
+
+const CONTRACT_HTTP_CAPABILITIES: HttpClientCapabilities = {
+  schemes: ["https", "http", "file"],
+  streaming: true,
+  upload: false,
+  customCa: true,
+  proxyAware: true,
+};
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -85,22 +96,35 @@ describe("Downloader contract suite", () => {
       let bytesStreamed = 0;
       const http: HttpClientShape = {
         id: "instrumented-http",
+        capabilities: CONTRACT_HTTP_CAPABILITIES,
+        request: (request) =>
+          Effect.suspend(() => {
+            const body = sources.get(request.url);
+            if (body === undefined) {
+              return Effect.fail(
+                new HttpRequestError({ message: "no source", urlOrigin: request.url, status: 404 }),
+              );
+            }
+            return Effect.succeed({ status: 200, headers: [], contentLength: body.length });
+          }),
         stream: (request) =>
           Effect.suspend(() => {
             streamCalls += 1;
             const body = sources.get(request.url);
             if (body === undefined) {
               return Effect.fail(
-                new HttpStreamError({ message: "no source", url: request.url, status: 404 }),
+                new HttpRequestError({ message: "no source", urlOrigin: request.url, status: 404 }),
               );
             }
             bytesStreamed += body.length;
             return Effect.succeed({
               status: 200,
-              headers: new Map<string, string>(),
+              headers: [],
               body: Stream.fromIterable([body]),
             });
           }),
+        upload: (request) =>
+          Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
       };
       const capture = captureEventService();
       const service = await run(
@@ -276,7 +300,7 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
         }),
       ).pipe(
         Effect.provideService(NetworkTrust, trust),
-        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientBasicLive(captureFetch)))),
+        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(captureFetch)))),
       ),
     );
     return captured[0] ?? {};

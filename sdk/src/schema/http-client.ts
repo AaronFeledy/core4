@@ -19,8 +19,11 @@ export const HttpRequest = Schema.Struct({
   method: Schema.optional(Schema.String),
   headers: Schema.optional(Schema.Array(HttpHeader)),
   allowFileSource: Schema.optional(Schema.Boolean),
+  offline: Schema.optional(Schema.Boolean),
   timeoutMs: Schema.optional(Schema.Number),
+  redirect: Schema.optional(Schema.Literal("follow", "error", "manual")),
   callerId: Schema.optional(Schema.String),
+  onBehalfOf: Schema.optional(Schema.String),
   redactionTokens: Schema.optional(Schema.Array(Schema.String)),
 });
 export type HttpRequest = typeof HttpRequest.Type;
@@ -51,6 +54,7 @@ export const HttpUploadRequest = Schema.Struct({
   contentType: Schema.optional(Schema.String),
   contentLength: Schema.optional(Schema.Number),
   callerId: Schema.optional(Schema.String),
+  onBehalfOf: Schema.optional(Schema.String),
   redactionTokens: Schema.optional(Schema.Array(Schema.String)),
 });
 export type HttpUploadRequest = typeof HttpUploadRequest.Type;
