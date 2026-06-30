@@ -78,15 +78,22 @@ const versionMarkerPath = (binDir: string, toolId: string): string => join(binDi
 const legacyVersionMarkerPath = (binDir: string, toolId: string): string =>
   join(binDir, `.${toolId}-installed-version`);
 
+const readVersionMarkerFile = async (path: string): Promise<string | undefined> => {
+  try {
+    const content = (await readFile(path, "utf-8")).trim();
+    return content.length > 0 ? content : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const readInstalledToolVersionMarker = async (
   binDir: string,
   toolId: string,
 ): Promise<string | undefined> => {
   for (const path of [versionMarkerPath(binDir, toolId), legacyVersionMarkerPath(binDir, toolId)]) {
-    try {
-      const content = (await readFile(path, "utf-8")).trim();
-      if (content.length > 0) return content;
-    } catch {}
+    const content = await readVersionMarkerFile(path);
+    if (content !== undefined) return content;
   }
   return undefined;
 };
