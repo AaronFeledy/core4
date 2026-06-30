@@ -74,6 +74,23 @@ export const resolveHostKey = (platform: string, arch: string): string => `${pla
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const versionMarkerPath = (binDir: string, toolId: string): string => join(binDir, `.${toolId}.version`);
+
+const legacyVersionMarkerPath = (binDir: string, toolId: string): string =>
+  join(binDir, `.${toolId}-installed-version`);
+
+const readInstalledToolVersionMarker = async (
+  binDir: string,
+  toolId: string,
+): Promise<string | undefined> => {
+  for (const path of [versionMarkerPath(binDir, toolId), legacyVersionMarkerPath(binDir, toolId)]) {
+    try {
+      const content = (await readFile(path, "utf-8")).trim();
+      if (content.length > 0) return content;
+    } catch {}
+  }
+  return undefined;
+};
+
 const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
 
 const isContained = (root: string, target: string): boolean => {
@@ -325,13 +342,9 @@ const findNestedBoundary = (selector: string): { end: number; suffix: string } |
 
 const isCurrent = (input: ProvisionToolInput, installPath: string) =>
   Effect.gen(function* () {
-    const markerVersion = yield* Effect.promise(async () => {
-      try {
-        return (await readFile(versionMarkerPath(input.binDir, input.toolId), "utf-8")).trim();
-      } catch {
-        return undefined;
-      }
-    });
+    const markerVersion = yield* Effect.promise(() =>
+      readInstalledToolVersionMarker(input.binDir, input.toolId),
+    );
     if (markerVersion !== input.manifest.toolVersion) return undefined;
     const fingerprint = yield* Effect.promise(async () => {
       try {

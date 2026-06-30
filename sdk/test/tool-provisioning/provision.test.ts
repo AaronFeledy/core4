@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -357,6 +357,39 @@ describe("provisionTool", () => {
       expect(marker.trim()).toBe("v0.18.1");
       const fingerprint = await readFile(join(dirs.binDir, "mutagen.sha256"), "utf-8");
       expect(fingerprint.trim()).toBe(sha256Hex(HOST_BIN));
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
+  test("legacy installed-version marker skips without downloader calls", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    const manifest = manifestFor("linux-x64/cli", {
+      url: "https://example.test/host.tar.gz",
+      sha256: HOST_TARGZ_SHA,
+      archive: "tar.gz",
+      member: "mutagen",
+      installName: "mutagen",
+    });
+    await mkdir(dirs.binDir, { recursive: true });
+    await writeFile(join(dirs.binDir, "mutagen"), HOST_BIN);
+    await writeFile(join(dirs.binDir, "mutagen.sha256"), `${sha256Hex(HOST_BIN)}\n`, "utf-8");
+    await writeFile(join(dirs.binDir, ".mutagen-installed-version"), "v0.18.1\n", "utf-8");
+    const input = {
+      manifest,
+      key: "linux-x64/cli",
+      toolId: "mutagen",
+      binDir: dirs.binDir,
+      toolDownloadsDir: dirs.toolDownloadsDir,
+      platform: "linux",
+    };
+    try {
+      const exit = await run(Effect.scoped(provisionTool(input)).pipe(Effect.provide(dl.layer)));
+      expect(exit._tag).toBe("Success");
+      if (!Exit.isSuccess(exit)) throw new Error("expected success");
+      expect(exit.value.skipped).toBe(true);
+      expect(dl.downloadCalls()).toBe(0);
     } finally {
       await dirs.cleanup();
     }
