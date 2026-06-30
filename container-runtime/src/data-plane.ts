@@ -321,26 +321,15 @@ const volumeInfoFromEngineVolume = (
   const labelApp = labels[landoVolumeLabels.app];
   const labelStore = labels[landoVolumeLabels.store];
   const labelScope = storageScopeFromLabel(labels[landoVolumeLabels.scope]);
-  const store = labelStore ?? volume.Name;
-  if (store === undefined || store.length === 0) return undefined;
+  if (labelApp === undefined || labelStore === undefined) return undefined;
+  const store = labelStore;
   if (filter.app !== undefined && labelApp !== String(filter.app)) return undefined;
-  if (filter.store !== undefined && filter.store !== store && filter.store !== volume.Name) return undefined;
+  if (filter.store !== undefined && filter.store !== store) return undefined;
   if (filter.scope !== undefined && labelScope !== filter.scope) return undefined;
   if (!labelsMatch(labels, filter.labels)) return undefined;
-  const hasLandoLabel =
-    labelApp !== undefined || labelStore !== undefined || labels[landoVolumeLabels.scope] !== undefined;
-  if (
-    filter.app === undefined &&
-    filter.store === undefined &&
-    filter.scope === undefined &&
-    filter.labels === undefined &&
-    !hasLandoLabel
-  ) {
-    return undefined;
-  }
   return {
     ref: {
-      app: AppId.make(labelApp ?? String(filter.app ?? "unknown")),
+      app: AppId.make(labelApp),
       store,
       ...(labelScope === undefined
         ? filter.scope === undefined

@@ -281,8 +281,14 @@ describe("provider data plane", () => {
           body: JSON.stringify({
             Volumes: [
               { Name: "unrelated" },
-              { Name: "app-data", Labels: { "dev.lando.app": "app", "dev.lando.scope": "app" } },
-              { Name: "other-data", Labels: { "dev.lando.app": "other", "dev.lando.scope": "app" } },
+              {
+                Name: "app-data",
+                Labels: { "dev.lando.app": "app", "dev.lando.scope": "app", "dev.lando.store": "data" },
+              },
+              {
+                Name: "other-data",
+                Labels: { "dev.lando.app": "other", "dev.lando.scope": "app", "dev.lando.store": "data" },
+              },
             ],
           }),
         }),
@@ -296,7 +302,7 @@ describe("provider data plane", () => {
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
 
-    expect(volumes.map((volume) => volume.ref.store)).toEqual(["app-data"]);
+    expect(volumes.map((volume) => volume.ref.store)).toEqual(["data"]);
   });
 
   test("fails service copy when the applied plan is unavailable", async () => {
