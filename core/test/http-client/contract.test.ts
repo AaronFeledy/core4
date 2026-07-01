@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Duration, Effect, Layer, Stream } from "effect";
 
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
@@ -49,6 +49,29 @@ describe("HttpClient contract suite", () => {
     };
     const result = await run(runHttpClientContract(harness));
     expect(result).toBeUndefined();
+  });
+
+  test("TestHttpClient times out while draining a streaming body", async () => {
+    const handle = makeTestHttpClient();
+    const url = "https://contract.test/body-hang.bin";
+    handle.serveBodyHang(url);
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.timeoutFail(
+          Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
+            Stream.runDrain(response.body),
+          ),
+          { duration: Duration.millis(100), onTimeout: () => new Error("test body did not time out") },
+        ),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    expect(failure?._tag).toBe("Some");
+    const error = failure?._tag === "Some" ? (failure.value as { readonly message?: string }) : undefined;
+    expect(error?.message).toBe("request exceeded timeoutMs=10");
   });
 
   test("HttpClientLive (injected fetch + NetworkTrust) satisfies the contract", async () => {

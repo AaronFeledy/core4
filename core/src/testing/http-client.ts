@@ -9,7 +9,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 import type { ResolvedNetworkTrust } from "../http-client/network-trust.ts";
 import { fetchInitForNetwork } from "../http-client/network-trust.ts";
 import type { HttpClientShape } from "../http-client/service.ts";
-import { applyHttpTimeout } from "../http-client/timeout.ts";
+import { applyHttpStreamTimeout, applyHttpTimeout } from "../http-client/timeout.ts";
 
 const TEST_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],
@@ -40,6 +40,8 @@ export interface TestHttpClientHandle {
   readonly serve: (url: string, bytes: Uint8Array) => void;
   /** Register a URL whose connection never completes, so only `timeoutMs` settles it. */
   readonly serveHang: (url: string) => void;
+  /** Register a URL whose response opens but whose body never drains. */
+  readonly serveBodyHang: (url: string) => void;
   /** Number of hang connections still in flight (non-zero means a leaked socket). */
   readonly pendingHangs: () => number;
   readonly events: () => ReadonlyArray<LandoEvent>;
@@ -68,6 +70,7 @@ export interface TestHttpClientHandle {
 export const makeTestHttpClient = (): TestHttpClientHandle => {
   const sources = new Map<string, Uint8Array>();
   const hangs = new Set<string>();
+  const bodyHangs = new Set<string>();
   const captured: LandoEvent[] = [];
   let connectCount = 0;
   let pendingHangs = 0;
@@ -197,20 +200,27 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
           }),
         ),
       ),
-    stream: (request) =>
-      applyHttpTimeout(
+    stream: (request) => {
+      const startedAt = Date.now();
+      return applyHttpTimeout(
         request,
         emit(request, request).pipe(
           Effect.map((req) => {
             const bytes = sources.get(req.url) ?? new Uint8Array();
+            const body = bodyHangs.has(req.url) ? Stream.never : Stream.fromIterable([bytes]);
             return {
               status: sources.has(req.url) ? 200 : 404,
               headers: [],
-              body: Stream.fromIterable([bytes]),
+              body: applyHttpStreamTimeout(
+                request,
+                body,
+                request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
+              ),
             };
           }),
         ),
-      ),
+      );
+    },
     upload: (request) =>
       Effect.fail(
         new HttpUploadError({ message: "upload not supported", urlOrigin: urlOrigin(request.url) }),
@@ -221,6 +231,7 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
     service,
     serve: (url, bytes) => void sources.set(url, bytes),
     serveHang: (url) => void hangs.add(url),
+    serveBodyHang: (url) => void bodyHangs.add(url),
     pendingHangs: () => pendingHangs,
     events: () => [...captured],
     withTrust: (trust, effect) =>
