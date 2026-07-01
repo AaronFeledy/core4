@@ -41,6 +41,10 @@ export const applyHttpStreamTimeout = <A, R>(
   if (remainingMs === undefined || remainingMs <= 0)
     return Stream.fail(httpTimeoutError(request.url, timeoutMs));
   return stream.pipe(
-    Stream.timeoutFail(() => httpTimeoutError(request.url, timeoutMs), Duration.millis(remainingMs)),
+    Stream.interruptWhen(
+      Effect.sleep(Duration.millis(remainingMs)).pipe(
+        Effect.flatMap(() => Effect.fail(httpTimeoutError(request.url, timeoutMs))),
+      ),
+    ),
   );
 };

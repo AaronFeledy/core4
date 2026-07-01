@@ -153,6 +153,72 @@ describe("HttpClientLive streaming", () => {
       server.stop(true);
     }
   });
+
+  test("fails streaming when chunked body exceeds the overall timeout budget", async () => {
+    let chunkCount = 0;
+    const slowChunkedFetch = (() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              chunkCount += 1;
+              if (chunkCount > 8) {
+                controller.close();
+                return;
+              }
+              controller.enqueue(new Uint8Array([1]));
+            },
+          }),
+          { status: 200 },
+        ),
+      )) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/trickle", timeoutMs: 35 }).pipe(
+          Effect.provide(makeHttpClientLive(slowChunkedFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { _tag: string; message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=35");
+  });
+
+  test("subtracts elapsed connection time from the streaming timeout budget", async () => {
+    let chunkCount = 0;
+    const delayedFetch = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            chunkCount += 1;
+            if (chunkCount > 4) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(new Uint8Array([chunkCount]));
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/elapsed", timeoutMs: 45 }).pipe(
+          Effect.provide(makeHttpClientLive(delayedFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { _tag: string; message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=45");
+  });
 });
 
 describe("HttpClientLive network trust", () => {
