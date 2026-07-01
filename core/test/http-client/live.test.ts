@@ -118,6 +118,25 @@ describe("HttpClientLive streaming", () => {
     expect(result.body).toEqual(expected);
   });
 
+  test("fails file:// body reads when idle time exhausts the request timeout", async () => {
+    const dir = await makeTempDir();
+    const file = join(dir, "artifact.bin");
+    await writeFile(file, new Uint8Array([1, 2, 3]));
+
+    const exit = await runExit(
+      Effect.flatMap(HttpClient, (client) =>
+        Effect.flatMap(
+          client.stream({ url: pathToFileURL(file).href, allowFileSource: true, timeoutMs: 10 }),
+          (response) => Effect.sleep(Duration.millis(25)).pipe(Effect.zipRight(collectBody(response))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly _tag: string; readonly message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=10");
+  });
+
   test("rejects file:// sources without reading when not explicitly allowed", async () => {
     const dir = await makeTempDir();
     const file = join(dir, "artifact.txt");

@@ -349,12 +349,14 @@ const streamFile = (
       return {
         status: 200,
         headers: [],
-        body: applyHttpStreamTimeout(
-          request,
-          Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
-            requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+        body: Stream.suspend(() =>
+          applyHttpStreamTimeout(
+            request,
+            Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
+              requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+            ),
+            remainingHttpTimeoutMs(request, startedAt),
           ),
-          remainingHttpTimeoutMs(request, startedAt),
         ),
       };
     }),
