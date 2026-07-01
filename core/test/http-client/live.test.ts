@@ -493,6 +493,28 @@ describe("HttpClientLive lifecycle events", () => {
     expect(posts[0]?.failureDetail).toContain("stream read failed");
   });
 
+  test("post-http-call reports the timeout detail when connection setup exceeds timeoutMs", async () => {
+    const cap = captureEvents();
+    const hangingFetch = (() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://evt.test/connect-timeout", timeoutMs: 10 }).pipe(
+          Effect.provide(makeHttpClientLive(hangingFetch).pipe(Layer.provide(cap.layer))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly message?: string };
+    expect(error.message).toBe("request exceeded timeoutMs=10");
+    const post = cap.events().find((e) => e._tag === "post-http-call") as
+      | { readonly outcome?: string; readonly failureDetail?: string; readonly status?: number }
+      | undefined;
+    expect(post?.outcome).toBe("failure");
+    expect(post?.status).toBeUndefined();
+    expect(post?.failureDetail).toBe("request exceeded timeoutMs=10");
+  });
+
   test("post-http-call success is emitted only after the body stream is wired", async () => {
     const cap = captureEvents();
     await Effect.runPromise(

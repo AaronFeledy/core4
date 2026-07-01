@@ -372,7 +372,7 @@ const makeStream =
             outcome: "failure",
             status: result.left.status,
             durationMs: Date.now() - startedAt,
-            failureDetail: "fetch-failed",
+            failureDetail: result.left.message,
             redact: events.redact,
           }),
         );
