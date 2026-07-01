@@ -6662,6 +6662,17 @@ export interface HttpClientContractHarness<TrustObject = unknown> {
     readonly run: () => Effect.Effect<unknown, unknown, Scope.Scope>;
     readonly finalized: () => Effect.Effect<boolean>;
   };
+  readonly timeout?: {
+    /**
+     * Run a request/stream that the implementation must abort once the
+     * `request.timeoutMs` deadline elapses. The harness wires a source that
+     * never completes, so the only way the effect can settle is the deadline.
+     * The provided `timeoutMs` is what the suite sets on the request.
+     */
+    readonly run: (timeoutMs: number) => Effect.Effect<unknown, unknown, Scope.Scope>;
+    /** True once the implementation reaped the in-flight connection (no leak). */
+    readonly reaped: () => Effect.Effect<boolean>;
+  };
 }
 
 const httpRequest = (overrides: Partial<HttpRequest> & { readonly url: string }): HttpRequest => overrides;
@@ -6864,5 +6875,22 @@ export const runHttpClientContract = <TrustObject>(
         "an interrupted stream finalizes in-flight transfer resources",
         finalized,
       );
+    }
+
+    if (harness.timeout) {
+      const probe = harness.timeout;
+      const timeoutResult = yield* Effect.either(Effect.scoped(probe.run(10)));
+      yield* requireHttpClientContract(
+        Either.isLeft(timeoutResult),
+        "a request exceeding timeoutMs fails with a tagged error",
+        timeoutResult,
+      );
+      yield* requireHttpClientContract(
+        Either.isLeft(timeoutResult) && typeof httpErrorLeft(timeoutResult.left)._tag === "string",
+        "a timed-out request fails with a tagged http error",
+        timeoutResult,
+      );
+      const reaped = yield* probe.reaped();
+      yield* requireHttpClientContract(reaped, "a timed-out request reaps the in-flight connection", reaped);
     }
   });

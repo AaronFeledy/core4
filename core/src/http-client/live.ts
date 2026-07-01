@@ -43,6 +43,7 @@ import {
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
 import { HttpClient, type HttpClientShape } from "./service.ts";
+import { applyHttpStreamTimeout, applyHttpTimeout } from "./timeout.ts";
 
 type HttpHeaderRecord = HttpResponse["headers"][number];
 
@@ -59,6 +60,13 @@ interface WebBodyReader {
   readonly cancel: () => Promise<void>;
   readonly read: () => Promise<WebBodyReadResult>;
   readonly releaseLock: () => void;
+}
+
+interface ReadWebBodyChunkInput {
+  readonly request: HttpRequest;
+  readonly response: Response;
+  readonly reader: WebBodyReader;
+  readonly startedAt: number;
 }
 
 const CAPABILITIES: HttpClientCapabilities = {
@@ -116,13 +124,29 @@ const requestHeadersInit = (headers: HttpRequest["headers"]): Record<string, str
     ? undefined
     : Object.fromEntries(headers.map((header) => [header.name, header.value]));
 
-async function* readWebBody(reader: WebBodyReader): AsyncIterable<Uint8Array> {
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) return;
-    if (chunk.value !== undefined) yield chunk.value;
-  }
-}
+const remainingHttpTimeoutMs = (request: HttpRequest, startedAt: number): number | undefined =>
+  request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt);
+
+const readWebBodyChunk = ({
+  request,
+  response,
+  reader,
+  startedAt,
+}: ReadWebBodyChunkInput): Effect.Effect<Uint8Array, Option.Option<HttpRequestError>> =>
+  applyHttpTimeout(
+    request,
+    Effect.tryPromise({
+      try: () => reader.read(),
+      catch: (cause) =>
+        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
+    }),
+    remainingHttpTimeoutMs(request, startedAt),
+  ).pipe(
+    Effect.mapError(Option.some),
+    Effect.flatMap((chunk) =>
+      chunk.done || chunk.value === undefined ? Effect.fail(Option.none()) : Effect.succeed(chunk.value),
+    ),
+  );
 
 const releaseWebReader = (reader: WebBodyReader) =>
   Effect.promise(async () => {
@@ -262,6 +286,7 @@ const openConnection = (
 const responseBodyStream = (
   request: HttpRequest,
   response: Response,
+  startedAt: number,
 ): Effect.Effect<Stream.Stream<Uint8Array, HttpRequestError>, never, Scope.Scope> => {
   const responseBody = response.body;
   if (responseBody === null) return Effect.succeed(Stream.empty);
@@ -270,10 +295,7 @@ const responseBodyStream = (
       Effect.sync(() => responseBody.getReader() as unknown as WebBodyReader),
       releaseWebReader,
     ),
-    (reader) =>
-      Stream.fromAsyncIterable(readWebBody(reader), (cause) =>
-        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
-      ),
+    (reader) => Stream.repeatEffectOption(readWebBodyChunk({ request, response, reader, startedAt })),
   );
 };
 
@@ -318,17 +340,27 @@ const streamFile = (
   Scope.Scope
 > => {
   if (request.allowFileSource !== true) return Effect.fail(fileSourceNotPermitted(request.url));
-  return Effect.gen(function* () {
-    const path = yield* filePathFromUrl(url);
-    const resource = yield* Effect.acquireRelease(acquireFileStream(request.url, path), releaseFileStream);
-    return {
-      status: 200,
-      headers: [],
-      body: Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
-        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
-      ),
-    };
-  });
+  const startedAt = Date.now();
+  return applyHttpTimeout(
+    request,
+    Effect.gen(function* () {
+      const path = yield* filePathFromUrl(url);
+      const resource = yield* Effect.acquireRelease(acquireFileStream(request.url, path), releaseFileStream);
+      return {
+        status: 200,
+        headers: [],
+        body: Stream.suspend(() =>
+          applyHttpStreamTimeout(
+            request,
+            Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
+              requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+            ),
+            remainingHttpTimeoutMs(request, startedAt),
+          ),
+        ),
+      };
+    }),
+  );
 };
 
 const makeStream =
@@ -351,7 +383,13 @@ const makeStream =
       const startedAt = Date.now();
       yield* events.publish(preEvent(request, origin, events.redact));
 
-      const result = yield* Effect.either(openConnection(fetchImpl, request, url));
+      const result = yield* Effect.either(
+        applyHttpTimeout(
+          request,
+          openConnection(fetchImpl, request, url),
+          remainingHttpTimeoutMs(request, startedAt),
+        ),
+      );
       if (result._tag === "Left") {
         yield* events.publish(
           postEvent({
@@ -360,7 +398,7 @@ const makeStream =
             outcome: "failure",
             status: result.left.status,
             durationMs: Date.now() - startedAt,
-            failureDetail: "fetch-failed",
+            failureDetail: result.left.message,
             redact: events.redact,
           }),
         );
@@ -381,8 +419,9 @@ const makeStream =
           }),
         );
 
-      const body = yield* responseBodyStream(request, response);
+      const body = yield* responseBodyStream(request, response, startedAt);
       const bodyWithTelemetry = body.pipe(
+        (stream) => applyHttpStreamTimeout(request, stream, remainingHttpTimeoutMs(request, startedAt)),
         Stream.ensuringWith((exit) =>
           Exit.isSuccess(exit)
             ? publishPost("success", undefined)

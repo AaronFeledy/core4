@@ -118,6 +118,25 @@ describe("HttpClientLive streaming", () => {
     expect(result.body).toEqual(expected);
   });
 
+  test("fails file:// body reads when idle time exhausts the request timeout", async () => {
+    const dir = await makeTempDir();
+    const file = join(dir, "artifact.bin");
+    await writeFile(file, new Uint8Array([1, 2, 3]));
+
+    const exit = await runExit(
+      Effect.flatMap(HttpClient, (client) =>
+        Effect.flatMap(
+          client.stream({ url: pathToFileURL(file).href, allowFileSource: true, timeoutMs: 10 }),
+          (response) => Effect.sleep(Duration.millis(25)).pipe(Effect.zipRight(collectBody(response))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly _tag: string; readonly message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=10");
+  });
+
   test("rejects file:// sources without reading when not explicitly allowed", async () => {
     const dir = await makeTempDir();
     const file = join(dir, "artifact.txt");
@@ -152,6 +171,108 @@ describe("HttpClientLive streaming", () => {
     } finally {
       server.stop(true);
     }
+  });
+
+  test("fails streaming when chunked body exceeds the overall timeout budget", async () => {
+    let chunkCount = 0;
+    const slowChunkedFetch = (() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              chunkCount += 1;
+              if (chunkCount > 8) {
+                controller.close();
+                return;
+              }
+              controller.enqueue(new Uint8Array([1]));
+            },
+          }),
+          { status: 200 },
+        ),
+      )) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/trickle", timeoutMs: 35 }).pipe(
+          Effect.provide(makeHttpClientLive(slowChunkedFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { _tag: string; message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=35");
+  });
+
+  test("subtracts elapsed connection time from the streaming timeout budget", async () => {
+    let chunkCount = 0;
+    const delayedFetch = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            chunkCount += 1;
+            if (chunkCount > 4) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(new Uint8Array([chunkCount]));
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/elapsed", timeoutMs: 45 }).pipe(
+          Effect.provide(makeHttpClientLive(delayedFetch)),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { _tag: string; message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=45");
+  });
+
+  test("does not open a connection after elapsed setup time exhausts timeoutMs", async () => {
+    const events: LandoEvent[] = [];
+    const slowPreEventLayer = Layer.succeed(EventService, {
+      publish: (event: LandoEvent) =>
+        event._tag === "pre-http-call"
+          ? Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 20))).pipe(
+              Effect.zipRight(Effect.sync(() => void events.push(event))),
+            )
+          : Effect.sync(() => void events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: undefined,
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } as never);
+    let fetchCalled = false;
+    const fetchImpl = (() => {
+      fetchCalled = true;
+      return Promise.resolve(new Response(new Uint8Array([1]), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/setup-elapsed", timeoutMs: 5 }).pipe(
+          Effect.provide(makeHttpClientLive(fetchImpl).pipe(Layer.provide(slowPreEventLayer))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly _tag: string; readonly message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=5");
+    expect(fetchCalled).toBe(false);
+    expect(events.some((event) => event._tag === "post-http-call")).toBe(true);
   });
 });
 
@@ -425,6 +546,28 @@ describe("HttpClientLive lifecycle events", () => {
     expect(posts[0]?.outcome).toBe("failure");
     expect(posts[0]?.status).toBe(200);
     expect(posts[0]?.failureDetail).toContain("stream read failed");
+  });
+
+  test("post-http-call reports the timeout detail when connection setup exceeds timeoutMs", async () => {
+    const cap = captureEvents();
+    const hangingFetch = (() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://evt.test/connect-timeout", timeoutMs: 10 }).pipe(
+          Effect.provide(makeHttpClientLive(hangingFetch).pipe(Layer.provide(cap.layer))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly message?: string };
+    expect(error.message).toBe("request exceeded timeoutMs=10");
+    const post = cap.events().find((e) => e._tag === "post-http-call") as
+      | { readonly outcome?: string; readonly failureDetail?: string; readonly status?: number }
+      | undefined;
+    expect(post?.outcome).toBe("failure");
+    expect(post?.status).toBeUndefined();
+    expect(post?.failureDetail).toBe("request exceeded timeoutMs=10");
   });
 
   test("post-http-call success is emitted only after the body stream is wired", async () => {

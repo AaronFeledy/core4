@@ -9,6 +9,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 import type { ResolvedNetworkTrust } from "../http-client/network-trust.ts";
 import { fetchInitForNetwork } from "../http-client/network-trust.ts";
 import type { HttpClientShape } from "../http-client/service.ts";
+import { applyHttpStreamTimeout, applyHttpTimeout } from "../http-client/timeout.ts";
 
 const TEST_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],
@@ -37,6 +38,12 @@ export interface TestHttpCapturedInit {
 export interface TestHttpClientHandle {
   readonly service: HttpClientShape;
   readonly serve: (url: string, bytes: Uint8Array) => void;
+  /** Register a URL whose connection never completes, so only `timeoutMs` settles it. */
+  readonly serveHang: (url: string) => void;
+  /** Register a URL whose response opens but whose body never drains. */
+  readonly serveBodyHang: (url: string) => void;
+  /** Number of hang connections still in flight (non-zero means a leaked socket). */
+  readonly pendingHangs: () => number;
   readonly events: () => ReadonlyArray<LandoEvent>;
   /** Run an effect with a resolved trust object applied to subsequent requests. */
   readonly withTrust: <A, E, R>(
@@ -62,8 +69,11 @@ export interface TestHttpClientHandle {
  */
 export const makeTestHttpClient = (): TestHttpClientHandle => {
   const sources = new Map<string, Uint8Array>();
+  const hangs = new Set<string>();
+  const bodyHangs = new Set<string>();
   const captured: LandoEvent[] = [];
   let connectCount = 0;
+  let pendingHangs = 0;
   let activeTrust: ResolvedNetworkTrust | undefined;
   let offline = false;
   let lastInit: TestHttpCapturedInit | undefined;
@@ -140,6 +150,21 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
         return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
       }
 
+      if (hangs.has(request.url)) {
+        recordInit(request.url);
+        connectCount += 1;
+        return yield* Effect.acquireUseRelease(
+          Effect.sync(() => {
+            pendingHangs += 1;
+          }),
+          () => Effect.never as Effect.Effect<A>,
+          () =>
+            Effect.sync(() => {
+              pendingHangs -= 1;
+            }),
+        );
+      }
+
       recordInit(request.url);
       const bytes = sources.get(request.url);
       const status = bytes === undefined ? 404 : 200;
@@ -162,23 +187,40 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
     id: "test-http-client",
     capabilities: TEST_CAPABILITIES,
     request: (request) =>
-      emit(request, request).pipe(
-        Effect.map((req) => {
-          const bytes = sources.get(req.url);
-          return { status: bytes === undefined ? 404 : 200, headers: [], contentLength: bytes?.length ?? 0 };
-        }),
+      applyHttpTimeout(
+        request,
+        emit(request, request).pipe(
+          Effect.map((req) => {
+            const bytes = sources.get(req.url);
+            return {
+              status: bytes === undefined ? 404 : 200,
+              headers: [],
+              contentLength: bytes?.length ?? 0,
+            };
+          }),
+        ),
       ),
-    stream: (request) =>
-      emit(request, request).pipe(
-        Effect.map((req) => {
-          const bytes = sources.get(req.url) ?? new Uint8Array();
-          return {
-            status: sources.has(req.url) ? 200 : 404,
-            headers: [],
-            body: Stream.fromIterable([bytes]),
-          };
-        }),
-      ),
+    stream: (request) => {
+      const startedAt = Date.now();
+      return applyHttpTimeout(
+        request,
+        emit(request, request).pipe(
+          Effect.map((req) => {
+            const bytes = sources.get(req.url) ?? new Uint8Array();
+            const body = bodyHangs.has(req.url) ? Stream.never : Stream.fromIterable([bytes]);
+            return {
+              status: sources.has(req.url) ? 200 : 404,
+              headers: [],
+              body: applyHttpStreamTimeout(
+                request,
+                body,
+                request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
+              ),
+            };
+          }),
+        ),
+      );
+    },
     upload: (request) =>
       Effect.fail(
         new HttpUploadError({ message: "upload not supported", urlOrigin: urlOrigin(request.url) }),
@@ -188,6 +230,9 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
   return {
     service,
     serve: (url, bytes) => void sources.set(url, bytes),
+    serveHang: (url) => void hangs.add(url),
+    serveBodyHang: (url) => void bodyHangs.add(url),
+    pendingHangs: () => pendingHangs,
     events: () => [...captured],
     withTrust: (trust, effect) =>
       Effect.acquireUseRelease(

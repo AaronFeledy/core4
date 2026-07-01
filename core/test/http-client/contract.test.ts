@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Duration, Effect, Layer, Stream } from "effect";
 
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
@@ -38,9 +38,40 @@ describe("HttpClient contract suite", () => {
         withOffline: (effect) => handle.withOffline(effect),
         connectCount: () => Effect.sync(() => handle.connectCount()),
       },
+      timeout: {
+        run: (timeoutMs) => {
+          const url = "https://contract.test/hang.bin";
+          handle.serveHang(url);
+          return handle.service.request({ url, timeoutMs });
+        },
+        reaped: () => Effect.sync(() => handle.pendingHangs() === 0),
+      },
     };
     const result = await run(runHttpClientContract(harness));
     expect(result).toBeUndefined();
+  });
+
+  test("TestHttpClient times out while draining a streaming body", async () => {
+    const handle = makeTestHttpClient();
+    const url = "https://contract.test/body-hang.bin";
+    handle.serveBodyHang(url);
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.timeoutFail(
+          Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
+            Stream.runDrain(response.body),
+          ),
+          { duration: Duration.millis(100), onTimeout: () => new Error("test body did not time out") },
+        ),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    expect(failure?._tag).toBe("Some");
+    const error = failure?._tag === "Some" ? (failure.value as { readonly message?: string }) : undefined;
+    expect(error?.message).toBe("request exceeded timeoutMs=10");
   });
 
   test("HttpClientLive (injected fetch + NetworkTrust) satisfies the contract", async () => {
@@ -51,6 +82,8 @@ describe("HttpClient contract suite", () => {
     let offline = false;
     let interruptSignal: AbortSignal | undefined;
     let interruptAborted = false;
+    let timeoutSignal: AbortSignal | undefined;
+    let timeoutAborted = false;
 
     const fetchImpl = ((input: string | URL | Request, init?: unknown) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -68,6 +101,17 @@ describe("HttpClient contract suite", () => {
             reject(new Error("aborted"));
           });
         });
+      }
+      if (url === "https://contract.test/timeout-hang.bin") {
+        timeoutSignal = requestInit.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start: (_controller) => {
+            requestInit.signal?.addEventListener("abort", () => {
+              timeoutAborted = true;
+            });
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
       }
       lastInit = {
         url,
@@ -131,6 +175,14 @@ describe("HttpClient contract suite", () => {
             Stream.runDrain(response.body),
           ),
         finalized: () => Effect.sync(() => interruptSignal?.aborted === true && interruptAborted),
+      },
+      timeout: {
+        run: (timeoutMs) =>
+          Effect.flatMap(
+            service.stream({ url: "https://contract.test/timeout-hang.bin", timeoutMs }),
+            (response) => Stream.runDrain(response.body),
+          ),
+        reaped: () => Effect.sync(() => timeoutSignal?.aborted === true && timeoutAborted),
       },
     };
     const result = await run(runHttpClientContract(harness));

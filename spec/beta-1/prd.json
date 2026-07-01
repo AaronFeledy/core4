@@ -3022,8 +3022,8 @@
         "Lint passes"
       ],
       "priority": 150,
-      "passes": false,
-      "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-331 learnings): `HttpRequest.timeoutMs` is in the schema but not honored by live.ts, forcing every caller to wrap its own `AbortSignal.timeout`. No owning story existed before this entry."
+      "passes": true,
+      "notes": "HttpClientLive now honors HttpRequest.timeoutMs on request/stream via a shared applyHttpTimeout helper (Effect.timeoutFail -> tagged HttpRequestError); the AbortController finalizer reaps the in-flight connection under Scope on timeout. timeoutMs 0/unset stays unbounded, and the deadline composes with Effect.interrupt and the offline fail-fast path. The json-fetch metadata bridge dropped its caller-side Effect.timeout and routes timeoutMs through the request field instead, removing the double-timeout. TestHttpClient mirrors enforcement via a serveHang source plus pendingHangs leak counter, and the @lando/sdk/test contract suite gained a timeout case asserting a tagged failure and a reaped connection against both HttpClientLive and TestHttpClient. Verified end-to-end with a live-client driver (tagged timeout error + abort fired; unbounded 0/unset paths succeed)."
     },
     {
       "id": "US-369",
