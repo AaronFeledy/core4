@@ -327,20 +327,25 @@ const streamFile = (
   Scope.Scope
 > => {
   if (request.allowFileSource !== true) return Effect.fail(fileSourceNotPermitted(request.url));
-  return Effect.gen(function* () {
-    const path = yield* filePathFromUrl(url);
-    const resource = yield* Effect.acquireRelease(acquireFileStream(request.url, path), releaseFileStream);
-    return {
-      status: 200,
-      headers: [],
-      body: applyHttpStreamTimeout(
-        request,
-        Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
-          requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+  const startedAt = Date.now();
+  return applyHttpTimeout(
+    request,
+    Effect.gen(function* () {
+      const path = yield* filePathFromUrl(url);
+      const resource = yield* Effect.acquireRelease(acquireFileStream(request.url, path), releaseFileStream);
+      return {
+        status: 200,
+        headers: [],
+        body: applyHttpStreamTimeout(
+          request,
+          Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
+            requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
+          ),
+          request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
         ),
-      ),
-    };
-  });
+      };
+    }),
+  );
 };
 
 const makeStream =
