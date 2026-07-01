@@ -343,7 +343,9 @@ describe("meta:setup command", () => {
         ),
     );
 
-    expect(observed).toEqual([{ proxy: { https: "http://proxy.example:8080", noProxy: [] }, caPems: [] }]);
+    expect(observed).toEqual([
+      { proxy: { https: "http://proxy.example:8080", noProxy: [] }, caPems: [], trustHost: true },
+    ]);
   });
 
   test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
@@ -1341,6 +1343,40 @@ describe("meta:setup command", () => {
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     expect(failure.value.kind).toBe("proxy-authentication");
+  });
+
+  test("network trust probe runs for trustHost:false even with no proxy or custom CA", async () => {
+    let probeCalls = 0;
+    const probeFetch = ((_url: string, _init?: unknown) => {
+      probeCalls += 1;
+      return Promise.resolve(new Response(null, { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    await Effect.runPromise(
+      defaultSetupNetworkTrustProbe({
+        proxy: { noProxy: [] },
+        ca: { trustHost: false, certs: [], loadedCerts: [] },
+      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+    );
+
+    expect(probeCalls).toBe(1);
+  });
+
+  test("network trust probe stays skipped for trustHost:true with no proxy or custom CA", async () => {
+    let probeCalls = 0;
+    const probeFetch = ((_url: string, _init?: unknown) => {
+      probeCalls += 1;
+      return Promise.resolve(new Response(null, { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    await Effect.runPromise(
+      defaultSetupNetworkTrustProbe({
+        proxy: { noProxy: [] },
+        ca: { trustHost: true, certs: [], loadedCerts: [] },
+      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+    );
+
+    expect(probeCalls).toBe(0);
   });
 
   test("preserves proxy authentication classification through the full setup path", async () => {

@@ -39,6 +39,8 @@ import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/service
 import {
   NetworkTrust,
   type ResolvedNetworkTrust,
+  type SystemCaProvider,
+  defaultSystemCaPems,
   fetchInitForNetwork,
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
@@ -198,7 +200,7 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
         }),
     });
     const caPems = yield* loadCaPems(plan.caCertPaths);
-    return { proxy: plan.proxy, caPems };
+    return { proxy: plan.proxy, caPems, trustHost: plan.trustHost };
   });
 
 interface HttpCallEvents {
@@ -261,12 +263,14 @@ interface FetchOutcome {
 
 const openConnection = (
   fetchImpl: typeof fetch,
+  systemCaPems: SystemCaProvider,
   request: HttpRequest,
   url: URL,
 ): Effect.Effect<FetchOutcome, HttpRequestError, Scope.Scope> =>
   Effect.gen(function* () {
     const trust = yield* resolveTrust();
-    const trustInit = trust === undefined ? undefined : fetchInitForNetwork(request.url, trust);
+    const trustInit =
+      trust === undefined ? undefined : fetchInitForNetwork(request.url, trust, systemCaPems());
     const controller = new AbortController();
     yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
     const response = yield* Effect.tryPromise({
@@ -366,6 +370,7 @@ const streamFile = (
 const makeStream =
   (
     fetchImpl: typeof fetch,
+    systemCaPems: SystemCaProvider,
     eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
   ): HttpClientShape["stream"] =>
   (request) =>
@@ -386,7 +391,7 @@ const makeStream =
       const result = yield* Effect.either(
         applyHttpTimeout(
           request,
-          openConnection(fetchImpl, request, url),
+          openConnection(fetchImpl, systemCaPems, request, url),
           remainingHttpTimeoutMs(request, startedAt),
         ),
       );
@@ -434,11 +439,12 @@ const makeStream =
 const makeRequest =
   (
     fetchImpl: typeof fetch,
+    systemCaPems: SystemCaProvider,
     eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
   ): HttpClientShape["request"] =>
   (request) =>
     Effect.gen(function* () {
-      const streamResponse = yield* makeStream(fetchImpl, eventService)(request);
+      const streamResponse = yield* makeStream(fetchImpl, systemCaPems, eventService)(request);
       const bytes = yield* Stream.runCollect(streamResponse.body).pipe(
         Effect.map((chunks) => {
           const arr = Array.from(chunks);
@@ -474,7 +480,10 @@ const makeUpload = (): HttpClientShape["upload"] => (request) =>
  * per-request from the injected `NetworkTrust` tag or self-resolved from
  * `ConfigService`. `fetchImpl` is injectable for tests.
  */
-export const makeHttpClientLive = (fetchImpl: typeof fetch = fetch): Layer.Layer<HttpClient> =>
+export const makeHttpClientLive = (
+  fetchImpl: typeof fetch = fetch,
+  systemCaPems: SystemCaProvider = defaultSystemCaPems,
+): Layer.Layer<HttpClient> =>
   Layer.effect(
     HttpClient,
     Effect.gen(function* () {
@@ -482,8 +491,8 @@ export const makeHttpClientLive = (fetchImpl: typeof fetch = fetch): Layer.Layer
       return {
         id: "core-http-client",
         capabilities: CAPABILITIES,
-        request: makeRequest(fetchImpl, eventService),
-        stream: makeStream(fetchImpl, eventService),
+        request: makeRequest(fetchImpl, systemCaPems, eventService),
+        stream: makeStream(fetchImpl, systemCaPems, eventService),
         upload: makeUpload(),
       };
     }),

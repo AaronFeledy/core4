@@ -300,7 +300,7 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
         }),
       ).pipe(
         Effect.provideService(NetworkTrust, trust),
-        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(captureFetch)))),
+        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(captureFetch, () => [])))),
       ),
     );
     return captured[0] ?? {};
@@ -310,6 +310,7 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
     const init = await runCanary("https://canary.test/x", {
       proxy: { http: "http://proxy.http:8080", https: "http://proxy.https:8443", noProxy: [] },
       caPems: ["-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"],
+      trustHost: true,
     });
     expect(init.proxy).toBe("http://proxy.https:8443");
     expect(init.tls?.ca).toContain("-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----");
@@ -319,6 +320,7 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
     const init = await runCanary("https://canary.test/x", {
       proxy: { http: "http://proxy.http:8080", https: "http://proxy.https:8443", noProxy: ["canary.test"] },
       caPems: ["-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"],
+      trustHost: true,
     });
     expect(init.proxy).toBeUndefined();
     expect(init.tls?.ca).toContain("-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----");

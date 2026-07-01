@@ -295,10 +295,11 @@ describe("HttpClientLive network trust", () => {
     fetchImpl: typeof fetch,
     request: HttpRequest,
     trust?: ResolvedNetworkTrust,
+    systemCaPems: ReadonlyArray<string> = [],
   ): Promise<void> => {
     const program = Effect.flatMap(HttpClient, (client) =>
       Effect.flatMap(client.stream(request), (res) => Stream.runDrain(res.body)),
-    ).pipe(Effect.provide(makeHttpClientLive(fetchImpl)));
+    ).pipe(Effect.provide(makeHttpClientLive(fetchImpl, () => systemCaPems)));
     const provided = trust === undefined ? program : program.pipe(Effect.provideService(NetworkTrust, trust));
     return Effect.runPromise(Effect.scoped(provided));
   };
@@ -308,7 +309,11 @@ describe("HttpClientLive network trust", () => {
     await drive(
       capture.fetchImpl,
       { url: "https://example.com/artifact" },
-      { proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: [] }, caPems: [CA_PEM] },
+      {
+        proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: [] },
+        caPems: [CA_PEM],
+        trustHost: true,
+      },
     );
     expect(capture.init()?.proxy).toBe("http://proxy:3128");
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
@@ -322,9 +327,34 @@ describe("HttpClientLive network trust", () => {
       {
         proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: ["example.com"] },
         caPems: [CA_PEM],
+        trustHost: true,
       },
     );
     expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
+  });
+
+  test("merges host default roots with the custom CA when trustHost is enabled", async () => {
+    const capture = captureFetch();
+    const systemRoot = "-----BEGIN CERTIFICATE-----\nHOST-ROOT\n-----END CERTIFICATE-----";
+    await drive(
+      capture.fetchImpl,
+      { url: "https://example.com/artifact" },
+      { proxy: { noProxy: [] }, caPems: [CA_PEM], trustHost: true },
+      [systemRoot],
+    );
+    expect(capture.init()?.tls).toEqual({ ca: [systemRoot, CA_PEM] });
+  });
+
+  test("uses only the custom CA and drops host default roots when trustHost is disabled", async () => {
+    const capture = captureFetch();
+    const systemRoot = "-----BEGIN CERTIFICATE-----\nHOST-ROOT\n-----END CERTIFICATE-----";
+    await drive(
+      capture.fetchImpl,
+      { url: "https://example.com/artifact" },
+      { proxy: { noProxy: [] }, caPems: [CA_PEM], trustHost: false },
+      [systemRoot],
+    );
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 
@@ -356,7 +386,14 @@ describe("HttpClientLive network trust", () => {
       Effect.flatMap(client.stream({ url: "https://example.com/artifact" }), (res) =>
         Stream.runDrain(res.body),
       ),
-    ).pipe(Effect.provide(Layer.mergeAll(makeHttpClientLive(capture.fetchImpl), configLayer)));
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeHttpClientLive(capture.fetchImpl, () => []),
+          configLayer,
+        ),
+      ),
+    );
 
     try {
       await Effect.runPromise(Effect.scoped(program));
@@ -394,7 +431,14 @@ describe("HttpClientLive network trust", () => {
       Effect.flatMap(client.stream({ url: "https://example.com/artifact" }), (res) =>
         Stream.runDrain(res.body),
       ),
-    ).pipe(Effect.provide(Layer.mergeAll(makeHttpClientLive(capture.fetchImpl), configLayer)));
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          makeHttpClientLive(capture.fetchImpl, () => []),
+          configLayer,
+        ),
+      ),
+    );
 
     await Effect.runPromise(Effect.scoped(program));
     expect(capture.init()?.proxy).toBe("http://config-proxy:3128");

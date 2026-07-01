@@ -55,7 +55,7 @@ const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trus
       allowFileSource: false,
     });
     return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
-  }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(fetchImpl)))));
+  }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(fetchImpl, () => [])))));
 
 const runArtifactDownload = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
   Effect.runPromise(artifactDownloadEffect(fetchImpl, directory, trust));
@@ -79,6 +79,7 @@ describe("makeArtifactDownload", () => {
     const result = await runArtifactDownload(capture.fetchImpl, directory, {
       proxy: { http: "http://proxy:3128", https: "http://proxy:3128", noProxy: [] },
       caPems: [CA_PEM],
+      trustHost: true,
     });
 
     expect(result.bytes).toEqual(BUNDLE);

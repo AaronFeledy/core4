@@ -3039,8 +3039,8 @@
         "Lint passes"
       ],
       "priority": 151,
-      "passes": false,
-      "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-331/US-332 review notes): trustHost host-store + custom-CA semantics were deferred past US-332 as needing a dedicated Bun TLS design, with no successor story."
+      "passes": true,
+      "notes": "network.ca.trustHost now merges the host default CA store with configured PEMs instead of replacing it. ResolvedNetworkTrust carries trustHost and fetchInitForNetwork takes the host roots as a third systemCaPems arg (SDK stays pure); trustHost:true+custom merges system-first then custom, trustHost:true+none stays a bare fetch (Bun default store), trustHost:false+custom uses only custom PEMs, trustHost:false+none fails closed with an empty ca list. Core supplies roots via cached defaultSystemCaPems (tls.getCACertificates default / rootCertificates) injected through makeHttpClientLive/makeTestHttpClient; the setup preflight carries trustHost through networkTrustFromResolved and validates when trustHost===false so setup and runtime never diverge. No public schema shape changed (snapshot clean); the network-trust signature change is documented in API_COMPATIBILITY.md. Verified end-to-end against the real HttpClientLive fetch path (merge/replace/bare/fail-closed matrix + 145 real host roots)."
     },
     {
       "id": "US-370",

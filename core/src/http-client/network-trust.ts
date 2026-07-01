@@ -18,6 +18,8 @@
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
  * not a public contract.
  */
+import tls from "node:tls";
+
 import { Context } from "effect";
 
 import type { ResolvedNetworkTrust } from "@lando/sdk/network-trust";
@@ -30,6 +32,33 @@ export {
   shouldBypassProxy,
   type NetworkTrustPlan,
 } from "@lando/sdk/network-trust";
+
+/**
+ * Supplies the host default CA roots (PEM strings) that `fetchInitForNetwork`
+ * merges in when `network.ca.trustHost` is enabled. Injected so the pure SDK
+ * resolver never reads `node:tls`, and so tests can pass deterministic roots.
+ */
+export type SystemCaProvider = () => ReadonlyArray<string>;
+
+/**
+ * Reads the runtime's effective default CA store once and caches it.
+ * `tls.getCACertificates("default")` (Bun/Node 22.15+) reflects OS-store roots;
+ * older runtimes fall back to the bundled Mozilla roots (`tls.rootCertificates`).
+ */
+export const defaultSystemCaPems: SystemCaProvider = (() => {
+  let cached: ReadonlyArray<string> | undefined;
+  return () => {
+    if (cached !== undefined) return cached;
+    const tlsWithDefault = tls as typeof tls & {
+      getCACertificates?: (type?: "default") => ReadonlyArray<string>;
+    };
+    cached =
+      typeof tlsWithDefault.getCACertificates === "function"
+        ? [...tlsWithDefault.getCACertificates("default")]
+        : [...tls.rootCertificates];
+    return cached;
+  };
+})();
 
 /**
  * Core-private ambient context tag carrying an already-resolved network-trust

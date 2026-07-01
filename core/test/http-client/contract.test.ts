@@ -21,18 +21,25 @@ const CONTRIBUTED_CAPABILITIES: HttpClientCapabilities = {
   proxyAware: true,
 };
 
+const SYSTEM_CA_SAMPLE = "-----BEGIN CERTIFICATE-----\nSYSTEM-ROOT-SAMPLE\n-----END CERTIFICATE-----";
+
 describe("HttpClient contract suite", () => {
   test("TestHttpClient (in-memory) satisfies the contract", async () => {
-    const handle = makeTestHttpClient();
+    const handle = makeTestHttpClient({ systemCaPems: [SYSTEM_CA_SAMPLE] });
     const harness: HttpClientContractHarness<ResolvedNetworkTrust> = {
       name: "TestHttpClient",
       service: handle.service,
       serveSource: (url, bytes) => Effect.sync(() => handle.serve(url, bytes)),
       events: () => Effect.sync(() => handle.events()),
       trust: {
-        make: (input) => ({ proxy: input.proxy, caPems: input.caPems }),
+        make: (input) => ({
+          proxy: input.proxy,
+          caPems: input.caPems,
+          trustHost: input.trustHost ?? true,
+        }),
         withTrust: (trust, effect) => handle.withTrust(trust, effect),
         lastInit: () => Effect.sync(() => handle.lastInit()),
+        systemCaSample: SYSTEM_CA_SAMPLE,
       },
       offline: {
         withOffline: (effect) => handle.withOffline(effect),
@@ -133,7 +140,7 @@ describe("HttpClient contract suite", () => {
       query: () => Effect.succeed([]),
     } as never);
 
-    const layer = makeHttpClientLive(fetchImpl).pipe(Layer.provide(eventLayer));
+    const layer = makeHttpClientLive(fetchImpl, () => [SYSTEM_CA_SAMPLE]).pipe(Layer.provide(eventLayer));
     const service = await run(
       Effect.scoped(
         Effect.provide(
@@ -151,9 +158,14 @@ describe("HttpClient contract suite", () => {
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
       events: () => Effect.sync(() => [...events]),
       trust: {
-        make: (input) => ({ proxy: input.proxy, caPems: input.caPems }),
+        make: (input) => ({
+          proxy: input.proxy,
+          caPems: input.caPems,
+          trustHost: input.trustHost ?? true,
+        }),
         withTrust: (trust, effect) => effect.pipe(Effect.provideService(NetworkTrust, trust)),
         lastInit: () => Effect.sync(() => lastInit),
+        systemCaSample: SYSTEM_CA_SAMPLE,
       },
       offline: {
         withOffline: (effect) =>

@@ -10,6 +10,7 @@ import {
 const trust = (overrides: Partial<ResolvedNetworkTrust> = {}): ResolvedNetworkTrust => ({
   proxy: { noProxy: [], ...overrides.proxy },
   caPems: overrides.caPems ?? [],
+  trustHost: overrides.trustHost ?? true,
 });
 
 describe("shouldBypassProxy", () => {
@@ -38,15 +39,19 @@ describe("shouldBypassProxy", () => {
   });
 });
 
+const SYS_A = "-----BEGIN CERTIFICATE-----\nSYS-A\n-----END CERTIFICATE-----";
+const SYS_B = "-----BEGIN CERTIFICATE-----\nSYS-B\n-----END CERTIFICATE-----";
+
 describe("fetchInitForNetwork", () => {
   test("returns undefined when no proxy and no CA apply", () => {
-    expect(fetchInitForNetwork("https://example.com", trust())).toBeUndefined();
+    expect(fetchInitForNetwork("https://example.com", trust(), [])).toBeUndefined();
   });
 
   test("applies https proxy for https URLs", () => {
     const init = fetchInitForNetwork(
       "https://example.com",
       trust({ proxy: { noProxy: [], https: "http://proxy:3128" } }),
+      [],
     );
     expect(init).toEqual({ proxy: "http://proxy:3128" });
   });
@@ -55,6 +60,7 @@ describe("fetchInitForNetwork", () => {
     const init = fetchInitForNetwork(
       "https://example.com",
       trust({ proxy: { noProxy: [], http: "http://proxy:3128" } }),
+      [],
     );
     expect(init).toEqual({ proxy: "http://proxy:3128" });
   });
@@ -63,6 +69,7 @@ describe("fetchInitForNetwork", () => {
     const init = fetchInitForNetwork(
       "http://example.com",
       trust({ proxy: { noProxy: [], http: "http://h:1", https: "http://s:2" } }),
+      [],
     );
     expect(init).toEqual({ proxy: "http://h:1" });
   });
@@ -71,21 +78,54 @@ describe("fetchInitForNetwork", () => {
     const init = fetchInitForNetwork(
       "https://example.com",
       trust({ proxy: { noProxy: ["example.com"], https: "http://proxy:3128" } }),
+      [],
     );
     expect(init).toBeUndefined();
-  });
-
-  test("applies CA PEMs via tls.ca", () => {
-    const init = fetchInitForNetwork("https://example.com", trust({ caPems: ["PEM-A", "PEM-B"] }));
-    expect(init).toEqual({ tls: { ca: ["PEM-A", "PEM-B"] } });
   });
 
   test("applies both proxy and CA", () => {
     const init = fetchInitForNetwork(
       "https://example.com",
       trust({ proxy: { noProxy: [], https: "http://proxy:3128" }, caPems: ["PEM"] }),
+      [],
     );
     expect(init).toEqual({ proxy: "http://proxy:3128", tls: { ca: ["PEM"] } });
+  });
+});
+
+describe("fetchInitForNetwork trustHost CA merge", () => {
+  test("trustHost=true with custom PEMs merges system roots and custom PEMs", () => {
+    const init = fetchInitForNetwork("https://example.com", trust({ caPems: ["CUSTOM"] }), [SYS_A, SYS_B]);
+    expect(init).toEqual({ tls: { ca: [SYS_A, SYS_B, "CUSTOM"] } });
+  });
+
+  test("trustHost=true with no custom PEMs leaves tls.ca unset", () => {
+    expect(fetchInitForNetwork("https://example.com", trust({ caPems: [] }), [SYS_A, SYS_B])).toBeUndefined();
+  });
+
+  test("trustHost=true with no custom PEMs still omits tls.ca when a proxy applies", () => {
+    const init = fetchInitForNetwork(
+      "https://example.com",
+      trust({ proxy: { noProxy: [], https: "http://proxy:3128" }, caPems: [] }),
+      [SYS_A],
+    );
+    expect(init).toEqual({ proxy: "http://proxy:3128" });
+  });
+
+  test("trustHost=false with custom PEMs uses only the custom PEMs", () => {
+    const init = fetchInitForNetwork("https://example.com", trust({ caPems: ["CUSTOM"], trustHost: false }), [
+      SYS_A,
+      SYS_B,
+    ]);
+    expect(init).toEqual({ tls: { ca: ["CUSTOM"] } });
+  });
+
+  test("trustHost=false with no custom PEMs fails closed with an empty ca list", () => {
+    const init = fetchInitForNetwork("https://example.com", trust({ caPems: [], trustHost: false }), [
+      SYS_A,
+      SYS_B,
+    ]);
+    expect(init).toEqual({ tls: { ca: [] } });
   });
 });
 

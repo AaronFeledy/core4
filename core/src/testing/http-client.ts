@@ -67,7 +67,10 @@ export interface TestHttpClientHandle {
  * not applied to a socket — `withTrust` records the `fetchInitForNetwork` result
  * so trust-precedence assertions can read it via `lastInit`.
  */
-export const makeTestHttpClient = (): TestHttpClientHandle => {
+export const makeTestHttpClient = (
+  options: { readonly systemCaPems?: ReadonlyArray<string> } = {},
+): TestHttpClientHandle => {
+  const systemCaPems = options.systemCaPems ?? [];
   const sources = new Map<string, Uint8Array>();
   const hangs = new Set<string>();
   const bodyHangs = new Set<string>();
@@ -79,7 +82,7 @@ export const makeTestHttpClient = (): TestHttpClientHandle => {
   let lastInit: TestHttpCapturedInit | undefined;
 
   const recordInit = (url: string): void => {
-    const init = activeTrust === undefined ? undefined : fetchInitForNetwork(url, activeTrust);
+    const init = activeTrust === undefined ? undefined : fetchInitForNetwork(url, activeTrust, systemCaPems);
     const proxy = typeof init?.proxy === "string" ? init.proxy : undefined;
     const ca = Array.isArray(init?.tls?.ca)
       ? init.tls.ca.filter((entry): entry is string => typeof entry === "string")
