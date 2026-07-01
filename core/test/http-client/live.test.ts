@@ -219,6 +219,42 @@ describe("HttpClientLive streaming", () => {
     expect(error._tag).toBe("HttpRequestError");
     expect(error.message).toBe("request exceeded timeoutMs=45");
   });
+
+  test("does not open a connection after elapsed setup time exhausts timeoutMs", async () => {
+    const events: LandoEvent[] = [];
+    const slowPreEventLayer = Layer.succeed(EventService, {
+      publish: (event: LandoEvent) =>
+        event._tag === "pre-http-call"
+          ? Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 20))).pipe(
+              Effect.zipRight(Effect.sync(() => void events.push(event))),
+            )
+          : Effect.sync(() => void events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: undefined,
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } as never);
+    let fetchCalled = false;
+    const fetchImpl = (() => {
+      fetchCalled = true;
+      return Promise.resolve(new Response(new Uint8Array([1]), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        streamAndCollect({ url: "https://timeout.test/setup-elapsed", timeoutMs: 5 }).pipe(
+          Effect.provide(makeHttpClientLive(fetchImpl).pipe(Layer.provide(slowPreEventLayer))),
+        ),
+      ),
+    );
+
+    const error = failureOf(exit) as { readonly _tag: string; readonly message?: string };
+    expect(error._tag).toBe("HttpRequestError");
+    expect(error.message).toBe("request exceeded timeoutMs=5");
+    expect(fetchCalled).toBe(false);
+    expect(events.some((event) => event._tag === "post-http-call")).toBe(true);
+  });
 });
 
 describe("HttpClientLive network trust", () => {

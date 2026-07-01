@@ -22,11 +22,14 @@ export const httpTimeoutError = (url: string, timeoutMs: number): HttpRequestErr
 export const applyHttpTimeout = <A, R>(
   request: HttpRequest,
   effect: Effect.Effect<A, HttpRequestError, R>,
+  remainingMs = request.timeoutMs,
 ): Effect.Effect<A, HttpRequestError, R> => {
   const timeoutMs = request.timeoutMs;
   if (timeoutMs === undefined || timeoutMs <= 0) return effect;
+  if (remainingMs === undefined || remainingMs <= 0)
+    return Effect.fail(httpTimeoutError(request.url, timeoutMs));
   return Effect.timeoutFail(effect, {
-    duration: Duration.millis(timeoutMs),
+    duration: Duration.millis(remainingMs),
     onTimeout: () => httpTimeoutError(request.url, timeoutMs),
   });
 };

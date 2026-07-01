@@ -62,6 +62,13 @@ interface WebBodyReader {
   readonly releaseLock: () => void;
 }
 
+interface ReadWebBodyChunkInput {
+  readonly request: HttpRequest;
+  readonly response: Response;
+  readonly reader: WebBodyReader;
+  readonly startedAt: number;
+}
+
 const CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],
   streaming: true,
@@ -117,11 +124,15 @@ const requestHeadersInit = (headers: HttpRequest["headers"]): Record<string, str
     ? undefined
     : Object.fromEntries(headers.map((header) => [header.name, header.value]));
 
-const readWebBodyChunk = (
-  request: HttpRequest,
-  response: Response,
-  reader: WebBodyReader,
-): Effect.Effect<Uint8Array, Option.Option<HttpRequestError>> =>
+const remainingHttpTimeoutMs = (request: HttpRequest, startedAt: number): number | undefined =>
+  request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt);
+
+const readWebBodyChunk = ({
+  request,
+  response,
+  reader,
+  startedAt,
+}: ReadWebBodyChunkInput): Effect.Effect<Uint8Array, Option.Option<HttpRequestError>> =>
   applyHttpTimeout(
     request,
     Effect.tryPromise({
@@ -129,6 +140,7 @@ const readWebBodyChunk = (
       catch: (cause) =>
         requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
     }),
+    remainingHttpTimeoutMs(request, startedAt),
   ).pipe(
     Effect.mapError(Option.some),
     Effect.flatMap((chunk) =>
@@ -274,6 +286,7 @@ const openConnection = (
 const responseBodyStream = (
   request: HttpRequest,
   response: Response,
+  startedAt: number,
 ): Effect.Effect<Stream.Stream<Uint8Array, HttpRequestError>, never, Scope.Scope> => {
   const responseBody = response.body;
   if (responseBody === null) return Effect.succeed(Stream.empty);
@@ -282,7 +295,7 @@ const responseBodyStream = (
       Effect.sync(() => responseBody.getReader() as unknown as WebBodyReader),
       releaseWebReader,
     ),
-    (reader) => Stream.repeatEffectOption(readWebBodyChunk(request, response, reader)),
+    (reader) => Stream.repeatEffectOption(readWebBodyChunk({ request, response, reader, startedAt })),
   );
 };
 
@@ -341,7 +354,7 @@ const streamFile = (
           Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
             requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
           ),
-          request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
+          remainingHttpTimeoutMs(request, startedAt),
         ),
       };
     }),
@@ -368,7 +381,13 @@ const makeStream =
       const startedAt = Date.now();
       yield* events.publish(preEvent(request, origin, events.redact));
 
-      const result = yield* Effect.either(applyHttpTimeout(request, openConnection(fetchImpl, request, url)));
+      const result = yield* Effect.either(
+        applyHttpTimeout(
+          request,
+          openConnection(fetchImpl, request, url),
+          remainingHttpTimeoutMs(request, startedAt),
+        ),
+      );
       if (result._tag === "Left") {
         yield* events.publish(
           postEvent({
@@ -398,14 +417,9 @@ const makeStream =
           }),
         );
 
-      const body = yield* responseBodyStream(request, response);
+      const body = yield* responseBodyStream(request, response, startedAt);
       const bodyWithTelemetry = body.pipe(
-        (stream) =>
-          applyHttpStreamTimeout(
-            request,
-            stream,
-            request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
-          ),
+        (stream) => applyHttpStreamTimeout(request, stream, remainingHttpTimeoutMs(request, startedAt)),
         Stream.ensuringWith((exit) =>
           Exit.isSuccess(exit)
             ? publishPost("success", undefined)
