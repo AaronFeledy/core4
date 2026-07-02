@@ -57,6 +57,7 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
       <Variable name="checksumUnverified" value="RecipeSourceError kind=checksum-unverified" display="Without --checksum Lando warns with the computed digest and, when interactive, prompts once; a decline aborts" />
       <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK URL fails with download remediation" />
       <Variable name="extractFailed" value="RecipeSourceError kind=extract-failed" display="Bytes that are not a readable tar/tar.gz archive fail with extraction remediation" />
+      <Variable name="decompressionCap" value="2 GiB gzip output cap" display="gzip-compressed tarball recipes fail closed with RecipeSourceError kind=extract-failed when decompression would exceed the default cap" />
       <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with tarball-specific remediation" />
     </Step>
   </Scenario>
