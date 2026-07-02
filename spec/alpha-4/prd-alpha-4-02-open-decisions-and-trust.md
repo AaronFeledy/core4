@@ -1,12 +1,12 @@
-# PRD: BETA1-02 — Open-decision resolution & plugin trust
+# PRD: ALPHA4-02 — Open-decision resolution & plugin trust
 
 ## Introduction
 
-Beta 1 closes the remaining §14.2 decisions that affect runtime trust, CLI dispatch assumptions, setup behavior, Compose compatibility, and SSH agent realization. This PRD records those decisions as implementation stories so the final answer is not just prose: package metadata, schemas, CLI behavior, generated docs, tests, and user-facing guides must all reflect the chosen direction.
+Alpha 4 closes the remaining §14.2 decisions that affect runtime trust, CLI dispatch assumptions, setup behavior, Compose compatibility, and SSH agent realization. This PRD records those decisions as implementation stories so the final answer is not just prose: package metadata, schemas, CLI behavior, generated docs, tests, and user-facing guides must all reflect the chosen direction.
 
 Compiled-binary CLI dispatch unification is already resolved as permanent dual dispatch per §8.4.1 and Appendix D.1. This PRD treats that as fixed context, not a decision to reopen.
 
-Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), because provider auto-setup defaults and trust prompts must align with the finished setup surface.
+Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), because provider auto-setup defaults and trust prompts must align with the finished setup surface.
 
 ## Source References
 
@@ -18,7 +18,7 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 
 ## Goals
 
-- Close every remaining §14.2 decision that blocks Beta 1 feature freeze.
+- Close every remaining §14.2 decision that blocks Alpha 4 feature freeze.
 - Keep current hard facts explicit: Bun floor is `>=1.3.14`, OCLIF is v4 today, and compiled dispatch remains permanently dual path.
 - Publish schema-backed compatibility and trust surfaces instead of relying on narrative docs alone.
 - Make untrusted plugin postinstall behavior safe by default while preserving a deliberate trust path for users and authoring workflows.
@@ -27,10 +27,10 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 
 ### US-208: Bun floor decision + `--bytecode` validation
 
-**Description:** As a release engineer, I need the Beta 1 Bun version floor confirmed or bumped so every cross-compiled binary can use `--bytecode` consistently.
+**Description:** As a release engineer, I need the Alpha 4 Bun version floor confirmed or bumped so every cross-compiled binary can use `--bytecode` consistently.
 
 **Acceptance Criteria:**
-- [ ] A Beta 1 decision note confirms `>=1.3.14` or records the bumped minimum with rationale and affected release targets.
+- [ ] A Alpha 4 decision note confirms `>=1.3.14` or records the bumped minimum with rationale and affected release targets.
 - [ ] Root `package.json`, `core/package.json`, `.bun-version`, release docs, and any generated install docs all show the same minimum Bun version.
 - [ ] The release validation suite proves `bun build --compile --bytecode` works for every configured cross-compile target or fails with a documented blocker tied to the decision.
 - [ ] Tests pass.
@@ -42,7 +42,7 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 **Description:** As a CLI maintainer, I need the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and dual-dispatch parity tests have a stable target.
 
 **Acceptance Criteria:**
-- [ ] A Beta 1 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.
+- [ ] A Alpha 4 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.
 - [ ] If staying on v4, dependency ranges, compatibility notes, and dispatch parity assumptions are preserved and documented.
 - [ ] If moving to v5, source-mode command loading, manifest generation, hooks, and parity tests are updated in the same story and no compiled-dispatch unification is attempted.
 - [ ] Tests pass.
@@ -54,7 +54,7 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 **Description:** As a first-time user, I need `lando setup` and first-run provider preparation to follow one documented UX, either aggressive auto-setup or guided opt-in.
 
 **Acceptance Criteria:**
-- [ ] A Beta 1 decision note chooses aggressive auto-setup or guided opt-in and defines the default for interactive, non-interactive, and CI contexts.
+- [ ] A Alpha 4 decision note chooses aggressive auto-setup or guided opt-in and defines the default for interactive, non-interactive, and CI contexts.
 - [ ] `lando setup` defaults, prompts, `--yes`, `--no-interactive`, and provider readiness checks align with the chosen UX.
 - [ ] User docs and setup tests cover the selected default and the rejected alternative's remediation path.
 - [ ] Tests pass.
@@ -78,7 +78,7 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 **Description:** As a security-conscious operator, I need the reserved `sshAgent.sidecar: false` setting either shipped with a safe direct-mount fallback or rejected with a clear warning.
 
 **Acceptance Criteria:**
-- [ ] A Beta 1 decision note chooses whether `sshAgent.sidecar: false` ships or remains rejected, with sidecar default `true` preserved.
+- [ ] A Alpha 4 decision note chooses whether `sshAgent.sidecar: false` ships or remains rejected, with sidecar default `true` preserved.
 - [ ] If shipped, the direct-mount fallback has schema, docs, tests, platform constraints, and security remediation text.
 - [ ] If rejected, config validation and docs explain that `false` is reserved and identify the supported sidecar path.
 - [ ] Tests pass.
@@ -104,8 +104,8 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 **Description:** As a maintainer, I need the remaining trust-model sub-questions closed so the command surface, persistence policy, and install flags are not left ambiguous at feature freeze.
 
 **Acceptance Criteria:**
-- [ ] A Beta 1 decision note chooses whether `meta:plugin:trust list` and `meta:plugin:trust revoke` ship now or are explicitly deferred with rationale; if shipped, the existing `untrustPlugin` service path has CLI coverage.
-- [ ] Trust expiry is either rejected as non-expiring Beta 1 state or implemented with schema, migration, and renderer coverage.
+- [ ] A Alpha 4 decision note chooses whether `meta:plugin:trust list` and `meta:plugin:trust revoke` ship now or are explicitly deferred with rationale; if shipped, the existing `untrustPlugin` service path has CLI coverage.
+- [ ] Trust expiry is either rejected as non-expiring Alpha 4 state or implemented with schema, migration, and renderer coverage.
 - [ ] Trust scope is defined for npm/registry, git, and local plugin sources, including how authoring-root trust applies to linked plugins.
 - [ ] The exact flag model is published, including `--trust`, non-interactive behavior, and any prompt wording for interactive installs.
 - [ ] Tests pass.
@@ -140,7 +140,7 @@ Depends on: **BETA1-01** (`lando setup` and `lando uninstall` completion), becau
 
 ## Success Metrics
 
-- Every §14.2 Beta 1 decision has a linked decision note and matching implementation test.
+- Every §14.2 Alpha 4 decision has a linked decision note and matching implementation test.
 - A user can identify why a Compose key was rejected from the CLI error alone.
 - Installing an untrusted plugin never runs an arbitrary postinstall script.
 - Trusting a plugin or authoring root updates cache state immediately and makes the next install behavior predictable.
@@ -173,6 +173,6 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 ## Open Questions
 
 - Should the Bun floor stay at `>=1.3.14` if one target needs a newer `--bytecode` fix? Default: bump the floor rather than special-case one target.
-- Should `meta:plugin:trust revoke` ship in Beta 1 even if list output is minimal? Default: ship revoke because the service already supports untrusting plugins.
+- Should `meta:plugin:trust revoke` ship in Alpha 4 even if list output is minimal? Default: ship revoke because the service already supports untrusting plugins.
 - Should git plugin trust be tied to package name, resolved URL, or authoring root? Default: package name for registry/npm, resolved absolute authoring root for local, and explicit trust required for git.
 - Should `sshAgent.sidecar: false` warn or hard-fail if rejected? Default: hard-fail at schema validation with remediation.

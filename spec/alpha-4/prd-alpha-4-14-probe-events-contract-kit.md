@@ -1,20 +1,20 @@
-# PRD: BETA1-14 — Probe primitive, EventService query, & the plugin-abstraction contract kit
+# PRD: ALPHA4-14 — Probe primitive, EventService query, & the plugin-abstraction contract kit
 
 ## Introduction
 
-Beta 1 lands three remaining additive SDK primitives that were written into the spec ahead of an implementation plan, so they ship inside the last feature-surface phase rather than drifting into orphaned spec text. All three are consumed by plugin authors and embedding hosts, all three are governed by the README's Canonical Surface Governance rule (a public surface must have a canonical registry, a drift/test gate, and an implementing plan), and none of them is a pluggable `Context.Tag` abstraction — they are contracts-only or fixed-runtime primitives. They stay in one PRD because they share the same shape of work (publish a small `@lando/sdk` surface, wire it through the consumers that already exist, lock it with a contract/boundary gate) and because two of the three are gated on the same upstream primitives (the canonical `RedactionService` from PRD-06 and the `@lando/core/testing` surface from PRD-11).
+Alpha 4 lands three remaining additive SDK primitives that were written into the spec ahead of an implementation plan, so they ship inside the last feature-surface phase rather than drifting into orphaned spec text. All three are consumed by plugin authors and embedding hosts, all three are governed by the README's Canonical Surface Governance rule (a public surface must have a canonical registry, a drift/test gate, and an implementing plan), and none of them is a pluggable `Context.Tag` abstraction — they are contracts-only or fixed-runtime primitives. They stay in one PRD because they share the same shape of work (publish a small `@lando/sdk` surface, wire it through the consumers that already exist, lock it with a contract/boundary gate) and because two of the three are gated on the same upstream primitives (the canonical `RedactionService` from PRD-06 and the `@lando/core/testing` surface from PRD-11).
 
-Beta 1 is still the last feature-surface phase, so these primitives land now instead of being deferred to a post-freeze release. Each one consolidates duplication that already exists in shipped code:
+Alpha 4 is still the last feature-surface phase, so these primitives land now instead of being deferred to a post-freeze release. Each one consolidates duplication that already exists in shipped code:
 
 - **Probe / `RetryPolicy` (§10.5.1).** `HealthcheckRunner`, `UrlScanner`, `DoctorService` shell checks, the `Downloader` retry path (PRD-09), and `lando setup` readiness waits each carry their own retry/delay/timeout loop and their own green/yellow/red verdict shape. There is no shared, `TestClock`-deterministic probe runner, so attempt-count and backoff behavior are re-implemented per surface and asserted (where asserted at all) against the wall clock. The §13.1 Effect-service test row and §10.5/§10.5.1 already name `@lando/sdk/probe` as the single backoff/verdict primitive these surfaces build on; this PRD ships it.
 
 - **EventService query, timeout, and history (§11.1).** The live `subscribe` stream exists, but the one-shot `waitFor` / `waitForAny` awaits, the retrospective `query` scan, the bounded **redacted** history buffer, the `EventError` (`reason: "timeout"`) deadline contract, and the typed generic narrowing (`subscribe<E>` / `waitFor<E>` / `query<E>`) are spec-only. Embedding hosts (IDE extensions, dashboards), `lando events --follow`, and the executable-guide `<Verify event=…>` matcher all need "await/inspect an event matching a predicate," and `@lando/core/testing`'s `expectEvent` / `recordedEvents` are documented as thin wrappers over these members — but the runtime members they wrap do not exist yet.
 
-- **The §4.2 plugin-abstraction contract kit (§13.1).** Beta 1 already ships shared `@lando/sdk/test` contract suites for `Downloader`, `RedactionService`, `InteractionService`, the Landofile serializer, and `StateStore`. The §13.1 test-layer table also specifies six more — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` — but no story builds them. These are the literal "unlock plugin authors" payload: without a published harness, a plugin author writing one of these six abstractions has no way to prove their implementation preserves the spec's MUST/SHOULD guarantees, and the built-in implementations have no shared regression contract.
+- **The §4.2 plugin-abstraction contract kit (§13.1).** Alpha 4 already ships shared `@lando/sdk/test` contract suites for `Downloader`, `RedactionService`, `InteractionService`, the Landofile serializer, and `StateStore`. The §13.1 test-layer table also specifies six more — `tooling-engine`, `route-filter`, `secret-store`, `config-translator`, `plugin-source`, and `doctor-check` — but no story builds them. These are the literal "unlock plugin authors" payload: without a published harness, a plugin author writing one of these six abstractions has no way to prove their implementation preserves the spec's MUST/SHOULD guarantees, and the built-in implementations have no shared regression contract.
 
 This PRD implements the normative surfaces already present in §10.5.1 (probe), §11.1 (EventService query/history), and §13.1 (the six contract suites), and aligns the existing consumers onto them. It adds no new pluggable abstraction, no new persisted wire schema, and no new JSON Schema artifact.
 
-Depends on: **BETA1-04** (the canonical Landofile serializer the `config-translator` contract suite round-trips fragments through, and SDK surface discipline), **BETA1-06** (the canonical `RedactionService` that probe consumers and the event history buffer redact through, and the redaction-boundary gate the contract suites assert against), **BETA1-09** (the `Downloader` retry path is a probe consumer and its contract suite is the template for the plugin-abstraction kit), and **BETA1-11** (`@lando/core/testing` stability and the import-boundary / library-API contract gates the new SDK exports join).
+Depends on: **ALPHA4-04** (the canonical Landofile serializer the `config-translator` contract suite round-trips fragments through, and SDK surface discipline), **ALPHA4-06** (the canonical `RedactionService` that probe consumers and the event history buffer redact through, and the redaction-boundary gate the contract suites assert against), **ALPHA4-09** (the `Downloader` retry path is a probe consumer and its contract suite is the template for the plugin-abstraction kit), and **ALPHA4-11** (`@lando/core/testing` stability and the import-boundary / library-API contract gates the new SDK exports join).
 
 ## Source References
 
@@ -25,7 +25,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 - [`spec/03-architecture.md`](../03-architecture.md) §3.7 redaction — the consumer-owned redaction of `ProbeResult.lastError` before it reaches events/transcripts.
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 Effect-service test layer (probe asserted under `TestClock`) and §13.4 the boundary gate that keeps net-new `Effect.retry(… Schedule …)` loops out of `core/src/**` outside the primitive and its consumers.
 - [`spec/04-pluggability.md`](../04-pluggability.md) §4.2 — the probe primitive is explicitly NOT a pluggable abstraction and NOT a service tag.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
 
 ### EventService query source references
 
@@ -33,7 +33,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 - [`spec/03-architecture.md`](../03-architecture.md) §3.7 redaction — events are redacted through `RedactionService` before they are buffered.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.6 lifecycle and scopes for hosts, §16.8 the `@lando/core/testing` event helpers (`expectEvent` / `waitForEvent` / `recordedEvents`) that wrap these members.
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 the Effect-service test layer exercising typed narrowing + bounded-history semantics, and the `expectTypeOf` tests in `test/types/`.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ### Plugin-abstraction contract kit source references
 
@@ -43,7 +43,7 @@ Depends on: **BETA1-04** (the canonical Landofile serializer the `config-transla
 - [`spec/06-services.md`](../06-services.md) §6.11.3 service-type-shipped tooling and §8.5–§8.7 the `ToolingEngine` contract; [`spec/11-subsystems.md`](../11-subsystems.md) §10.2 route filters, §10.7 SQL/secret resolution, §10.9 doctor.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.8.1 the canonical Landofile serializer the config-translator suite round-trips emitted fragments through.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.8 `@lando/core/testing` test doubles; [`spec/03-architecture.md`](../03-architecture.md) §3.7 redaction the secret-store / tooling-engine / doctor-check suites assert.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/test-surface rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/test-surface rules.
 
 ## Goals
 
@@ -237,6 +237,6 @@ This PRD publishes an SDK runtime/test primitive trio (probe, event query, plugi
 
 ## Open Questions
 
-- Should `@lando/sdk/probe` expose a `ProbeOutcome`-aware convenience (`runProbeOrFail`) that fails the Effect on a non-`green` terminal outcome, or keep the resolve-with-result contract and leave fail/continue entirely to consumers? Default: resolve-with-result only for Beta 1; a consumer that always fails on non-green writes one line. Revisit if three or more consumers duplicate the same fail wrapper.
-- Should the `EventService` history cap be a `GlobalConfig` field or a `makeLandoRuntime` option only? Default: a `makeLandoRuntime` / runtime option (hosts opt into 0 or a larger cap) without a `GlobalConfig` field in Beta 1, to keep the CLI default fixed and the schema unchanged.
-- Should the six contract suites be one `@lando/sdk/test` aggregate export (`pluginAbstractionContractSuites`) in addition to the individual `make*ContractSuite` functions? Default: individual exports for Beta 1 (a plugin author runs only the suite for the abstraction they ship); add an aggregate convenience only if the core test layer wants a single call site.
+- Should `@lando/sdk/probe` expose a `ProbeOutcome`-aware convenience (`runProbeOrFail`) that fails the Effect on a non-`green` terminal outcome, or keep the resolve-with-result contract and leave fail/continue entirely to consumers? Default: resolve-with-result only for Alpha 4; a consumer that always fails on non-green writes one line. Revisit if three or more consumers duplicate the same fail wrapper.
+- Should the `EventService` history cap be a `GlobalConfig` field or a `makeLandoRuntime` option only? Default: a `makeLandoRuntime` / runtime option (hosts opt into 0 or a larger cap) without a `GlobalConfig` field in Alpha 4, to keep the CLI default fixed and the schema unchanged.
+- Should the six contract suites be one `@lando/sdk/test` aggregate export (`pluginAbstractionContractSuites`) in addition to the individual `make*ContractSuite` functions? Default: individual exports for Alpha 4 (a plugin author runs only the suite for the abstraction they ship); add an aggregate convenience only if the core test layer wants a single call site.

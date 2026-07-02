@@ -1,10 +1,10 @@
-# PRD Beta 1 — 19 — Service base + feature composition (the §6.11 model made real)
+# PRD Alpha 4 — 19 — Service base + feature composition (the §6.11 model made real)
 
-> **Top-priority remediation PRD.** This PRD precedes all other in-flight Beta 1 work (US-355..US-362 carry the lowest priority indices). It corrects a structural omission: the v4 service model (§6.1, §6.11) was never implemented — service types hand-build `ServicePlan`s instead of composing a `base` with priority-ordered `features`. Land this before any further service-type or feature work.
+> **Top-priority remediation PRD.** This PRD precedes all other in-flight Alpha 4 work (US-355..US-362 carry the lowest priority indices). It corrects a structural omission: the v4 service model (§6.1, §6.11) was never implemented — service types hand-build `ServicePlan`s instead of composing a `base` with priority-ordered `features`. Land this before any further service-type or feature work.
 
 ## Introduction
 
-Beta 1 is the last feature-surface phase, so the canonical service composition model lands now rather than being deferred past feature freeze. The spec has always defined a v4 service as a **base** (`l337` or `lando`) plus a sequence of composable **features** (§6.1, §6.11): a `ServiceType` resolves `type: <name>` into a `ServiceTypeResolution` (`{ base, normalizedConfig, features }`), and core's planner composes the named base with the priority-ordered feature list to produce the `ServicePlan`. The two bundled bases — `l337` (artifact/build plumbing only, no env layer) and `lando` (the opinionated dev service with the `lando.*` feature stack) — are the foundation every other service type is meant to build on.
+Alpha 4 is the last feature-surface phase, so the canonical service composition model lands now rather than being deferred past feature freeze. The spec has always defined a v4 service as a **base** (`l337` or `lando`) plus a sequence of composable **features** (§6.1, §6.11): a `ServiceType` resolves `type: <name>` into a `ServiceTypeResolution` (`{ base, normalizedConfig, features }`), and core's planner composes the named base with the priority-ordered feature list to produce the `ServicePlan`. The two bundled bases — `l337` (artifact/build plumbing only, no env layer) and `lando` (the opinionated dev service with the `lando.*` feature stack) — are the foundation every other service type is meant to build on.
 
 None of that was implemented. The shipped contract is monolithic: `ServiceTypeShape` is `{ id, toServicePlan(input) => ServicePlan }` (`sdk/src/services/plugins.ts`), and every catalog service type (`plugins/service-lando/src/services/*.ts`) hand-builds a complete `ServicePlan`, copy-pasting a shared `buildLandoEnv()` helper to fake the env layer. `core/src/services/base/{l337,lando}.ts` and `core/src/services/feature.ts` exist only as stubs (ID constants + a priority map + a TODO context) wired to nothing. There is no base, no `resolve()`, no `ServiceTypeResolution`, no `ServiceFeature`/`AppFeature` runtime, no `extends:`, no `artifacts:` pinning, and no `appFeatures:` manifest slot. The omission is invisible per-service (each type "works" in isolation) but loses the entire architecture: the `l337`/`lando` distinction (§6.9 — `compose`, the only `l337` type, currently injects the lando env layer in violation of the spec), `AppFeature` cross-service injection (§6.11.4 — the canonical mailpit-into-php flow cannot exist), single-inheritance reuse (§6.11.1), and the per-feature/per-type conformance surface.
 
@@ -12,7 +12,7 @@ The repo is private and nothing is published, so this PRD **guts the monolithic 
 
 This PRD implements the normative pipeline and conformance requirements from §6.11.0 / §6.11.0.1, the base/feature contracts from §6.11 / §6.11.4, and the §13.1 service-composition/service-feature/app-feature contract suites plus the §13.4 env-helper boundary gate. The accompanying spec edits (§6.1 composition-is-normative note, §6.11.0 planning algorithm, §6.11.0.1 conformance requirements, §6.12.1 per-type checklist, §13 contract-suite rows, §6.11.4 manifest-slot note) are the source of truth; this PRD and those sections must stay in lockstep.
 
-Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMPATIBILITY.md` lockstep — the `ServiceType`/`ServiceFeature`/`AppFeature` contracts are SDK surface) and **BETA1-11** (SDK/library acceptance + import-boundary contracts). It otherwise stands alone and blocks any later PRD that adds a service type or feature.
+Depends on: **ALPHA4-04** (SDK surface discipline, schema snapshot, `sdk/API_COMPATIBILITY.md` lockstep — the `ServiceType`/`ServiceFeature`/`AppFeature` contracts are SDK surface) and **ALPHA4-11** (SDK/library acceptance + import-boundary contracts). It otherwise stands alone and blocks any later PRD that adds a service type or feature.
 
 ## Source References
 
@@ -22,7 +22,7 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 - [`spec/10-plugins.md`](../10-plugins.md) §9.5 manifest contribution shape; plugin loader consumption of `serviceTypes:` / `serviceFeatures:` / `appFeatures:`.
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) §12.1 the app-plan cache key (must include the resolved base + ordered `FeatureRef` list + `AppFeature` contributions).
 - [`spec/18-global-app.md`](../18-global-app.md) §20.6.3 `AppFeature.requires.globalServices` aggregation into the user app's `pre-start` ensure-running pass.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
 
 ## Goals
 
@@ -178,5 +178,5 @@ Depends on: **BETA1-04** (SDK surface discipline, schema snapshot, `sdk/API_COMP
 
 ## Open Questions
 
-- Does the migrated `ServiceFeatureContext` draft need to expose every mutator the §6.11 built-in features use in Beta 1, or only the subset the migrated catalog exercises, with the rest landing as their consuming features arrive (host-proxy, bun-self, ssh-agent sidecar)? Default: ship the subset the catalog needs plus the documented mutator names, and gate the unimplemented ones with a typed error.
+- Does the migrated `ServiceFeatureContext` draft need to expose every mutator the §6.11 built-in features use in Alpha 4, or only the subset the migrated catalog exercises, with the rest landing as their consuming features arrive (host-proxy, bun-self, ssh-agent sidecar)? Default: ship the subset the catalog needs plus the documented mutator names, and gate the unimplemented ones with a typed error.
 - Should `extends:` and `artifacts:` ship in US-360 as specified, or is the minimum viable migration just base + features (US-355..US-359, US-361..US-362) with `extends:`/`artifacts:` as a fast-follow? Default: keep US-360 in this PRD since the contracts already reference them and the catalog's version aliases depend on `artifacts:` resolution.

@@ -1,8 +1,8 @@
-# PRD: BETA1-16 — Data Movement & Volume Primitives
+# PRD: ALPHA4-16 — Data Movement & Volume Primitives
 
 ## Introduction
 
-Beta 1 lands the on-host counterpart to the `HttpClient` egress chokepoint: the `DataMover` primitive and the `RuntimeProvider` data plane that backs it. Where `HttpClient` (§10.3.2) is the single chokepoint for **outbound/remote** bytes, `DataMover` (§10.11) is the single chokepoint for **local/volume/service** byte movement — moving bytes between five typed `DataEndpoint`s (host path/archive, in-process stream, named volume, service path/command, built artifact) and owning snapshot/restore, streaming, interruption, checksum verification, redaction, and the `Data` lifecycle events.
+Alpha 4 lands the on-host counterpart to the `HttpClient` egress chokepoint: the `DataMover` primitive and the `RuntimeProvider` data plane that backs it. Where `HttpClient` (§10.3.2) is the single chokepoint for **outbound/remote** bytes, `DataMover` (§10.11) is the single chokepoint for **local/volume/service** byte movement — moving bytes between five typed `DataEndpoint`s (host path/archive, in-process stream, named volume, service path/command, built artifact) and owning snapshot/restore, streaming, interruption, checksum verification, redaction, and the `Data` lifecycle events.
 
 Today every byte-moving feature would hand-roll its own path. The only data-move code that exists is host-filesystem-only: `reflinkCopyAppRoot` / `copyAppRoot` in `core/src/scratch-app/service.ts` (`cp -a --reflink=auto` with a `node:fs` byte-copy fallback) for scratch `--isolate=full`. There is no volume export/import/snapshot, no host↔container file copy, and no artifact export/import on the provider contract; `EphemeralRunSpec` cannot mount a volume or stream stdio, so even a generic "tar a volume through a helper container" approach is impossible. Snapshot/restore, DB import/export, the local landing half of hosting `pull`/`push`, disposable-toolbox seeding, and `image save`/`load` each have no shared substrate to build on.
 
@@ -10,7 +10,7 @@ This PRD implements the normative §10.11 primitive: the SDK data-transfer schem
 
 `DataMover` is **not** a sync engine (live bidirectional sync stays `FileSyncEngine`, §10.6) and **not** a remote transport (a `RemoteSource` plugin owns remote I/O via `HttpClient`; it uses `DataMover` only for the local extract/land half — the `RemoteSource`/`Dataset` contract is frozen in PRD-17, §10.12). The primitive lands now; its full consumer wave — the bundled `@lando/sql` DB verbs, hosting `pull`/`push` (local landing half only), and `image save`/`load` — is 4.x. (`lando share` is **not** in this wave: a tunnel moves no local/volume bytes, so it consumes the `HttpClient`/tool-provisioning egress cluster, not `DataMover`; its contract is frozen in PRD-09.) The shared streaming-hash helper, the snapshot-store-on-`StateStore`, the `PathsService` snapshot roots, and `DataMover`-in-`RedactionService` are deliberate reuse of the branch's existing PRD-09 / PRD-13 primitives rather than re-derivation.
 
-Depends on: **BETA1-04** (schema publication and SDK surface discipline), **BETA1-09** (the `HttpClient`/`Downloader` network primitives and the shared streaming-hash/atomic-write helper this PRD factors out and reuses), and **BETA1-13** (the Paths/Roots primitive that resolves the snapshot store and the `StateStore` durable primitive that indexes it).
+Depends on: **ALPHA4-04** (schema publication and SDK surface discipline), **ALPHA4-09** (the `HttpClient`/`Downloader` network primitives and the shared streaming-hash/atomic-write helper this PRD factors out and reuses), and **ALPHA4-13** (the Paths/Roots primitive that resolves the snapshot store and the `StateStore` durable primitive that indexes it).
 
 ## Source References
 
@@ -20,7 +20,7 @@ Depends on: **BETA1-04** (schema publication and SDK surface discipline), **BETA
 - [`spec/06-services.md`](../06-services.md) §6.5 the storage model, scopes, auto-naming, provider labels, and the `kind: data|cache` cache-volume distinction.
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) §12.4 the persistent-artifact paths for the snapshot archives, `.json` sidecars, and `index.bin`; §12.7 the `StateStore` bucket the snapshot index is realized through.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.5.1 the Paths/Roots primitive that resolves `appSnapshotsDir`/`snapshotsDir`/`toolDownloadsDir`.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, the §13.2 snapshot gate, the §13.1 provider contract suite, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, the §13.2 snapshot gate, the §13.1 provider contract suite, and dual-dispatch rules.
 
 ## Goals
 
@@ -228,6 +228,6 @@ This PRD publishes the `DataMover` byte-movement primitive and the `RuntimeProvi
 ## Open Questions
 
 - Should `DataMover` expose a host-FS-only fast path that is reachable below level `provider` for the `hostPath → hostPath` slice (which needs no provider), or keep one tag at `provider` for simplicity? Default: one tag at `provider`; the `hostPath → hostPath` adapter is provider-independent internally but is reached through the same service.
-- Should the container providers (`docker`/`podman`) eventually offer an image-commit-of-a-data-container native snapshot behind `volumeSnapshot: "native"`, or stay `copy`-only? Default: `copy`-only for Beta 1; reserve the native commit path for `@lando/provider-lando` and revisit if storage/restore-speed demand appears.
+- Should the container providers (`docker`/`podman`) eventually offer an image-commit-of-a-data-container native snapshot behind `volumeSnapshot: "native"`, or stay `copy`-only? Default: `copy`-only for Alpha 4; reserve the native commit path for `@lando/provider-lando` and revisit if storage/restore-speed demand appears.
 - Should the snapshot store ever take an automatic safety snapshot before `app:destroy --purge` / scratch teardown (opt-out), per the destructive-confirmation rule? Default: ship the capability (`MAY` per §10.11.3) but leave the auto-hook wiring to the destroy-command PRD so this PRD stays substrate-only.
-- Should the cache-volume kind grow the per-service `caches:` Landofile sugar now or after the primitive proves out? Default: `storage[].kind: cache` only for Beta 1; defer the `caches:` sugar.
+- Should the cache-volume kind grow the per-service `caches:` Landofile sugar now or after the primitive proves out? Default: `storage[].kind: cache` only for Alpha 4; defer the `caches:` sugar.

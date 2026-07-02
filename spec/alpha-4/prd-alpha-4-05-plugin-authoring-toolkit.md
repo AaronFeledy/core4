@@ -1,12 +1,12 @@
-# PRD: BETA1-05 — Plugin authoring toolkit
+# PRD: ALPHA4-05 — Plugin authoring toolkit
 
 ## Introduction
 
-Beta 1 completes the core-owned plugin authoring toolkit from §9.10. The six `meta:plugin:*` commands move from stubs to working commands that scaffold, test, build, link, unlink, and publish plugins without giving plugins control over the authoring namespace.
+Alpha 4 completes the core-owned plugin authoring toolkit from §9.10. The six `meta:plugin:*` commands move from stubs to working commands that scaffold, test, build, link, unlink, and publish plugins without giving plugins control over the authoring namespace.
 
 Every child process in this PRD routes through `BunSelfRunner`, every command has source-mode and compiled `$bunfs` parity, and global mutation is limited to `<userDataRoot>/plugins/` plus documented plugin authoring state.
 
-Depends on: **BETA1-02** (plugin trust and open-decision closure), because link, publish, and postinstall behavior must respect the finalized trust model.
+Depends on: **ALPHA4-02** (plugin trust and open-decision closure), because link, publish, and postinstall behavior must respect the finalized trust model.
 
 ## Source References
 
@@ -178,7 +178,7 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 ## Open Questions
 
-- Should `meta:plugin:new` allow overwriting an existing destination with `--force`? Default: no, require an empty destination for Beta 1.
+- Should `meta:plugin:new` allow overwriting an existing destination with `--force`? Default: no, require an empty destination for Alpha 4.
 - Should `meta:plugin:publish --dry-run` require auth? Default: no, dry-run validates package contents without requiring credentials.
 - Should `meta:plugin:link` replace an installed registry plugin automatically? Default: only with an explicit confirmation or `--yes`, preserving the prior copy for unlink restore.
-- Should publish support provenance attachment in Beta 1? Default: defer to release supply-chain PRDs and keep plugin publish focused on package contents.
+- Should publish support provenance attachment in Alpha 4? Default: defer to release supply-chain PRDs and keep plugin publish focused on package contents.

@@ -1,10 +1,10 @@
-# PRD: BETA1-09 — Supply chain, self-update & the outbound-network primitives (HttpClient / Downloader / tool provisioning)
+# PRD: ALPHA4-09 — Supply chain, self-update & the outbound-network primitives (HttpClient / Downloader / tool provisioning)
 
 ## Introduction
 
-Beta 1 adds verifiable release artifacts and a safe self-update path. Every published artifact gets SBOM coverage, keyless provenance, and signature checks. `lando update` then consumes the signed update manifest, verifies downloaded artifacts before trusting them, replaces binaries atomically, and rolls back when launch probes fail.
+Alpha 4 adds verifiable release artifacts and a safe self-update path. Every published artifact gets SBOM coverage, keyless provenance, and signature checks. `lando update` then consumes the signed update manifest, verifies downloaded artifacts before trusting them, replaces binaries atomically, and rolls back when launch probes fail.
 
-This PRD depends on PRD-08's release pipeline. It fills §17.5 supply-chain requirements and §17.6 self-update behavior for the Beta 1 release train.
+This PRD depends on PRD-08's release pipeline. It fills §17.5 supply-chain requirements and §17.6 self-update behavior for the Alpha 4 release train.
 
 This PRD also absorbs the layered **outbound-network primitives**. These are folded here because self-update and supply-chain verification are the trust-root consumers of network behavior, and the same proxy/CA/redaction stack serves every Lando-owned fetch. The layering is:
 
@@ -12,7 +12,7 @@ This PRD also absorbs the layered **outbound-network primitives**. These are fol
 - **`Downloader`** — the verified-artifact specialization that wraps `HttpClient`: checksum/size verification, atomic persistence, cache/offline short-circuiting, and download progress. It issues its byte-fetch through `HttpClient.stream` and never opens its own socket.
 - **Tool provisioning** — a pure `@lando/sdk` helper over `Downloader` that resolves a multi-platform `ToolManifest`, extracts an archive member, and installs a pinned host binary under `<userDataRoot>/bin/` with idempotent version markers.
 
-Network-primitive work keeps its external dependencies on **BETA1-01** (setup/download call sites; the network-trust resolver also backs setup preflight) and **BETA1-04** (schema publication); self-update verification is now internal to this PRD. The probe primitive (**BETA1-14**) supplies the `HttpClient`/`Downloader` retry semantics, and the downstream **BETA1-11** SDK/library acceptance suite validates the exported surface.
+Network-primitive work keeps its external dependencies on **ALPHA4-01** (setup/download call sites; the network-trust resolver also backs setup preflight) and **ALPHA4-04** (schema publication); self-update verification is now internal to this PRD. The probe primitive (**ALPHA4-14**) supplies the `HttpClient`/`Downloader` retry semantics, and the downstream **ALPHA4-11** SDK/library acceptance suite validates the exported surface.
 
 ## Source References
 
@@ -20,7 +20,7 @@ Network-primitive work keeps its external dependencies on **BETA1-01** (setup/do
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.6 self-update flow.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.6.1 update manifest schema and channel URLs.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.6.2 POSIX and Windows replacement behavior.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) PRD-09 range, dependency on PRD-08, and verification contract.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) PRD-09 range, dependency on PRD-08, and verification contract.
 
 ### Network-primitive source references
 
@@ -34,7 +34,7 @@ Network-primitive work keeps its external dependencies on **BETA1-01** (setup/do
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) §12.1 `tool-downloads` cache and §12.4 `bin/` provisioning artifacts/markers.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.2 `ToolManifest` codegen.
 - [`spec/10-plugins.md`](../10-plugins.md) §9.5 contribution surfaces.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ## Goals
 
@@ -332,7 +332,7 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
-**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-331 learnings): `HttpRequest.timeoutMs` is declared in the schema but not honored by `live.ts`, forcing each caller (e.g. the recipe/npm/registry metadata bridge) to wrap its own `AbortSignal.timeout`. No owning story existed before this entry.
+**Notes:** Backlog hardening surfaced in `spec/alpha-4/progress.txt` (US-331 learnings): `HttpRequest.timeoutMs` is declared in the schema but not honored by `live.ts`, forcing each caller (e.g. the recipe/npm/registry metadata bridge) to wrap its own `AbortSignal.timeout`. No owning story existed before this entry.
 
 ### US-369: Implement `network.ca.trustHost` host-store + custom-CA merge semantics
 
@@ -348,7 +348,7 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
-**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-331/US-332 review notes): trustHost host-store + custom-CA semantics were deferred past US-332 as needing a dedicated Bun TLS design, with no successor story.
+**Notes:** Backlog hardening surfaced in `spec/alpha-4/progress.txt` (US-331/US-332 review notes): trustHost host-store + custom-CA semantics were deferred past US-332 as needing a dedicated Bun TLS design, with no successor story.
 
 ### US-370: Cap untrusted decompression and Landofile parser inputs (DoS hardening)
 
@@ -364,7 +364,7 @@ The following stories are folded in from the Downloader primitive scope.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
-**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story.
+**Notes:** Backlog hardening surfaced in `spec/alpha-4/progress.txt` (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story.
 
 ## Functional Requirements
 
@@ -449,7 +449,7 @@ The following stories are folded in from the Downloader primitive scope.
 
 ## Guide Coverage
 
-Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
+Per [Alpha 4 index verification](./prd-alpha-4-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
 
 **Guides owned by this PRD:**
 
@@ -484,6 +484,6 @@ Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide con
 
 ### Downloader open questions
 
-- Should `Downloader` expose resume/range-download support in v4.0, or reserve it as a future capability? Default: reserve it; atomic full-file downloads are sufficient for Beta 1.
+- Should `Downloader` expose resume/range-download support in v4.0, or reserve it as a future capability? Default: reserve it; atomic full-file downloads are sufficient for Alpha 4.
 - Should progress events publish raw byte counts only or include human-readable labels? Default: raw schema fields only; renderers format labels.
 - Should mirror selection be caller config or a downloader implementation detail? Default: implementation detail for contributed mirror-aware downloaders, with callers still passing the canonical artifact entry.

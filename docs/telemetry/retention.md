@@ -2,7 +2,7 @@
 
 This is the canonical, in-repo policy for how Lando telemetry is redacted before it leaves your machine and how long any collected data is retained. It is published before telemetry emission is enabled by default and is linked from the [telemetry event inventory](./events.md), the opt-out command output (`lando config telemetry status`), and the machine-readable inventory in [`core/src/telemetry/inventory.ts`](../../core/src/telemetry/inventory.ts).
 
-Specification: [`spec/beta-1/prd-beta-1-06-telemetry.md`](../../spec/beta-1/prd-beta-1-06-telemetry.md).
+Specification: [`spec/alpha-4/prd-alpha-4-06-telemetry.md`](../../spec/alpha-4/prd-alpha-4-06-telemetry.md).
 
 ## Redaction rules {#redaction}
 

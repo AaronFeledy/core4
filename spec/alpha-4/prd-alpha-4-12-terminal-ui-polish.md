@@ -1,16 +1,16 @@
-# PRD: BETA1-12 — Terminal UI polish & interaction service
+# PRD: ALPHA4-12 — Terminal UI polish & interaction service
 
 ## Introduction
 
-The renderer contract in §8.9 already describes the default `lando` renderer as interactive and colorful. In practice, a renderer can satisfy the event boundary while still feeling flat, overly textual, or hard to scan during setup, init, builds, and release-style summaries. This PRD adds a small Beta 1 polish pass: move the default user renderer behind a bundled internal `@lando/renderer-lando` plugin, then improve the terminal UI's hierarchy, prompts, progress, and summary surfaces with a futuristic spaceship interface vibe, without changing command semantics or turning the entire CLI into a full-screen TUI.
+The renderer contract in §8.9 already describes the default `lando` renderer as interactive and colorful. In practice, a renderer can satisfy the event boundary while still feeling flat, overly textual, or hard to scan during setup, init, builds, and release-style summaries. This PRD adds a small Alpha 4 polish pass: move the default user renderer behind a bundled internal `@lando/renderer-lando` plugin, then improve the terminal UI's hierarchy, prompts, progress, and summary surfaces with a futuristic spaceship interface vibe, without changing command semantics or turning the entire CLI into a full-screen TUI.
 
 OpenTUI is allowed as an implementation dependency for bounded TTY surfaces because its Core API exposes an imperative renderer plus composable renderables (`TextRenderable`, `BoxRenderable`, `ScrollBoxRenderable`, `InputRenderable`, `TextareaRenderable`, `SelectRenderable`, `TabSelectRenderable`) and Yoga/Flexbox-style layout primitives. The intent is to use those primitives behind the existing `Renderer` and prompt seams where they help, while preserving the non-TTY, `plain`, `json`, and CI output contracts.
 
-Depends on: **BETA1-01** (setup/uninstall renderer and prompt surfaces), **BETA1-04** (schema publication for `PromptSpec`), **BETA1-05** (plugin authoring prompts), **BETA1-07** (public transcript and guide rendering expectations), and **BETA1-11** (§17.9 acceptance/perf gates). This PRD does not add unrelated commands, flags, lifecycle events, or product behavior; its new surface is limited to the `InteractionService`/`PromptSpec` primitive and prompt consolidation described below.
+Depends on: **ALPHA4-01** (setup/uninstall renderer and prompt surfaces), **ALPHA4-04** (schema publication for `PromptSpec`), **ALPHA4-05** (plugin authoring prompts), **ALPHA4-07** (public transcript and guide rendering expectations), and **ALPHA4-11** (§17.9 acceptance/perf gates). This PRD does not add unrelated commands, flags, lifecycle events, or product behavior; its new surface is limited to the `InteractionService`/`PromptSpec` primitive and prompt consolidation described below.
 
 This PRD also absorbs the shared `InteractionService` primitive and prompt consolidation work. Interaction belongs with terminal UI polish because it is the input peer of the renderer seam: prompt vocabulary, answer-source precedence, interactivity mode, and prompt chrome must be coordinated with the default renderer and OpenTUI-backed bounded surfaces.
 
-Interaction work keeps its external dependencies on **BETA1-01** (setup prompts/confirmations), **BETA1-04** (schema publication), **BETA1-05** (plugin authoring prompts), and **BETA1-11** (SDK/library acceptance + App-handle embedding); renderer coordination is now internal to this PRD.
+Interaction work keeps its external dependencies on **ALPHA4-01** (setup prompts/confirmations), **ALPHA4-04** (schema publication), **ALPHA4-05** (plugin authoring prompts), and **ALPHA4-11** (SDK/library acceptance + App-handle embedding); renderer coordination is now internal to this PRD.
 
 ## Source References
 
@@ -27,7 +27,7 @@ Interaction work keeps its external dependencies on **BETA1-01** (setup prompts/
 - [`spec/10-plugins.md`](../10-plugins.md) §9.4/§9.5 contribution surface and interaction-service contribution rules.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2 service tag, §16.3 `interaction` option, §16.7 host-drivable `apps:init`, §16.8 `TestInteractionService`.
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 interaction contract suite.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ## Goals
 
@@ -257,7 +257,7 @@ The following stories are folded in from the InteractionService primitive scope.
 
 ## Technical Considerations
 
-- OpenTUI Core is the preferred integration layer for Beta 1 polish because it exposes imperative renderables and avoids requiring React/Solid runtimes in the default renderer plugin.
+- OpenTUI Core is the preferred integration layer for Alpha 4 polish because it exposes imperative renderables and avoids requiring React/Solid runtimes in the default renderer plugin.
 - OpenTUI can be used incrementally: instantiate it only for TTY prompt/task/summary surfaces owned by `@lando/renderer-lando`, and tear it down when the prompt or task tree completes. This is not a requirement to run the entire command in alternate-screen mode.
 - The implementation must preserve the §8.9 hand-off from the pre-renderer banner. OpenTUI must not be imported before bootstrap for level ≥ `plugins`, and must never be imported for level-`none` commands.
 - TTY rendering should have a fallback when OpenTUI cannot initialize (unsupported terminal, missing native binding, or test harness constraints). The fallback is the existing `plain`/minimal renderer path with a warning only when it does not contaminate machine output.

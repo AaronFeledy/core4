@@ -1,8 +1,8 @@
-# PRD: BETA1-17 — Remote Data Sync (`RemoteSource` + `Dataset`) contract freeze
+# PRD: ALPHA4-17 — Remote Data Sync (`RemoteSource` + `Dataset`) contract freeze
 
 ## Introduction
 
-Beta 1 freezes the **remote data sync** contract — the egress-side peer of the `DataMover` byte-movement primitive (PRD-16) — so the 4.1 `lando pull`/`push` feature can plug in after feature freeze without inventing new SDK surface. This mirrors exactly how PRD-09 froze the `TunnelService` contract for the 4.1 `lando share` feature: ship the SDK tags, schemas, tagged errors, lifecycle events, manifest surfaces, Landofile keys, contract suites, and command/handle result schemas now; ship the bundled remotes and the real connector wiring in 4.1.
+Alpha 4 freezes the **remote data sync** contract — the egress-side peer of the `DataMover` byte-movement primitive (PRD-16) — so the 4.1 `lando pull`/`push` feature can plug in after feature freeze without inventing new SDK surface. This mirrors exactly how PRD-09 froze the `TunnelService` contract for the 4.1 `lando share` feature: ship the SDK tags, schemas, tagged errors, lifecycle events, manifest surfaces, Landofile keys, contract suites, and command/handle result schemas now; ship the bundled remotes and the real connector wiring in 4.1.
 
 Remote data sync moves **named datasets — database, user files, and config — between a running local Lando app and a *remote*** (pull = remote→local, push = local→remote). A *remote* is any place that holds app datasets across one or more environments: a hosting platform (Pantheon/Acquia/Platform.sh/Lagoon — the marquee "hosting" category), a generic transport (rsync/ssh/s3/url/local), or a future peer/CI-artifact source. **Code is never synced** (git owns it); the scope is DB + files + config.
 
@@ -22,7 +22,7 @@ Depends on: **PRD-04** (schema publication + SDK surface discipline; the canonic
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2/§16.3 the `App` handle `pull`/`push`/`remote` methods and the `@lando/core/cli` operations.
 - [`spec/10-plugins.md`](../10-plugins.md) §9.5 the `remoteSources:`/`datasets:` contribution surfaces and their contribution rules.
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 the `RemoteSource` + `Dataset` contract suites.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, the §13.2 snapshot gate, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, the §13.2 snapshot gate, and dual-dispatch rules.
 
 ## Goals
 
@@ -103,7 +103,7 @@ Depends on: **PRD-04** (schema publication + SDK surface discipline; the canonic
 
 - [ ] Every legacy hosting contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` §10.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet), with "hosting" retained only as the descriptive feature category; a grep proves no old contract identifier remains.
 - [ ] The `DataMover` hosting-pull matrix row (§10.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.
-- [ ] A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the canonical registries: the §4.2 catalog rows, the §9.5 contribution rows, the §13.1 contract-suite rows, the §3.5 `Sync` events, the §7.4 Landofile keys, the §16.3 `App` methods, and the `@lando/sdk/services` tags — the same canonical-surface-governance shape the other Beta-1 primitives use.
+- [ ] A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the canonical registries: the §4.2 catalog rows, the §9.5 contribution rows, the §13.1 contract-suite rows, the §3.5 `Sync` events, the §7.4 Landofile keys, the §16.3 `App` methods, and the `@lando/sdk/services` tags — the same canonical-surface-governance shape the other Alpha-4 primitives use.
 - [ ] The repo `AGENTS.md` carries a note recording the `RemoteSource`/`Dataset` contract freeze, the `Dataset × RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the "code is never synced" scope, and that the feature wave (bundled remotes, hoster plugins, `database`/`files` datasets, real connector wiring) is 4.1.
 - [ ] The ROADMAP Phase 4 freeze bullet and Phase 8 feature bullet are present and consistent with the `TunnelService` precedent.
 - [ ] Tests pass.

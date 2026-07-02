@@ -1,14 +1,14 @@
-# PRD: BETA1-04 — Schema publication, reference docs & Landofile serialization
+# PRD: ALPHA4-04 — Schema publication, reference docs & Landofile serialization
 
 ## Introduction
 
-Schema publication (§7.8 / `spec/07-landofile-and-config.md`, plus §13.2 and §13.4 in `spec/13-testing-and-distribution.md`) turns every public Effect Schema into a shipped contract. Beta 1 publishes JSON Schema files from `@lando/sdk`, exposes a central `@lando/sdk/schema` registry, generates Starlight MDX reference pages from schema AST traversal, and makes the §13.2 schema gate merge-blocking.
+Schema publication (§7.8 / `spec/07-landofile-and-config.md`, plus §13.2 and §13.4 in `spec/13-testing-and-distribution.md`) turns every public Effect Schema into a shipped contract. Alpha 4 publishes JSON Schema files from `@lando/sdk`, exposes a central `@lando/sdk/schema` registry, generates Starlight MDX reference pages from schema AST traversal, and makes the §13.2 schema gate merge-blocking.
 
-Depends on: **BETA1-03** (deprecation propagation supplies `DeprecationNotice` and `x-deprecation`).
+Depends on: **ALPHA4-03** (deprecation propagation supplies `DeprecationNotice` and `x-deprecation`).
 
 This PRD also absorbs the canonical Landofile serializer primitive. The serializer is folded into schema publication because it publishes the stable `@lando/sdk/landofile` / `@lando/core/landofile` surface, codifies a round-trip contract, and participates in the same SDK export, package-export, and compatibility gates as the rest of the public schema surface.
 
-The serializer work is validated by the downstream **BETA1-11** SDK/library acceptance suite; the schema-publication dependency is now internal to this PRD.
+The serializer work is validated by the downstream **ALPHA4-11** SDK/library acceptance suite; the schema-publication dependency is now internal to this PRD.
 
 ## Source References
 
@@ -25,7 +25,7 @@ The serializer work is validated by the downstream **BETA1-11** SDK/library acce
 - [`spec/10-plugins.md`](../10-plugins.md) §9.5 config-translator contribution rules.
 - [`spec/02-toolchain.md`](../02-toolchain.md) §2.7 package surface and entry-point policies.
 - [`spec/04-pluggability.md`](../04-pluggability.md) §4.5 mandatory abstraction guarantees (tagged errors, schema-defined data).
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ## Goals
 
@@ -126,7 +126,7 @@ The serializer work is validated by the downstream **BETA1-11** SDK/library acce
 
 **Acceptance Criteria:**
 
-- [ ] `DeprecationNotice` from BETA1-03 US-215 is accepted as the only deprecation annotation payload for schemas and fields.
+- [ ] `DeprecationNotice` from ALPHA4-03 US-215 is accepted as the only deprecation annotation payload for schemas and fields.
 - [ ] Annotated schemas emit `deprecated: true` and valid `x-deprecation` in generated JSON Schema.
 - [ ] Generated MDX reference pages render the same deprecation metadata as Starlight callouts.
 - [ ] The schema gate validates every emitted `x-deprecation` against the `DeprecationNotice` schema and round-trips it losslessly.
@@ -223,7 +223,7 @@ The following stories are folded in from the Landofile serializer primitive scop
 ## Non-Goals
 
 - Hosting schema artifacts at `https://schemas.lando.dev/v4/`, which is a GA Phase 7 item.
-- Publishing alternate schema dialects beyond draft-07 during Beta 1, though the design may allow newer drafts later.
+- Publishing alternate schema dialects beyond draft-07 during Alpha 4, though the design may allow newer drafts later.
 - Hand-authoring public schema reference tables.
 - Generating SDK client libraries from JSON Schema.
 - Changing the underlying contract language away from Effect Schema.
@@ -240,7 +240,7 @@ The following stories are folded in from the Landofile serializer primitive scop
 
 - The documented registry surface is `@lando/sdk/schema`; implementation names may differ internally, but public PRD acceptance should use the documented entry point.
 - JSON Schema generation and MDX generation should share the same traversal data to avoid drift between validator artifacts and docs.
-- `DeprecationNotice` propagation depends on BETA1-03 and should not invent a second deprecation metadata shape.
+- `DeprecationNotice` propagation depends on ALPHA4-03 and should not invent a second deprecation metadata shape.
 - Generated files should follow the repo's codegen rule: the generator formats emitted files with `biome check --write` where applicable and fails on drift.
 - Schema publication is a package artifact concern, so it should not add runtime work to CLI hot paths.
 
@@ -291,7 +291,7 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 ## Open Questions
 
-- Should Beta 1 emit a draft newer than draft-07 alongside the default draft-07 artifacts? Default: no, draft-07 only.
+- Should Alpha 4 emit a draft newer than draft-07 alongside the default draft-07 artifacts? Default: no, draft-07 only.
 - Should generated MDX pages live under `docs/guides/schemas/` or a Starlight reference-only tree? Default: Starlight reference tree, with guides linking to it.
 - How strict should the field-description exemption be for obvious scalar fields like `name` or `id`? Default: allow an explicit exemption list checked by the schema gate.
 - Should the metadata index include unpublished internal schemas used by generated docs? Default: no, only public registry schemas.
@@ -299,5 +299,5 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 ### Landofile serializer open questions
 
 - Should canonical writes (`translate --write`, `config set`) opt into sorted-key output for stabler diffs, or preserve construction order? Default: preserve order; expose `sortKeys` as an opt-in and revisit defaulting at GA.
-- Should the parser move to `@lando/sdk/landofile` outright or stay in core behind a re-export shim for Beta 1? Default: move the emitter outright; shim the parser now and drop the shim in a follow-up if the import churn is undesirable.
+- Should the parser move to `@lando/sdk/landofile` outright or stay in core behind a re-export shim for Alpha 4? Default: move the emitter outright; shim the parser now and drop the shim in a follow-up if the import churn is undesirable.
 - Should `emitLandofileYaml` accept a typed `Partial<LandofileShape>` overload in addition to the permissive record input? Default: accept both via a union input type; document the encoded-form requirement.

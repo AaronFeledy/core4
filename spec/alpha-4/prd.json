@@ -1,7 +1,7 @@
 {
-  "project": "Lando v4 Phase 4 Beta 1",
+  "project": "Lando v4 Phase 4 Alpha 4",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the \u00a714.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (\u00a718), publish schemas plus the canonical Landofile serializer (\u00a77.8/\u00a77.8.1), ship the plugin authoring toolkit (\u00a79.10), wire telemetry plus canonical redaction (\u00a73.7), complete the executable-guides pipeline (\u00a719) with public transcripts + library-mode guides + e2e @smoke, build the \u00a717 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six \u00a74.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the \u00a713.1 conformance + \u00a713.4 boundary gates) \u2014 then enter feature freeze. Stories follow the 19-PRD breakdown in `spec/beta-1/prd-beta-1-{01..19}-*.md` (US-200..US-362); each story has a corresponding US-XXX section with full TDD acceptance criteria. (PRD-19 is a top-priority mid-Beta-1 remediation: it makes the \u00a76.11 service base+feature composition model real \u2014 replacing the monolithic per-type `ServicePlan` emitters with the normative `ServiceType`/`resolve()` + in-core base+feature pipeline, the `l337`/`lando` bases, the `ServiceFeature`/`AppFeature` contracts, and the \u00a713.1 contract suites \u2014 and carries the lowest priority indices, US-355..US-362.) (PRD-16 adds the `DataMover` local/volume byte-movement primitive + the `RuntimeProvider` data plane; PRD-17 freezes the `RemoteSource` + `Dataset` remote-data-sync contract \u2014 the egress-side peer of `DataMover`, composing `HttpClient` for the remote half and `DataMover` for the local landing half \u2014 contract-only, mirroring the `TunnelService` freeze, with the `lando pull`/`push` feature shipping in 4.1; PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with its user-facing consumers shipping in 4.x.) Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: \u00a717 release = spec/15, \u00a718 deprecation = spec/16, \u00a719 guides = spec/17), and PRD-18 adds the `ManagedFileService` working-tree write primitive (\u00a710.13), substrate-only with the user-facing consumers \u2014 CMS settings management, `lando add`, devcontainer generation, and the `files:` Landofile key \u2014 shipping in 4.x.",
+  "description": "Phase 4 Alpha 4 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18), publish schemas plus the canonical Landofile serializer (§7.8/§7.8.1), ship the plugin authoring toolkit (§9.10), wire telemetry plus canonical redaction (§3.7), complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) plus the layered outbound-network primitives (the HttpClient egress chokepoint with the canonical network-trust resolver, the Downloader verified-artifact wrapper over it, and the tool-provisioning helper), move the default terminal UI behind the bundled @lando/renderer-lando plugin and consolidate prompts behind InteractionService, add the stable App-handle embedding primitive, add the paired Paths/Roots + durable StateStore foundational primitives, and ship the remaining SDK primitive trio (the @lando/sdk/probe retry/verdict primitive with consumer migration, the EventService waitFor/query + bounded redacted history surface, and the six §4.2 plugin-abstraction contract suites), and ship the universal machine-output contract that realizes the agent-native tenet's machine-legibility half (the `CommandResultEnvelope`/`StreamFrame` schemas, a required `LandoCommandSpec.resultSchema`, universal `--format json` plus the `--json`/`-j` shorthand on every command, the single redaction-aware `encodeCommandResult` seam, and the §13.1 conformance + §13.4 boundary gates) — then hand off to Beta 1 (contract-completion remediation, spec/beta-1/), which ships the first signed 4.0.0-beta.N and enters feature freeze. Stories follow the 19-PRD breakdown in `spec/alpha-4/prd-alpha-4-{01..19}-*.md` (US-200..US-362); each story has a corresponding US-XXX section with full TDD acceptance criteria. (PRD-19 is a top-priority mid-Alpha-4 remediation: it makes the §6.11 service base+feature composition model real — replacing the monolithic per-type `ServicePlan` emitters with the normative `ServiceType`/`resolve()` + in-core base+feature pipeline, the `l337`/`lando` bases, the `ServiceFeature`/`AppFeature` contracts, and the §13.1 contract suites — and carries the lowest priority indices, US-355..US-362.) (PRD-16 adds the `DataMover` local/volume byte-movement primitive + the `RuntimeProvider` data plane; PRD-17 freezes the `RemoteSource` + `Dataset` remote-data-sync contract — the egress-side peer of `DataMover`, composing `HttpClient` for the remote half and `DataMover` for the local landing half — contract-only, mirroring the `TunnelService` freeze, with the `lando pull`/`push` feature shipping in 4.1; PRD-18 adds the `ManagedFileService` working-tree write primitive (§10.13), substrate-only with its user-facing consumers shipping in 4.x.) Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17), and PRD-18 adds the `ManagedFileService` working-tree write primitive (§10.13), substrate-only with the user-facing consumers — CMS settings management, `lando add`, devcontainer generation, and the `files:` Landofile key — shipping in 4.x.",
   "userStories": [
     {
       "id": "US-200",
@@ -83,7 +83,7 @@
         "Re-running `lando setup` never corrupts existing provider state, CA trust, Mutagen binaries, shell entries, or proxy state.",
         "Already-satisfied steps are reported as satisfied with evidence, not silently skipped.",
         "Interrupted setup can resume from the last safe point without forcing users to delete data roots.",
-        "Setup writes a structured readiness summary consumed by `lando doctor` \u00a710.9 diagnostics.",
+        "Setup writes a structured readiness summary consumed by `lando doctor` §10.9 diagnostics.",
         "Every readiness failure includes per-platform remediation and enough detail for support triage without leaking secrets.",
         "Tests pass",
         "Typecheck passes",
@@ -150,9 +150,9 @@
     {
       "id": "US-208",
       "title": "Bun floor decision + `--bytecode` validation",
-      "description": "As a release engineer, I need the Beta 1 Bun version floor confirmed or bumped so every cross-compiled binary can use `--bytecode` consistently.",
+      "description": "As a release engineer, I need the Alpha 4 Bun version floor confirmed or bumped so every cross-compiled binary can use `--bytecode` consistently.",
       "acceptanceCriteria": [
-        "A Beta 1 decision note confirms `>=1.3.14` or records the bumped minimum with rationale and affected release targets.",
+        "A Alpha 4 decision note confirms `>=1.3.14` or records the bumped minimum with rationale and affected release targets.",
         "Root `package.json`, `core/package.json`, `.bun-version`, release docs, and any generated install docs all show the same minimum Bun version.",
         "The release validation suite proves `bun build --compile --bytecode` works for every configured cross-compile target or fails with a documented blocker tied to the decision.",
         "Tests pass.",
@@ -161,14 +161,14 @@
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Kept the Bun floor at >=1.3.14 with .bun-version pinned to 1.3.14, documented the Beta 1 decision, and made local/CI/nightly release validation compile the canonical binary with --bytecode across all five configured targets."
+      "notes": "Kept the Bun floor at >=1.3.14 with .bun-version pinned to 1.3.14, documented the Alpha 4 decision, and made local/CI/nightly release validation compile the canonical binary with --bytecode across all five configured targets."
     },
     {
       "id": "US-209",
       "title": "OCLIF major lock decision",
       "description": "As a CLI maintainer, I need the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and dual-dispatch parity tests have a stable target.",
       "acceptanceCriteria": [
-        "A Beta 1 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.",
+        "A Alpha 4 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.",
         "If staying on v4, dependency ranges, compatibility notes, and dispatch parity assumptions are preserved and documented.",
         "If moving to v5, source-mode command loading, manifest generation, hooks, and parity tests are updated in the same story and no compiled-dispatch unification is attempted.",
         "Tests pass.",
@@ -177,14 +177,14 @@
       ],
       "priority": 10,
       "passes": true,
-      "notes": "Beta 1 stays on OCLIF v4, preserving @oclif/core ^4.11.2 and oclif ^4.23.0 in core package metadata, documenting compatibility notes and keeping permanent dual dispatch with compiled-binary dispatch parity tests authoritative."
+      "notes": "Alpha 4 stays on OCLIF v4, preserving @oclif/core ^4.11.2 and oclif ^4.23.0 in core package metadata, documenting compatibility notes and keeping permanent dual dispatch with compiled-binary dispatch parity tests authoritative."
     },
     {
       "id": "US-210",
       "title": "Provider auto-setup level decision + setup-default alignment",
       "description": "As a first-time user, I need `lando setup` and first-run provider preparation to follow one documented UX, either aggressive auto-setup or guided opt-in.",
       "acceptanceCriteria": [
-        "A Beta 1 decision note chooses aggressive auto-setup or guided opt-in and defines the default for interactive, non-interactive, and CI contexts.",
+        "A Alpha 4 decision note chooses aggressive auto-setup or guided opt-in and defines the default for interactive, non-interactive, and CI contexts.",
         "`lando setup` defaults, prompts, `--yes`, `--no-interactive`, and provider readiness checks align with the chosen UX.",
         "User docs and setup tests cover the selected default and the rejected alternative's remediation path.",
         "Tests pass.",
@@ -209,14 +209,14 @@
       ],
       "priority": 12,
       "passes": true,
-      "notes": "Compose top-level key matrix frozen as schema constants (COMPOSE_TOP_LEVEL_KEYS/DEPRECATED/EXTENSION in sdk/src/schema/landofile.ts); LandofileShape accepts services/volumes/networks/configs/secrets/include/version/x-* (x-* via Schema.extend TemplateLiteral) and published JSON Schema keeps additionalProperties:false with ^x- patternProperties. Per-key remediation (accepted/deprecated/rejected) in core/src/landofile/lint.ts composeSuggestedFix. Published guide docs/guides/config/compose-compatibility.mdx + INDEX.md row; spec \u00a714.2 moved to Resolved. Schema-backed drift test core/test/build/compose-compatibility-docs.test.ts. Verified: typecheck, lint, guide gates, focused tests, manual app:config:lint QA, and full bun test pass."
+      "notes": "Compose top-level key matrix frozen as schema constants (COMPOSE_TOP_LEVEL_KEYS/DEPRECATED/EXTENSION in sdk/src/schema/landofile.ts); LandofileShape accepts services/volumes/networks/configs/secrets/include/version/x-* (x-* via Schema.extend TemplateLiteral) and published JSON Schema keeps additionalProperties:false with ^x- patternProperties. Per-key remediation (accepted/deprecated/rejected) in core/src/landofile/lint.ts composeSuggestedFix. Published guide docs/guides/config/compose-compatibility.mdx + INDEX.md row; spec §14.2 moved to Resolved. Schema-backed drift test core/test/build/compose-compatibility-docs.test.ts. Verified: typecheck, lint, guide gates, focused tests, manual app:config:lint QA, and full bun test pass."
     },
     {
       "id": "US-212",
       "title": "`sshAgent.sidecar: false` ship-or-reject decision",
       "description": "As a security-conscious operator, I need the reserved `sshAgent.sidecar: false` setting either shipped with a safe direct-mount fallback or rejected with a clear warning.",
       "acceptanceCriteria": [
-        "A Beta 1 decision note chooses whether `sshAgent.sidecar: false` ships or remains rejected, with sidecar default `true` preserved.",
+        "A Alpha 4 decision note chooses whether `sshAgent.sidecar: false` ships or remains rejected, with sidecar default `true` preserved.",
         "If shipped, the direct-mount fallback has schema, docs, tests, platform constraints, and security remediation text.",
         "If rejected, config validation and docs explain that `false` is reserved and identify the supported sidecar path.",
         "Tests pass.",
@@ -225,7 +225,7 @@
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Beta 1 rejects sshAgent.sidecar:false; sshAgent.sidecar:true remains the default and only supported path. Landofile schema/lint now accepts true or omitted sidecar config and rejects false with direct remediation; decision docs and the SSH sidecar guide publish the reserved false behavior."
+      "notes": "Alpha 4 rejects sshAgent.sidecar:false; sshAgent.sidecar:true remains the default and only supported path. Landofile schema/lint now accepts true or omitted sidecar config and rejects false with direct remediation; decision docs and the SSH sidecar guide publish the reserved false behavior."
     },
     {
       "id": "US-213",
@@ -250,8 +250,8 @@
       "title": "Trust list/revoke, scope, expiry, and flag-model decision",
       "description": "As a maintainer, I need the remaining trust-model sub-questions closed so the command surface, persistence policy, and install flags are not left ambiguous at feature freeze.",
       "acceptanceCriteria": [
-        "A Beta 1 decision note chooses whether `meta:plugin:trust list` and `meta:plugin:trust revoke` ship now or are explicitly deferred with rationale; if shipped, the existing `untrustPlugin` service path has CLI coverage.",
-        "Trust expiry is either rejected as non-expiring Beta 1 state or implemented with schema, migration, and renderer coverage.",
+        "A Alpha 4 decision note chooses whether `meta:plugin:trust list` and `meta:plugin:trust revoke` ship now or are explicitly deferred with rationale; if shipped, the existing `untrustPlugin` service path has CLI coverage.",
+        "Trust expiry is either rejected as non-expiring Alpha 4 state or implemented with schema, migration, and renderer coverage.",
         "Trust scope is defined for npm/registry, git, and local plugin sources, including how authoring-root trust applies to linked plugins.",
         "The exact flag model is published, including `--trust`, non-interactive behavior, and any prompt wording for interactive installs.",
         "Tests pass.",
@@ -268,10 +268,10 @@
       "description": "As a plugin author, I need a canonical deprecation notice schema so every public surface describes deprecation state the same way.",
       "acceptanceCriteria": [
         "`DeprecationNotice` is published from `@lando/sdk` and re-exported by `@lando/core/schema`.",
-        "The schema includes `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`, and `ticket` with the defaults and required fields from \u00a718.2.",
+        "The schema includes `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`, and `ticket` with the defaults and required fields from §18.2.",
         "`removeIn` validation rejects patch removals, past releases, and missing values once a notice is older than 12 months.",
         "Structural dedupe uses `since`, `removeIn`, and `note`.",
-        "The \u00a713.2 schema snapshot gate round-trips the notice losslessly and emits `dist/schemas/deprecation-notice.json`.",
+        "The §13.2 schema snapshot gate round-trips the notice losslessly and emits `dist/schemas/deprecation-notice.json`.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -339,7 +339,7 @@
       "title": "Contract-field and manifest-field deprecation",
       "description": "As a core maintainer or plugin author, I need command, tooling, recipe, service, provider, and plugin surfaces to carry deprecation notices through their existing contracts.",
       "acceptanceCriteria": [
-        "Built-in commands, flags, args, service types, service features, route filters, lifecycle events, event fields, render events, and provider extensions accept deprecation contract fields where \u00a718.5 assigns them.",
+        "Built-in commands, flags, args, service types, service features, route filters, lifecycle events, event fields, render events, and provider extensions accept deprecation contract fields where §18.5 assigns them.",
         "Plugin command, whole-plugin, plugin manifest field, `globalServices:`, recipe, prompt, tooling task, tooling flag, and tooling arg deprecations are accepted through manifest or YAML fields.",
         "Plugin loading validates deprecation notices, records them in `DeprecationService`, and fails invalid notices before the deprecated surface is used.",
         "Alias-scoped deprecations are tracked separately from canonical command deprecations.",
@@ -498,14 +498,14 @@
     },
     {
       "id": "US-228",
-      "title": "Merge-blocking \u00a713.2 schema gate",
+      "title": "Merge-blocking §13.2 schema gate",
       "description": "As a maintainer, I need CI to block schema changes that lack tests, annotations, stable JSON output, or docs generation.",
       "acceptanceCriteria": [
         "Every public schema has a dedicated `bun test` file that covers a happy path, an error path, and encode/decode round-trip behavior.",
         "The schema gate verifies required annotations, decodes examples, generates JSON Schema successfully, and checks stable output.",
         "Generated reference docs build without hand edits.",
         "New public schemas are rejected unless they have round-trip tests and required annotations.",
-        "The gate is wired into the merge-blocking \u00a713.4 CI path.",
+        "The gate is wired into the merge-blocking §13.4 CI path.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -519,7 +519,7 @@
       "title": "`x-deprecation` propagation end to end",
       "description": "As a tooling consumer, I need deprecated schema surfaces to carry complete deprecation metadata in JSON Schema and generated docs.",
       "acceptanceCriteria": [
-        "`DeprecationNotice` from BETA1-03 US-215 is accepted as the only deprecation annotation payload for schemas and fields.",
+        "`DeprecationNotice` from ALPHA4-03 US-215 is accepted as the only deprecation annotation payload for schemas and fields.",
         "Annotated schemas emit `deprecated: true` and valid `x-deprecation` in generated JSON Schema.",
         "Generated MDX reference pages render the same deprecation metadata as Starlight callouts.",
         "The schema gate validates every emitted `x-deprecation` against the `DeprecationNotice` schema and round-trips it losslessly.",
@@ -530,7 +530,7 @@
       ],
       "priority": 30,
       "passes": true,
-      "notes": "Existing schema deprecation propagation from US-218 was verified end to end for Beta 1: DeprecationNotice annotations emit deprecated/x-deprecation metadata, the schema gate validates and round-trips emitted notices, generated reference rendering includes deprecation callouts, and DeprecationNotice is present in schema artifacts and metadata."
+      "notes": "Existing schema deprecation propagation from US-218 was verified end to end for Alpha 4: DeprecationNotice annotations emit deprecated/x-deprecation metadata, the schema gate validates and round-trips emitted notices, generated reference rendering includes deprecation callouts, and DeprecationNotice is present in schema artifacts and metadata."
     },
     {
       "id": "US-230",
@@ -802,7 +802,7 @@
       "title": "Library-mode guides through `<Run runtime=\"...\">`",
       "description": "As an embedding user, I need executable guides that can exercise `@lando/core` library APIs through `<Run runtime=\"...\">`, not just shell CLI commands.",
       "acceptanceCriteria": [
-        "`<Run runtime=\"library\">` or the exact \u00a719 runtime-target spelling generates scenario code that imports and executes `@lando/core` library APIs.",
+        "`<Run runtime=\"library\">` or the exact §19 runtime-target spelling generates scenario code that imports and executes `@lando/core` library APIs.",
         "Library-mode guide runs receive a complete `ScenarioContext` with `guideId`, `scenarioId`, `variant`, `testDir`, `runtime`, `vars`, `shell`, `events`, `transcript`, and `fixtures`.",
         "Library-mode guide runs can use `@lando/core/testing` helpers without routing through `runCli`.",
         "Display-vs-execute binding stays explicit; author-visible prose is never inferred from library code.",
@@ -856,7 +856,7 @@
       "title": "Full `lint:guides` quality gates",
       "description": "As a docs maintainer, I need `bun run lint:guides` to block guide patterns that make public docs and executable scenarios drift apart.",
       "acceptanceCriteria": [
-        "Raw fenced shell blocks are forbidden inside `<Guide>` content unless wrapped in the approved display-only component form from \u00a719.",
+        "Raw fenced shell blocks are forbidden inside `<Guide>` content unless wrapped in the approved display-only component form from §19.",
         "Display-vs-execute binding is required for every executable `<Run>`, with no inferred command rewriting.",
         "Hidden blocks, test-only scenarios, fixtures, and internal traces are excluded from public transcript output by linted rule, not convention.",
         "Source mapping metadata is required for every generated scenario block and fails lint when missing.",
@@ -890,7 +890,7 @@
     {
       "id": "US-250",
       "title": "Canonical guide acceptance path",
-      "description": "As a Beta 1 release owner, I need one canonical recipe guide to prove public transcripts, library-mode scenarios, and e2e `@smoke` variants all work together.",
+      "description": "As a Alpha 4 release owner, I need one canonical recipe guide to prove public transcripts, library-mode scenarios, and e2e `@smoke` variants all work together.",
       "acceptanceCriteria": [
         "At least one canonical recipe guide ships a public transcript rendered in the docs site.",
         "The same guide or a paired canonical guide ships a library-mode scenario that targets `@lando/core` APIs through `<Run runtime=\"...\">`.",
@@ -1001,8 +1001,8 @@
       "description": "As a Linux user, I can verify downloaded binaries through a signed checksum manifest and cosign signature.",
       "acceptanceCriteria": [
         "Linux release artifacts produce a `SHA256SUMS` manifest (in the Manifest stage, stage 11) covering linux-x64 and linux-arm64 binaries.",
-        "`SHA256SUMS` and `SHA512SUMS` are generated and GPG-signed in the Manifest stage (stage 11) when release credentials are present \u2014 Linux is signed at the manifest layer, not in the Sign stage (stage 9), per \u00a717.1.",
-        "`SHA256SUMS` is cosign-signed in the Provenance & SBOM stage (stage 12) per \u00a717.5 (keyless cosign; see PRD-09 US-260).",
+        "`SHA256SUMS` and `SHA512SUMS` are generated and GPG-signed in the Manifest stage (stage 11) when release credentials are present — Linux is signed at the manifest layer, not in the Sign stage (stage 9), per §17.1.",
+        "`SHA256SUMS` is cosign-signed in the Provenance & SBOM stage (stage 12) per §17.5 (keyless cosign; see PRD-09 US-260).",
         "Verification confirms checksum coverage and both the GPG and cosign signatures before the Publish stage (stage 13).",
         "Tests cover manifest generation, missing binary failure, GPG command construction, cosign command construction, and local rehearsal skipping.",
         "Tests pass",
@@ -1016,10 +1016,10 @@
     {
       "id": "US-257",
       "title": "Compiled binaries use `--bytecode` and stay within the cold-build budget",
-      "description": "As a maintainer, I can compile Beta 1 binaries with Bun bytecode enabled and catch release-time build slowdowns early.",
+      "description": "As a maintainer, I can compile Alpha 4 binaries with Bun bytecode enabled and catch release-time build slowdowns early.",
       "acceptanceCriteria": [
         "Stage 7 Compile invokes `bun build --compile --bytecode` against the canonical compiled entry.",
-        "Compile targets preserve the Beta 1 platform ids from the generated CI workflow.",
+        "Compile targets preserve the Alpha 4 platform ids from the generated CI workflow.",
         "A perf guard measures one-target cold build time on reference linux-x64 and fails above 10 minutes.",
         "Local rehearsal reports compile duration even when later signing stages are skipped.",
         "Tests verify `--bytecode` is present and that the budget guard reports tagged failures.",
@@ -1029,7 +1029,7 @@
       ],
       "priority": 58,
       "passes": true,
-      "notes": "Stage 7 now compiles every Beta 1 CI platform id through `bun build --compile --bytecode ./core/bin/lando.ts`, sanitizes each emitted release binary, records per-platform compile duration, and fails the release with a tagged `ReleaseCompileBudgetError` when linux-x64 exceeds the 10 minute cold-build budget. Local rehearsal logs compile durations before later signing/notarization warning-skips."
+      "notes": "Stage 7 now compiles every Alpha 4 CI platform id through `bun build --compile --bytecode ./core/bin/lando.ts`, sanitizes each emitted release binary, records per-platform compile duration, and fails the release with a tagged `ReleaseCompileBudgetError` when linux-x64 exceeds the 10 minute cold-build budget. Local rehearsal logs compile durations before later signing/notarization warning-skips."
     },
     {
       "id": "US-258",
@@ -1102,7 +1102,7 @@
       ],
       "priority": 62,
       "passes": true,
-      "notes": "`lando update` now resolves stable/next/dev manifest URLs (defaulting to the current binary channel when no flag is passed), fetches and verifies sibling manifest signatures/certificates before JSON/schema trust, validates the \u00a717.6.1 UpdateManifestSchema shape, blocks binaries older than manifest.minimum with prerelease-aware SemVer comparison, refuses signed downgrade manifests, refuses signed channel replay below the newest previously observed signed manifest, and release stage 11 emits a schema-conformant dist/update-manifest.json while SBOM/provenance artifact tracking moves to dist/release-artifacts.json."
+      "notes": "`lando update` now resolves stable/next/dev manifest URLs (defaulting to the current binary channel when no flag is passed), fetches and verifies sibling manifest signatures/certificates before JSON/schema trust, validates the §17.6.1 UpdateManifestSchema shape, blocks binaries older than manifest.minimum with prerelease-aware SemVer comparison, refuses signed downgrade manifests, refuses signed channel replay below the newest previously observed signed manifest, and release stage 11 emits a schema-conformant dist/update-manifest.json while SBOM/provenance artifact tracking moves to dist/release-artifacts.json."
     },
     {
       "id": "US-262",
@@ -1181,7 +1181,7 @@
       "title": "GitHub Releases publishes the complete signed artifact set",
       "description": "As a user who downloads manually, I can get every binary, library archive, SBOM, provenance file, checksum, and signature from GitHub Releases.",
       "acceptanceCriteria": [
-        "GitHub Releases publishes signed binaries for every Beta 1 platform target.",
+        "GitHub Releases publishes signed binaries for every Alpha 4 platform target.",
         "The release includes the library archive, SBOM files, provenance attestations, checksum manifests, signature files, certificates, and verification instructions.",
         "The compiled binary embeds Bun, so binary-only installs require no separate Bun, Node, or package manager.",
         "Mutagen is not embedded in the binary and remains acquired by `lando setup`.",
@@ -1289,7 +1289,7 @@
       "title": "`@lando/core/testing` stable on `next` + deterministic `TestRuntime`",
       "description": "As an embedding host or plugin author, I can import `@lando/core/testing` from the `next` channel and get deterministic in-memory testing utilities with documented exports.",
       "acceptanceCriteria": [
-        "`@lando/core/testing` is declared stable on the `next` channel for Beta 1 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.",
+        "`@lando/core/testing` is declared stable on the `next` channel for Alpha 4 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.",
         "`TestRuntime` satisfies every default service tag, is deterministic, and does not touch filesystem or network outside explicit overrides.",
         "The provider contract suite runs against `TestRuntime` and proves the default fake provider behavior is stable.",
         "Every `@lando/core/testing` export has JSDoc and is covered by workspace and packed-install resolution tests.",
@@ -1303,14 +1303,14 @@
     },
     {
       "id": "US-273",
-      "title": "Full \u00a716.2 library contract suite + `docs/redactions` export gap",
-      "description": "As a package consumer, I need every public library entry point to resolve, obey import boundaries, and match the \u00a716.2 stability contract.",
+      "title": "Full §16.2 library contract suite + `docs/redactions` export gap",
+      "description": "As a package consumer, I need every public library entry point to resolve, obey import boundaries, and match the §16.2 stability contract.",
       "acceptanceCriteria": [
         "`core/test/library/entry-points-export.test.ts` verifies `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, `@lando/core/cli`, `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions`.",
         "`core/test/library/import-boundary.test.ts` proves the default entry is OCLIF-free and `@lando/core/oclif` is internal-only.",
         "`core/test/library/core-testing-export.test.ts` resolves `@lando/core/testing` from both workspace and packed install.",
         "`core/test/library/cli-operations-export.test.ts` and `core/test/library/make-runtime-app.test.ts` cover CLI operation exports and runtime creation.",
-        "The known missing `@lando/core/docs/redactions` export is either added or ticketed with a failing contract test and explicit Beta 1 acceptance note.",
+        "The known missing `@lando/core/docs/redactions` export is either added or ticketed with a failing contract test and explicit Alpha 4 acceptance note.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -1341,7 +1341,7 @@
       "title": "Plugin SDK contract test for `requires.\"@lando/core\": \"^4.0.0\"`",
       "description": "As a plugin author, I need the plugin compatibility contract to reject plugins that target the wrong core major version.",
       "acceptanceCriteria": [
-        "Plugin manifests must declare `requires.\"@lando/core\": \"^4.0.0\"` for Beta 1 compatibility.",
+        "Plugin manifests must declare `requires.\"@lando/core\": \"^4.0.0\"` for Alpha 4 compatibility.",
         "The plugin SDK contract test accepts compatible manifests and rejects missing, incompatible, or overly broad core requirements with tagged remediation.",
         "Bundled plugin fixtures and generated schema snapshots are updated to match the compatibility requirement.",
         "Plugin authoring docs explain the requirement and show the field in scaffolded `package.json` output.",
@@ -1355,7 +1355,7 @@
     },
     {
       "id": "US-276",
-      "title": "\u00a717.9 criteria 1-9 acceptance harness green on linux-x64",
+      "title": "§17.9 criteria 1-9 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can run the first half of the binary acceptance harness on linux-x64 and prove release, signing, supply-chain, and update behavior work on the reference platform.",
       "acceptanceCriteria": [
         "Criterion 1 passes: clean checkout plus `bun run release` produces a signed, checksum-manifested local binary that launches and reports version.",
@@ -1368,11 +1368,11 @@
       ],
       "priority": 77,
       "passes": true,
-      "notes": "Criteria 1-9 are green on linux-x64 via `core/test/build/linux-acceptance-criteria-1-9.test.ts` nested spot checks and the linux-x64 acceptance rehearsal guide's host-safe proof surfaces: local release/checksum-manifest launch proof, CI/nightly timing evidence, Linux checksum/signing policy, CycloneDX SBOM, SLSA provenance, cosign verify-blob, signed update manifest verification, update replacement/re-exec, launch-probe rollback, and permission-error/no-elevation behavior. Criterion 1 local signing remains credential-conditional per \u00a717.9; criterion 2 uses gated timing evidence per story AC."
+      "notes": "Criteria 1-9 are green on linux-x64 via `core/test/build/linux-acceptance-criteria-1-9.test.ts` nested spot checks and the linux-x64 acceptance rehearsal guide's host-safe proof surfaces: local release/checksum-manifest launch proof, CI/nightly timing evidence, Linux checksum/signing policy, CycloneDX SBOM, SLSA provenance, cosign verify-blob, signed update manifest verification, update replacement/re-exec, launch-probe rollback, and permission-error/no-elevation behavior. Criterion 1 local signing remains credential-conditional per §17.9; criterion 2 uses gated timing evidence per story AC."
     },
     {
       "id": "US-277",
-      "title": "\u00a717.9 criteria 10-14 acceptance harness green on linux-x64",
+      "title": "§17.9 criteria 10-14 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can verify installers, compiled import boundaries, Mutagen embedding policy, and setup file-sync behavior on linux-x64.",
       "acceptanceCriteria": [
         "Criterion 10 passes: `install.sh` on a clean linux-x64 container installs to `<userDataRoot>/bin/lando`, verifies the embedded GPG trust root, runs `lando version`, and matches `lando shellenv` path output.",
@@ -1390,7 +1390,7 @@
     },
     {
       "id": "US-278",
-      "title": "\u00a717.9 criteria 15-19 acceptance harness green on linux-x64",
+      "title": "§17.9 criteria 15-19 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can verify the final runtime, bytecode, AOT, performance, and level-none import-boundary criteria on linux-x64.",
       "acceptanceCriteria": [
         "Criterion 15 passes: `app:start` on a slow provider with bind mount engages `FileSyncEngine`, and repeat starts reuse file-sync sessions.",
@@ -1408,8 +1408,8 @@
     },
     {
       "id": "US-279",
-      "title": "\u00a717.9 criteria 20-27 acceptance harness green on linux-x64",
-      "description": "As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full \u00a717.9 acceptance set in the last feature-adding phase.",
+      "title": "§17.9 criteria 20-27 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full §17.9 acceptance set in the last feature-adding phase.",
       "acceptanceCriteria": [
         "Criteria 20-24 pass on linux-x64: the compiled binary loads an external ESM plugin by absolute `file://` URL from a Lando-managed plugin store, loads an external TypeScript plugin where Bun supports the file type directly, resolves dependencies installed under an external plugin package root, rejects plugin contribution module paths that resolve outside the plugin package root, and marks a failed external plugin import unhealthy with a tagged `PluginLoadError` without preventing unrelated plugins from loading.",
         "Criterion 25 passes: `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.",
@@ -1449,7 +1449,7 @@
       "title": "Beautiful task-tree progress for builds and setup",
       "description": "As a user waiting on setup, builds, file sync, or release checks, I can immediately see what is running, what is cached, what failed, and where to expand for detail.",
       "acceptanceCriteria": [
-        "The default TTY renderer implements the \u00a78.9.2 task-tree layout with cockpit-style parent headers, child rows, scanner/progress states, cached/skipped badges, failure hints, and dimmed four-line detail tails.",
+        "The default TTY renderer implements the §8.9.2 task-tree layout with cockpit-style parent headers, child rows, scanner/progress states, cached/skipped badges, failure hints, and dimmed four-line detail tails.",
         "Keyboard focus, `Enter` expand, and `Esc` collapse behavior remain scoped to TTY mode and still publish `task.detail.expand` / `task.detail.collapse` events.",
         "OpenTUI layout primitives may be used for the TTY task-tree pane, but task publishers continue to emit only the existing `task.*` render events.",
         "Non-TTY output keeps the stable `[<stepId>]` detail-line prefix and no alt-screen behavior.",
@@ -1523,7 +1523,7 @@
         "`@lando/sdk/services` exports the `Downloader` service tag and typed interface with `download(request)` returning an Effect; the interface and `DownloaderLive` are a wrapper over `HttpClient` (US-330/US-331) and depend on the `HttpClient` tag.",
         "`@lando/sdk/schema` exports `ArtifactManifestEntry`, `DownloadRequest`, `DownloadResult`, `DownloaderCapabilities`, and download lifecycle event payload schemas.",
         "`@lando/sdk/errors` exports tagged download errors: `DownloadFetchError`, `DownloadChecksumError`, `DownloadSizeMismatchError`, `DownloadPersistError`, `DownloadOfflineError`, `DownloadSourceForbiddenError`, and `DownloaderUnavailableError`.",
-        "Plugin manifests accept `provides.downloaders[]` with capability metadata, module path containment, deprecation metadata, and standard \u00a74.3 selection behavior.",
+        "Plugin manifests accept `provides.downloaders[]` with capability metadata, module path containment, deprecation metadata, and standard §4.3 selection behavior.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, schema registry entries, and schema snapshots are updated in the same change.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1558,7 +1558,7 @@
       "description": "As a maintainer, I can reason about one verified-download path instead of auditing near-duplicate helpers across provider, file-sync, recipe/include, and update code.",
       "acceptanceCriteria": [
         "`@lando/provider-lando` runtime-bundle fetch/verify/persist delegates to `Downloader` after it resolves the active manifest entry and override precedence.",
-        "`@lando/file-sync-mutagen` host CLI and agent binary acquisition delegates to the tool-provisioning helper (US-332) \u2014 which provisions through `Downloader`, extracts the archive member, and installs under `<userDataRoot>/bin/`; only daemon/session logic remains a file-sync concern. The plugin's bespoke download/extract/verify/install code is removed.",
+        "`@lando/file-sync-mutagen` host CLI and agent binary acquisition delegates to the tool-provisioning helper (US-332) — which provisions through `Downloader`, extracts the archive member, and installs under `<userDataRoot>/bin/`; only daemon/session logic remains a file-sync concern. The plugin's bespoke download/extract/verify/install code is removed.",
         "Core recipe tarball and include tarball materialization delegate tarball fetch/verify/persist to `Downloader` while git/npm/registry paths remain with their existing Git/BunSelfRunner seams.",
         "Self-update binary/checksum/signature artifact fetches delegate byte acquisition to `Downloader`; signature/cosign/GPG verification remains in the release/update primitive after download.",
         "Plugin install/update paths that are package-manager operations remain on `BunSelfRunner` and are explicitly documented as out of `Downloader` scope.",
@@ -1582,7 +1582,7 @@
         "`pre-download`, `download-progress`, and `post-download` events are emitted with stable payload schemas and deterministic redaction.",
         "Proxy credentials, URL userinfo, bearer tokens, signed-URL query params, and caller-supplied redaction tokens never appear in events, telemetry, readiness summaries, support diagnostics, lockfiles, cache metadata, or normal logs.",
         "Linux-x64 acceptance coverage proves runtime-bundle and Mutagen downloads route through `Downloader`, while installer script downloads remain outside runtime scope.",
-        "Contract tests prove a plugin-contributed downloader cannot weaken checksum verification, path containment, or redaction, and cannot open its own socket \u2014 every byte of egress is asserted to flow through the resolved `HttpClient` \u2014 while still satisfying the service interface.",
+        "Contract tests prove a plugin-contributed downloader cannot weaken checksum verification, path containment, or redaction, and cannot open its own socket — every byte of egress is asserted to flow through the resolved `HttpClient` — while still satisfying the service interface.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -1596,7 +1596,7 @@
       "title": "Publish the stable App handle contracts in the SDK and core API",
       "description": "As an embedding host, I can resolve an app once and receive a stable Effect-native handle with lifecycle, introspection, tooling, config, logs, and event methods instead of composing low-level service calls for every operation.",
       "acceptanceCriteria": [
-        "`@lando/sdk` exports the canonical `App`, `AppSelector`, `AppResolveError`, `LandoRuntime`, and related method option/result types needed by the \u00a716 App-handle surface.",
+        "`@lando/sdk` exports the canonical `App`, `AppSelector`, `AppResolveError`, `LandoRuntime`, and related method option/result types needed by the §16 App-handle surface.",
         "`@lando/core` exports `resolveApp(selector?)` and `openLandoRuntime(options)` from the default entry without pulling `@oclif/core` into the default import graph.",
         "`AppSelector` implements the documented precedence `id > landofile > root > cwd`, validates compatible multi-field selectors, requires decoded `LandofileShape` selectors to carry an explicit root, defines the no-selector default, and fails mismatches with tagged `AppResolveError` variants.",
         "The `App` contract is SDK-published while the core-returned implementation is opaque/branded so embedding hosts consume returned handles but do not structurally implement the public interface.",
@@ -1672,7 +1672,7 @@
         "`@lando/sdk/services` exports the `InteractionService` service tag and typed interface (`prompt`, `promptAll`, `confirm`, `select`, `secret`, `isInteractive`) with Effect-returning methods.",
         "`@lando/sdk/schema` exports `PromptSpec`, `PromptType` (eight literals incl. `editor`), `PromptChoice`, `PromptValidate`, `PromptAnswer`, `PromptBatchOptions`, and `ChoicesFrom`; `RecipePrompt` is redefined as `PromptSpec` plus the recipe-only `when:`/`deprecated:` fields with an unchanged serialized shape.",
         "`@lando/sdk/errors` exports `InteractionRequiredError`, `PromptValidationError`, `InteractionCancelledError`, `ChoicesUnavailableError`, and `InteractionUnavailableError`; `RecipeMissingAnswerError`, `RecipePromptValidationError`, and `RecipeChoicesError` are preserved as aliases of the generalized errors.",
-        "Plugin manifests accept `provides.interactionServices[]` with `capabilities` (`interactive`, `promptTypes`, `secretRedaction`), module path containment, deprecation metadata, and standard \u00a74.3 selection behavior.",
+        "Plugin manifests accept `provides.interactionServices[]` with `capabilities` (`interactive`, `promptTypes`, `secretRedaction`), module path containment, deprecation metadata, and standard §4.3 selection behavior.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, the JSON Schema registry + `SDK_SCHEMA_NAMES`, and `sdk/test/fixtures/schema-snapshot.json` are updated in the same change with `bun run codegen:schema-snapshot` producing no further drift.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1689,10 +1689,10 @@
       "acceptanceCriteria": [
         "`InteractionServiceLive` wraps the existing `collectPrompts` engine behind the Effect interface; `PromptIO` becomes an internal Live-layer detail and is no longer the public prompting surface.",
         "The service is constructed lazily via `Layer.suspend` at bootstrap level `minimal`; a command that never prompts allocates no reader and touches no stdin, and construction touches no network/provider/plugin module.",
-        "Answer-source precedence resolves in order: explicit answer \u2192 default when `--yes`/non-interactive \u2192 interactive prompt \u2192 `InteractionRequiredError`; `mode: \"auto\"` gates interactivity on a TTY stdin.",
+        "Answer-source precedence resolves in order: explicit answer → default when `--yes`/non-interactive → interactive prompt → `InteractionRequiredError`; `mode: \"auto\"` gates interactivity on a TTY stdin.",
         "A shared flag module parses `--answer` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` and computes the interactivity gate; both the OCLIF command path and the compiled `run.ts` dispatcher import it, and the scratch `--option` synonym merges into the same answer source.",
         "`secret` answers are returned as `Redacted.Redacted<string>`, never echoed, never logged, and absent from transcripts and error messages.",
-        "Prompt output routes through `Renderer.output.stdout` when a `Renderer` is resolvable via `Effect.serviceOption`, and falls back to a direct stdio write only when no renderer is active; the Live-layer stdin reader and no-renderer fallback writer are the declared \u00a713.4 renderer-boundary carve-outs.",
+        "Prompt output routes through `Renderer.output.stdout` when a `Renderer` is resolvable via `Effect.serviceOption`, and falls back to a direct stdio write only when no renderer is active; the Live-layer stdin reader and no-renderer fallback writer are the declared §13.4 renderer-boundary carve-outs.",
         "`Effect.interrupt` during a prompt surfaces `InteractionCancelledError` and restores TTY raw-mode state before propagating.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1744,7 +1744,7 @@
       "title": "Enforce the interaction contract suite, TestInteractionService, redaction, and embedding wiring",
       "description": "As a maintainer, security reviewer, or embedding host, I can prove every built-in, plugin-contributed, or host-supplied interaction service preserves the spec's guarantees, and I can drive prompt flows without a terminal.",
       "acceptanceCriteria": [
-        "`@lando/core/testing` exports `TestInteractionService` (pre-seeded answers keyed by prompt name; captures the prompt transcript; never opens stdin) and it backs the executable-guide scenario answer flow (\u00a719.4).",
+        "`@lando/core/testing` exports `TestInteractionService` (pre-seeded answers keyed by prompt name; captures the prompt transcript; never opens stdin) and it backs the executable-guide scenario answer flow (§19.4).",
         "`@lando/sdk/test` exports an interaction contract suite that runs against `InteractionServiceLive`, `TestInteractionService`, and any plugin-contributed implementation.",
         "The suite covers capability declaration, answer-source precedence, `auto`-mode TTY gating, non-interactive fail-fast (never blocks on stdin), per-type validation, `secret` non-echo/redaction, `Effect.interrupt` to `InteractionCancelledError` with TTY restore, dynamic `choicesFrom` resolution and manual fallback, and prompt-output routing through `Renderer.output`.",
         "`makeLandoRuntime` accepts the `interaction` option (default `non-interactive` in library mode, `auto` in CLI) and a host can override `InteractionService` via `overrides` to route prompts through its own transport; a library-API test drives an `apps:init`-style flow non-interactively with seeded answers.",
@@ -1787,7 +1787,7 @@
         "`ProcessRunner`, `ShellRunner`, and `BunSelfRunner` redact command shape, env, and stdout/stderr summaries through the `secrets` profile before they reach the `Logger` or `EventService`; the `pre-/post-process-exec`, `pre-/post-shell-exec`, and `pre-/post-bun-self-exec` payloads observe redacted forms only.",
         "`BuildOrchestrator` and `HostProxyService` payloads and the CLI failure formatter route through the `secrets` profile.",
         "`RedactionService` construction touches no network, provider, or plugin module, and stays off the level-`none` first-byte path.",
-        "A test proves a resolved `${secret:\u2026}` value injected into a command does not appear in the published lifecycle event or the rendered log.",
+        "A test proves a resolved `${secret:…}` value injected into a command does not appear in the published lifecycle event or the rendered log.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -1823,8 +1823,8 @@
         "`@lando/sdk/test` exports a redaction contract suite that runs a canonical \"secret soup\" fixture (env assignments, `user:pass@` URLs, bearer tokens, signed-URL query params, POSIX/Windows/UNC paths, home aliases, container ids, UUIDs, high-entropy tokens, and a registered literal secret) and asserts byte-identical output per profile against golden frames.",
         "The suite asserts value-layer-before-pattern ordering, longest-first masking, structure-preserving `redactValue`, and that an audited/sandboxed `ShellRunner` / `BunSelfRunner` / `HostProxyService` / `FileSyncEngine` / `Downloader` cannot weaken the sentinel, value-set, or pattern coverage.",
         "`scripts/check-redaction-boundary.ts` (wired into CI static checks via `bun run check:redaction-boundary`) fails on new `[redacted]` / `[REDACTED]` string literals and ad-hoc secret-matching regexes under `core/src/**` and `plugins/**` outside `@lando/sdk/secrets`.",
-        "The \u00a719.6 transcript redaction gate is aligned to assert the `transcript` profile is the source of the published redaction list.",
-        "The gates are wired into the merge-blocking \u00a713.4 path.",
+        "The §19.6 transcript redaction gate is aligned to assert the `transcript` profile is the source of the published redaction list.",
+        "The gates are wired into the merge-blocking §13.4 path.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -1839,11 +1839,11 @@
       "description": "As a cold-start path, embedding host, script, or plugin utility, I can resolve Lando's roots and any derived path without constructing ConfigService or the Effect runtime.",
       "acceptanceCriteria": [
         "`core/src/config/paths.ts` exports `resolveLandoRoots(options?)`, `makeLandoPaths(options?)`, and `normalizeHostPlatform(input?)` and imports neither `effect` nor `@lando/sdk` runtime modules (type-only SDK imports allowed).",
-        "`resolveLandoRoots` applies, per root, the \u00a77.5 order: explicit `RootOverrides` field, then `LANDO_USER_CONF_ROOT`/`LANDO_USER_CACHE_ROOT`/`LANDO_USER_DATA_ROOT`/`LANDO_SYSTEM_PLUGIN_ROOT`, then `config.yml` value, then platform default.",
-        "The platform-default matrix matches the \u00a77.5 table verbatim for linux/darwin/win32 (wsl resolves to the Linux column) for all four roots, including the macOS `~/Library/...` and Windows `%APPDATA%`/`%LOCALAPPDATA%`/`%PROGRAMDATA%` paths absent from current code.",
+        "`resolveLandoRoots` applies, per root, the §7.5 order: explicit `RootOverrides` field, then `LANDO_USER_CONF_ROOT`/`LANDO_USER_CACHE_ROOT`/`LANDO_USER_DATA_ROOT`/`LANDO_SYSTEM_PLUGIN_ROOT`, then `config.yml` value, then platform default.",
+        "The platform-default matrix matches the §7.5 table verbatim for linux/darwin/win32 (wsl resolves to the Linux column) for all four roots, including the macOS `~/Library/...` and Windows `%APPDATA%`/`%LOCALAPPDATA%`/`%PROGRAMDATA%` paths absent from current code.",
         "The `userConfRoot` self-reference rule holds: `config.yml` is located via the shared overlay-aware conf-root resolver, a `userConfRoot` value inside `config.yml` never relocates that load, and the other three roots read `config.yml` only after the conf root is fixed.",
         "The env short-circuit keeps the conf/data/cache fast path IO-free when the matching `LANDO_*` env var is set.",
-        "`makeLandoPaths` returns `roots`, `platform`, and builders for every \u00a712 path the catalog names (pluginsDir, appPluginsDir, pluginAuthFile, binDir, keysDir, certsDir, runtimeDir, globalAppRoot, logsDir, scratchDir, scratchRegistryFile, appCacheDir, appPlanCacheFile, fileSyncSessionsDir, configFile, configDir, globalConfigFile), with app-scoped builders preserving \u00a712.1 sanitization + fingerprint.",
+        "`makeLandoPaths` returns `roots`, `platform`, and builders for every §12 path the catalog names (pluginsDir, appPluginsDir, pluginAuthFile, binDir, keysDir, certsDir, runtimeDir, globalAppRoot, logsDir, scratchDir, scratchRegistryFile, appCacheDir, appPlanCacheFile, fileSyncSessionsDir, configFile, configDir, globalConfigFile), with app-scoped builders preserving §12.1 sanitization + fingerprint.",
         "`core/test/config/paths.test.ts` covers every root x precedence layer x linux/darwin/win32/wsl plus at least six derived-path builders and app-cache collision avoidance, with env/home/platform injected through `RootOverrides`.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1859,9 +1859,9 @@
       "description": "As a plugin author or embedding host, I can consume a stable PathsService tag and typed path contracts, and configure every root through GlobalConfig.",
       "acceptanceCriteria": [
         "`@lando/sdk/services` exports the `PathsService` tag (`@lando/core/PathsService`) plus `LandoRoots`, `LandoPaths`, and `RootOverrides` types, and `sdk/src/services/index.ts` carries the matching `declare class` mirror.",
-        "`LandoPaths`/`LandoRoots`/`RootOverrides` shapes match \u00a77.5.1 (four roots, platform, derived-path builders, and the platform/env/home override fields).",
+        "`LandoPaths`/`LandoRoots`/`RootOverrides` shapes match §7.5.1 (four roots, platform, derived-path builders, and the platform/env/home override fields).",
         "`GlobalConfig` gains `userCacheRoot` and `systemPluginRoot` as optional `AbsolutePath` fields alongside the existing `userConfRoot`/`userDataRoot`.",
-        "`@lando/core/schema` re-exports the updated `GlobalConfig`; the \u00a713.2 schema-snapshot gate round-trips it, and `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "`@lando/core/schema` re-exports the updated `GlobalConfig`; the §13.2 schema-snapshot gate round-trips it, and `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
         "`sdk/API_COMPATIBILITY.md`, the SDK export/compat fixtures, and the four-place schema lockstep are updated in the same change; the additive `PathsService` tag is recorded as additive.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1879,7 +1879,7 @@
         "`PathsServiceLive` wraps `makeLandoPaths` and is emitted eagerly into the generated `minimal` bootstrap layer by editing `scripts/build-bootstrap-layers.ts` and regenerating `core/src/runtime/generated/layers/minimal.ts` (never editing the generated file directly); `git diff --exit-code` is clean after regeneration.",
         "`PathsService` resolves at every level `minimal` and above; a test yields it at `minimal` and asserts the resolved roots and a representative derived path.",
         "`ConfigService`'s merged base derives `userConfRoot`, `userCacheRoot`, `userDataRoot`, and `systemPluginRoot` from `resolveLandoRoots()`, and `ConfigService.get(\"userCacheRoot\")`/`get(\"systemPluginRoot\")` return resolved values.",
-        "`makeLandoRuntime`'s `config:` root overrides (\u00a716.5) flow into the resolver so isolated/test runtimes relocate every root; the `userConfRoot` self-reference rule is preserved.",
+        "`makeLandoRuntime`'s `config:` root overrides (§16.5) flow into the resolver so isolated/test runtimes relocate every root; the `userConfRoot` self-reference rule is preserved.",
         "`core/src/config/roots.ts` `resolveUserDataRoot`/`resolveUserConfRoot` and `core/src/cache/paths.ts` `resolveUserCacheRoot` become thin wrappers over `resolveLandoRoots()` (names/signatures preserved), and `userCacheRoot` now reads `config.yml`.",
         "The fast-path cold-start canary (`fast-path-canary-preload.ts`, `paint-banner.test.ts`) stays green and `lando shellenv` output is unchanged for unchanged inputs on the current platform.",
         "Tests pass.",
@@ -1896,9 +1896,9 @@
       "description": "As a package consumer, I can import the Paths primitive from a stable entry point that pulls neither OCLIF nor the Effect runtime.",
       "acceptanceCriteria": [
         "`core/package.json#exports` adds `\"./paths\"` mapping to the pure resolver module, and `@lando/core/services` re-exports `PathsService`.",
-        "`@lando/core/paths` is declared semver-stable in \u00a716.2 and resolves from both workspace and packed installs.",
+        "`@lando/core/paths` is declared semver-stable in §16.2 and resolves from both workspace and packed installs.",
         "An import-boundary test in `core/test/library/` (or `test/types/`) proves `@lando/core/paths` pulls neither `@oclif/core` nor the Effect runtime, and the default `@lando/core` entry remains OCLIF-free.",
-        "The spec surfaces are present and consistent: \u00a72.7 export + policy bullet, \u00a73.4 `PathsService` row + `minimal` eager membership, \u00a77.5 reference + \u00a77.5.1 subsection, \u00a716.2 Paths row + service-tag list + stability list, and the \u00a74.2 not-a-plugin-surface note.",
+        "The spec surfaces are present and consistent: §2.7 export + policy bullet, §3.4 `PathsService` row + `minimal` eager membership, §7.5 reference + §7.5.1 subsection, §16.2 Paths row + service-tag list + stability list, and the §4.2 not-a-plugin-surface note.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -1952,7 +1952,7 @@
         "Map keys are validated against `^[A-Za-z0-9_.-]+$`; a non-conforming key fails with a path-tagged `LandofileEmitError` instead of emitting unparseable YAML.",
         "Non-emittable values (`undefined`, non-finite numbers, `bigint`, dates, functions, symbols, class instances, non-string keys, nested arrays) fail with `LandofileEmitError`, replacing the current bare `throw new Error`.",
         "A quoted scalar is treated as a literal on parse, so a translator fragment containing `${secret:DB_PASSWORD}` round-trips through `parseLandofile(emitLandofileYaml(x))` unchanged rather than being rejected as an expression.",
-        "The serializer documents (TSDoc + the \u00a77.8.1 spec section) that it consumes the encoded (wire) form of a Landofile (`LandofileShape.Encoded` / the merged tree), not a decoded runtime `LandofileShape.Type`.",
+        "The serializer documents (TSDoc + the §7.8.1 spec section) that it consumes the encoded (wire) form of a Landofile (`LandofileShape.Encoded` / the merged tree), not a decoded runtime `LandofileShape.Type`.",
         "Optional deterministic key ordering is available via an explicit option (default preserves insertion order, no behavior change); canonical-write call sites may opt into sorted output.",
         "Tests pass.",
         "Typecheck passes.",
@@ -1969,7 +1969,7 @@
       "acceptanceCriteria": [
         "The three `emitLandofileYaml` importers (`core/src/cli/commands/app-config-translate.ts`, `core/src/cli/commands/doctor-report.ts`, `core/src/cli/commands/config.ts`) import from `@lando/sdk/landofile` (or the `@lando/core/landofile` re-export); the private `core/src/landofile/yaml-emit.ts` is removed.",
         "`core/src/landofile/parser.ts` importers resolve to the published `parseLandofile`; the parser is either moved to `@lando/sdk/landofile` with importers re-pointed, or left as a one-line re-export shim that delegates to the published implementation (no second implementation).",
-        "Existing behavior is byte-identical for all previously valid inputs; the only intended behavior changes are the new rejections (previously bare throws) and the more permissive quoted-`${\u2026}` parse.",
+        "Existing behavior is byte-identical for all previously valid inputs; the only intended behavior changes are the new rejections (previously bare throws) and the more permissive quoted-`${…}` parse.",
         "The repo `AGENTS.md` Canonical Landofile-to-YAML emitter note is updated to the published path.",
         "Source-mode and compiled `$bunfs` dispatch paths use the same published serializer for `app:config:translate`, `app:config:set`/`unset`, doctor YAML, and global-config writes.",
         "Tests pass.",
@@ -1983,9 +1983,9 @@
     {
       "id": "US-310",
       "title": "Enforce the round-trip contract suite and exports gate",
-      "description": "As a maintainer or plugin author, I can prove the serializer obeys the \u00a77.8.1 round-trip law and the surface stays stable.",
+      "description": "As a maintainer or plugin author, I can prove the serializer obeys the §7.8.1 round-trip law and the surface stays stable.",
       "acceptanceCriteria": [
-        "A round-trip contract suite imports the public `@lando/sdk/landofile` surface and asserts `parseLandofile(emitLandofileYaml(x))` deep-equals `x` across a corpus covering scalars, quoted ambiguous strings, nested maps, scalar arrays, arrays-of-maps, empty `{}`/`[]`, and `${secret:\u2026}` references.",
+        "A round-trip contract suite imports the public `@lando/sdk/landofile` surface and asserts `parseLandofile(emitLandofileYaml(x))` deep-equals `x` across a corpus covering scalars, quoted ambiguous strings, nested maps, scalar arrays, arrays-of-maps, empty `{}`/`[]`, and `${secret:…}` references.",
         "The suite asserts the rejection set (key-shape violations, `undefined`, non-finite numbers, `bigint`, nested arrays) fails with `LandofileEmitError` and never emits.",
         "The suite proves a merged `LandofileShape` fragment re-decodes after emit (translator-fragment preview path) and that emitted output is deterministic for a fixed input.",
         "`sdk/test/library/exports.test.ts` asserts the subpath exports (`emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, `LandofileEmitError`).",
@@ -2072,14 +2072,14 @@
     {
       "id": "US-315",
       "title": "Expose StateStore to plugins and hosts, ship TestStateStore, and enforce the contract suite",
-      "description": "As a plugin author or embedding host, I can persist isolated durable state through a pre-namespaced store and prove any implementation preserves the \u00a712.7 guarantees.",
+      "description": "As a plugin author or embedding host, I can persist isolated durable state through a pre-namespaced store and prove any implementation preserves the §12.7 guarantees.",
       "acceptanceCriteria": [
         "`LandoPluginContext` gains a `stateStore` factory pre-namespaced to `plugins/<plugin-id>/` under `userData`; a plugin-context test proves a plugin cannot open a bucket that escapes its own subtree (containment) and cannot reach another plugin's or core's state.",
         "`makeLandoRuntime` exposes `StateStore` on the runtime so embedding hosts can `open` buckets under `{ path: ... }` for per-tenant/per-test isolation; a library-API test opens, writes, and re-reads a host bucket under an isolated path.",
         "`@lando/core/testing` exports an in-memory `TestStateStore` (no disk; inspectable) that satisfies the contract suite.",
         "`@lando/sdk/test` exports a `StateStore` contract suite that runs against `StateStoreLive`, `TestStateStore`, and any host/test override, asserting atomic replace, version-mismatch discard + migrate, corruption quarantine, containment rejection, advisory-lock contention + stale takeover, and codec round-trip (json/binary/custom).",
-        "A \u00a713.4-style boundary check (test or lint) proves no durable atomic-write + lockfile + version-envelope is hand-rolled outside `core/src/state/**` (the scratch registry and include lockfile delegate; `CacheService.writeAtomic` and the hot-path binary caches are the documented exceptions).",
-        "The repo `AGENTS.md` durable-state note and the \u00a712.7 / \u00a73.4 / \u00a74.2 / \u00a79.8 spec surfaces are present and consistent.",
+        "A §13.4-style boundary check (test or lint) proves no durable atomic-write + lockfile + version-envelope is hand-rolled outside `core/src/state/**` (the scratch registry and include lockfile delegate; `CacheService.writeAtomic` and the hot-path binary caches are the documented exceptions).",
+        "The repo `AGENTS.md` durable-state note and the §12.7 / §3.4 / §4.2 / §9.8 spec surfaces are present and consistent.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2093,7 +2093,7 @@
       "title": "Publish the `@lando/sdk/probe` retry/verdict primitive",
       "description": "As a plugin author or core subsystem, I can describe a retry/backoff/timeout policy and run an attempt to a green/yellow/red verdict through one pure, TestClock-deterministic helper instead of hand-rolling a Schedule.",
       "acceptanceCriteria": [
-        "`@lando/sdk/probe` exports the `RetryPolicy`, `ProbeSpec`, `ProbeOutcome`, `ProbeResult` schemas and the `toSchedule(policy)` and `runProbe(spec, attempt)` helpers per \u00a710.5.1; the subpath is registered in `sdk/package.json#exports`.",
+        "`@lando/sdk/probe` exports the `RetryPolicy`, `ProbeSpec`, `ProbeOutcome`, `ProbeResult` schemas and the `toSchedule(policy)` and `runProbe(spec, attempt)` helpers per §10.5.1; the subpath is registered in `sdk/package.json#exports`.",
         "`@lando/sdk/probe` is contracts-only: it constructs no `LandoRuntime`, pulls no service Layer, and imports only effect `Schema`/`Schedule`/`Effect`/`Clock` plus type-only schema imports; an import-boundary test proves it.",
         "`ProbeError` and its `ProbeTimeoutError` deadline sub-shape are tagged errors exported from `@lando/sdk/probe` and do NOT ride the frozen `@lando/sdk/errors` barrel (mirroring `@lando/sdk/expressions`); no `JSON_SCHEMA_REGISTRY` entry is added and the schema-snapshot gate runs clean.",
         "`runProbe` is deterministic under Effect TestClock: a test drives `maxAttempts`, `delay`, exponential `backoff` with `factor`/`maxDelay`, `jitter`, and the overall `timeout`, asserting attempt count and elapsed time with no wall-clock dependency.",
@@ -2115,8 +2115,8 @@
       "acceptanceCriteria": [
         "The default `HealthcheckRunner` builds on `runProbe`: the object-form `retry`/`delay`/`timeout` map onto a `RetryPolicy` and the ready verdict is the probe green `ProbeOutcome`; existing healthcheck tests stay green.",
         "The default `UrlScanner` builds on `runProbe`: `retry`/`delay`/`timeout` resolve to a `RetryPolicy` and the green/yellow/red result is the probe `ProbeOutcome`; `okCodes`/`maxRedirects`/`path` behavior is unchanged.",
-        "`DoctorService` shell checks, the `Downloader` retry path (PRD-09), and `lando setup` readiness waits consume `runProbe` rather than a private retry loop; each consumer redacts `ProbeResult.lastError` through `RedactionService` (\u00a73.7) before it reaches an event, transcript, or readiness summary.",
-        "A \u00a713.4-style boundary check (test or lint) proves no net-new hand-rolled `Effect.retry` Schedule/backoff loop exists in `core/src/**` outside `@lando/sdk/probe` and its named consumers; pre-existing non-probe Schedule uses are explicitly allowlisted.",
+        "`DoctorService` shell checks, the `Downloader` retry path (PRD-09), and `lando setup` readiness waits consume `runProbe` rather than a private retry loop; each consumer redacts `ProbeResult.lastError` through `RedactionService` (§3.7) before it reaches an event, transcript, or readiness summary.",
+        "A §13.4-style boundary check (test or lint) proves no net-new hand-rolled `Effect.retry` Schedule/backoff loop exists in `core/src/**` outside `@lando/sdk/probe` and its named consumers; pre-existing non-probe Schedule uses are explicitly allowlisted.",
         "No behavior change for default inputs: healthcheck readiness, scanner verdicts, doctor remediation, downloader retries, and setup readiness are observably identical for unchanged inputs, verified by the existing suites.",
         "Source-mode and compiled `$bunfs` dispatch paths consume the same probe-backed healthcheck/scanner/doctor/setup behavior (dual-dispatch parity preserved).",
         "Tests pass.",
@@ -2134,7 +2134,7 @@
       "acceptanceCriteria": [
         "`EventService` gains `waitFor<E>(name, { filter?, timeout? })`, `waitForAny<E>(specs, { timeout? })`, and `query<E>(name, filter?)`; `subscribe<E>`/`waitFor<E>`/`query<E>` narrow on `E[name]`, and `expectTypeOf` tests in `test/types/` lock the typed signatures.",
         "`waitFor` resolves from the live stream and fails with `EventError` (`reason: timeout`) when the deadline elapses, driven through Effect Clock so a TestClock test asserts it deterministically; without `timeout` it waits indefinitely. `waitForAny` resolves with the first matching event across its specs under the same timeout contract.",
-        "`EventService` retains a bounded in-memory ring buffer (small fixed default cap, oldest-evicted-first) holding payloads redacted through `RedactionService` (\u00a73.7) before buffering; a test proves `query` and the history snapshot never observe an un-redacted payload.",
+        "`EventService` retains a bounded in-memory ring buffer (small fixed default cap, oldest-evicted-first) holding payloads redacted through `RedactionService` (§3.7) before buffering; a test proves `query` and the history snapshot never observe an un-redacted payload.",
         "`query(name, filter?)` scans the buffer and returns matching events without blocking; events evicted from the buffer are never returned; a host that sets the cap to 0 incurs a zero-allocation no-op (asserted).",
         "The existing zero-subscriber short-circuit and subscribe completion-on-scope-close semantics are unchanged; a regression test covers both.",
         "`@lando/core/testing` `expectEvent`/`waitForEvent` are reimplemented as thin wrappers over `EventService.waitFor` (with a default test timeout for `expectEvent`), and `recordedEvents` is `query(*)` over the test runtime history; existing tests using these helpers stay green.",
@@ -2152,11 +2152,11 @@
       "title": "Publish the declarative plugin-abstraction contract suites (route-filter, secret-store, config-translator, doctor-check)",
       "description": "As a plugin author, I can prove a RouteFilter, SecretStore, ConfigTranslator, or doctorChecks contribution preserves the spec guarantees by running it through a published shared suite.",
       "acceptanceCriteria": [
-        "`@lando/sdk/test` exports `makeRouteFilterContractSuite`, `makeSecretStoreContractSuite`, `makeConfigTranslatorContractSuite`, and `makeDoctorCheckContractSuite`, each asserting the enumerated \u00a713.1 guarantees for its abstraction.",
+        "`@lando/sdk/test` exports `makeRouteFilterContractSuite`, `makeSecretStoreContractSuite`, `makeConfigTranslatorContractSuite`, and `makeDoctorCheckContractSuite`, each asserting the enumerated §13.1 guarantees for its abstraction.",
         "The route-filter suite asserts provider-neutrality (declarative transform, never proxy-native middleware), pure/deterministic/idempotent apply, capability-vs-behavior match, schema-decode failure on invalid options, and stable ordering across replays; the six built-in filters (requestHeader/responseHeader/redirect/rewritePath/stripPrefix/addPrefix) pass it.",
-        "The secret-store suite asserts `resolve(ref)` returns known values and fails with `SecretNotFoundError` for unknown refs, resolved values register with the canonical redactor (\u00a73.7) so they never appear in logs/events/transcripts/lockfiles/cache metadata, `resolve` is read-only/side-effect-free, missing-backend/auth failures surface tagged errors, and already-cached secrets resolve offline (\u00a712.6); the built-in env store passes it.",
-        "The config-translator suite asserts `detect()` is authoritative over advisory `detects:` globs, `translate()` returns a schema-valid LandofileShape fragment plus diagnostics (never an AppPlan, never mutates files/contacts providers/installs plugins), `optionsSchema` validates caller options before translate, output is deterministic, and the emitted fragment round-trips through the canonical Landofile serializer (\u00a77.8.1).",
-        "The doctor-check suite asserts `run()` returns issues carrying severity/context and an automatic or manual solution, default runs are read-only and only `--fix` executes automatic solutions, shell-shaped probes route through `ShellRunner` (so they appear in the redacted doctor transcript, \u00a710.9), and secrets are redacted; the built-in core checks pass it.",
+        "The secret-store suite asserts `resolve(ref)` returns known values and fails with `SecretNotFoundError` for unknown refs, resolved values register with the canonical redactor (§3.7) so they never appear in logs/events/transcripts/lockfiles/cache metadata, `resolve` is read-only/side-effect-free, missing-backend/auth failures surface tagged errors, and already-cached secrets resolve offline (§12.6); the built-in env store passes it.",
+        "The config-translator suite asserts `detect()` is authoritative over advisory `detects:` globs, `translate()` returns a schema-valid LandofileShape fragment plus diagnostics (never an AppPlan, never mutates files/contacts providers/installs plugins), `optionsSchema` validates caller options before translate, output is deterministic, and the emitted fragment round-trips through the canonical Landofile serializer (§7.8.1).",
+        "The doctor-check suite asserts `run()` returns issues carrying severity/context and an automatic or manual solution, default runs are read-only and only `--fix` executes automatic solutions, shell-shaped probes route through `ShellRunner` (so they appear in the redacted doctor transcript, §10.9), and secrets are redacted; the built-in core checks pass it.",
         "An in-memory `TestSecretStore` (and any other required test double that does not already exist) is exported from `@lando/core/testing` and satisfies its suite.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `sdk/test/library/exports.test.ts` are updated for the new `@lando/sdk/test` exports.",
         "Tests pass.",
@@ -2172,9 +2172,9 @@
       "title": "Publish the execution/resolution contract suites (tooling-engine, plugin-source)",
       "description": "As a plugin author, I can prove a ToolingEngine or PluginSource contribution preserves the spec execution, cancellation, redaction, and containment guarantees.",
       "acceptanceCriteria": [
-        "`@lando/sdk/test` exports `makeToolingEngineContractSuite` and `makePluginSourceContractSuite`, each asserting the enumerated \u00a713.1 guarantees for its abstraction.",
+        "`@lando/sdk/test` exports `makeToolingEngineContractSuite` and `makePluginSourceContractSuite`, each asserting the enumerated §13.1 guarantees for its abstraction.",
         "The tooling-engine suite asserts capability-vs-behavior match, dependency-ordered step execution with documented concurrency, `Effect.interrupt` cancelling in-flight steps and finalizing child processes, `tooling-step-start`/`-complete`/`-skip`/`-fail` events publishing with redacted command shapes, `sources`/`generates` up-to-date short-circuit to `-skip`, a non-zero step exit mapping to a tagged `ToolingExecError` carrying the failing step id, and secret-resolved values never reaching event/transcript output; the built-in providerExec and host engines pass it.",
-        "The plugin-source suite asserts `resolve(spec)` yields a package root contained under a Lando-managed store after realpath resolution (escapes fail with `PluginModulePathError`), resolution honors `network.proxy`/`network.ca` (\u00a710.3.1), registry auth tokens are redacted from logs/events, resolution is offline-safe for already-locked sources (\u00a79.3) and never re-fetches without a lockfile change, and failures surface tagged errors with remediation; the built-in registry/git/local/tarball sources pass it.",
+        "The plugin-source suite asserts `resolve(spec)` yields a package root contained under a Lando-managed store after realpath resolution (escapes fail with `PluginModulePathError`), resolution honors `network.proxy`/`network.ca` (§10.3.1), registry auth tokens are redacted from logs/events, resolution is offline-safe for already-locked sources (§9.3) and never re-fetches without a lockfile change, and failures surface tagged errors with remediation; the built-in registry/git/local/tarball sources pass it.",
         "The suites run against the built-in implementations using existing test doubles (`TestRuntimeProvider`, in-memory `FileSystem`/`ProcessRunner`, the `BunSelfRunner` recording fixture) without contacting a real provider, network, or registry.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `sdk/test/library/exports.test.ts` are updated for the new `@lando/sdk/test` exports.",
         "Tests pass.",
@@ -2187,14 +2187,14 @@
     },
     {
       "id": "US-321",
-      "title": "Wire the plugin-abstraction contract kit into the \u00a713.1 layer-coverage and exports gate",
-      "description": "As a maintainer or security reviewer, I can rely on a gate that fails when any \u00a74.2 plugin-abstraction loses or weakens its shared contract suite.",
+      "title": "Wire the plugin-abstraction contract kit into the §13.1 layer-coverage and exports gate",
+      "description": "As a maintainer or security reviewer, I can rely on a gate that fails when any §4.2 plugin-abstraction loses or weakens its shared contract suite.",
       "acceptanceCriteria": [
-        "The \u00a713.1 plugin-SDK-contract test layer runs all six suites (tooling-engine, route-filter, secret-store, config-translator, plugin-source, doctor-check) alongside the already-shipped Downloader/Redaction/Interaction/serializer/StateStore suites; the layer-coverage rule treats a \u00a74.2 abstraction with a published suite but no built-in invocation as a failure.",
-        "A gate (test or lint) asserts every \u00a74.2 abstraction with a contract suite in `@lando/sdk/test` has its built-in implementation(s) exercised by that suite, and that a plugin implementation cannot satisfy the abstraction interface while weakening checksum/containment/redaction/determinism guarantees the suite enforces.",
+        "The §13.1 plugin-SDK-contract test layer runs all six suites (tooling-engine, route-filter, secret-store, config-translator, plugin-source, doctor-check) alongside the already-shipped Downloader/Redaction/Interaction/serializer/StateStore suites; the layer-coverage rule treats a §4.2 abstraction with a published suite but no built-in invocation as a failure.",
+        "A gate (test or lint) asserts every §4.2 abstraction with a contract suite in `@lando/sdk/test` has its built-in implementation(s) exercised by that suite, and that a plugin implementation cannot satisfy the abstraction interface while weakening checksum/containment/redaction/determinism guarantees the suite enforces.",
         "The `@lando/sdk/test` exports gate (`sdk/test/library/exports.test.ts` + fixtures) lists every `make*ContractSuite` export; removing or renaming a suite fails the gate.",
-        "The repo `AGENTS.md` plugin-contract-kit note and the \u00a713.1 / \u00a74.2 spec surfaces are present and consistent (every \u00a74.2 abstraction row points at its suite).",
-        "The \u00a716/\u00a79 import-boundary test still passes (`@lando/sdk/test` and `@lando/core/testing` stay OCLIF-free; the default `@lando/core` entry stays OCLIF-free).",
+        "The repo `AGENTS.md` plugin-contract-kit note and the §13.1 / §4.2 spec surfaces are present and consistent (every §4.2 abstraction row points at its suite).",
+        "The §16/§9 import-boundary test still passes (`@lando/sdk/test` and `@lando/core/testing` stay OCLIF-free; the default `@lando/core` entry stays OCLIF-free).",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2208,10 +2208,10 @@
       "title": "Publish the machine-output schemas in `@lando/sdk`",
       "description": "As a plugin author or embedding host, I can import the command-output envelope schemas and decode any command's JSON against them.",
       "acceptanceCriteria": [
-        "`CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are defined in `@lando/sdk` (\u00a78.11.1/\u00a78.11.3), re-exported from `@lando/core/schema`, and registered in the central schema registry, `SDK_SCHEMA_NAMES`, and the JSON-schema registry.",
+        "`CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are defined in `@lando/sdk` (§8.11.1/§8.11.3), re-exported from `@lando/core/schema`, and registered in the central schema registry, `SDK_SCHEMA_NAMES`, and the JSON-schema registry.",
         "`bun run codegen:schema-snapshot` captures all four and `sdk/test/fixtures/schema-snapshot.json` updates; `git diff --exit-code` on the snapshot is clean afterward.",
         "`sdk/API_COMPATIBILITY.md` records the additions.",
-        "Round-trip encode/decode tests pass for each schema (\u00a713.2).",
+        "Round-trip encode/decode tests pass for each schema (§13.2).",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2225,7 +2225,7 @@
       "title": "Require `resultSchema` (and optional `streaming`) on `LandoCommandSpec`",
       "description": "As the runtime, I reject any command that does not declare the machine shape of its result.",
       "acceptanceCriteria": [
-        "`LandoCommandSpec` carries a required `resultSchema: Schema.Schema<A>` and an optional `streaming?: StreamFrameSchema` (\u00a78.3).",
+        "`LandoCommandSpec` carries a required `resultSchema: Schema.Schema<A>` and an optional `streaming?: StreamFrameSchema` (§8.3).",
         "Registration rejects a spec missing `resultSchema` with `CommandRegistrationError`; a command with no payload registers `Schema.Struct({})`.",
         "Every built-in command and every deferred-command stub declares a `resultSchema`.",
         "A registry-level test enumerates all canonical ids and fails if any lacks `resultSchema`.",
@@ -2242,8 +2242,8 @@
       "title": "Implement the single `encodeCommandResult` serialization seam",
       "description": "As a maintainer, all JSON output flows through one redaction-aware function.",
       "acceptanceCriteria": [
-        "`encodeCommandResult` (`core/src/cli/result-encode.ts`) encodes success via `Schema.encode(spec.resultSchema)` and failure via the \u00a77.8 tagged-error schema with `ok: false`, wrapping both in `CommandResultEnvelope`.",
-        "The encoded envelope is passed through `RedactionService` (\u00a73.7) before emission; a test asserts a known secret value never appears in the envelope.",
+        "`encodeCommandResult` (`core/src/cli/result-encode.ts`) encodes success via `Schema.encode(spec.resultSchema)` and failure via the §7.8 tagged-error schema with `ok: false`, wrapping both in `CommandResultEnvelope`.",
+        "The encoded envelope is passed through `RedactionService` (§3.7) before emission; a test asserts a known secret value never appears in the envelope.",
         "The process exit code is preserved on failure (JSON output does not zero a non-zero exit).",
         "`renderer-boundary.ts`'s `json` branch routes command-result JSON through `encodeCommandResult` and bypasses per-command `render()` helpers in json renderer mode; the physical migration of legacy per-command result `JSON.stringify` producers happens in US-327 as each command receives a faithful `resultSchema`, event/deprecation NDJSON migrates in US-326, and the static enforcement gate lands in US-328.",
         "Tests pass.",
@@ -2259,10 +2259,10 @@
       "title": "Universalize the `--format` flag plus the `--json` / `-j` shorthand across both dispatch paths",
       "description": "As an agent, `--format json` (or `--json` / `-j`) works identically on every command in source and compiled binary.",
       "acceptanceCriteria": [
-        "The OCLIF command base and the compiled `runCompiledCli` parser both inject and parse `--format <value>` and the `--json` / `-j` shorthand (equivalent to `--format json`) from one shared module (\u00a78.4.1 single-source-of-truth).",
+        "The OCLIF command base and the compiled `runCompiledCli` parser both inject and parse `--format <value>` and the `--json` / `-j` shorthand (equivalent to `--format json`) from one shared module (§8.4.1 single-source-of-truth).",
         "The `--renderer json` -> default `--format json` bridge is implemented; an explicit `--format` always wins.",
         "The OCLIF manifest regenerates to include the universal flags; `bun run scripts/build-oclif-manifest.ts` leaves a clean diff.",
-        "The \u00a713.1 dispatch-parity layer covers `--format json` for representative MVP commands and the deferred set.",
+        "The §13.1 dispatch-parity layer covers `--format json` for representative MVP commands and the deferred set.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2277,7 +2277,7 @@
       "description": "As an agent tailing logs or exec output, I receive typed frames terminated by a result frame.",
       "acceptanceCriteria": [
         "`app:logs`, `app:exec`, and build-progress commands declare `streaming` and, under `--format json`, emit newline-delimited `StreamFrame`s terminated by a `result` frame carrying the envelope.",
-        "`event` frames reuse the \u00a711.1 `EventService` bounded redacted history (no second event tap).",
+        "`event` frames reuse the §11.1 `EventService` bounded redacted history (no second event tap).",
         "The prior one-off `doctor-ndjson` renderer, `core/src/cli/renderer/format.ts`'s json event-line renderer, and the deprecation-event JSON line are migrated onto `StreamFrame`.",
         "Tests assert frame ordering, the terminal `result` frame, and redaction of `event` payloads.",
         "Tests pass.",
@@ -2309,8 +2309,8 @@
       "title": "Ship the conformance and boundary gates",
       "description": "As a maintainer, the universal `--format json` guarantee cannot regress.",
       "acceptanceCriteria": [
-        "The \u00a713.1 machine-output conformance layer drives every canonical command id (and deferred stubs) with `--format json` against `TestRuntime`, decodes the output as a `CommandResultEnvelope`, and asserts `command`/`ok` for a success and a failure case.",
-        "`bun run check:machine-output` (\u00a713.4) fails on any result `JSON.stringify` outside `encodeCommandResult` and on any spec missing `resultSchema`; it is wired into CI static checks.",
+        "The §13.1 machine-output conformance layer drives every canonical command id (and deferred stubs) with `--format json` against `TestRuntime`, decodes the output as a `CommandResultEnvelope`, and asserts `command`/`ok` for a success and a failure case.",
+        "`bun run check:machine-output` (§13.4) fails on any result `JSON.stringify` outside `encodeCommandResult` and on any spec missing `resultSchema`; it is wired into CI static checks.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2324,7 +2324,7 @@
       "title": "Document and guide the machine-output contract",
       "description": "As an agent author, I can read how to drive Lando from JSON.",
       "acceptanceCriteria": [
-        "An executable guide ('scripting Lando / driving Lando from an agent') demonstrates `--format json` / `--json` on representative commands and is covered per \u00a719 and the guide-coverage gate.",
+        "An executable guide ('scripting Lando / driving Lando from an agent') demonstrates `--format json` / `--json` on representative commands and is covered per §19 and the guide-coverage gate.",
         "The generated command-reference docs note the universal `--format json` flag.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2337,12 +2337,12 @@
     {
       "id": "US-330",
       "title": "Publish the HttpClient SDK service, schemas, errors, events, and manifest surface",
-      "description": "As a plugin author or embedding host (hosting push/pull, a tunnel control plane, an MCP surface), I can perform Lando-governed outbound HTTP \u2014 request/response, streaming, and upload \u2014 through one stable `HttpClient` contract instead of calling `fetch` and re-implementing proxy/CA/redaction.",
+      "description": "As a plugin author or embedding host (hosting push/pull, a tunnel control plane, an MCP surface), I can perform Lando-governed outbound HTTP — request/response, streaming, and upload — through one stable `HttpClient` contract instead of calling `fetch` and re-implementing proxy/CA/redaction.",
       "acceptanceCriteria": [
         "`@lando/sdk/services` exports the `HttpClient` service tag with `request(req)`, `stream(req)` (non-buffering `Stream<Uint8Array>` body), and `upload(req)`, each returning a `Scope`-bearing Effect, plus a `capabilities` field.",
         "`@lando/sdk/schema` exports `HttpRequest`, `HttpResponse`, `HttpStreamResponse`, `HttpUploadRequest`, `HttpClientCapabilities`, and the `pre-http-call` / `post-http-call` event payload schemas.",
         "`@lando/sdk/errors` exports `HttpRequestError`, `HttpUploadError`, `HttpTrustError` (kinds: proxy-authentication / tls-interception / missing-custom-ca / blocked-endpoint), and `HttpClientUnavailableError`.",
-        "Plugin manifests accept `provides.httpClients[]` with capability metadata, module-path containment, deprecation metadata, and \u00a74.3 selection.",
+        "Plugin manifests accept `provides.httpClients[]` with capability metadata, module-path containment, deprecation metadata, and §4.3 selection.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, the schema registry / `SDK_SCHEMA_NAMES`, and schema snapshots are updated in the same change.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2355,7 +2355,7 @@
     {
       "id": "US-331",
       "title": "Implement HttpClientLive, the canonical network-trust resolver, and the egress-boundary gate",
-      "description": "As a user behind a proxy or custom CA, every Lando-owned fetch \u2014 downloads and request/response traffic alike \u2014 honors one canonical outbound-trust implementation that I configure once.",
+      "description": "As a user behind a proxy or custom CA, every Lando-owned fetch — downloads and request/response traffic alike — honors one canonical outbound-trust implementation that I configure once.",
       "acceptanceCriteria": [
         "The proxy/CA helper in setup network-trust code (`fetchInitForNetwork`, `shouldBypassProxy`, trust resolution) is extracted to a canonical pure `@lando/sdk` module consumed by `HttpClientLive` and `lando setup` preflight; the duplicated copies in `provider-lando` and `file-sync-mutagen` are deleted.",
         "`HttpClientLive` is available at bootstrap `minimal`, uses Bun `fetch`, honors `network.proxy` before env proxy vars, honors `NO_PROXY`, loads configured CA PEMs, and accepts an already-resolved trust object from setup preflight.",
@@ -2380,7 +2380,7 @@
         "A pure `@lando/sdk` helper resolves the active host entry by `${platform}-${arch}`, fetches+verifies via `Downloader` (never directly), extracts the named tar.gz/zip member, and installs it under a realpath-contained `<userDataRoot>/bin/` path with the declared mode.",
         "The helper writes an installed-version marker plus a per-binary `.sha256` fingerprint; a re-run whose pinned `toolVersion` and fingerprints already match is an idempotent no-op with no network access.",
         "`@lando/file-sync-mutagen` ships `mutagen-versions.json` as a `ToolManifest` asset and provisions the host CLI + agents through the helper; its bespoke fetch/extract/verify/install code is removed.",
-        "The \u00a717.2 codegen emits/validates the Mutagen `ToolManifest` with a `git diff --exit-code` staleness gate; the `tool-downloads` cache (\u00a712.1) and `bin/` markers (\u00a712.4) behave as specified.",
+        "The §17.2 codegen emits/validates the Mutagen `ToolManifest` with a `git diff --exit-code` staleness gate; the `tool-downloads` cache (§12.1) and `bin/` markers (§12.4) behave as specified.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2394,10 +2394,10 @@
       "title": "Publish the SDK data-transfer schemas, DataMover service tag, and data-plane errors",
       "description": "As a plugin author or embedding host, I can consume a stable `DataMover` contract, the typed `DataEndpoint` model, and the data-plane error tags instead of inventing my own byte-movement surface.",
       "acceptanceCriteria": [
-        "A new `sdk/src/schema/data-transfer.ts` exports `DataEndpoint` (the seven-member tagged union), `ArchiveFormat` (`tar`/`tar.gz`/`tar.zst`), the volume/service/snapshot schemas (`VolumeRef`, `VolumeInfo`, `VolumeFilter`, `VolumeSnapshotSpec`, `VolumeSnapshotRef`, `VolumeRestoreSpec`, `ServiceCopyInSpec`, `ServiceCopyOutSpec`), the transfer schemas (`DataTransferSpec`, `DataTransferResult` with `accelerated`, `DataTransferProgress`), and the snapshot schemas (`SnapshotHandle`, `SnapshotInfo`, `SnapshotFilter`, `PrunePolicy`), matching \u00a710.11.1/\u00a710.11.2 verbatim.",
+        "A new `sdk/src/schema/data-transfer.ts` exports `DataEndpoint` (the seven-member tagged union), `ArchiveFormat` (`tar`/`tar.gz`/`tar.zst`), the volume/service/snapshot schemas (`VolumeRef`, `VolumeInfo`, `VolumeFilter`, `VolumeSnapshotSpec`, `VolumeSnapshotRef`, `VolumeRestoreSpec`, `ServiceCopyInSpec`, `ServiceCopyOutSpec`), the transfer schemas (`DataTransferSpec`, `DataTransferResult` with `accelerated`, `DataTransferProgress`), and the snapshot schemas (`SnapshotHandle`, `SnapshotInfo`, `SnapshotFilter`, `PrunePolicy`), matching §10.11.1/§10.11.2 verbatim.",
         "`@lando/sdk/services` exports the `DataMover` Context.Service tag (`@lando/core/DataMover`) with `transfer`/`transferStream`/`snapshot`/`restore`/`listSnapshots`/`removeSnapshot`/`pruneSnapshots`, and `sdk/src/services/index.ts` carries the matching `declare class DataMover` mirror.",
-        "`@lando/sdk/errors` exports `DataTransferError`, `DataEndpointUnsupportedError`, `DataChecksumMismatchError`, `DataSourceOutsideRootError`, `DataTargetExistsError`, `SnapshotNotFoundError`, `VolumeNotFoundError`, and `ArchiveFormatError`, plus the provider-side `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` added to the `ProviderError` union (\u00a75.7), with field names avoiding the Bun `line`/`column` gotcha.",
-        "The new persisted schemas are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES`; the \u00a713.2 snapshot gate round-trips them and `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "`@lando/sdk/errors` exports `DataTransferError`, `DataEndpointUnsupportedError`, `DataChecksumMismatchError`, `DataSourceOutsideRootError`, `DataTargetExistsError`, `SnapshotNotFoundError`, `VolumeNotFoundError`, and `ArchiveFormatError`, plus the provider-side `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` added to the `ProviderError` union (§5.7), with field names avoiding the Bun `line`/`column` gotcha.",
+        "The new persisted schemas are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES`; the §13.2 snapshot gate round-trips them and `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
         "`sdk/API_COMPATIBILITY.md` records the tag, schemas, and errors as additive, and the SDK export fixtures + `exports.test.ts` are updated in the same change.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2405,16 +2405,16 @@
       ],
       "priority": 134,
       "passes": true,
-      "notes": "Data-movement primitive (spec \u00a710.11, \u00a75.7, \u00a73.4). Depends on PRD-04 (SDK/schema publication discipline)."
+      "notes": "Data-movement primitive (spec §10.11, §5.7, §3.4). Depends on PRD-04 (SDK/schema publication discipline)."
     },
     {
       "id": "US-334",
       "title": "Extend the RuntimeProvider contract with the data plane and mount-aware ephemeral run",
-      "description": "As a provider author, I can implement the data-plane half of the provider contract \u2014 native volume/snapshot/copy/artifact methods plus a mount- and stream-aware ephemeral run \u2014 against one typed interface.",
+      "description": "As a provider author, I can implement the data-plane half of the provider contract — native volume/snapshot/copy/artifact methods plus a mount- and stream-aware ephemeral run — against one typed interface.",
       "acceptanceCriteria": [
-        "`ProviderCapabilities` (`sdk/src/schema/networking.ts`) gains `volumeSnapshot` (`native`/`copy`/`none`), `serviceFileCopy` (`native`/`exec`/`none`), `artifactExport` (Boolean), `artifactImport` (Boolean), and `ephemeralMounts` (Boolean) with the \u00a75.4 semantics documented as truthful/informational, not knobs.",
+        "`ProviderCapabilities` (`sdk/src/schema/networking.ts`) gains `volumeSnapshot` (`native`/`copy`/`none`), `serviceFileCopy` (`native`/`exec`/`none`), `artifactExport` (Boolean), `artifactImport` (Boolean), and `ephemeralMounts` (Boolean) with the §5.4 semantics documented as truthful/informational, not knobs.",
         "`EphemeralRunSpec` gains `mounts?`, `stdinStream?`, `captureStdout?`, `env?`, and `remove?` (default true), and a `runStream` method (`Stream<ExecChunk, ProviderError, Scope.Scope>`) is added alongside `run`.",
-        "The `RuntimeProvider`/`RuntimeProviderShape` interface gains the eight data-plane methods \u2014 `snapshotVolume`, `restoreVolume`, `listVolumes`, `removeVolume`, `copyToService`, `copyFromService`, `exportArtifact`, `importArtifact` \u2014 with the \u00a75.3 signatures.",
+        "The `RuntimeProvider`/`RuntimeProviderShape` interface gains the eight data-plane methods — `snapshotVolume`, `restoreVolume`, `listVolumes`, `removeVolume`, `copyToService`, `copyFromService`, `exportArtifact`, `importArtifact` — with the §5.3 signatures.",
         "Every capability literal is updated in lockstep: `core/src/runtime/bootstrap-layer-support.ts` and the `sdk/src/test` provider double(s) declare the five new fields and a `ProviderCapabilities` decode of each is exercised.",
         "`bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md` records the capability, `EphemeralRunSpec`, and interface additions as additive.",
         "Tests pass.",
@@ -2423,16 +2423,16 @@
       ],
       "priority": 135,
       "passes": true,
-      "notes": "Data-movement primitive (spec \u00a75.3, \u00a75.4). Depends on US-333."
+      "notes": "Data-movement primitive (spec §5.3, §5.4). Depends on US-333."
     },
     {
       "id": "US-335",
-      "title": "Implement the data plane on TestRuntimeProvider and add the \u00a713.1 data-plane contract suite",
-      "description": "As a maintainer, I can pin every provider's data-plane behavior \u2014 round-trip, snapshot, copy, artifact, and capability honesty \u2014 against one contract suite before any real provider is implemented.",
+      "title": "Implement the data plane on TestRuntimeProvider and add the §13.1 data-plane contract suite",
+      "description": "As a maintainer, I can pin every provider's data-plane behavior — round-trip, snapshot, copy, artifact, and capability honesty — against one contract suite before any real provider is implemented.",
       "acceptanceCriteria": [
         "`TestRuntimeProvider` (`sdk/src/test`) implements the eight data-plane methods plus mount-/stream-aware `run`/`runStream` over an in-memory volume/service/artifact store, declaring `volumeSnapshot: copy`, `serviceFileCopy: exec`, `artifactExport`/`Import: true`, and `ephemeralMounts: true`.",
-        "`@lando/sdk/test` exports a data-plane contract section asserting `importVolume(exportVolume(x)) == x`, `snapshot \u2192 mutate \u2192 restore` restores bytes, `copyToService`/`copyFromService` round-trips, and `artifact` export/import round-trips (\u00a710.11.5).",
-        "The suite asserts capability honesty: a provider declaring `volumeSnapshot: native` (or `serviceFileCopy: native`) must exercise the native method and not silently fall back (\u00a75.4).",
+        "`@lando/sdk/test` exports a data-plane contract section asserting `importVolume(exportVolume(x)) == x`, `snapshot → mutate → restore` restores bytes, `copyToService`/`copyFromService` round-trips, and `artifact` export/import round-trips (§10.11.5).",
+        "The suite asserts capability honesty: a provider declaring `volumeSnapshot: native` (or `serviceFileCopy: native`) must exercise the native method and not silently fall back (§5.4).",
         "The suite covers the failure surface: an unrealizable `(from, to)` pair fails `DataEndpointUnsupportedError`, and a provider declaring `ephemeralMounts: false` with no matching native capability fails `CapabilityError`.",
         "The suite is structured so a real provider supplies only its provider factory; no provider-specific assertions leak into the shared suite.",
         "Tests pass.",
@@ -2441,16 +2441,16 @@
       ],
       "priority": 136,
       "passes": true,
-      "notes": "Data-movement primitive (spec \u00a710.11.5, \u00a713.1). Depends on US-334."
+      "notes": "Data-movement primitive (spec §10.11.5, §13.1). Depends on US-334."
     },
     {
       "id": "US-336",
       "title": "Extract the shared streaming-hash/atomic-write helper and migrate Downloader onto it",
-      "description": "As a maintainer, I can rely on one pure `@lando/sdk` implementation of stream \u2192 SHA-256 \u2192 temp \u2192 atomic-rename so `Downloader` and `DataMover` verify and persist identically.",
+      "description": "As a maintainer, I can rely on one pure `@lando/sdk` implementation of stream → SHA-256 → temp → atomic-rename so `Downloader` and `DataMover` verify and persist identically.",
       "acceptanceCriteria": [
-        "A pure, dependency-free `@lando/sdk` helper (same contracts-only tier as `@lando/sdk/probe` / `@lando/sdk/secrets`) exposes the stream \u2192 SHA-256 \u2192 unique-temp-file \u2192 atomic-rename path, deleting the temp file on interrupt, fetch failure, size mismatch, checksum mismatch, or persistence failure (\u00a710.3.3, \u00a710.11.2).",
+        "A pure, dependency-free `@lando/sdk` helper (same contracts-only tier as `@lando/sdk/probe` / `@lando/sdk/secrets`) exposes the stream → SHA-256 → unique-temp-file → atomic-rename path, deleting the temp file on interrupt, fetch failure, size mismatch, checksum mismatch, or persistence failure (§10.3.3, §10.11.2).",
         "`Downloader` (PRD-09) is rewired to consume the helper for its file-download verify-and-persist path; the hand-rolled hasher/temp/rename logic in `Downloader` is removed.",
-        "The `Downloader` contract suite (\u00a713.1) stays green with zero behavior change: scheme gating, checksum verification, atomic persistence, cache/offline semantics, redaction, and cancellation finalization are unchanged.",
+        "The `Downloader` contract suite (§13.1) stays green with zero behavior change: scheme gating, checksum verification, atomic persistence, cache/offline semantics, redaction, and cancellation finalization are unchanged.",
         "An import-boundary assertion proves the helper pulls neither a runtime nor `@oclif/core` into its import graph.",
         "`sdk/API_COMPATIBILITY.md` records the helper export as additive and the SDK export fixtures are updated in the same change.",
         "Tests pass.",
@@ -2466,27 +2466,27 @@
       "title": "Implement the DataMover core service: transfer/transferStream + dispatch + Data events",
       "description": "As the runtime, I move bytes between any realizable pair of `DataEndpoint`s through one service that picks the native provider path when available, falls back to a generic helper container otherwise, verifies archives, and emits redacted lifecycle events.",
       "acceptanceCriteria": [
-        "`core/src/data-mover/service.ts` implements `DataMoverLive` at level `provider`, `Layer.suspend`-wrapped so `lando info` pays zero cost; it is host/test-overridable but not a \u00a74.2 plugin contribution surface, and `@lando/core/testing` ships an in-memory `TestDataMover`.",
-        "`transfer`/`transferStream` dispatch each `(from, to)` pair: native `RuntimeProvider` data-plane method when the matching \u00a75.4 capability is `native`, else the generic helper-container `tar` path via `run`/`runStream`, else fail `DataEndpointUnsupportedError`; `DataTransferResult.accelerated` reports which path ran. All moves are `Scope`-bound and `Effect.interrupt` propagates to the underlying `kill()` and reaps children.",
+        "`core/src/data-mover/service.ts` implements `DataMoverLive` at level `provider`, `Layer.suspend`-wrapped so `lando info` pays zero cost; it is host/test-overridable but not a §4.2 plugin contribution surface, and `@lando/core/testing` ships an in-memory `TestDataMover`.",
+        "`transfer`/`transferStream` dispatch each `(from, to)` pair: native `RuntimeProvider` data-plane method when the matching §5.4 capability is `native`, else the generic helper-container `tar` path via `run`/`runStream`, else fail `DataEndpointUnsupportedError`; `DataTransferResult.accelerated` reports which path ran. All moves are `Scope`-bound and `Effect.interrupt` propagates to the underlying `kill()` and reaps children.",
         "Archive writes compute SHA-256 via the US-336 shared helper; `transfer` to a `hostArchive`/snapshot records the digest and `restore`/`import` verifies it, failing `DataChecksumMismatchError`; there is no skip-verification flag, and `tar.gz`/`tar.zst` use Bun-native streams.",
         "A `hostPath`/`hostArchive` whose realpath escapes the app root is rejected with `DataSourceOutsideRootError`; `restore`/`import` into an existing volume without `{ overwrite: true }` fails `DataTargetExistsError`.",
-        "`DataMover` publishes the `Data` lifecycle scope (\u00a73.5) with payloads routed through the canonical `RedactionService` (\u00a73.7) \u2014 `DataMover` is added to its consumer list \u2014 and DB credentials passed to a `serviceCmd` ride env, never argv.",
+        "`DataMover` publishes the `Data` lifecycle scope (§3.5) with payloads routed through the canonical `RedactionService` (§3.7) — `DataMover` is added to its consumer list — and DB credentials passed to a `serviceCmd` ride env, never argv.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
       ],
       "priority": 138,
       "passes": true,
-      "notes": "Data-movement primitive (spec \u00a710.11.1, \u00a710.11.2, \u00a73.5, \u00a73.7, \u00a74.2). Depends on US-334, US-336, PRD-13 (RedactionService)."
+      "notes": "Data-movement primitive (spec §10.11.1, §10.11.2, §3.5, §3.7, §4.2). Depends on US-334, US-336, PRD-13 (RedactionService)."
     },
     {
       "id": "US-338",
       "title": "Snapshot store: snapshot/restore/list/remove/prune over PathsService + StateStore",
       "description": "As a maintainer, I can persist and index volume snapshots through the existing Paths and durable-state primitives instead of a bespoke registry, with data-safe destroy semantics.",
       "acceptanceCriteria": [
-        "`PathsService` / `@lando/core/paths` gain `snapshotsDir`, `appSnapshotsDir(appId)` (default `<userDataRoot>/snapshots/<app-id>/`), and `toolDownloadsDir(toolId)`, with the \u00a77.5.1 derived-path tests extended; nothing re-derives `<userDataRoot>/snapshots/` by hand.",
-        "`snapshot` writes `<appSnapshotsDir>/<store>/<snapshot-id>.<format>` (archive, copy mode) plus a `<snapshot-id>.json` `SnapshotInfo` sidecar; a `volumeSnapshot: native` provider stores a `VolumeSnapshotRef` in the sidecar instead of an archive (\u00a710.11.3).",
-        "The snapshot index is a `StateStore` (\u00a712.7) bucket (`<userDataRoot>/snapshots/<app-id>/index.bin`), inheriting atomic write + version header + advisory lock + corruption quarantine \u2014 not a bespoke registry; `listSnapshots`/`pruneSnapshots` read it.",
+        "`PathsService` / `@lando/core/paths` gain `snapshotsDir`, `appSnapshotsDir(appId)` (default `<userDataRoot>/snapshots/<app-id>/`), and `toolDownloadsDir(toolId)`, with the §7.5.1 derived-path tests extended; nothing re-derives `<userDataRoot>/snapshots/` by hand.",
+        "`snapshot` writes `<appSnapshotsDir>/<store>/<snapshot-id>.<format>` (archive, copy mode) plus a `<snapshot-id>.json` `SnapshotInfo` sidecar; a `volumeSnapshot: native` provider stores a `VolumeSnapshotRef` in the sidecar instead of an archive (§10.11.3).",
+        "The snapshot index is a `StateStore` (§12.7) bucket (`<userDataRoot>/snapshots/<app-id>/index.bin`), inheriting atomic write + version header + advisory lock + corruption quarantine — not a bespoke registry; `listSnapshots`/`pruneSnapshots` read it.",
         "`restore`/`removeSnapshot`/`pruneSnapshots` resolve by id through the index, fail `SnapshotNotFoundError` for a missing id, and verify the recorded digest on restore.",
         "`lando destroy --purge` removes an app's snapshot subtree; plain `lando destroy` keeps it, verified by a test asserting survival across a plain destroy and removal after `--purge`.",
         "Tests pass.",
@@ -2500,38 +2500,38 @@
     {
       "id": "US-339",
       "title": "Implement the native data plane on the three bundled providers",
-      "description": "As a user on any bundled provider, snapshot/restore, host\u2194container copy, and image save/load run through the provider's native fast path when it has one, and through the verified `tar` fallback when it does not.",
+      "description": "As a user on any bundled provider, snapshot/restore, host↔container copy, and image save/load run through the provider's native fast path when it has one, and through the verified `tar` fallback when it does not.",
       "acceptanceCriteria": [
-        "`@lando/provider-lando` implements a commit-based native volume snapshot/restore, native host\u2194container copy, and image save/load, declaring `volumeSnapshot: native`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (\u00a75.8.1).",
-        "`@lando/provider-docker` and `@lando/provider-podman` implement copy-mode snapshot (verified `tar`), native `docker cp`/`podman cp` copy, and image save/load, declaring `volumeSnapshot: copy`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (\u00a75.8.2/\u00a75.8.3).",
+        "`@lando/provider-lando` implements a commit-based native volume snapshot/restore, native host↔container copy, and image save/load, declaring `volumeSnapshot: native`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (§5.8.1).",
+        "`@lando/provider-docker` and `@lando/provider-podman` implement copy-mode snapshot (verified `tar`), native `docker cp`/`podman cp` copy, and image save/load, declaring `volumeSnapshot: copy`, `serviceFileCopy: native`, and `artifactExport`/`Import: true` (§5.8.2/§5.8.3).",
         "All three providers declare `ephemeralMounts: true` and honor `EphemeralRunSpec.mounts`/`stdinStream`/`captureStdout`/`env`/`remove` and `runStream` so the generic fallback works.",
-        "Every bundled provider passes the US-335 \u00a713.1 data-plane contract suite, including the capability-honesty assertion.",
-        "Provider-side failures surface as `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` (\u00a75.7) and are wrapped by `DataMover` into the \u00a710.11.4 tags with the provider cause attached.",
+        "Every bundled provider passes the US-335 §13.1 data-plane contract suite, including the capability-honesty assertion.",
+        "Provider-side failures surface as `VolumeOperationError`/`ServiceCopyError`/`ArtifactTransferError` (§5.7) and are wrapped by `DataMover` into the §10.11.4 tags with the provider cause attached.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
       ],
       "priority": 140,
       "passes": true,
-      "notes": "Data-movement primitive (spec \u00a75.4, \u00a75.8). Depends on US-335, US-337."
+      "notes": "Data-movement primitive (spec §5.4, §5.8). Depends on US-335, US-337."
     },
     {
       "id": "US-340",
       "title": "Migrate scratch --isolate=full onto DataMover and resolve the helper image via a pinned manifest",
       "description": "As a maintainer, scratch's full-isolation copy goes through the one byte-movement primitive instead of bespoke host-FS code, and the generic fallback's helper image is pinned and offline-reusable like every other Lando-provisioned artifact.",
       "acceptanceCriteria": [
-        "`core/src/scratch-app/service.ts` replaces `reflinkCopyAppRoot`/`copyAppRoot` with `DataMover.transfer(hostPath \u2192 hostPath)` for `--isolate=full`; the inline `cp -a --reflink=auto` + `node:fs` fallback is removed (or becomes the host-FS adapter `DataMover` calls) and existing scratch isolation tests stay green.",
-        "The `hostPath \u2192 hostPath` path preserves the invariant that teardown removes only the materialized scratch instance dir, never an `--isolate=none` source root (\u00a721.7).",
-        "The generic-fallback `tar` helper image is resolved from a pinned `{ image, digest }` (the \u00a710.3.4 `ToolManifest` model at the provider-image layer) through `RuntimeProvider.pullArtifact`, digest-verified, cached, and offline-reused so the \u00a71.4 offline contract holds once warm.",
+        "`core/src/scratch-app/service.ts` replaces `reflinkCopyAppRoot`/`copyAppRoot` with `DataMover.transfer(hostPath → hostPath)` for `--isolate=full`; the inline `cp -a --reflink=auto` + `node:fs` fallback is removed (or becomes the host-FS adapter `DataMover` calls) and existing scratch isolation tests stay green.",
+        "The `hostPath → hostPath` path preserves the invariant that teardown removes only the materialized scratch instance dir, never an `--isolate=none` source root (§21.7).",
+        "The generic-fallback `tar` helper image is resolved from a pinned `{ image, digest }` (the §10.3.4 `ToolManifest` model at the provider-image layer) through `RuntimeProvider.pullArtifact`, digest-verified, cached, and offline-reused so the §1.4 offline contract holds once warm.",
         "A re-run whose pinned helper-image digest already matches is an idempotent no-op with no network access; a digest mismatch fails loudly before the helper runs.",
-        "The \u00a717.2 codegen (where applicable) emits/validates the helper-image manifest with a `git diff --exit-code` staleness gate; source-mode and compiled `$bunfs` dispatch resolve the same pinned image.",
+        "The §17.2 codegen (where applicable) emits/validates the helper-image manifest with a `git diff --exit-code` staleness gate; source-mode and compiled `$bunfs` dispatch resolve the same pinned image.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
       ],
       "priority": 141,
       "passes": true,
-      "notes": "Scratch --isolate=full now materializes through DataMover.transfer(hostPath\u2192hostPath); the inline reflink/node:fs copy moved into DataMover as an internal directory-tree host-FS adapter, gated by a narrow validateHostEndpoints exception that allows a scratchDir-contained target while keeping the \u00a721.7 teardown invariant (instanceRoot-only). The generic-fallback tar helper image is pinned in a generated {image,digest} manifest (codegen:provider-images + CI git diff staleness gate) and resolved through pullArtifact with digest verification before the helper runs; mismatch/missing digest fail loudly with the run counter at zero, and warm-cache reuse is a no-network no-op. Verified end-to-end with driver scripts (tree copy + pinned helper resolution)."
+      "notes": "Scratch --isolate=full now materializes through DataMover.transfer(hostPath→hostPath); the inline reflink/node:fs copy moved into DataMover as an internal directory-tree host-FS adapter, gated by a narrow validateHostEndpoints exception that allows a scratchDir-contained target while keeping the §21.7 teardown invariant (instanceRoot-only). The generic-fallback tar helper image is pinned in a generated {image,digest} manifest (codegen:provider-images + CI git diff staleness gate) and resolved through pullArtifact with digest verification before the helper runs; mismatch/missing digest fail loudly with the run counter at zero, and warm-cache reuse is a no-network no-op. Verified end-to-end with driver scripts (tree copy + pinned helper resolution)."
     },
     {
       "id": "US-341",
@@ -2539,7 +2539,7 @@
       "description": "As a Landofile author, I can declare a named, cross-app-shareable dependency-cache volume so repeated installs and rebuilds reuse a persistent package-manager cache.",
       "acceptanceCriteria": [
         "`DataStorePlan` (`sdk/src/schema/mounts.ts`) gains `kind: Schema.Literal(\"data\", \"cache\")` (default `data`) and an optional `key:`; the schema snapshot round-trips it and `bun run codegen:schema-snapshot` + `git diff --exit-code` is clean.",
-        "A `kind: cache` store auto-names `lando-cache-<key>` (`key:` defaulting to `kebab(destination)`) and is shared across apps by design, independent of `scope:` (\u00a76.5).",
+        "A `kind: cache` store auto-names `lando-cache-<key>` (`key:` defaulting to `kebab(destination)`) and is shared across apps by design, independent of `scope:` (§6.5).",
         "Provider-created cache volumes carry the `dev.lando.storage-kind: \"cache\"` label so they are identifiable.",
         "A `kind: cache` store is never removed by `lando destroy`; it is removed only by `lando destroy --purge-caches` (or the `meta:cache:*` surface), verified by a survival test across a plain destroy.",
         "The planner rejects `scope: service` combined with `kind: cache` as a planning error.",
@@ -2554,14 +2554,14 @@
     {
       "id": "US-342",
       "title": "Freeze the TunnelService SDK contract surface",
-      "description": "As a plugin author or embedding host, I can build a public-sharing provider against a stable, frozen `TunnelService` contract \u2014 service tag, schemas, tagged errors, lifecycle events, `tunnelServices:` manifest surface, and contract suite \u2014 so the 4.1 `lando share` feature plugs in without new SDK surface after feature freeze.",
+      "description": "As a plugin author or embedding host, I can build a public-sharing provider against a stable, frozen `TunnelService` contract — service tag, schemas, tagged errors, lifecycle events, `tunnelServices:` manifest surface, and contract suite — so the 4.1 `lando share` feature plugs in without new SDK surface after feature freeze.",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` publishes the `TunnelService` `Context.Service` tag (`@lando/core/TunnelService`) with `start`/`stop`/`status`/`list` per \u00a710.2.2, re-exported from `@lando/core/services`.",
+        "`@lando/sdk/services` publishes the `TunnelService` `Context.Service` tag (`@lando/core/TunnelService`) with `start`/`stop`/`status`/`list` per §10.2.2, re-exported from `@lando/core/services`.",
         "`@lando/sdk/schema` publishes `TunnelCapabilities`, `TunnelTarget` (tagged union over a resolved `RoutePlan` id/hostname, a service endpoint, and a core-created loopback URL), `TunnelStartRequest`/`TunnelStopRequest`/`TunnelStatusRequest`, `TunnelSession`, `TunnelStatus`, and `TunnelSessionFilter`; the schema snapshot round-trips them and `bun run codegen:schema-snapshot` + `git diff --exit-code` is clean.",
-        "`@lando/sdk/errors` publishes the seven \u00a710.2.2 tagged errors (`TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError`, `TunnelAuthRequiredError`, `TunnelStartError`, `TunnelReadyTimeoutError`, `TunnelDetachedStateError`, `TunnelStopError`), each carrying redacted detail + remediation, on the additive errors barrel (not a frozen sub-barrel).",
-        "The `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, `pre-/post-tunnel-stop`, `tunnel-status`; \u00a73.5) ships with redacted payload schemas registered in the event inventory used by the \u00a713.x gates.",
-        "The `tunnelServices:` manifest contribution surface (\u00a74.2/\u00a79.5) is added to the `PluginManifest` schema (`id`/`module`/`capabilities`), validated at plugin load, and the manifest-schema snapshot is updated.",
-        "The \u00a713.1 `TunnelService` contract suite ships from `@lando/sdk/test` (target resolution, `HttpClient` egress, tool-provisioning, scope finalization, detached `StateStore` reconciliation, redaction, probe-based readiness, no `DataMover` use), and `@lando/core/testing` ships an in-memory `TestTunnelService`.",
+        "`@lando/sdk/errors` publishes the seven §10.2.2 tagged errors (`TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError`, `TunnelAuthRequiredError`, `TunnelStartError`, `TunnelReadyTimeoutError`, `TunnelDetachedStateError`, `TunnelStopError`), each carrying redacted detail + remediation, on the additive errors barrel (not a frozen sub-barrel).",
+        "The `Tunnel` lifecycle event scope (`pre-/post-tunnel-start`, `tunnel-ready`, `pre-/post-tunnel-stop`, `tunnel-status`; §3.5) ships with redacted payload schemas registered in the event inventory used by the §13.x gates.",
+        "The `tunnelServices:` manifest contribution surface (§4.2/§9.5) is added to the `PluginManifest` schema (`id`/`module`/`capabilities`), validated at plugin load, and the manifest-schema snapshot is updated.",
+        "The §13.1 `TunnelService` contract suite ships from `@lando/sdk/test` (target resolution, `HttpClient` egress, tool-provisioning, scope finalization, detached `StateStore` reconciliation, redaction, probe-based readiness, no `DataMover` use), and `@lando/core/testing` ships an in-memory `TestTunnelService`.",
         "`sdk/API_COMPATIBILITY.md` records every new export as additive and the SDK export fixtures are updated in the same change.",
         "Contract-only: no bundled tunnel provider and no real `app:share` connector wiring ship here; a runtime with no installed `TunnelService` resolves none.",
         "Tests pass.",
@@ -2575,14 +2575,14 @@
     {
       "id": "US-343",
       "title": "Wire app:share* commands and App.share* handle methods as provider-aware skeletons",
-      "description": "As a CLI user or embedding host, `lando share` / `App.share()` resolve a `TunnelService` through the registry and either dispatch to it or fail with actionable `TunnelProviderUnavailableError` remediation when none is installed \u2014 freezing the command, handle, result, and detached-state surface before feature freeze while the bundled provider ships in 4.1.",
+      "description": "As a CLI user or embedding host, `lando share` / `App.share()` resolve a `TunnelService` through the registry and either dispatch to it or fail with actionable `TunnelProviderUnavailableError` remediation when none is installed — freezing the command, handle, result, and detached-state surface before feature freeze while the bundled provider ships in 4.1.",
       "acceptanceCriteria": [
-        "`app:share`, `app:share:list`, and `app:share:stop` register in the canonical `LandoCommandSpec` registry (\u00a78.2) at bootstrap `app` with the documented flags (`--target`, `--provider`, `--detach`, `--format json`), top-level alias `share` for `app:share`, and source/compiled dispatch parity (\u00a78.4.1, the \u00a713.1 parity layer).",
-        "`App.share`/`App.shareList`/`App.shareStop` are present on the published `App` handle (\u00a716.3) with the \u00a716 scope semantics (foreground `share` keeps `Scope.Scope`; `shareList`/`shareStop` are `R = never`).",
+        "`app:share`, `app:share:list`, and `app:share:stop` register in the canonical `LandoCommandSpec` registry (§8.2) at bootstrap `app` with the documented flags (`--target`, `--provider`, `--detach`, `--format json`), top-level alias `share` for `app:share`, and source/compiled dispatch parity (§8.4.1, the §13.1 parity layer).",
+        "`App.share`/`App.shareList`/`App.shareStop` are present on the published `App` handle (§16.3) with the §16 scope semantics (foreground `share` keeps `Scope.Scope`; `shareList`/`shareStop` are `R = never`).",
         "With no `TunnelService` installed, every path fails with `TunnelProviderUnavailableError` carrying install remediation that lists bundled/community options; with a `TestTunnelService` injected, the commands and handle round-trip a session.",
-        "`--format json` and the `App.share*` methods return the universal machine-output/session schemas (\u00a78.11) \u2014 never provider-specific text \u2014 and a foreground share emits `StreamFrame`s terminating in a result frame.",
-        "The `tunnel-registry` `StateStore` bucket (\u00a712.1) and the `<userDataRoot>/run/tunnels/` artifact layout (\u00a712.4) are created/read by `app:share:list`/`app:share:stop` and reconcile stale PID/socket entries without treating orphans as active exposure.",
-        "Results and diagnostics route through the `Renderer` seam (\u00a713.4) with no direct `console.*`/`process.std*` writes.",
+        "`--format json` and the `App.share*` methods return the universal machine-output/session schemas (§8.11) — never provider-specific text — and a foreground share emits `StreamFrame`s terminating in a result frame.",
+        "The `tunnel-registry` `StateStore` bucket (§12.1) and the `<userDataRoot>/run/tunnels/` artifact layout (§12.4) are created/read by `app:share:list`/`app:share:stop` and reconcile stale PID/socket entries without treating orphans as active exposure.",
+        "Results and diagnostics route through the `Renderer` seam (§13.4) with no direct `console.*`/`process.std*` writes.",
         "No bundled connector provider ships here; the Cloudflare/ngrok `TunnelService` plugin and end-to-end `lando share` wiring are 4.1.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2595,13 +2595,13 @@
     {
       "id": "US-344",
       "title": "Publish the RemoteSource + Dataset SDK contract surface",
-      "description": "As a plugin author or embedding host, I can build a remote-sync source or dataset against a stable, frozen contract \u2014 two service tags, the data-sync schemas, tagged errors, the `Sync` lifecycle events, and the `remoteSources:`/`datasets:` manifest surfaces \u2014 so the 4.1 `lando pull`/`push` feature plugs in without new SDK surface after feature freeze.",
+      "description": "As a plugin author or embedding host, I can build a remote-sync source or dataset against a stable, frozen contract — two service tags, the data-sync schemas, tagged errors, the `Sync` lifecycle events, and the `remoteSources:`/`datasets:` manifest surfaces — so the 4.1 `lando pull`/`push` feature plugs in without new SDK surface after feature freeze.",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` publishes the `RemoteSource` (`@lando/core/RemoteSource`) and `Dataset` (`@lando/core/Dataset`) `Context.Service` tags with the \u00a710.12 methods, re-exported from `@lando/core/services`, with matching `declare class` mirrors in `sdk/src/services/index.ts`.",
-        "A new `sdk/src/schema/remote-sync.ts` exports the \u00a710.12 schemas (`RemoteCapabilities`, `RemoteConfig`, `RemoteEnvironment`, `RemoteEnvId`, `RemoteLocator`, `RemoteFetchOptions`, `RemoteSendOptions`, `RemoteTestResult`, `DatasetKind`, `DatasetCapabilities`, `DatasetArtifactFormat`, `DatasetContext`, `DatasetCaptureOptions`, `DatasetApplyOptions`, `DatasetApplyResult`, `SyncResult`); the portable-artifact type reuses the PRD-16 `DataEndpoint`.",
+        "`@lando/sdk/services` publishes the `RemoteSource` (`@lando/core/RemoteSource`) and `Dataset` (`@lando/core/Dataset`) `Context.Service` tags with the §10.12 methods, re-exported from `@lando/core/services`, with matching `declare class` mirrors in `sdk/src/services/index.ts`.",
+        "A new `sdk/src/schema/remote-sync.ts` exports the §10.12 schemas (`RemoteCapabilities`, `RemoteConfig`, `RemoteEnvironment`, `RemoteEnvId`, `RemoteLocator`, `RemoteFetchOptions`, `RemoteSendOptions`, `RemoteTestResult`, `DatasetKind`, `DatasetCapabilities`, `DatasetArtifactFormat`, `DatasetContext`, `DatasetCaptureOptions`, `DatasetApplyOptions`, `DatasetApplyResult`, `SyncResult`); the portable-artifact type reuses the PRD-16 `DataEndpoint`.",
         "`@lando/sdk/errors` exports the tagged `RemoteError`, `RemoteUnreachableError`, `RemoteAuthError`, `RemoteEnvNotFoundError`, `RemoteDatasetUnsupportedError`, `RemoteProviderUnavailableError`, `RemoteProtectedEnvError`, `RemoteToolMissingError`, `DatasetError`, `DatasetCaptureError`, `DatasetApplyError`, `DatasetBindingError` (no `line`/`column` field names per the Bun TaggedError gotcha).",
-        "The `Sync` lifecycle event scope (\u00a73.5) ships with redacted payload schemas registered in the event inventory used by the \u00a713.x gates.",
-        "The `remoteSources:`/`datasets:` manifest contribution surfaces (\u00a74.2/\u00a79.5) are added to `PluginManifest`, validated at plugin load, and the manifest-schema snapshot is updated.",
+        "The `Sync` lifecycle event scope (§3.5) ships with redacted payload schemas registered in the event inventory used by the §13.x gates.",
+        "The `remoteSources:`/`datasets:` manifest contribution surfaces (§4.2/§9.5) are added to `PluginManifest`, validated at plugin load, and the manifest-schema snapshot is updated.",
         "New persisted schemas are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES`; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `exports.test.ts` are updated additively.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2609,16 +2609,16 @@
       ],
       "priority": 145,
       "passes": true,
-      "notes": "RemoteSource/Dataset contract freeze (spec \u00a710.12, \u00a73.5, \u00a74.2, \u00a79.5). Contract-only; the `lando pull`/`push` feature + bundled remotes + hoster plugins + database/files Dataset impls are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore/Paths), PRD-14 (probe/events/contract-kit), PRD-16 (DataMover)."
+      "notes": "RemoteSource/Dataset contract freeze (spec §10.12, §3.5, §4.2, §9.5). Contract-only; the `lando pull`/`push` feature + bundled remotes + hoster plugins + database/files Dataset impls are 4.1. Depends on US-330..US-332 (HttpClient/Downloader/tool-provisioning), PRD-13 (StateStore/Paths), PRD-14 (probe/events/contract-kit), PRD-16 (DataMover)."
     },
     {
       "id": "US-345",
       "title": "Add the remotes:/sync: Landofile keys and wire the pluggability/contribution surfaces",
       "description": "As a Landofile author, I can declare remotes and dataset bindings, and as a plugin author I can see `RemoteSource`/`Dataset` in the canonical pluggability and contribution registries.",
       "acceptanceCriteria": [
-        "`LandofileShape` (and `@lando/core/schema`) gains an optional `remotes:` map (`{ source, ...sourceConfig }`, source block validated by the source's `configSchema` at use time) and an optional `sync:` dataset-binding map, matching \u00a77.4.",
+        "`LandofileShape` (and `@lando/core/schema`) gains an optional `remotes:` map (`{ source, ...sourceConfig }`, source block validated by the source's `configSchema` at use time) and an optional `sync:` dataset-binding map, matching §7.4.",
         "`LandofileService.discover` ACCEPTS `remotes:`/`sync:` raw/unresolved (no beta-reject, no remote resolution) exactly like raw `includes:`; `discover`'s frozen error union is unchanged.",
-        "The \u00a74.2 catalog carries the `RemoteSource` + `Dataset` rows and \u00a79.5 carries the `remoteSources:`/`datasets:` contribution rules.",
+        "The §4.2 catalog carries the `RemoteSource` + `Dataset` rows and §9.5 carries the `remoteSources:`/`datasets:` contribution rules.",
         "Dataset binding inference is specified and the decoded shape + ambiguity error `DatasetBindingError` are frozen (single DB service auto-binds `database`; multiple DB services require explicit `sync.database.service`; framework presets bind `files`). Inference logic itself is 4.1.",
         "`bun run codegen:schema-snapshot` then `git diff --exit-code` is clean; `sdk/API_COMPATIBILITY.md` records the `LandofileShape` additions as additive.",
         "Tests pass.",
@@ -2627,17 +2627,17 @@
       ],
       "priority": 146,
       "passes": true,
-      "notes": "LandofileShape now accepts raw remotes:/sync: blocks: remotes.<name> uses RemoteConfig ({source, ...sourceConfig}) and sync.<dataset> uses the frozen DatasetBinding shape (service/path). LandofileService.discover preserves both blocks raw/unresolved like includes, without widening its error union; source-specific validation, binding inference, and pull/push resolution remain 4.1. The \u00a74.2/\u00a79.5 RemoteSource/Dataset surfaces were already present from US-344 and are covered by schema/manifest tests."
+      "notes": "LandofileShape now accepts raw remotes:/sync: blocks: remotes.<name> uses RemoteConfig ({source, ...sourceConfig}) and sync.<dataset> uses the frozen DatasetBinding shape (service/path). LandofileService.discover preserves both blocks raw/unresolved like includes, without widening its error union; source-specific validation, binding inference, and pull/push resolution remain 4.1. The §4.2/§9.5 RemoteSource/Dataset surfaces were already present from US-344 and are covered by schema/manifest tests."
     },
     {
       "id": "US-346",
-      "title": "Ship the \u00a713.1 RemoteSource + Dataset contract suites and the test doubles",
-      "description": "As a plugin author, I can prove a `RemoteSource` or `Dataset` implementation preserves the \u00a710.12 guarantees by running it through a published shared suite, and core's own built-in test doubles pass it.",
+      "title": "Ship the §13.1 RemoteSource + Dataset contract suites and the test doubles",
+      "description": "As a plugin author, I can prove a `RemoteSource` or `Dataset` implementation preserves the §10.12 guarantees by running it through a published shared suite, and core's own built-in test doubles pass it.",
       "acceptanceCriteria": [
-        "`@lando/sdk/test` exports `makeRemoteSourceContractSuite` and `makeDatasetContractSuite`, each asserting the \u00a710.12/\u00a713.1 guarantees (the rows added to the \u00a713.1 table).",
+        "`@lando/sdk/test` exports `makeRemoteSourceContractSuite` and `makeDatasetContractSuite`, each asserting the §10.12/§13.1 guarantees (the rows added to the §13.1 table).",
         "The RemoteSource suite asserts capability honesty; env/dataset resolution + tagged errors; all egress through the resolved `HttpClient` (recording double; no direct fetch/socket); vendor-CLI provisioning through the tool-provisioning helper/`Downloader`; `Scope`-bound `fetch`/`send` finalizing on interrupt; local landing delegated to a `Dataset` + `DataMover`; `push` gating (`capabilities.push:false`, protected-env `--force`); redaction in `Sync` events; probe-based readiness.",
-        "The Dataset suite asserts `capture`/`apply` move bytes only through `DataMover`; `capture`\u2192`apply` round-trip; `localStore` reporting for auto-snapshot; DB creds via env (never argv); `DatasetBindingError` on code-tree targets; idempotent/replay-safe; redacted capture/apply events.",
-        "`@lando/core/testing` exports in-memory `TestRemoteSource`, a reference `local` `RemoteSource`, and `TestDataset`, all passing their suites with no real network/provider; the \u00a713.1 layer-coverage rule fails on a published suite with no built-in invocation.",
+        "The Dataset suite asserts `capture`/`apply` move bytes only through `DataMover`; `capture`→`apply` round-trip; `localStore` reporting for auto-snapshot; DB creds via env (never argv); `DatasetBindingError` on code-tree targets; idempotent/replay-safe; redacted capture/apply events.",
+        "`@lando/core/testing` exports in-memory `TestRemoteSource`, a reference `local` `RemoteSource`, and `TestDataset`, all passing their suites with no real network/provider; the §13.1 layer-coverage rule fails on a published suite with no built-in invocation.",
         "`sdk/API_COMPATIBILITY.md`, SDK export fixtures, and `exports.test.ts` are updated; the import-boundary test confirms `@lando/sdk/test` stays OCLIF-free.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2645,35 +2645,35 @@
       ],
       "priority": 147,
       "passes": true,
-      "notes": "RemoteSource + Dataset contract suites + TestRemoteSource/local/TestDataset (spec \u00a713.1, \u00a710.12). Extends the PRD-14 contract-kit pattern. Depends on US-344, US-345, PRD-14 (contract kit), PRD-16 (TestDataMover)."
+      "notes": "RemoteSource + Dataset contract suites + TestRemoteSource/local/TestDataset (spec §13.1, §10.12). Extends the PRD-14 contract-kit pattern. Depends on US-344, US-345, PRD-14 (contract kit), PRD-16 (TestDataMover)."
     },
     {
       "id": "US-347",
       "title": "Freeze app:pull/app:push/app:remote:* commands and App.pull/push/remote handle methods as provider-aware skeletons",
-      "description": "As a CLI user or embedding host, `lando pull` / `App.pull()` resolve a `RemoteSource` through the registry and either dispatch to it or fail with actionable remediation when none is installed \u2014 freezing the command, handle, result, and Landofile surface before feature freeze while the bundled remotes ship in 4.1.",
+      "description": "As a CLI user or embedding host, `lando pull` / `App.pull()` resolve a `RemoteSource` through the registry and either dispatch to it or fail with actionable remediation when none is installed — freezing the command, handle, result, and Landofile surface before feature freeze while the bundled remotes ship in 4.1.",
       "acceptanceCriteria": [
-        "`app:pull`/`app:push` (top-level `pull`/`push`) and `app:remote:list`/`:add`/`:remove`/`:test`/`:setup`/`app:remote:env:list` register in `LandoCommandSpec` at bootstrap `app`, each with a `resultSchema` (\u00a78.11) and the \u00a710.12 flags (`--remote`, `@env`, `--only`, `--no-snapshot`, `--force`, `-y`, `--no-interactive`, `--format`).",
-        "The `App` handle exposes `pull`/`push` (\u2192 `SyncResult`) and a `remote` namespace, re-exported through `@lando/core/cli` as `appPull`/`appPush`/`appRemote.*`; the SDK `App` contract addition is recorded additive.",
-        "With no installed `RemoteSource`, `pull`/`push`/`remote test` fail with `RemoteProviderUnavailableError` + remediation; `remote add` writes the `remotes:` block via the canonical serializer (\u00a77.8.1) and `remote list` reads it \u2014 both work without a provider.",
+        "`app:pull`/`app:push` (top-level `pull`/`push`) and `app:remote:list`/`:add`/`:remove`/`:test`/`:setup`/`app:remote:env:list` register in `LandoCommandSpec` at bootstrap `app`, each with a `resultSchema` (§8.11) and the §10.12 flags (`--remote`, `@env`, `--only`, `--no-snapshot`, `--force`, `-y`, `--no-interactive`, `--format`).",
+        "The `App` handle exposes `pull`/`push` (→ `SyncResult`) and a `remote` namespace, re-exported through `@lando/core/cli` as `appPull`/`appPush`/`appRemote.*`; the SDK `App` contract addition is recorded additive.",
+        "With no installed `RemoteSource`, `pull`/`push`/`remote test` fail with `RemoteProviderUnavailableError` + remediation; `remote add` writes the `remotes:` block via the canonical serializer (§7.8.1) and `remote list` reads it — both work without a provider.",
         "The destructive-op safety contract is wired at the orchestration layer (auto-snapshot before `apply` unless `--no-snapshot`; `InteractionService` confirm unless `-y`/`--no-interactive`; `push` blocked by `capabilities.push:false` + protected-env `--force`) and exercised against `TestRemoteSource`/`TestDataset`; no real connector wiring or bundled remote ships here.",
-        "Source-mode (OCLIF) and compiled `$bunfs` dispatch parse/dispatch `pull`/`push`/`remote:*` identically (canonical id in `MVP_COMMAND_IDS` + `runCompiledCli` branch + \u00a713.1 parity probes); `--format json` emits the universal envelope on both paths.",
+        "Source-mode (OCLIF) and compiled `$bunfs` dispatch parse/dispatch `pull`/`push`/`remote:*` identically (canonical id in `MVP_COMMAND_IDS` + `runCompiledCli` branch + §13.1 parity probes); `--format json` emits the universal envelope on both paths.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
       ],
       "priority": 148,
       "passes": true,
-      "notes": "RemoteSource CLI/handle skeleton + safety + dual-dispatch parity (spec \u00a78.2, \u00a78.11, \u00a710.12, \u00a716.3). Contract-only skeleton; connector wiring is 4.1. Depends on US-344..US-346, PRD-11 (App handles), PRD-15 (universal JSON), PRD-16 (DataMover snapshot)."
+      "notes": "RemoteSource CLI/handle skeleton + safety + dual-dispatch parity (spec §8.2, §8.11, §10.12, §16.3). Contract-only skeleton; connector wiring is 4.1. Depends on US-344..US-346, PRD-11 (App handles), PRD-15 (universal JSON), PRD-16 (DataMover snapshot)."
     },
     {
       "id": "US-348",
       "title": "Settle the RemoteSource naming and lock cross-surface consistency",
       "description": "As a maintainer, I can rely on one name (`RemoteSource`, with 'hosting' as category language only) across every spec and PRD reference, and a gate that keeps the `RemoteSource`/`Dataset` surfaces consistent across the canonical registries.",
       "acceptanceCriteria": [
-        "Every legacy hosting contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` \u00a710.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet); a grep proves no old contract identifier remains; 'hosting' is retained only as the descriptive feature category.",
-        "The `DataMover` hosting-pull matrix row (\u00a710.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.",
-        "A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the \u00a74.2 catalog, \u00a79.5 contributions, \u00a713.1 suites, \u00a73.5 `Sync` events, \u00a77.4 Landofile keys, \u00a716.3 `App` methods, and the `@lando/sdk/services` tags.",
-        "The repo `AGENTS.md` records the contract freeze, the `Dataset \u00d7 RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the code-is-never-synced scope, and that the feature wave is 4.1.",
+        "Every legacy hosting contract token in the spec/PRD tree is renamed to `RemoteSource` (the `DataMover` §10.11 + PRD-16 non-goals, the ROADMAP Phase 8 bullet); a grep proves no old contract identifier remains; 'hosting' is retained only as the descriptive feature category.",
+        "The `DataMover` hosting-pull matrix row (§10.11) carries the annotation that the local landing endpoint is chosen by the resolved `Dataset`, not the `RemoteSource`.",
+        "A consistency check (test or lint) asserts the `RemoteSource`/`Dataset` surface is present and aligned across the §4.2 catalog, §9.5 contributions, §13.1 suites, §3.5 `Sync` events, §7.4 Landofile keys, §16.3 `App` methods, and the `@lando/sdk/services` tags.",
+        "The repo `AGENTS.md` records the contract freeze, the `Dataset × RemoteSource` (N+M) split, the egress(`HttpClient`)/landing(`DataMover`) composition, the code-is-never-synced scope, and that the feature wave is 4.1.",
         "The ROADMAP Phase 4 freeze bullet and Phase 8 feature bullet are present and consistent with the `TunnelService` precedent.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2681,17 +2681,17 @@
       ],
       "priority": 149,
       "passes": true,
-      "notes": "Naming settle (RemoteSource, with hosting as category language only) + cross-surface consistency governance (spec \u00a710.11/\u00a710.12, \u00a74.2, \u00a79.5, \u00a713.1, \u00a73.5, \u00a77.4, \u00a716.3, ROADMAP). Depends on US-344..US-347."
+      "notes": "Naming settle (RemoteSource, with hosting as category language only) + cross-surface consistency governance (spec §10.11/§10.12, §4.2, §9.5, §13.1, §3.5, §7.4, §16.3, ROADMAP). Depends on US-344..US-347."
     },
     {
       "id": "US-349",
       "title": "Publish the SDK managed-file schemas, `ManagedFileService` tag, and `ManagedFileError`",
       "description": "As a plugin author or embedding host, I can consume a stable `ManagedFileService` contract, the typed `ManagedFile` model, and the managed-file error tag instead of inventing my own ownership-aware file-write surface.",
       "acceptanceCriteria": [
-        "A new `sdk/src/schema/managed-file.ts` exports `ManagedFile` (`id`, `owner`, `path`, `mode: \"file\" | \"block\" | \"keys\"`, `format`, `content`, `marker?`, `perms?`, `onConflict?`, `base?`), `FileFormat` (`\"text\" | \"env\" | \"json\" | \"yaml\" | \"toml\" | \"ini\" | \"landofile\"`), `ContentSource` (the four-member tagged union `text` | `structured` | `template` | `inline`), `ManagedFileAction` (`\"create\" | \"update\" | \"skip-unchanged\" | \"skip-adopted\" | \"conflict\" | \"adopt-detected\"`), `ManagedFilePlan`, `ManagedFileInfo` (`path`, `owner`, `mode`, `state: \"managed\" | \"adopted\" | \"conflict\" | \"missing\" | \"drifted\"`), and `ManagedFileResult`, matching the \u00a710.13.1/\u00a710.13.2 shapes verbatim.",
+        "A new `sdk/src/schema/managed-file.ts` exports `ManagedFile` (`id`, `owner`, `path`, `mode: \"file\" | \"block\" | \"keys\"`, `format`, `content`, `marker?`, `perms?`, `onConflict?`, `base?`), `FileFormat` (`\"text\" | \"env\" | \"json\" | \"yaml\" | \"toml\" | \"ini\" | \"landofile\"`), `ContentSource` (the four-member tagged union `text` | `structured` | `template` | `inline`), `ManagedFileAction` (`\"create\" | \"update\" | \"skip-unchanged\" | \"skip-adopted\" | \"conflict\" | \"adopt-detected\"`), `ManagedFilePlan`, `ManagedFileInfo` (`path`, `owner`, `mode`, `state: \"managed\" | \"adopted\" | \"conflict\" | \"missing\" | \"drifted\"`), and `ManagedFileResult`, matching the §10.13.1/§10.13.2 shapes verbatim.",
         "`@lando/sdk/services` exports the `ManagedFileService` `Context.Service` tag (`@lando/core/ManagedFileService`) with `plan`, `apply`, `remove`, `status`, `adopt`, `release`, and `sdk/src/services/index.ts` carries the matching `declare class ManagedFileService` mirror.",
         "`@lando/sdk/errors` exports the tagged `ManagedFileError` with a `reason: \"io\" | \"decode\" | \"conflict\" | \"path\" | \"format\"` discriminator plus `operation`, `path`, `cause`, and `remediation` fields (no `line`/`column` field names per the Bun `TaggedError` gotcha).",
-        "The persisted schemas that cross the published surface (`ManagedFile`, `ManagedFileInfo`, `ManagedFilePlan`, `ManagedFileResult`) are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES` and the \u00a713.2 schema-snapshot gate round-trips them; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "The persisted schemas that cross the published surface (`ManagedFile`, `ManagedFileInfo`, `ManagedFilePlan`, `ManagedFileResult`) are added to `JSON_SCHEMA_REGISTRY` + `SDK_SCHEMA_NAMES` and the §13.2 schema-snapshot gate round-trips them; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
         "`sdk/API_COMPATIBILITY.md` records the `ManagedFileService` tag, the managed-file schemas, and `ManagedFileError` as additive, and the SDK export fixtures + `exports.test.ts` are updated in the same change.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2704,13 +2704,13 @@
     {
       "id": "US-350",
       "title": "Implement the shared file-format codec module and route the mount materializer through it",
-      "description": "As a maintainer, I can encode/decode structured project files (text/env/json/yaml/landofile) through one pure module that both `ManagedFileService` and the \u00a76.4 mount materializer consume, so structured encode and the Landofile round-trip exist exactly once.",
+      "description": "As a maintainer, I can encode/decode structured project files (text/env/json/yaml/landofile) through one pure module that both `ManagedFileService` and the §6.4 mount materializer consume, so structured encode and the Landofile round-trip exist exactly once.",
       "acceptanceCriteria": [
         "`core/src/managed-file/codecs.ts` exports `encode(format, value, opts)`, `decode(format, text)`, and a `mergeManaged(format, existing, ownedSubtree, marker)` stub for `file`, `env`, `json`, `yaml`, and `landofile`; `toml`/`ini` are declared but may throw `ManagedFileError reason:\"format\"` until 4.x, and `keys`-mode `mergeManaged` for structured formats is stubbed to fail with a clear \"deferred to 4.x\" remediation.",
-        "The `landofile` and `yaml` codecs delegate emit/parse to the `@lando/sdk/landofile` serializer (BETA1-04 \u00a77.8.1); `emitLandofileYaml` is no longer called directly from the codec module (one Landofile round-trip implementation).",
+        "The `landofile` and `yaml` codecs delegate emit/parse to the `@lando/sdk/landofile` serializer (ALPHA4-04 §7.8.1); `emitLandofileYaml` is no longer called directly from the codec module (one Landofile round-trip implementation).",
         "The codec module is pure and dependency-light (no `effect` runtime service, no `@oclif/core`); an import-boundary assertion proves it constructs no `LandoRuntime`.",
-        "The \u00a76.4 mount materializer (`type: template`/`inline`) obtains its rendered/encoded bytes through the codec module + `TemplateRenderer` rather than a private encode path; existing mount-materializer tests stay green (behavior-preserving).",
-        "Atomic writes performed by the codec consumers go through the BETA1-16 shared streaming-hash/atomic-write helper (temp \u2192 fsync \u2192 rename, temp removed on interrupt/failure); no direct `writeFileAtomicViaRename` call is added.",
+        "The §6.4 mount materializer (`type: template`/`inline`) obtains its rendered/encoded bytes through the codec module + `TemplateRenderer` rather than a private encode path; existing mount-materializer tests stay green (behavior-preserving).",
+        "Atomic writes performed by the codec consumers go through the ALPHA4-16 shared streaming-hash/atomic-write helper (temp → fsync → rename, temp removed on interrupt/failure); no direct `writeFileAtomicViaRename` call is added.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2724,13 +2724,13 @@
       "title": "Implement `ManagedFileServiceLive` (`file`/`block` modes, marker, ledger, decision algorithm) at level `minimal`",
       "description": "As the runtime, I can render+write a managed project file idempotently, respecting the user's ownership marker and never clobbering an in-place edit, through one service available from bootstrap `minimal`.",
       "acceptanceCriteria": [
-        "`core/src/managed-file/service.ts` implements `ManagedFileServiceLive`, emitted eagerly-but-`Layer.suspend`-wrapped into the generated `minimal` bootstrap layer by editing `scripts/build-bootstrap-layers.ts` and regenerating `core/src/runtime/generated/layers/minimal.ts` (never editing the generated file directly); `git diff --exit-code` is clean after regeneration. It is host/test- overridable but NOT a \u00a74.2 plugin contribution surface.",
+        "`core/src/managed-file/service.ts` implements `ManagedFileServiceLive`, emitted eagerly-but-`Layer.suspend`-wrapped into the generated `minimal` bootstrap layer by editing `scripts/build-bootstrap-layers.ts` and regenerating `core/src/runtime/generated/layers/minimal.ts` (never editing the generated file directly); `git diff --exit-code` is clean after regeneration. It is host/test- overridable but NOT a §4.2 plugin contribution surface.",
         "`plan(files)` computes a side-effect-free `ManagedFilePlan` (per-file `create` | `update` | `skip-unchanged` | `skip-adopted` | `conflict` | `adopt-detected`); `apply` honors the plan and returns what it actually did; `plan` and `apply` agree for the same inputs.",
-        "`mode: \"file\"` writes the whole file with a first-line ownership marker (per-format comment syntax; JSON falls back to the ledger + optional `x-lando-generated` key); `mode: \"block\"` replaces only the content between `# >>> lando:<id> >>>` \u2026 `# <<< lando:<id> <<<` fences in a user-owned file and is idempotent across re-apply.",
-        "The decision algorithm matches \u00a710.13.3: not-exists \u2192 create; exists w/o marker & not in ledger \u2192 `skip-adopted` (record adopted); marker present & ledger checksum matches current bytes \u2192 `skip-unchanged` (or `update` when the rendered `sourceHash` changed); marker present & ledger checksum \u2260 current bytes \u2192 `conflict` (default `onConflict: \"skip\"` warns + skips, `overwrite`/`--force` backs up then updates, `fail` errors); ledger state `adopted` \u2192 `skip-adopted`.",
-        "The ledger is a `StateStore` bucket (`root: \"userData\"`, `namespace: managed-files/<app-id>`, `key: ledger.json`, `codec: \"json\"`, `lock: \"advisory\"`, `onCorrupt: \"quarantine\"`, `version: 1`) resolved through `PathsService` (US-353); the ledger inherits the \u00a712.7 atomic write + version header + corruption quarantine + lock and is rebuildable by scanning markers (the marked files are the committed source of truth).",
+        "`mode: \"file\"` writes the whole file with a first-line ownership marker (per-format comment syntax; JSON falls back to the ledger + optional `x-lando-generated` key); `mode: \"block\"` replaces only the content between `# >>> lando:<id> >>>` … `# <<< lando:<id> <<<` fences in a user-owned file and is idempotent across re-apply.",
+        "The decision algorithm matches §10.13.3: not-exists → create; exists w/o marker & not in ledger → `skip-adopted` (record adopted); marker present & ledger checksum matches current bytes → `skip-unchanged` (or `update` when the rendered `sourceHash` changed); marker present & ledger checksum ≠ current bytes → `conflict` (default `onConflict: \"skip\"` warns + skips, `overwrite`/`--force` backs up then updates, `fail` errors); ledger state `adopted` → `skip-adopted`.",
+        "The ledger is a `StateStore` bucket (`root: \"userData\"`, `namespace: managed-files/<app-id>`, `key: ledger.json`, `codec: \"json\"`, `lock: \"advisory\"`, `onCorrupt: \"quarantine\"`, `version: 1`) resolved through `PathsService` (US-353); the ledger inherits the §12.7 atomic write + version header + corruption quarantine + lock and is rebuildable by scanning markers (the marked files are the committed source of truth).",
         "`remove(selector)` deletes only files/blocks the ledger records as Lando-owned (for the 4.x `destroy --purge`/`uninstall` consumers); `adopt(path)`/`release(path)` flip the ledger ownership state and (for `adopt`) strip the marker.",
-        "A managed-file `path` whose realpath escapes its resolved `base` (app root by default) is rejected with `ManagedFileError reason:\"path\"` via the BETA1-16 realpath- containment helper; symlink escape is rejected.",
+        "A managed-file `path` whose realpath escapes its resolved `base` (app root by default) is rejected with `ManagedFileError reason:\"path\"` via the ALPHA4-16 realpath- containment helper; symlink escape is rejected.",
         "All writes are `Scope`-bound; `Effect.interrupt` leaves no torn file (atomic rename) and no orphan temp; `@lando/core/testing` ships an in-memory `TestManagedFileStore` so unit tests need no real disk.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2745,9 +2745,9 @@
       "title": "Emit redacted `ManagedFile` lifecycle events and join the `RedactionService` consumer list",
       "description": "As an embedding host, `lando doctor`, or a guide assertion, I can observe managed-file activity through redacted lifecycle events that never leak the secret-laden file content.",
       "acceptanceCriteria": [
-        "`ManagedFileService` publishes the `ManagedFile` lifecycle scope (\u00a73.5) \u2014 `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped` \u2014 with payloads carrying `path`, `owner`, `action`, and a redacted summary, and **never** file content.",
-        "Every payload is routed through the canonical `RedactionService` (\u00a73.7) before it is published or buffered; `ManagedFileService` is added to the `RedactionService` consumer list (\u00a73.7/\u00a74.2) and the \u00a713.4 redaction lint gate covers it.",
-        "Events feed the BETA1-14 bounded redacted `EventService` history so a host/doctor can `query`/`waitFor` them; a test proves a known secret value (e.g. a DB password written into a `settings.php` block) never appears in any emitted event, the history buffer, or a transcript.",
+        "`ManagedFileService` publishes the `ManagedFile` lifecycle scope (§3.5) — `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped` — with payloads carrying `path`, `owner`, `action`, and a redacted summary, and **never** file content.",
+        "Every payload is routed through the canonical `RedactionService` (§3.7) before it is published or buffered; `ManagedFileService` is added to the `RedactionService` consumer list (§3.7/§4.2) and the §13.4 redaction lint gate covers it.",
+        "Events feed the ALPHA4-14 bounded redacted `EventService` history so a host/doctor can `query`/`waitFor` them; a test proves a known secret value (e.g. a DB password written into a `settings.php` block) never appears in any emitted event, the history buffer, or a transcript.",
         "The ledger `backup` (when `onConflict: \"overwrite\"` backs up prior content) is stored `0600`, redaction-aware, and excluded from transcripts.",
         "Tests pass.",
         "Typecheck passes.",
@@ -2755,16 +2755,16 @@
       ],
       "priority": 4,
       "passes": true,
-      "notes": "ManagedFileService.apply now publishes the four content-free redacted ManagedFile lifecycle event schemas (published as snapshot-gated @lando/sdk/events surface) through a ManagedFileEvents seam baked into the Live layer closure (frozen tag unwidened); EventService resolved via Effect.serviceOption with the bootstrap generator Layer.provide(EventServiceLive). Payloads carry path/owner/action + a byte-count-only summary, never file content; every string field routed through the canonical @lando/sdk/secrets redactor before publish. Conflict-detected fires on fail + overwrite-with-backup; skipped on skip/adopt-detected; overwrite backups written 0600 (chmod-before-rename). A secret in a settings.php block is proven absent from every emitted event (test double + real EventServiceLive integration + waitFor-capable bus). Canonical-surface deferrals per the established stand-in convention (US-351 used resolveUserDataRoot vs PathsService): the canonical RedactionService Context.Tag + the \u00a713.4 redaction lint gate/consumer-list are BETA1-06 (US-300/301, unshipped) and the bounded redacted history + EventService.query are BETA1-14 (US-318, unshipped); the \u00a73.7 spec consumer list already names ManagedFileService and waitFor is satisfied today."
+      "notes": "ManagedFileService.apply now publishes the four content-free redacted ManagedFile lifecycle event schemas (published as snapshot-gated @lando/sdk/events surface) through a ManagedFileEvents seam baked into the Live layer closure (frozen tag unwidened); EventService resolved via Effect.serviceOption with the bootstrap generator Layer.provide(EventServiceLive). Payloads carry path/owner/action + a byte-count-only summary, never file content; every string field routed through the canonical @lando/sdk/secrets redactor before publish. Conflict-detected fires on fail + overwrite-with-backup; skipped on skip/adopt-detected; overwrite backups written 0600 (chmod-before-rename). A secret in a settings.php block is proven absent from every emitted event (test double + real EventServiceLive integration + waitFor-capable bus). Canonical-surface deferrals per the established stand-in convention (US-351 used resolveUserDataRoot vs PathsService): the canonical RedactionService Context.Tag + the §13.4 redaction lint gate/consumer-list are ALPHA4-06 (US-300/301, unshipped) and the bounded redacted history + EventService.query are ALPHA4-14 (US-318, unshipped); the §3.7 spec consumer list already names ManagedFileService and waitFor is satisfied today."
     },
     {
       "id": "US-353",
       "title": "Resolve the ledger root through `PathsService`, migrate recipe `files:`, and add the boundary gate",
       "description": "As a maintainer, managed-file paths resolve through the one Paths primitive, recipe scaffolding goes through the one managed-file writer, and a gate stops a parallel host-project-file writer from re-growing.",
       "acceptanceCriteria": [
-        "`PathsService` / `@lando/core/paths` gain a `managedFileLedger(appId)` derived path (default `<userDataRoot>/managed-files/<app-id>/ledger.json`), with the \u00a77.5.1 derived- path tests extended; nothing re-derives `<userDataRoot>/managed-files/` by hand.",
-        "The recipe `files:` scaffold writer (\u00a78.8.3) is re-platformed onto `ManagedFileService.apply` (whole-file mode, `owner` = recipe id), so scaffolded files carry the ownership marker and become updatable + adoptable instead of one-shot; the existing recipe/init scenario tests stay green (behavior-preserving for first-init).",
-        "A `check:managed-file-boundary` gate (test or lint, \u00a713.4-style) fails on any host- project-file write with overwrite/marker logic outside `core/src/managed-file/**` and its named consumers; the recipe writer and the mount materializer delegate, and the gate is wired into CI static checks.",
+        "`PathsService` / `@lando/core/paths` gain a `managedFileLedger(appId)` derived path (default `<userDataRoot>/managed-files/<app-id>/ledger.json`), with the §7.5.1 derived- path tests extended; nothing re-derives `<userDataRoot>/managed-files/` by hand.",
+        "The recipe `files:` scaffold writer (§8.8.3) is re-platformed onto `ManagedFileService.apply` (whole-file mode, `owner` = recipe id), so scaffolded files carry the ownership marker and become updatable + adoptable instead of one-shot; the existing recipe/init scenario tests stay green (behavior-preserving for first-init).",
+        "A `check:managed-file-boundary` gate (test or lint, §13.4-style) fails on any host- project-file write with overwrite/marker logic outside `core/src/managed-file/**` and its named consumers; the recipe writer and the mount materializer delegate, and the gate is wired into CI static checks.",
         "Source-mode and compiled `$bunfs` dispatch resolve the same ledger path and recipe writer (dual-dispatch parity preserved).",
         "Tests pass.",
         "Typecheck passes.",
@@ -2777,14 +2777,14 @@
     {
       "id": "US-354",
       "title": "Expose `ManagedFileService` to plugins/hosts, ship `TestManagedFileStore`, and enforce the contract suite",
-      "description": "As a plugin author or embedding host, I can write ownership-aware project files through a pre-namespaced managed-file surface and prove any implementation preserves the \u00a710.13 guarantees.",
+      "description": "As a plugin author or embedding host, I can write ownership-aware project files through a pre-namespaced managed-file surface and prove any implementation preserves the §10.13 guarantees.",
       "acceptanceCriteria": [
         "`LandoPluginContext` gains a `managedFiles` accessor pre-namespaced to the plugin's `owner` id (a plugin's managed files are recorded with `owner: <plugin-id>` and cannot be removed/adopted on behalf of another owner); a plugin-context test proves the ownership scoping.",
         "`makeLandoRuntime` exposes `ManagedFileService` on the runtime so embedding hosts can `plan`/`apply`/`status` under an isolated `base`; a library-API test applies a managed file under an isolated app root and re-reads its `status`.",
         "`@lando/core/testing` exports the in-memory `TestManagedFileStore` (no disk; inspectable) that satisfies the contract suite.",
-        "`@lando/sdk/test` exports a `ManagedFileService` contract suite (StateStore-style, since this is an integrity invariant not a \u00a74.2 abstraction) that runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and any host/test override, asserting: create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace with no torn write under `Effect.interrupt`; path-escape rejection; marker round-trip per format; `block` idempotency; and that a known secret never appears in an emitted event.",
-        "The \u00a713.1 test-layer table gains the managed-file contract-suite row, and the `@lando/sdk/test` exports gate lists the new suite export.",
-        "The repo `AGENTS.md` managed-file note and the \u00a710.13 / \u00a73.4 / \u00a73.5 / \u00a74.2 / \u00a79.8 spec surfaces are present and consistent.",
+        "`@lando/sdk/test` exports a `ManagedFileService` contract suite (StateStore-style, since this is an integrity invariant not a §4.2 abstraction) that runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and any host/test override, asserting: create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace with no torn write under `Effect.interrupt`; path-escape rejection; marker round-trip per format; `block` idempotency; and that a known secret never appears in an emitted event.",
+        "The §13.1 test-layer table gains the managed-file contract-suite row, and the `@lando/sdk/test` exports gate lists the new suite export.",
+        "The repo `AGENTS.md` managed-file note and the §10.13 / §3.4 / §3.5 / §4.2 / §9.8 spec surfaces are present and consistent.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -2798,12 +2798,12 @@
       "title": "Replace `ServiceTypeShape` with the normative `ServiceType` + `ServiceTypeResolution` contract",
       "description": "As a service-type author, I declare a `base` and return a resolved `{ normalizedConfig, features }` instead of hand-building a `ServicePlan`.",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` replaces `ServiceTypeShape` with the \u00a76.11 `ServiceType` shape (`id`/`name`, `base: \"l337\" | \"lando\"`, optional `versions`/`extends`/`artifacts`, `schema`, `resolve: (input) => Effect<ServiceTypeResolution, ServiceTypeError>`) and publishes `ServiceTypeResolution`, `FeatureRef`, and `ServiceTypeInput`.",
-        "The old `toServicePlan` member and `ServiceTypePlanInput` are removed from the SDK surface (private repo \u2014 no adapter, no deprecation shim).",
+        "`@lando/sdk/services` replaces `ServiceTypeShape` with the §6.11 `ServiceType` shape (`id`/`name`, `base: \"l337\" | \"lando\"`, optional `versions`/`extends`/`artifacts`, `schema`, `resolve: (input) => Effect<ServiceTypeResolution, ServiceTypeError>`) and publishes `ServiceTypeResolution`, `FeatureRef`, and `ServiceTypeInput`.",
+        "The old `toServicePlan` member and `ServiceTypePlanInput` are removed from the SDK surface (private repo — no adapter, no deprecation shim).",
         "`PluginRegistry.loadServiceType` returns the new `ServiceType`; its error union is unchanged.",
         "`sdk/test/contract/service.test.ts` and `TestServiceType` are rewritten against the new contract; legacy `toServicePlan` assertions are deleted.",
         "`@lando/sdk/test` introduces `runServiceCompositionContract` (the base-declared + `resolve()`-not-hand-building-a-plan + base-specific env assertions enforceable at this stage); `TestServiceType` passes it. US-362 completes its full assertion set and the catalog-wide coverage mandate.",
-        "`sdk/API_COMPATIBILITY.md`, SDK export/compat fixtures, and the \u00a713.2 schema snapshot are updated in the same change; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
+        "`sdk/API_COMPATIBILITY.md`, SDK export/compat fixtures, and the §13.2 schema snapshot are updated in the same change; `bun run codegen:schema-snapshot` then `git diff --exit-code` is clean on generated/snapshot paths.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 1,
@@ -2815,7 +2815,7 @@
       "title": "Publish the `ServiceFeature` contract and the in-core priority-ordered composition engine",
       "description": "As the planner, I compose a service by seeding a base draft and applying service features in priority order, each mutating only the draft.",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` publishes `ServiceFeatureDefinition` (`id`, `schema?`, `priority`, `requires?`, `apply`) and the mutable `ServiceFeatureContext` draft surface (`addEnv`/`addMount`/`addBuildStep`/`addStorage`/`addEndpoint`/`addHealthcheck`/`setEntrypoint`/`setUser`/`setWorkingDirectory`/\u2026) backed by a draft, not a finished `ServicePlan`.",
+        "`@lando/sdk/services` publishes `ServiceFeatureDefinition` (`id`, `schema?`, `priority`, `requires?`, `apply`) and the mutable `ServiceFeatureContext` draft surface (`addEnv`/`addMount`/`addBuildStep`/`addStorage`/`addEndpoint`/`addHealthcheck`/`setEntrypoint`/`setUser`/`setWorkingDirectory`/…) backed by a draft, not a finished `ServicePlan`.",
         "A core composition engine (replacing the `core/src/services/feature.ts` stub) seeds a draft from a base, merges the base default feature list with the resolution's `features`, runs each `apply` in ascending `priority`, and emits a provider-neutral `ServicePlan` draft.",
         "Features are proven idempotent and replay-safe: composing twice yields a byte-identical draft.",
         "The plugin manifest `serviceFeatures:` slot is consumed by the loader (a `loadServiceFeature(id)` registry path), replacing the dead-slot state.",
@@ -2831,10 +2831,10 @@
       "title": "Publish the `AppFeature` contract, `appFeatures:` manifest slot, and selector/cycle engine",
       "description": "As a plugin, I mutate selected sibling services across the app plan when a triggering service is present (e.g. inject SMTP env into PHP services).",
       "acceptanceCriteria": [
-        "`@lando/sdk/services` publishes `AppFeatureDefinition`, `AppFeatureActivation`, `AppFeatureSelectors`, `AppFeatureContext`, `AppFeatureError` (the `SelectorMatchedNothing`/`MutationConflict`/`CycleDetected` union), and `AppFeatureCycleError` per \u00a76.11.4.",
-        "`PluginContribution` gains an `appFeatures:` slot (additive to the manifest schema) consumed by the loader; the \u00a713.2 snapshot + `sdk/API_COMPATIBILITY.md` are updated in lockstep.",
-        "The app-feature pass runs as a single distinct phase after the entire service-feature phase has completed for every service (\u00a76.11.0 stage 4), evaluates `activatedBy` (no match \u2192 no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved service drafts (stages 1\u20133, never the not-yet-emitted finalized `AppPlan`), and applies mutators idempotently to each selected service.",
-        "A cyclic A\u2194B mutation is rejected with `AppFeatureCycleError`; `requires.globalServices` aggregates into the user app's `pre-start` ensure-running pass (\u00a720.6.3) and a missing global service fails with `GlobalServiceMissingError` + remediation.",
+        "`@lando/sdk/services` publishes `AppFeatureDefinition`, `AppFeatureActivation`, `AppFeatureSelectors`, `AppFeatureContext`, `AppFeatureError` (the `SelectorMatchedNothing`/`MutationConflict`/`CycleDetected` union), and `AppFeatureCycleError` per §6.11.4.",
+        "`PluginContribution` gains an `appFeatures:` slot (additive to the manifest schema) consumed by the loader; the §13.2 snapshot + `sdk/API_COMPATIBILITY.md` are updated in lockstep.",
+        "The app-feature pass runs as a single distinct phase after the entire service-feature phase has completed for every service (§6.11.0 stage 4), evaluates `activatedBy` (no match → no `apply`, no plan-cache entry), resolves selectors (`types`/`framework`/`hasFeature`/`names`/`fromConfig`) against the resolved service drafts (stages 1–3, never the not-yet-emitted finalized `AppPlan`), and applies mutators idempotently to each selected service.",
+        "A cyclic A↔B mutation is rejected with `AppFeatureCycleError`; `requires.globalServices` aggregates into the user app's `pre-start` ensure-running pass (§20.6.3) and a missing global service fails with `GlobalServiceMissingError` + remediation.",
         "A negative test proves a no-match `AppFeature` is a true no-op (no mutation, no cache entry).",
         "`@lando/sdk/test` introduces `runAppFeatureContract` (activation gating, selector-against-drafts, idempotent mutation, cycle rejection, `requires.globalServices` aggregation); the representative test feature passes it. US-362 completes its full assertion set.",
         "Tests pass. Typecheck passes. Lint passes."
@@ -2848,10 +2848,10 @@
       "title": "Implement the `l337` and `lando` bases and the built-in `lando.*` feature modules",
       "description": "As a service author, a `lando`-base service gets the full opinionated stack and an `l337`-base service gets only artifact/build plumbing.",
       "acceptanceCriteria": [
-        "`core/src/services/base/lando.ts` seeds the default `lando.*` feature stack (the \u00a76.11 priority list, including `lando.env`) \u2014 the `LANDO_*` / `/etc/lando` env layer itself is materialized by the `lando.env` feature at stage 3, not injected at seed time; `core/src/services/base/l337.ts` seeds only artifact/build fields + the user/Compose-authored `environment:` and no `lando.*` feature, env layer, app mount, or `/etc/lando` scaffolding.",
-        "`@lando/service-lando` ships the built-in feature modules the migrated catalog needs \u2014 at minimum `lando.env`, `lando.app-mount`, `lando.healthcheck`, `lando.storage`, `lando.user-id`, `lando.user` \u2014 each a `ServiceFeatureDefinition` at its \u00a76.11 priority.",
+        "`core/src/services/base/lando.ts` seeds the default `lando.*` feature stack (the §6.11 priority list, including `lando.env`) — the `LANDO_*` / `/etc/lando` env layer itself is materialized by the `lando.env` feature at stage 3, not injected at seed time; `core/src/services/base/l337.ts` seeds only artifact/build fields + the user/Compose-authored `environment:` and no `lando.*` feature, env layer, app mount, or `/etc/lando` scaffolding.",
+        "`@lando/service-lando` ships the built-in feature modules the migrated catalog needs — at minimum `lando.env`, `lando.app-mount`, `lando.healthcheck`, `lando.storage`, `lando.user-id`, `lando.user` — each a `ServiceFeatureDefinition` at its §6.11 priority.",
         "`buildLandoEnv` is moved into the `lando.env` feature body and is no longer exported for direct use by service types; the `lando` base obtains `LANDO_*` identity env only via `lando.env`.",
-        "A `lando`-base composition carries the \u00a76.9 `LANDO_*` identity env; an `l337`-base composition carries only Compose-level/user-authored env (asserted by a focused unit test per base).",
+        "A `lando`-base composition carries the §6.9 `LANDO_*` identity env; an `l337`-base composition carries only Compose-level/user-authored env (asserted by a focused unit test per base).",
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 4,
@@ -2861,11 +2861,11 @@
     {
       "id": "US-359",
       "title": "Wire the composition pipeline into `planApp` and fold base/features into the cache key",
-      "description": "As the runtime, every service plan is produced by the one \u00a76.11.0 pipeline, and feature changes invalidate cached plans.",
+      "description": "As the runtime, every service plan is produced by the one §6.11.0 pipeline, and feature changes invalidate cached plans.",
       "acceptanceCriteria": [
-        "`core/src/services/planner.ts` `planApp` replaces the direct `serviceType.toServicePlan(...)` call with: `resolve()` \u2192 seed base draft \u2192 apply service features by priority \u2192 run the app-feature pass over all drafts \u2192 emit `ServicePlan` drafts \u2192 the existing finalization runs exactly once, unchanged in ownership.",
+        "`core/src/services/planner.ts` `planApp` replaces the direct `serviceType.toServicePlan(...)` call with: `resolve()` → seed base draft → apply service features by priority → run the app-feature pass over all drafts → emit `ServicePlan` drafts → the existing finalization runs exactly once, unchanged in ownership.",
         "No provider realization happens inside a feature; finalization remains the single owner of capability/realization decisions (asserted by the feature contract + a planner test).",
-        "The app-plan cache key (\u00a712.1) incorporates the resolved `base`, the ordered `FeatureRef` list, and the activated `AppFeature` contributions; a feature/base change rolls the key (test: same Landofile, different feature set \u2192 cache miss).",
+        "The app-plan cache key (§12.1) incorporates the resolved `base`, the ordered `FeatureRef` list, and the activated `AppFeature` contributions; a feature/base change rolls the key (test: same Landofile, different feature set → cache miss).",
         "`core/src/services/feature.ts` and the base stubs no longer contain TODO-only bodies; orphaned monolithic-path code is deleted.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
@@ -2878,7 +2878,7 @@
       "title": "Service-type inheritance (`extends:`) and declarative `artifacts:` version pinning",
       "description": "As a service-type author, I extend a parent type and pin versions to image tags declaratively.",
       "acceptanceCriteria": [
-        "`resolve()` honors `extends: <parent-id>`: parent resolves first, then the child resolves against the parent's `ServiceTypeResolution` and may overlay/replace per \u00a77.2 merge rules; inheritance is single, depth \u2264 4, cycles rejected at load with `ServiceTypeCollisionError`.",
+        "`resolve()` honors `extends: <parent-id>`: parent resolves first, then the child resolves against the parent's `ServiceTypeResolution` and may overlay/replace per §7.2 merge rules; inheritance is single, depth ≤ 4, cycles rejected at load with `ServiceTypeCollisionError`.",
         "`artifacts:` (`{ \"<version>\": \"<image-tag>\" }`) resolves `type: <name>:<version>` to a concrete tag at plan-compile time; exact match wins, a `versions:` entry without an `artifacts:` entry resolves to `<name>:<version>` by convention, and the resolved tag is recorded in the app-plan cache key.",
         "A representative inheritance case and a representative pin case are covered by tests, including a depth-limit and a cycle-rejection test.",
         "Tests pass. Typecheck passes. Lint passes."
@@ -2893,8 +2893,8 @@
       "description": "As a maintainer, every bundled service type composes from a base and a feature list, and `compose` is a true `l337` service.",
       "acceptanceCriteria": [
         "Every `plugins/service-lando/src/services/*.ts` type is rewritten to declare a `base` and return a `ServiceTypeResolution`; no `toServicePlan` and no direct `buildLandoEnv` import remains.",
-        "`compose` declares `base: \"l337\"` and a negative test asserts its composed environment contains no injected `LANDO_*` keys unless the user authored them (fixing the current \u00a76.9 violation).",
-        "The `lando`-base catalog types (php, node, postgres, mariadb, mysql, mongodb, redis, nginx, apache, \u2026) declare `base: \"lando\"` and pass `runServiceCompositionContract`, including the `lando.env`/`LANDO_*` assertions and their `tooling:`/`creds:`/`framework:` presets flowing through the resolution.",
+        "`compose` declares `base: \"l337\"` and a negative test asserts its composed environment contains no injected `LANDO_*` keys unless the user authored them (fixing the current §6.9 violation).",
+        "The `lando`-base catalog types (php, node, postgres, mariadb, mysql, mongodb, redis, nginx, apache, …) declare `base: \"lando\"` and pass `runServiceCompositionContract`, including the `lando.env`/`LANDO_*` assertions and their `tooling:`/`creds:`/`framework:` presets flowing through the resolution.",
         "Per-family parity tests confirm the composed `ServicePlan` (pre-finalization) matches the previously-asserted plan shape for each migrated type, or the diff is intentional and documented in the test.",
         "Whole-workspace `bun test` is green with no service test skipped or deleted to pass.",
         "Tests pass. Typecheck passes. Lint passes."
@@ -2905,13 +2905,13 @@
     },
     {
       "id": "US-362",
-      "title": "Complete the \u00a713.1 contract suites and add the \u00a713.4 env-helper boundary gate",
+      "title": "Complete the §13.1 contract suites and add the §13.4 env-helper boundary gate",
       "description": "As a reviewer, the base/feature model is enforced by contract suites and a lint gate so a future service type cannot silently skip it.",
       "acceptanceCriteria": [
-        "The three `@lando/sdk/test` suites introduced earlier \u2014 `runServiceCompositionContract` (US-355), `runServiceFeatureContract` (US-356), `runAppFeatureContract` (US-357) \u2014 are completed to the full assertion set enumerated in the \u00a713 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`\u2192`lando.env`/`LANDO_*`; `l337`\u2192no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`). This story completes the assertions; it does not introduce a suite a prior story already depended on.",
-        "The bundled catalog tests run `runServiceCompositionContract` per type (and `runAppFeatureContract` for the mailpit-style feature), wired as the \u00a713.1 layer-coverage mandate.",
-        "A \u00a713.4 boundary gate (wired into CI static checks via a `bun run check:*` script) fails on any direct import of the env-layer helper from `plugins/service-lando/src/services/**` (only the `lando.env` feature may import it); a negative fixture proves the gate fires.",
-        "`sdk/API_COMPATIBILITY.md` records the additive `@lando/sdk/test` exports; the \u00a76.12.1 per-type checklist is referenced by the catalog tests.",
+        "The three `@lando/sdk/test` suites introduced earlier — `runServiceCompositionContract` (US-355), `runServiceFeatureContract` (US-356), `runAppFeatureContract` (US-357) — are completed to the full assertion set enumerated in the §13 contract-suite rows (base declared; `resolve()` not hand-building a plan; `lando`→`lando.env`/`LANDO_*`; `l337`→no injected env layer; env-helper reachable only via `lando.env`; `extends:` depth/cycles; priority stability; cache-key participation; feature idempotency/intent-only; app-feature activation/selector/cycle/`requires.globalServices`). This story completes the assertions; it does not introduce a suite a prior story already depended on.",
+        "The bundled catalog tests run `runServiceCompositionContract` per type (and `runAppFeatureContract` for the mailpit-style feature), wired as the §13.1 layer-coverage mandate.",
+        "A §13.4 boundary gate (wired into CI static checks via a `bun run check:*` script) fails on any direct import of the env-layer helper from `plugins/service-lando/src/services/**` (only the `lando.env` feature may import it); a negative fixture proves the gate fires.",
+        "`sdk/API_COMPATIBILITY.md` records the additive `@lando/sdk/test` exports; the §6.12.1 per-type checklist is referenced by the catalog tests.",
         "Tests pass. Typecheck passes. Lint passes."
       ],
       "priority": 8,
@@ -2923,7 +2923,7 @@
       "title": "`lando setup` extracts and installs the verified runtime bundle into a private bin directory",
       "description": "As a user running setup, the verified Lando runtime bundle is unpacked into a private runtime bin directory so the Lando-managed Podman and its helper binaries are present and executable on my host.",
       "acceptanceCriteria": [
-        "`@lando/core/paths` (`makeLandoPaths`) and `PathsService` expose `runtimeBinDir` (`<userDataRoot>/runtime/bin`), `runtimeRunDir` (`<userDataRoot>/runtime/run`), `providerSocketPath` (`<userDataRoot>/runtime/run/podman.sock`), and `providerPidPath` (`<userDataRoot>/runtime/run/podman.pid`) per \u00a712.4, and pass `check:paths-boundary` (no hand-spelled joins).",
+        "`@lando/core/paths` (`makeLandoPaths`) and `PathsService` expose `runtimeBinDir` (`<userDataRoot>/runtime/bin`), `runtimeRunDir` (`<userDataRoot>/runtime/run`), `providerSocketPath` (`<userDataRoot>/runtime/run/podman.sock`), and `providerPidPath` (`<userDataRoot>/runtime/run/podman.pid`) per §12.4, and pass `check:paths-boundary` (no hand-spelled joins).",
         "After `verifyRuntimeBundle` passes, `lando setup` extracts the bundle archive into `runtimeBinDir` and sets the executable bit on `podman` and the helper binaries (e.g. `gvproxy`, `conmon`, `crun`/`runc`, `netavark`, `aardvark-dns`); no file is written when the checksum does not match.",
         "Extraction supports the manifest filenames for `.tar.gz` (Linux/macOS) and `.zip` (Windows); archive entries that escape `runtimeBinDir` (path traversal, absolute paths, unsafe symlinks) are rejected with remediation.",
         "Extraction is version-idempotent: a re-run whose installed `runtimeVersion` already matches reports the step as already satisfied and does not re-extract; a version change replaces the bin tree atomically (temp dir + rename).",
@@ -2941,11 +2941,11 @@
       "title": "`@lando/provider-lando` owns an idempotent `ensureRuntime` that starts the private Podman API socket on demand",
       "description": "As a user, the Lando provider brings its private Podman API socket up whenever a command needs it (`lando start`, `exec`, tooling) and keeps it up across reboots, so I never run `podman system service` or re-run setup to get a working runtime.",
       "acceptanceCriteria": [
-        "`@lando/provider-lando` exposes a provider-owned idempotent `ensureRuntime` primitive (\u00a75.2 principle 8): a reachable socket is a no-op; a stale PID or unreachable socket is reaped (PID terminated if alive, socket/PID files unlinked) and relaunched; an absent socket is launched.",
-        "`ensureRuntime` launches the extracted `podman system service` bound to `providerSocketPath`, pinned to private roots via `--root`/`--runroot`/`--config` under `<userDataRoot>/runtime/` so it never reads or writes system-wide Podman or Docker state, spawned detached so it outlives the CLI process, with its PID written to `providerPidPath` (\u00a75.8.1, \u00a712.4).",
+        "`@lando/provider-lando` exposes a provider-owned idempotent `ensureRuntime` primitive (§5.2 principle 8): a reachable socket is a no-op; a stale PID or unreachable socket is reaped (PID terminated if alive, socket/PID files unlinked) and relaunched; an absent socket is launched.",
+        "`ensureRuntime` launches the extracted `podman system service` bound to `providerSocketPath`, pinned to private roots via `--root`/`--runroot`/`--config` under `<userDataRoot>/runtime/` so it never reads or writes system-wide Podman or Docker state, spawned detached so it outlives the CLI process, with its PID written to `providerPidPath` (§5.8.1, §12.4).",
         "The launch is an injectable `PodmanServiceRunner` seam (mirroring `PodmanCommandRunner`/`PodmanMachineRunner` in setup.ts) with a real detached default and a test fake; unit tests assert the argv, private-root flags, socket path, and PID write, plus the no-op / reap / launch branches, without spawning Podman.",
         "`lando start`, `exec`, and runtime-needing tooling call `ensureRuntime` before `apply`/exec; the cheap reachability probe rides the cold path (not the tooling hot path) and the actual launch happens at most once per boot. After it runs, the `api.info` probe succeeds with no `LANDO_TEST_PODMAN_SOCKET`.",
-        "`lando setup` calls the same `ensureRuntime` as its final readiness step (setup does not own the socket); rootless launch prerequisites are classified with actionable, per-prerequisite remediation (missing `/etc/subuid`+`/etc/subgid`, missing `newuidmap`/`newgidmap`, cgroups v2 delegation, missing `XDG_RUNTIME_DIR`), distinct from a generic launch failure, extending the \u00a710.8 setup preflight remediation contract.",
+        "`lando setup` calls the same `ensureRuntime` as its final readiness step (setup does not own the socket); rootless launch prerequisites are classified with actionable, per-prerequisite remediation (missing `/etc/subuid`+`/etc/subgid`, missing `newuidmap`/`newgidmap`, cgroups v2 delegation, missing `XDG_RUNTIME_DIR`), distinct from a generic launch failure, extending the §10.8 setup preflight remediation contract.",
         "On macOS and Windows the socket is provided by the managed Podman machine created in US-200; `ensureRuntime` resolves and (re)starts the machine connection socket (using the bundled Podman with a Lando-private connection) instead of launching a host service, and records it identically.",
         "Tests pass",
         "Typecheck passes",
@@ -2953,14 +2953,14 @@
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Reframed to a provider-owned `ensureRuntime` (not a setup-only launcher) so reboots/kills/crashes self-heal: setup is one-time but the socket is a process. `lando start`/exec/tooling trigger it lazily; setup calls it eagerly as a readiness step. Mirrors the spec ProxyService.setup -> GlobalAppService.ensureRunning precedent (\u00a710.8). Today setupProviderLando only probes `options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET` and fails with PodmanSocketUnreachableError; nothing launches the service. macOS/Windows reuse the US-200 machine."
+      "notes": "Reframed to a provider-owned `ensureRuntime` (not a setup-only launcher) so reboots/kills/crashes self-heal: setup is one-time but the socket is a process. `lando start`/exec/tooling trigger it lazily; setup calls it eagerly as a readiness step. Mirrors the spec ProxyService.setup -> GlobalAppService.ensureRunning precedent (§10.8). Today setupProviderLando only probes `options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET` and fails with PodmanSocketUnreachableError; nothing launches the service. macOS/Windows reuse the US-200 machine."
     },
     {
       "id": "US-365",
       "title": "Lando runtime service reports real status, self-heals, and is torn down by poweroff and uninstall",
       "description": "As a support engineer, the Lando runtime service reports accurate status to doctor, comes back automatically after a stop/reboot/kill, and is cleaned up by poweroff and uninstall.",
       "acceptanceCriteria": [
-        "`RuntimeProvider.getStatus` for `lando` probes the socket/PID instead of returning a hardcoded `running: true`, and `lando doctor` surfaces runtime-service health plus orphan-PID detection (\u00a710.9).",
+        "`RuntimeProvider.getStatus` for `lando` probes the socket/PID instead of returning a hardcoded `running: true`, and `lando doctor` surfaces runtime-service health plus orphan-PID detection (§10.9).",
         "`apps:poweroff` stops the Lando runtime service after stopping apps and honors the existing `--keep-global`/`--keep-scratch` flags.",
         "After a stop, reboot, or manual kill, the next `lando start` / `exec` / `lando setup` transparently re-runs `ensureRuntime` (US-364) and the runtime comes back with no user action; a cross-process test proves the self-heal.",
         "`lando uninstall` enumerates and performs runtime-service teardown (terminate PID, unlink socket/PID, remove `<userDataRoot>/runtime/`) under the chosen `--keep-data`/`--purge` retention mode (US-205/US-206 plan lists these steps).",
@@ -3057,7 +3057,7 @@
       ],
       "priority": 152,
       "passes": true,
-      "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story."
+      "notes": "Backlog hardening surfaced in spec/alpha-4/progress.txt (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story."
     },
     {
       "id": "US-371",
@@ -3074,7 +3074,7 @@
       ],
       "priority": 153,
       "passes": true,
-      "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story."
+      "notes": "Backlog hardening surfaced in spec/alpha-4/progress.txt (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story."
     }
   ]
 }

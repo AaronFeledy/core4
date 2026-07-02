@@ -1,10 +1,10 @@
-# PRD: BETA1-03 — Deprecation governance
+# PRD: ALPHA4-03 — Deprecation governance
 
 ## Introduction
 
-Deprecation governance (§18 / `spec/16-deprecation-and-surface-evolution.md`, plus §20.4 in `spec/18-global-app.md`) makes every public Lando surface deprecatable through one machine-readable model. Beta 1 ships the canonical `DeprecationNotice`, records runtime usage through `DeprecationService`, propagates notices into schemas, docs, contracts, manifests, IDE hovers, renderer warnings, lifecycle events, and release gates, and gives operators a `lando doctor --deprecations` report.
+Deprecation governance (§18 / `spec/16-deprecation-and-surface-evolution.md`, plus §20.4 in `spec/18-global-app.md`) makes every public Lando surface deprecatable through one machine-readable model. Alpha 4 ships the canonical `DeprecationNotice`, records runtime usage through `DeprecationService`, propagates notices into schemas, docs, contracts, manifests, IDE hovers, renderer warnings, lifecycle events, and release gates, and gives operators a `lando doctor --deprecations` report.
 
-Depends on: no Beta 1 PRD prerequisite. Downstream PRDs that publish schemas, telemetry, release machinery, and signing depend on this one.
+Depends on: no Alpha 4 PRD prerequisite. Downstream PRDs that publish schemas, telemetry, release machinery, and signing depend on this one.
 
 ## Source References
 
@@ -171,7 +171,7 @@ Depends on: no Beta 1 PRD prerequisite. Downstream PRDs that publish schemas, te
 
 ## Non-Goals
 
-- Removing any deprecated surface during Beta 1 unless a separate story explicitly owns the removal.
+- Removing any deprecated surface during Alpha 4 unless a separate story explicitly owns the removal.
 - GA schema-artifact caching at `https://schemas.lando.dev/v4/`.
 - A web dashboard for deprecation analytics.
 - Automatic source-code rewrites from deprecated APIs to replacements.

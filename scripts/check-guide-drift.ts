@@ -137,7 +137,7 @@ export const checkGuideDriftOnDisk = async (
   options: CheckGuideDriftOptions = {},
 ): Promise<DriftResult> => {
   const defaultSpecDirs = ["prd/alpha-3", [["s", "pec"].join(""), "alpha-3"].join("/")];
-  const defaultSpecFiles = ["spec/beta-1/prd-beta-1-11-library-and-acceptance.md"];
+  const defaultSpecFiles = ["spec/alpha-4/prd-alpha-4-11-library-and-acceptance.md"];
   const specDirs =
     options.specDir !== undefined
       ? [options.specDir]

@@ -4,7 +4,7 @@ This is the canonical, in-repo inventory of every telemetry event Lando records.
 
 The machine-readable source of truth lives in [`core/src/telemetry/inventory.ts`](../../core/src/telemetry/inventory.ts). The `check:telemetry-inventory` gate fails when code records an event that is not declared there, and a consistency test fails when this document drifts from it. Adding a telemetry event therefore requires editing the inventory module **and** this document in the same change.
 
-Specification: [`spec/beta-1/prd-beta-1-06-telemetry.md`](../../spec/beta-1/prd-beta-1-06-telemetry.md).
+Specification: [`spec/alpha-4/prd-alpha-4-06-telemetry.md`](../../spec/alpha-4/prd-alpha-4-06-telemetry.md).
 
 Related reference schemas: [telemetry config](../reference/schemas/telemetry-config.mdx) and the [`deprecation-used` event](../reference/schemas/deprecation-used-event.mdx).
 

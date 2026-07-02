@@ -265,3 +265,14 @@ This period built the §6.11 service-composition model, published the paths/land
   - The lazy-closure walker must classify ONLY dynamic edges (never static edges of dynamically reached files) — `cli/index.ts → ./run.ts` lazily pulls the whole OCLIF surface by design, so folding lazy reachability into the eager ledgers would false-positive every entry point.
   - Boundary-gate allowlists should key `<repo-relative file> -> <specifier>` and tests should assert the allowlisted edge IS detected, keeping the allowlist load-bearing rather than dead configuration.
 ---
+
+## 2026-07-02 04:42 CDT - Push
+- PR: none — push skipped: untracked product files `plugins/file-sync-mutagen/src/download.ts` and `plugins/file-sync-mutagen/test/download.test.ts` on `us-371-dynamic-import-gates` (story US-371 `passes: true`); commit or discard before push
+---
+
+## [2026-07-02 04:43:30 CDT] - Babysit
+- PR: missing for branch `us-371-dynamic-import-gates`
+- CI outcome: fail (PR missing)
+- Review feedback: none
+- Merge: deferred (push step did not create or refresh a PR for the branch)
+---
