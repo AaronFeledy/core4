@@ -44,6 +44,7 @@ tags: [beta, docs, library, testing]
       <Variable name="serviceFeature" value="runServiceFeatureContract" display="runServiceFeatureContract validates service feature requires entries, deterministic drafts, and storage, endpoint, mount, and extension intents without realization decisions" />
       <Variable name="appFeature" value="runAppFeatureContract" display="runAppFeatureContract validates app feature global service requirements and proves activatedBy misses are no-op paths when expectNoActivation is set" />
       <Variable name="httpTimeout" value="runHttpClientContract timeout" display="runHttpClientContract accepts an optional timeout probe so HttpClient implementations prove timeoutMs aborts and reaps hung request or stream connections without leaking sockets" />
+      <Variable name="httpTrust" value="makeTestHttpClient({ systemCaPems })" display="makeTestHttpClient records fetchInitForNetwork output with injected host roots so HttpClient contract tests can assert network.ca.trustHost merges default roots with custom CAs or fails closed when disabled" />
     </Step>
   </Scenario>
 

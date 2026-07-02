@@ -6647,12 +6647,19 @@ export interface HttpClientContractHarness<TrustObject = unknown> {
         readonly noProxy: ReadonlyArray<string>;
       };
       readonly caPems: ReadonlyArray<string>;
+      readonly trustHost?: boolean;
     }) => TrustObject;
     readonly withTrust: <A, E, R>(
       trust: TrustObject,
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E, R>;
     readonly lastInit: () => Effect.Effect<HttpClientCapturedInit | undefined>;
+    /**
+     * A PEM known to be present in the implementation's host default trust
+     * store, used to assert `trustHost: true` merges system roots with custom
+     * CAs. Omit when the implementation cannot report a stable host root.
+     */
+    readonly systemCaSample?: string;
   };
   readonly offline?: {
     readonly withOffline: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
@@ -6831,6 +6838,39 @@ export const runHttpClientContract = <TrustObject>(
         (bypassInit?.tls?.ca ?? []).includes(caPem),
         "a NO_PROXY host keeps the configured CA",
         bypassInit,
+      );
+
+      const mergeUrl = "https://merge.test/x";
+      yield* harness.serveSource(mergeUrl, payload);
+
+      const mergedTrust = trust.make({ proxy: { noProxy: [] }, caPems: [caPem], trustHost: true });
+      yield* trust
+        .withTrust(mergedTrust, Effect.scoped(service.request(httpRequest({ url: mergeUrl }))))
+        .pipe(Effect.mapError(failWith("a trustHost request succeeds")));
+      const mergedInit = yield* trust.lastInit();
+      const mergedCa = mergedInit?.tls?.ca ?? [];
+      yield* requireHttpClientContract(
+        mergedCa.includes(caPem) && mergedCa.length > 1,
+        "trustHost merges the host default roots with the custom CA",
+        mergedInit,
+      );
+      if (trust.systemCaSample !== undefined) {
+        yield* requireHttpClientContract(
+          mergedCa.includes(trust.systemCaSample),
+          "trustHost keeps a known host default root alongside the custom CA",
+          mergedInit,
+        );
+      }
+
+      const replaceTrust = trust.make({ proxy: { noProxy: [] }, caPems: [caPem], trustHost: false });
+      yield* trust
+        .withTrust(replaceTrust, Effect.scoped(service.request(httpRequest({ url: mergeUrl }))))
+        .pipe(Effect.mapError(failWith("a trustHost:false request succeeds")));
+      const replaceInit = yield* trust.lastInit();
+      yield* requireHttpClientContract(
+        (replaceInit?.tls?.ca ?? []).length === 1 && (replaceInit?.tls?.ca ?? []).includes(caPem),
+        "trustHost:false uses only the custom CA and drops host default roots",
+        replaceInit,
       );
     }
 

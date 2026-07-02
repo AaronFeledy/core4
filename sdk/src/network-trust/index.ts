@@ -24,6 +24,13 @@ export interface ResolvedNetworkTrust {
   };
   /** Custom CA certificates as PEM strings (already read from disk). */
   readonly caPems: ReadonlyArray<string>;
+  /**
+   * Whether the host default trust store is merged in (`network.ca.trustHost`).
+   * When `true`, `fetchInitForNetwork` prepends the injected host root PEMs so
+   * both default roots and custom CAs are trusted. When `false`, only the custom
+   * CAs apply (an empty list fails closed and trusts nothing).
+   */
+  readonly trustHost: boolean;
 }
 
 /**
@@ -75,10 +82,17 @@ export const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): 
 /**
  * Build the Bun `fetch` init (proxy + `tls.ca`) for a URL under resolved trust,
  * or `undefined` when no proxy/CA applies (so the fetch stays bare).
+ *
+ * Bun's `tls.ca` replaces the default trust store, so `systemCaPems` (the host's
+ * default root PEMs, read by the consumer) are merged in when `trust.trustHost`
+ * is enabled. The resulting `tls.ca` is omitted only when the fetch would trust
+ * exactly the default store (`trustHost` with no custom CAs); every other case
+ * sets an explicit list so trust is never silently widened.
  */
 export const fetchInitForNetwork = (
   url: string,
   trust: ResolvedNetworkTrust,
+  systemCaPems: ReadonlyArray<string>,
 ): BunFetchRequestInit | undefined => {
   const parsedUrl = new URL(url);
   const bypassProxy = shouldBypassProxy(url, trust.proxy.noProxy);
@@ -88,11 +102,13 @@ export const fetchInitForNetwork = (
       ? (trust.proxy.https ?? trust.proxy.http)
       : (trust.proxy.http ?? trust.proxy.https);
   const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
-  const ca = [...trust.caPems];
-  if (proxy === undefined && ca.length === 0) return undefined;
+  const customCa = [...trust.caPems];
+  const omitCa = trust.trustHost && customCa.length === 0;
+  const ca = trust.trustHost ? [...systemCaPems, ...customCa] : customCa;
+  if (proxy === undefined && omitCa) return undefined;
   return {
     ...(proxy === undefined ? {} : { proxy }),
-    ...(ca.length === 0 ? {} : { tls: { ca } }),
+    ...(omitCa ? {} : { tls: { ca } }),
   };
 };
 

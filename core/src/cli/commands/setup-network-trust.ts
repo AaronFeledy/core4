@@ -76,6 +76,7 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
 export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => ({
   proxy: network.proxy,
   caPems: network.ca.loadedCerts.map((cert) => cert.pem),
+  trustHost: network.ca.trustHost,
 });
 
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
@@ -160,7 +161,8 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
     const hasTrustToValidate =
       network.proxy.http !== undefined ||
       network.proxy.https !== undefined ||
-      network.ca.loadedCerts.length > 0;
+      network.ca.loadedCerts.length > 0 ||
+      network.ca.trustHost === false;
     if (!hasTrustToValidate) return;
 
     const http = yield* HttpClient;
