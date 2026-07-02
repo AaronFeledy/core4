@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Alpha 4 turns the release script from partial machinery into the ordered release orchestrator for signed `4.0.0-beta.N` artifacts on the `next` channel. The release flow has one entry point, `scripts/release.ts`, and a fixed 13-stage order that covers codegen, gates, bundles, compiled binaries, signing, notarization, manifests, provenance, SBOMs, and publish.
+Alpha 4 turns the release script from partial machinery into the ordered release orchestrator for the final `4.0.0-alpha.N` artifacts on the `dev` channel and rehearses the signed beta/`next` pipeline that Beta 1 will use. The release flow has one entry point, `scripts/release.ts`, and a fixed 13-stage order that covers codegen, gates, bundles, compiled binaries, signing, notarization, manifests, provenance, SBOMs, and publish.
 
 This PRD covers §17.1 through §17.4 and the release-time deprecation gate from §18.7. Supply-chain attestations, self-update, and installers are covered by later Alpha 4 PRDs but depend on this pipeline shape.
 

@@ -1286,10 +1286,10 @@
     },
     {
       "id": "US-272",
-      "title": "`@lando/core/testing` stable on `next` + deterministic `TestRuntime`",
-      "description": "As an embedding host or plugin author, I can import `@lando/core/testing` from the `next` channel and get deterministic in-memory testing utilities with documented exports.",
+      "title": "`@lando/core/testing` contract frozen for Alpha 4 + deterministic `TestRuntime`",
+      "description": "As an embedding host or plugin author, I can import `@lando/core/testing` from the Alpha 4 library surface and get deterministic in-memory testing utilities with documented exports.",
       "acceptanceCriteria": [
-        "`@lando/core/testing` is declared stable on the `next` channel for Alpha 4 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.",
+        "`@lando/core/testing` is declared part of the frozen Alpha 4 library surface while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.",
         "`TestRuntime` satisfies every default service tag, is deterministic, and does not touch filesystem or network outside explicit overrides.",
         "The provider contract suite runs against `TestRuntime` and proves the default fake provider behavior is stable.",
         "Every `@lando/core/testing` export has JSDoc and is covered by workspace and packed-install resolution tests.",

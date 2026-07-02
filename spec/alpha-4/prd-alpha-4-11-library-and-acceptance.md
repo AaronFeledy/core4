@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Alpha 4 ends with the library API stable on the `next` channel and the §17.9 binary acceptance machinery green on the reference platform, linux-x64. This PRD depends on PRD-01 through PRD-10 because it verifies the whole product surface rather than one isolated subsystem.
+Alpha 4 ends with the library API surface frozen for the final alpha on the `dev` channel and the §17.9 binary acceptance machinery green on the reference platform, linux-x64. This PRD depends on PRD-01 through PRD-10 because it verifies the whole product surface rather than one isolated subsystem.
 
 The library API must be safe for embedding hosts, contract-tested from workspace and packed installs, and separated from OCLIF. The §17.9 acceptance set is **27 criteria** total (the `v4.0.0` release MUST list). Alpha 4 is the last phase that adds feature surface, so the harness implements and runs **all 27 criteria** green on linux-x64 during Alpha 4 — including external compiled-plugin loading (criteria 20–24) and the codegen/bundled-plugin/recipe gates (criteria 25–27). Only the all-platform acceptance pass is deferred to RC; RC and GA take bug fixes, not new feature surface.
 
@@ -19,19 +19,19 @@ Depends on: **ALPHA4-01 through ALPHA4-10**.
 ## Goals
 
 - Declare the Alpha 4 stable `@lando/core` library entry points, including the `App` handle embedding primitive, and keep internal OCLIF code out of stable imports.
-- Make `@lando/core/testing` stable on `next` with deterministic test runtime coverage and JSDoc on every export.
+- Freeze the `@lando/core/testing` contract for Alpha 4 with deterministic test runtime coverage and JSDoc on every export.
 - Contract-test library-mode defaults, `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, CLI operations, and packed-install entry points.
 - Enforce plugin SDK compatibility through `requires."@lando/core": "^4.0.0"`.
 - Run the §17.9 acceptance harness green on linux-x64: implement all 27 criteria (1–19 runtime/release/update/setup, 20–24 external compiled-plugin loading, 25–27 codegen/bundled-plugin/recipe gates), with only the all-platform pass deferred to RC.
 
 ## User Stories
 
-### US-272: `@lando/core/testing` stable on `next` + deterministic `TestRuntime`
+### US-272: `@lando/core/testing` contract frozen for Alpha 4 + deterministic `TestRuntime`
 
-**Description:** As an embedding host or plugin author, I can import `@lando/core/testing` from the `next` channel and get deterministic in-memory testing utilities with documented exports.
+**Description:** As an embedding host or plugin author, I can import `@lando/core/testing` from the Alpha 4 library surface and get deterministic in-memory testing utilities with documented exports.
 
 **Acceptance Criteria:**
-- [ ] `@lando/core/testing` is declared stable on the `next` channel for Alpha 4 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.
+- [ ] `@lando/core/testing` is declared part of the frozen Alpha 4 library surface while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.
 - [ ] `TestRuntime` satisfies every default service tag, is deterministic, and does not touch filesystem or network outside explicit overrides.
 - [ ] The provider contract suite runs against `TestRuntime` and proves the default fake provider behavior is stable.
 - [ ] Every `@lando/core/testing` export has JSDoc and is covered by workspace and packed-install resolution tests.
