@@ -12,3 +12,14 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - A story that relaxes a shipped contract (US-381 FileFormat, US-388 release posture, US-392 shell default) must record the decision and the synchronized spec/PRD/snapshot updates in its entry.
 
 ---
+
+## 2026-07-02 - US-372
+- Durable atomic writes now flush to disk before publishing: `writeFileAtomicScoped` (state store / managed-file seam) and `writeFileAtomicViaRename` (cache seam) both fsync the temp file via a file handle before the rename, so power loss can never leave a torn live file. The cwd-app-map cache no longer writes with raw `writeFile`; both its write and delete-rewrite paths route through the atomic cache helper.
+- Both helpers gained an injectable `syncFile` seam; unit tests prove syscall ordering (sync fires while the live file does not yet exist, rename after) and that a flush failure rejects, skips the rename, and leaves no temp orphan.
+- Verification: typecheck, lint, check:state-store-boundary passed; spot checks green (cache atomic, state-store atomic, binary-encoding, services/cache, json-bucket, state contract, plugin-state, managed-file service, unit state-store, apps-list scenario); manual QA exercised the real default fsync path via writeCwdAppMapEntry/readCwdAppMapEntry/deleteCwdAppMapEntry round-trip with no `.tmp-` leftovers.
+- **Learnings for future iterations:**
+  - `handle.writeFile` + `handle.sync()` on an `open(path, "w")` FileHandle is the pattern for fsync-before-rename; plain `fs/promises.writeFile` gives no flush guarantee.
+  - Injectable `syncFile`/`renameFile` options on the atomic helpers are the test seam for syscall-ordering proofs — no fs module mocking needed.
+  - `check-state-store-boundary.ts` carve-outs already cover both atomic helpers; routing callers through them (instead of raw writeFile) is what keeps new files off the offender list.
+  - When editing `spec/beta-1/prd.json` with Python, use `json.dumps(..., ensure_ascii=False)` — the file contains literal em dashes and § characters.
+---
