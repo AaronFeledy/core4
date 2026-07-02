@@ -22,6 +22,27 @@ and template engines all ship as separate packages.
 > command behavior, generated artifacts, and install flows may change without
 > migration support while the experiment is still being shaped.
 
+## Status & roadmap
+
+Development follows the phase ladder in [`spec/ROADMAP.md`](./spec/ROADMAP.md):
+**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1 → Beta 2 → RC → 4.0 GA**.
+
+- **Done:** MVP through **Alpha 4** ("governance + the last feature surface") —
+  Alpha 4 closed the feature surface: release machinery, signing, supply chain,
+  telemetry, schema publication, the plugin authoring toolkit, and the
+  `lando setup` / `lando uninstall` lifecycle. Alphas publish `4.0.0-alpha.N`
+  on the `dev` channel. PRD sets live under `spec/mvp/` and `spec/alpha-{1..4}/`.
+- **Current: Beta 1** ("contract-completion remediation") — no new feature
+  surface; an audit-driven pass that closes every gap between what the Alpha 4
+  PRDs promised (and the spec requires) and what actually shipped. Stories
+  US-372..US-395 in [`spec/beta-1/`](./spec/beta-1/prd-beta-1-00-index.md).
+  The first signed `4.0.0-beta.N` ships on the `next` channel at the end of
+  Beta 1, and **feature freeze is entered**.
+- **After:** Beta 2 (bug burn-down), RC (all-platform §17.9 acceptance), GA.
+
+The spec in [`spec/`](./spec/README.md) is the compatibility contract — when
+code and spec disagree, the spec wins.
+
 ## Layout
 
 ```text
@@ -42,6 +63,7 @@ and template engines all ship as separate packages.
 │   ├── logger-pretty/        # pretty-printed Logger
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
+├── spec/              # The v4 specification (compatibility contract) + ROADMAP + per-phase PRD sets
 ├── scripts/           # Codegen, release orchestrator, guide/scenario + CI workflow tooling
 ├── docs/              # CI runbook, install guide, embedding guide, executable guides (MDX)
 ├── test/              # Cross-package and generated scenario tests

@@ -1,6 +1,6 @@
 # Lando v4 — Implementation Specification (Index)
 
-> **Status:** Draft for build kickoff.
+> **Status:** Living document — the compatibility contract for the v4 build (currently in Beta 1; see [`ROADMAP.md`](./ROADMAP.md)). When code and this spec disagree, the spec wins.
 > **Audience:** Lando Core maintainers, plugin authors, contributors building v4 from a clean slate, and embedding hosts integrating `@lando/core` as a library.
 
 The specification lives entirely in this directory as **nineteen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
