@@ -212,21 +212,21 @@ describe("checkGuideDriftOnDisk", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  test("reads beta PRD declarations: App-handle surface without embedding guide fails", async () => {
+  test("reads alpha-4 PRD declarations: App-handle surface without embedding guide fails", async () => {
     const result = await checkGuideDriftOnDisk(repoRoot, {
       changedFiles: ["core/src/app/handle.ts"],
       prBody: "Adjusts App handle lifecycle behavior.",
     });
     expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
     expect(
-      result.diagnostics.some((d) => d.message.includes("prd-beta-1-11-library-and-acceptance.md")),
+      result.diagnostics.some((d) => d.message.includes("prd-alpha-4-11-library-and-acceptance.md")),
     ).toBe(true);
     expect(
       result.diagnostics.some((d) => d.message.includes("docs/guides/library/embedding-runtime.mdx")),
     ).toBe(true);
   });
 
-  test("reads beta PRD declarations: App-handle surface + embedding guide passes", async () => {
+  test("reads alpha-4 PRD declarations: App-handle surface + embedding guide passes", async () => {
     const result = await checkGuideDriftOnDisk(repoRoot, {
       changedFiles: ["core/src/app/handle.ts", "docs/guides/library/embedding-runtime.mdx"],
       prBody: "Adjusts App handle lifecycle behavior and updates the guide.",

@@ -10,11 +10,12 @@
 
 1. **MVP → Alpha 1**: prove the architecture works end-to-end on the *easiest* surface. One provider, one service, the happy path. No promises.
 2. **Alpha 1 → Alpha 2 → Alpha 3**: breadth across the catalog (service types, providers, plugins) with the bundled set hardened, the executable-guides scenario engine, and the global app + scratch apps. Library API usable internally; docs not yet stable. Published on the `dev` channel as `4.0.0-alpha.N`.
-3. **Alpha 3 → Beta 1**: the **last feature surface**. Governance contracts go live (deprecation, signing, supply chain, schema publication, executable-guides-as-scenarios), the plugin authoring toolkit and telemetry land, and the remaining `lando setup` / `lando uninstall` functionality is completed. Open decisions in §14.2 are closed. Published on the `next` channel as `4.0.0-beta.N`.
-4. **Beta 1 → Beta 2**: **feature freeze**. No new feature surface — only bug fixes surfaced by Beta 1 field use. Still `4.0.0-beta.N` on `next`.
-5. **Beta 2 → RC**: only fixes, plus the §17.9 binary acceptance criteria (signed, notarized, SBOM, self-update, curl-pipe installer all green on all platforms). Tagged `4.0.0-rc.N`.
-6. **RC → 4.0 GA**: only the bug fixes found during RC. Tag bump to `4.0.0` on `stable`.
-7. **4.x minors**: address things explicitly listed as "deferred to post-v4.0" in §14.2 and §6.12, in priority order.
+3. **Alpha 3 → Alpha 4**: the **last feature surface**. Governance contracts go live (deprecation, signing, supply chain, schema publication, executable-guides-as-scenarios), the plugin authoring toolkit and telemetry land, and the remaining `lando setup` / `lando uninstall` functionality is completed. Open decisions in §14.2 are closed. Still published on the `dev` channel as `4.0.0-alpha.N`.
+4. **Alpha 4 → Beta 1**: **contract-completion remediation**. No new feature surface — every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed, audit-driven, before anything is called beta. The first signed `4.0.0-beta.N` ships on the `next` channel at the end of Beta 1, and **feature freeze is entered**.
+5. **Beta 1 → Beta 2**: **feature-freeze hardening**. No new feature surface — only bug fixes surfaced by Beta 1 field use. Still `4.0.0-beta.N` on `next`.
+6. **Beta 2 → RC**: only fixes, plus the §17.9 binary acceptance criteria (signed, notarized, SBOM, self-update, curl-pipe installer all green on all platforms). Tagged `4.0.0-rc.N`.
+7. **RC → 4.0 GA**: only the bug fixes found during RC. Tag bump to `4.0.0` on `stable`.
+8. **4.x minors**: address things explicitly listed as "deferred to post-v4.0" in §14.2 and §6.12, in priority order.
 
 The `@lando/sdk` (schemas, tagged errors, service tags, event payloads) crosses every phase. Anything that ends up in `@lando/sdk` is **API-stable from the moment it ships in MVP** — that is the entire point of the SDK boundary. Everything else can iterate.
 
@@ -181,7 +182,7 @@ Breadth that covers the most common stacks. Persistent caches. Tooling system re
 - `message.info`/`warn`/`error`
 - `paint.banner` first-paint contract (basic)
 - `--renderer=plain|json|lando` selection
-- *Defer*: `task.detail` streaming tail, expand/collapse, full first-paint contract (Beta 1)
+- *Defer*: `task.detail` streaming tail, expand/collapse, full first-paint contract (Alpha 4)
 
 **Provider:**
 - `@lando/provider-lando` macOS — adds managed Podman machine lifecycle (create, start, stop, upgrade, teardown). `bindMountPerformance: "slow"` declared. `lando setup` downloads and verifies the runtime bundle; checksum verification per §5.8.1. This is the first real end-to-end test of the full managed-runtime path.
@@ -234,7 +235,7 @@ Breadth that covers the most common stacks. Persistent caches. Tooling system re
 - Alpha 1 defers: multi-platform matrix (Alpha 3), nightly cron (Alpha 3), weekly provider matrix (Alpha 3).
 
 **Distribution:**
-- Linux x64 binary promoted from MVP's per-PR workflow artifact to a GitHub pre-release (still no signing, no SBOM, no installer scripts, no self-update — those are Beta 1).
+- Linux x64 binary promoted from MVP's per-PR workflow artifact to a GitHub pre-release (still no signing, no SBOM, no installer scripts, no self-update — those are Alpha 4).
 - `@lando/core` published to npm at version `4.0.0-alpha.N` on the `dev` tag
 - (Note: MVP itself is private — the binary lives only as a per-run workflow artifact per PRD-07. Alpha 1 is the first phase that ships anything externally.)
 
@@ -268,7 +269,7 @@ Introduce the testing half of §19's Executable Guides model. Alpha 2 does **not
 - `scripts/build-guide-scenarios.ts` parses a minimal executable-guide subset and generates TypeScript tests under `test/scenarios/generated/guides/**`.
 - A compatibility `scripts/build-doc-tests.ts` alias may exist during migration, but `build-guide-scenarios` is the spec-owned generator name.
 - Initial component subset: `<Guide>`, `<Scenario>`, `<Step>`, `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<Hidden>`, and `<UseFixture>`.
-- Scenario layer only at first: `layer: "scenario"` runs against `@lando/core/testing` / `TestRuntimeProvider`. Real-provider `layer: "e2e"` guide scenarios remain Alpha 3+/Beta 1 hardening.
+- Scenario layer only at first: `layer: "scenario"` runs against `@lando/core/testing` / `TestRuntimeProvider`. Real-provider `layer: "e2e"` guide scenarios remain Alpha 3+/Alpha 4 hardening.
 - Generated tests carry `// @source`, `// @scenario`, and optional `// @variant` headers.
 
 **Author/debug workflow:**
@@ -300,7 +301,7 @@ At least one authored guide generates and runs a passing `layer: "scenario"` rea
 
 ### Goal
 
-Complete the breadth surface — every canonical service type, both providers on every platform, the global app, and scratch apps. The remaining feature work (governance, release engineering, and the `lando setup` / `lando uninstall` completion) is held for Beta 1; from there it is hardening only.
+Complete the breadth surface — every canonical service type, both providers on every platform, the global app, and scratch apps. The remaining feature work (governance, release engineering, and the `lando setup` / `lando uninstall` completion) is held for Alpha 4; from there it is contract completion (Beta 1) and hardening only.
 
 ### Concrete deliverables
 
@@ -423,19 +424,19 @@ Complete the breadth surface — every canonical service type, both providers on
 
 ### Exit criteria for Alpha 3
 
-Every test layer green per-PR on every platform. Weekly provider matrix is green. The `@smoke` end-to-end suite passes on Linux x64. The breadth surface is complete; the remaining feature work (governance, release engineering, and `lando setup` / `lando uninstall` completion) moves to Beta 1, where feature freeze is entered.
+Every test layer green per-PR on every platform. Weekly provider matrix is green. The `@smoke` end-to-end suite passes on Linux x64. The breadth surface is complete; the remaining feature work (governance, release engineering, and `lando setup` / `lando uninstall` completion) moves to Alpha 4; feature freeze is entered at the end of Beta 1 (contract-completion remediation).
 
 ---
 
-## Phase 4 — Beta 1 ("governance + the last feature surface")
+## Phase 4 — Alpha 4 ("governance + the last feature surface")
 
 > **One sentence**: The governance contracts go live, the open decisions in §14.2 are closed, and the **remaining `lando setup` / `lando uninstall` functionality** is completed — this is the final phase that adds feature surface.
 >
-> **Audience**: production users on the `next` channel. Public `4.0.0-beta.N` binaries.
+> **Audience**: early adopters on the `dev` channel. Public `4.0.0-alpha.N` binaries.
 
 ### Goal
 
-Land the last feature surface — release engineering, governance, the plugin authoring toolkit, telemetry, and the full `setup`/`uninstall` command behavior — then **freeze**. Everything after Beta 1 is hardening only.
+Land the last feature surface — release engineering, governance, the plugin authoring toolkit, telemetry, and the full `setup`/`uninstall` command behavior. Everything after Alpha 4 is contract completion (Beta 1) and hardening only.
 
 ### Concrete deliverables
 
@@ -526,8 +527,8 @@ Land the last feature surface — release engineering, governance, the plugin au
 - Library API contract tests in `core/test/library/` cover the full §16.2 surface, including stable `App` handles, `AppSelector`, `openLandoRuntime`, and `resolveApp`
 - Plugin SDK contract test for `requires."@lando/core": "^4.0.0"` enforcement
 - Outbound-network primitives land as a layered set: the **`HttpClient`** egress chokepoint (proxy/CA-aware streaming request/response + upload, the canonical network-trust resolver promoted to a pure `@lando/sdk` module, redaction, `pre-/post-http-call` events) as the single home for all Lando-owned network access (it is the precondition for hosting push/pull, telemetry delivery, the update-manifest fetch, plugin-registry queries, tunnel/share control planes, the MCP surface, and the scanner); **`Downloader`** rewritten as the verified-artifact specialization that wraps `HttpClient`; and the **tool-provisioning helper** (`ToolManifest` + archive extraction + `bin/` install over `Downloader`). All ship with their SDK services/schemas/errors/events, default implementations, `httpClients:` / `downloaders:` manifest contributions, contract suites, the `check:network-boundary` gate, and migrated Lando-owned call sites (runtime bundle, Mutagen host CLI + agents, recipe/include tarballs, self-update bytes)
-- The downstream **`TunnelService`** contract (public app sharing, §10.2.2) is **frozen here, contract-only**: the SDK service tag, schemas, the seven tagged errors, the `Tunnel` lifecycle events, the `tunnelServices:` manifest surface, the §13.1 contract suite, the `app:share` / `app:share:list` / `app:share:stop` command + `App.share*` handle result schemas, and the `tunnel-registry` `StateStore` seam — wired to consume `HttpClient` + tool provisioning + `ProcessRunner` + `StateStore` + the probe primitive + `RedactionService`. No bundled tunnel provider and no real connector wiring ship in Beta 1 (the `lando share` feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. `TunnelService` is **not** a `DataMover` consumer — it rides the egress cluster, not the byte-movement primitive
-- The downstream **`RemoteSource` + `Dataset`** remote-data-sync contract (`lando pull`/`push`, §10.12) is **frozen here, contract-only** (PRD-17), the same way `TunnelService` is: the two SDK service tags, schemas, tagged errors, the `Sync` lifecycle events, the `remotes:`/`sync:` Landofile keys, the `remoteSources:`/`datasets:` manifest surfaces, the §13.1 `RemoteSource` + `Dataset` contract suites with in-memory `TestRemoteSource`/`local`/`TestDataset`, and the `app:pull`/`app:push`/`app:remote:*` command + `App.pull`/`App.push`/`App.remote` handle result schemas — wired to compose `HttpClient` + tool provisioning/`Downloader` (egress) + `DataMover` (local landing) + `StateStore` + the probe primitive + `InteractionService` + `SecretStore` + `RedactionService`. The `Dataset × RemoteSource` split keeps the local landing half reusable across every remote (N+M, not N×M). No bundled generic remotes, no hoster plugins, and no `database`/`files` `Dataset` implementations ship in Beta 1 (the feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. Remote sync moves DB + files + config, **never application code**
+- The downstream **`TunnelService`** contract (public app sharing, §10.2.2) is **frozen here, contract-only**: the SDK service tag, schemas, the seven tagged errors, the `Tunnel` lifecycle events, the `tunnelServices:` manifest surface, the §13.1 contract suite, the `app:share` / `app:share:list` / `app:share:stop` command + `App.share*` handle result schemas, and the `tunnel-registry` `StateStore` seam — wired to consume `HttpClient` + tool provisioning + `ProcessRunner` + `StateStore` + the probe primitive + `RedactionService`. No bundled tunnel provider and no real connector wiring ship in Alpha 4 (the `lando share` feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. `TunnelService` is **not** a `DataMover` consumer — it rides the egress cluster, not the byte-movement primitive
+- The downstream **`RemoteSource` + `Dataset`** remote-data-sync contract (`lando pull`/`push`, §10.12) is **frozen here, contract-only** (PRD-17), the same way `TunnelService` is: the two SDK service tags, schemas, tagged errors, the `Sync` lifecycle events, the `remotes:`/`sync:` Landofile keys, the `remoteSources:`/`datasets:` manifest surfaces, the §13.1 `RemoteSource` + `Dataset` contract suites with in-memory `TestRemoteSource`/`local`/`TestDataset`, and the `app:pull`/`app:push`/`app:remote:*` command + `App.pull`/`App.push`/`App.remote` handle result schemas — wired to compose `HttpClient` + tool provisioning/`Downloader` (egress) + `DataMover` (local landing) + `StateStore` + the probe primitive + `InteractionService` + `SecretStore` + `RedactionService`. The `Dataset × RemoteSource` split keeps the local landing half reusable across every remote (N+M, not N×M). No bundled generic remotes, no hoster plugins, and no `database`/`files` `Dataset` implementations ship in Alpha 4 (the feature is 4.1); freezing the surface now keeps it addable after feature freeze without new SDK surface. Remote sync moves DB + files + config, **never application code**
 - Paths/Roots primitive (`@lando/core/paths` + `PathsService`) and durable `StateStore` primitive land as the paired filesystem/persistence foundation for roots, derived paths, scratch registry, include lockfile, and plugin/host state buckets
 
 **Telemetry:**
@@ -556,15 +557,41 @@ Land the last feature surface — release engineering, governance, the plugin au
 
 **Managed-file primitive:**
 - The **`ManagedFileService`** working-tree write chokepoint lands (§10.13): file/block modes for rendered project files, per-format ownership markers, a `StateStore` ledger resolved through `PathsService.managedFileLedger(appId)`, conflict/adoption detection that never silently clobbers in-place edits, realpath containment, atomic writes through the shared streaming-hash helper, redacted `ManagedFile` lifecycle events, and a §13.1 contract suite with `TestManagedFileStore`
-- Refactors fold the existing recipe `files:` scaffold writer onto the primitive so scaffolded files carry markers and become updatable/adoptable, and the `check:managed-file-boundary` gate prevents parallel host-project-file writers. The primitive is substrate-only in Beta 1; CMS settings management, `lando add`, devcontainer generation, the user-facing `files:` Landofile key, `lando files *`, and `keys`-mode structural merge are 4.x
+- Refactors fold the existing recipe `files:` scaffold writer onto the primitive so scaffolded files carry markers and become updatable/adoptable, and the `check:managed-file-boundary` gate prevents parallel host-project-file writers. The primitive is substrate-only in Alpha 4; CMS settings management, `lando add`, devcontainer generation, the user-facing `files:` Landofile key, `lando files *`, and `keys`-mode structural merge are 4.x
 
-### Exit criteria for Beta 1
+### Exit criteria for Alpha 4
 
-Every Beta 1 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the layered `HttpClient`/`Downloader` egress primitives and tool provisioning, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), the universal `--format json` machine-output contract (§8.11) that realizes the agent-native tenet, the `DataMover` local/volume byte-movement primitive plus the `RuntimeProvider` data plane (§10.11), and the `ManagedFileService` working-tree write primitive (§10.13), and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered once Beta 1's deliverables land** — from Beta 2 on, no new spec section is added and every later phase is hardening only. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
+Every Alpha 4 deliverable above is accepted, including the completed `lando setup` / `lando uninstall` surface, schema publication plus the Landofile serializer, telemetry plus redaction, supply-chain/self-update plus the layered `HttpClient`/`Downloader` egress primitives and tool provisioning, terminal UI polish plus `InteractionService`, the paired Paths/Roots + durable `StateStore` primitives, the stable App-handle embedding primitive, the remaining SDK primitive trio (`@lando/sdk/probe`, the `EventService` query/history surface, and the §4.2 plugin-abstraction contract kit), the universal `--format json` machine-output contract (§8.11) that realizes the agent-native tenet, the `DataMover` local/volume byte-movement primitive plus the `RuntimeProvider` data plane (§10.11), and the `ManagedFileService` working-tree write primitive (§10.13), and the final `4.0.0-alpha.N` pre-release ships from CI on the `dev` channel. The first signed `4.0.0-beta.N` and **feature freeze** belong to Beta 1 (contract-completion remediation) — from Beta 2 on, no new spec section is added and every later phase is hardening only. The §17.9 release machinery runs green on the reference platform; the all-platform acceptance pass is the RC gate.
 
 ---
 
-## Phase 5 — Beta 2 ("feature-freeze hardening")
+## Phase 5 — Beta 1 ("contract-completion remediation")
+
+> **One sentence**: Every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed — audit-driven, with no new feature surface — and only then does the first beta ship.
+>
+> **Audience**: production users on the `next` channel. The first public `4.0.0-beta.N` binaries.
+
+### Goal
+
+Make the shipped surface actually match its contracts before calling it beta. A post-Alpha-4 gap audit (2026-07-02) compared every Alpha 4 PRD acceptance criterion and the normative spec parts (§3, §6, §8, §12) against the working tree; all 172 Alpha 4 stories carried `passes: true`, but real gaps remained behind the green flags. Beta 1 closes all of them. See [`spec/beta-1/prd-beta-1-00-index.md`](./beta-1/prd-beta-1-00-index.md) for the full gap→story traceability table.
+
+### Concrete deliverables
+
+Stories **US-372..US-395** across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`):
+
+- **Durability & probe remediation (PRD-01)**: fsync-backed atomic writes everywhere durable state lands; exactly one durable-store implementation under `core/src/state/` (retire `json-bucket.ts`); real `runProbe`-backed `HealthcheckRunner`/`UrlScanner` built-ins plus doctor/downloader/setup-readiness migration; `waitForEvent` runtime coverage; working-tree hygiene.
+- **Managed-file contract completion (PRD-02)**: `RedactionService`-routed managed-file events; `PathsService.managedFileLedger(appId)`; `FileFormat` reconciled with the frozen contract.
+- **Renderer ownership & machine-output seam (PRD-03)**: `@lando/renderer-lando` actually owns the default renderer layer; doctor NDJSON goes through the central `StreamFrame` seam.
+- **Setup, uninstall & release remediation (PRD-04)**: plugin `setup.flags` merged into `lando setup`; uninstall tears down Lando-owned provider machines and never drops the resumable report; macOS/Windows managed runtime runs on bundled Podman machine tooling; the release-automation posture is decided and wired.
+- **CLI spec parity (PRD-05)**: writable `app config` / `meta config` / `meta global config`; the full `config translate` flow; source-scoped `includes update` with `--no-network`; `app shell` spec parity on `ShellRunner`; `app logs --follow`/`--since`; real `meta global list/info/logs/restart`; real build-time version reporting.
+
+### Exit criteria for Beta 1
+
+Every US-372..US-395 story is accepted with its verification contract green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only.
+
+---
+
+## Phase 6 — Beta 2 ("feature-freeze hardening")
 
 > **One sentence**: No new features — only the bugs that Beta 1 field use surfaced get fixed, on the way to a release candidate.
 >
@@ -588,7 +615,7 @@ The Beta 1 bug backlog is burned down to zero known blockers, the release machin
 
 ---
 
-## Phase 6 — RC ("release-candidate acceptance")
+## Phase 7 — RC ("release-candidate acceptance")
 
 > **One sentence**: The §17.9 binary acceptance criteria are all green on all platforms, and two RC iterations ship with zero blocker bugs.
 >
@@ -613,7 +640,7 @@ Pre-release tag `4.0.0-rc.N` ships from CI and passes every §17.9 item on every
 
 ---
 
-## Phase 7 — 4.0 GA
+## Phase 8 — 4.0 GA
 
 > **One sentence**: Public release. Library and binary co-versioned. Stable channel populated.
 
@@ -631,7 +658,7 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 
 ---
 
-## Phase 8 — 4.1 (first post-GA minor)
+## Phase 9 — 4.1 (first post-GA minor)
 
 > **Theme**: Address the first wave of real-user pain.
 
@@ -649,13 +676,13 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 
 ---
 
-## Phase 9 — 4.2
+## Phase 10 — 4.2
 
 > **Theme**: Open up the plugin ecosystem.
 
 - Plugin SDK polish from first wave of community plugin authors
 - Plugin discovery UX (`meta:plugin:search` against the registry surface)
-- Plugin trust UX iteration (refine whatever Beta 1 decision was made, based on use)
+- Plugin trust UX iteration (refine whatever Alpha 4 decision was made, based on use)
 - Recipe registry beyond canonical built-ins — first-class support for community recipes via `@lando/recipe-*` npm convention
 - Plugin authoring docs as full Diátaxis tutorials (executable per §19)
 - Custom `ToolingEngine` examples (`processExec`, `dryRun`)
@@ -664,7 +691,7 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 
 ---
 
-## Phase 10 — 4.3+ (deferred-from-§14.2 work)
+## Phase 11 — 4.3+ (deferred-from-§14.2 work)
 
 These were called out in §14.2 and the canonical surface non-goals as **architecturally preserved but not shipped at GA**. Each is a 4.x minor on its own merits. Order driven by telemetry + community demand.
 
@@ -692,14 +719,14 @@ These were called out in §14.2 and the canonical surface non-goals as **archite
 | **`bundled.ts` codegen drift** | Bundled plugin set is bake-time only; a missing plugin breaks the binary silently | Ship `scripts/build-bundled-plugins.ts` in MVP even if hand-curated |
 | **Hot-path latency** | The promised ~150ms on `tooling` bootstrap is the perceived performance number | Add a benchmark gate in CI starting Alpha 3; track regression by commit |
 | **CI runner Podman drift** | MVP ships CI with Podman in the runner (PRD-07). GitHub-hosted runner image changes can break the private-socket setup silently. | Pin `ubuntu-24.04` (not `latest`); on every Bun/Podman bump, run the integration job manually before merging. |
-| **Plugin trust UX** | Open decision at GA — wrong shape hurts plugin adoption | Don't ship plugin install (Alpha 3) without a stub; finalize at Beta 1 |
-| **Telemetry default-on** | Privacy-sensitive default — wrong inventory becomes a public incident | Inventory must be reviewed at Beta 1 by someone outside core eng |
+| **Plugin trust UX** | Open decision at GA — wrong shape hurts plugin adoption | Don't ship plugin install (Alpha 3) without a stub; finalize at Alpha 4 |
+| **Telemetry default-on** | Privacy-sensitive default — wrong inventory becomes a public incident | Inventory must be reviewed at Alpha 4 by someone outside core eng |
 
 ---
 
 ## Suggested cadence
 
-Rough swag — tune to team velocity. The two phases that historically blow up are **MVP** (everything-from-zero) and **Beta 1** (open decisions tend to surface late). Allocate buffer accordingly.
+Rough swag — tune to team velocity. The two phases that historically blow up are **MVP** (everything-from-zero) and **Alpha 4** (open decisions tend to surface late). Allocate buffer accordingly.
 
 | Phase | Relative size | Primary driver |
 |---|---|---|
@@ -708,9 +735,10 @@ Rough swag — tune to team velocity. The two phases that historically blow up a
 | 2 Alpha 1 | done | top-N stack coverage |
 | 2.5 Alpha 2 | done | guide scenario engine |
 | 3 Alpha 3 | done | catalog breadth + global-app + scratch-app concepts |
-| 4 Beta 1 (current) | medium | governance + signing + setup/uninstall completion + open-decision resolution |
-| 5 Beta 2 | medium | feature-freeze hardening (bug burn-down) |
-| 6 RC | medium | §17.9 all-platform acceptance + open-decision resolution |
-| 7 4.0 GA | days | tag bump from RC |
-| 8 4.1 | medium | post-GA reactive |
-| 9 4.2+ | open-ended | ecosystem-driven |
+| 4 Alpha 4 | done | governance + signing + setup/uninstall completion + open-decision resolution |
+| 5 Beta 1 (current) | small–medium | contract-completion remediation (post-Alpha-4 gap-audit burn-down, US-372..US-395) |
+| 6 Beta 2 | medium | feature-freeze hardening (bug burn-down) |
+| 7 RC | medium | §17.9 all-platform acceptance + open-decision resolution |
+| 8 4.0 GA | days | tag bump from RC |
+| 9 4.1 | medium | post-GA reactive |
+| 10 4.2+ | open-ended | ecosystem-driven |

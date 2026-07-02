@@ -1,8 +1,8 @@
-# PRD: BETA1-18 — Managed-file primitive (`ManagedFileService` + format codecs)
+# PRD: ALPHA4-18 — Managed-file primitive (`ManagedFileService` + format codecs)
 
 ## Introduction
 
-Beta 1 lands the missing member of the branch's chokepoint-primitive family: the
+Alpha 4 lands the missing member of the branch's chokepoint-primitive family: the
 `ManagedFileService` (§10.13) — the single chokepoint for Lando-owned writes into the
 **user's working tree** (the project files the user owns and may *adopt*: `settings.php`,
 `wp-config.php`, `.env`, `.devcontainer/devcontainer.json`, a generated Landofile
@@ -34,13 +34,13 @@ streaming-hash/atomic-write helper, the realpath-containment helper, the canonic
 the branch's existing PRD-06/13/16 primitives rather than re-derivation; the
 `ManagedFileService` is the only net-new service.
 
-Depends on: **BETA1-04** (the `@lando/sdk/landofile` serializer the `landofile`/`yaml`
+Depends on: **ALPHA4-04** (the `@lando/sdk/landofile` serializer the `landofile`/`yaml`
 codecs and `block`/`keys` modes round-trip through, plus SDK surface discipline),
-**BETA1-06** (the canonical `RedactionService` every managed-file event/transcript is
-masked through, and the §13.4 redaction gate), **BETA1-13** (the `PathsService` that
+**ALPHA4-06** (the canonical `RedactionService` every managed-file event/transcript is
+masked through, and the §13.4 redaction gate), **ALPHA4-13** (the `PathsService` that
 resolves the ledger root and the durable `StateStore` the ledger is realized through),
-**BETA1-14** (the `EventService` bounded redacted history the `ManagedFile` events feed),
-and **BETA1-16** (the shared streaming-hash/atomic-write helper and the realpath-
+**ALPHA4-14** (the `EventService` bounded redacted history the `ManagedFile` events feed),
+and **ALPHA4-16** (the shared streaming-hash/atomic-write helper and the realpath-
 containment helper this PRD reuses).
 
 ## Source References
@@ -72,7 +72,7 @@ containment helper this PRD reuses).
   boundary` gate.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2 the `ManagedFileService` tag on the
   embedding surface; §16.8 the `@lando/core/testing` `TestManagedFileStore`.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract,
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract,
   SDK/schema lockstep, the §13.2 snapshot gate, and dual-dispatch rules.
 
 ## Goals
@@ -91,8 +91,8 @@ containment helper this PRD reuses).
   detected conflict (skip + doctor), never a silent overwrite; adoption (delete the marker
   or `release`/`adopt`) is honored.
 - Reuse, not re-derive: ledger on `StateStore`, root via `PathsService.managedFileLedger`,
-  atomic write + containment via the BETA1-16 shared helpers, redaction via
-  `RedactionService`, events into the BETA1-14 bounded redacted history.
+  atomic write + containment via the ALPHA4-16 shared helpers, redaction via
+  `RedactionService`, events into the ALPHA4-14 bounded redacted history.
 - Migrate the recipe `files:` scaffold writer onto `ManagedFileService` so scaffolded files
   become updatable + adoptable, and add the `check:managed-file-boundary` gate.
 - Expose `ManagedFileService` to plugins (pre-namespaced) and embedding hosts, ship an
@@ -151,14 +151,14 @@ exist exactly once.
   may throw `ManagedFileError reason:"format"` until 4.x, and `keys`-mode `mergeManaged`
   for structured formats is stubbed to fail with a clear "deferred to 4.x" remediation.
 - [ ] The `landofile` and `yaml` codecs delegate emit/parse to the `@lando/sdk/landofile`
-  serializer (BETA1-04 §7.8.1); `emitLandofileYaml` is no longer called directly from the
+  serializer (ALPHA4-04 §7.8.1); `emitLandofileYaml` is no longer called directly from the
   codec module (one Landofile round-trip implementation).
 - [ ] The codec module is pure and dependency-light (no `effect` runtime service, no
   `@oclif/core`); an import-boundary assertion proves it constructs no `LandoRuntime`.
 - [ ] The §6.4 mount materializer (`type: template`/`inline`) obtains its rendered/encoded
   bytes through the codec module + `TemplateRenderer` rather than a private encode path;
   existing mount-materializer tests stay green (behavior-preserving).
-- [ ] Atomic writes performed by the codec consumers go through the BETA1-16 shared
+- [ ] Atomic writes performed by the codec consumers go through the ALPHA4-16 shared
   streaming-hash/atomic-write helper (temp → fsync → rename, temp removed on
   interrupt/failure); no direct `writeFileAtomicViaRename` call is added.
 - [ ] Tests pass.
@@ -203,7 +203,7 @@ service available from bootstrap `minimal`.
   the 4.x `destroy --purge`/`uninstall` consumers); `adopt(path)`/`release(path)` flip the
   ledger ownership state and (for `adopt`) strip the marker.
 - [ ] A managed-file `path` whose realpath escapes its resolved `base` (app root by
-  default) is rejected with `ManagedFileError reason:"path"` via the BETA1-16 realpath-
+  default) is rejected with `ManagedFileError reason:"path"` via the ALPHA4-16 realpath-
   containment helper; symlink escape is rejected.
 - [ ] All writes are `Scope`-bound; `Effect.interrupt` leaves no torn file (atomic rename)
   and no orphan temp; `@lando/core/testing` ships an in-memory `TestManagedFileStore` so
@@ -227,7 +227,7 @@ file content.
 - [ ] Every payload is routed through the canonical `RedactionService` (§3.7) before it is
   published or buffered; `ManagedFileService` is added to the `RedactionService` consumer
   list (§3.7/§4.2) and the §13.4 redaction lint gate covers it.
-- [ ] Events feed the BETA1-14 bounded redacted `EventService` history so a host/doctor can
+- [ ] Events feed the ALPHA4-14 bounded redacted `EventService` history so a host/doctor can
   `query`/`waitFor` them; a test proves a known secret value (e.g. a DB password written
   into a `settings.php` block) never appears in any emitted event, the history buffer, or a
   transcript.
@@ -310,7 +310,7 @@ the §10.13 guarantees.
   MUST be treated as a `conflict` and, under the default `onConflict: "skip"`, MUST NOT be
   overwritten; the conflict surfaces to `lando doctor` (4.x). Deleting the marker (or
   `adopt`) MUST permanently stop Lando from touching the file.
-- FR-5: Every `apply`/`remove` write MUST be atomic via the BETA1-16 shared streaming-hash/
+- FR-5: Every `apply`/`remove` write MUST be atomic via the ALPHA4-16 shared streaming-hash/
   atomic-write helper; a crash MUST never leave a partially written live file or an orphan
   temp.
 - FR-6: A managed-file path MUST be realpath-contained under its resolved `base`; an escape
@@ -394,7 +394,7 @@ generation, the `files:` key) are owned by the 4.x PRDs that ship those consumer
 ## Open Questions
 
 - Default conflict policy: `onConflict: "skip"` + `lando doctor` (safe, recommended) vs
-  DDEV's overwrite-marked-files behavior, with `--force`? Default: `skip` for Beta 1 — a
+  DDEV's overwrite-marked-files behavior, with `--force`? Default: `skip` for Alpha 4 — a
   detected in-place edit is never silently clobbered; revisit only if field data shows the
   skip is surprising.
 - Ledger location: `userData` local + rebuildable-from-markers (recommended, this PRD) vs a
@@ -402,7 +402,7 @@ generation, the `files:` key) are owned by the 4.x PRDs that ship those consumer
   the committed marked files already carry the team-visible source of truth.
 - Should the `LandoPluginContext.managedFiles` accessor allow a `base` outside the app root
   (e.g. a plugin managing a file under `userConfRoot`)? Default: app-root `base` only in
-  Beta 1; add an explicit opt-in if a plugin demand appears.
-- Should `keys` mode land any structured merge in Beta 1 (json only) or stay fully 4.x?
-  Default: fully 4.x — `file`/`block` cover the Beta 1 substrate need and avoid shipping a
+  Alpha 4; add an explicit opt-in if a plugin demand appears.
+- Should `keys` mode land any structured merge in Alpha 4 (json only) or stay fully 4.x?
+  Default: fully 4.x — `file`/`block` cover the Alpha 4 substrate need and avoid shipping a
   half-fidelity structural merge.

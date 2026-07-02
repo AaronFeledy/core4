@@ -1,10 +1,10 @@
-# PRD: BETA1-07 — Executable guides & scenarios (full)
+# PRD: ALPHA4-07 — Executable guides & scenarios (full)
 
 ## Introduction
 
 Executable guides and scenarios (§19 / `spec/17-executable-tutorials.md`, plus §13 CI gates) are the contract that keeps user docs and generated scenario tests in sync. Alpha 2 and Alpha 3 already shipped the engine: `GuideFrontmatter`, singleton scenario generation, `ScenarioContext`, MDX-to-generated-scenario TypeScript, source mapping, minimal guide lint, internal transcripts, fixture-copy discipline, the full component vocabulary, real `<Hidden>`, multi-axis variants, real `runCli`, `dev:guides`, guide coverage and drift gates, and recipe README strip-and-flatten.
 
-Beta 1 is the final increment. It ships public reader transcripts for visible frames, docs-site consumption of those frames, library-mode guides through `<Run runtime="...">`, per-PR scenario variants on every supported platform, an `@smoke` e2e guide-scenario subset on linux-x64, hardened lint gates, public transcript redaction and determinism, and one canonical guide that proves the full path.
+Alpha 4 is the final increment. It ships public reader transcripts for visible frames, docs-site consumption of those frames, library-mode guides through `<Run runtime="...">`, per-PR scenario variants on every supported platform, an `@smoke` e2e guide-scenario subset on linux-x64, hardened lint gates, public transcript redaction and determinism, and one canonical guide that proves the full path.
 
 Depends on: **Alpha 3 PRD-12** (the executable guide engine and guide coverage/drift gates).
 
@@ -132,7 +132,7 @@ Depends on: **Alpha 3 PRD-12** (the executable guide engine and guide coverage/d
 
 ### US-250: Canonical guide acceptance path
 
-**Description:** As a Beta 1 release owner, I need one canonical recipe guide to prove public transcripts, library-mode scenarios, and e2e `@smoke` variants all work together.
+**Description:** As a Alpha 4 release owner, I need one canonical recipe guide to prove public transcripts, library-mode scenarios, and e2e `@smoke` variants all work together.
 
 **Acceptance Criteria:**
 
@@ -161,7 +161,7 @@ Depends on: **Alpha 3 PRD-12** (the executable guide engine and guide coverage/d
 
 - Re-specifying or replacing the Alpha 2 and Alpha 3 guide engine already shipped.
 - Adding a new guide component vocabulary beyond §19.3 and §19.16.
-- Running the e2e guide-scenario smoke subset on every platform during Beta 1.
+- Running the e2e guide-scenario smoke subset on every platform during Alpha 4.
 - Publishing internal transcripts, hidden blocks, fixture contents, or internal event traces in the docs site.
 - Replacing Starlight with a different docs framework.
 
@@ -170,7 +170,7 @@ Depends on: **Alpha 3 PRD-12** (the executable guide engine and guide coverage/d
 - The full component vocabulary remains `<Guide>`, `<Scenario>`, `<Step>`, `<Run>`, `<Verify>`, `<Inspect>`, `<Cleanup>`, `<Variable>`, `<Hidden>`, `<UseFixture>`, `<Tabs>`, `<Tab>`, `<Inline>`, and `<Skip>`.
 - `ScenarioContext` remains `guideId`, `scenarioId`, `variant`, `testDir`, `runtime`, `vars`, `runCli`, `shell`, `events`, `transcript`, and `fixtures`; library-mode runs should not require `runCli` for API calls.
 - Public and internal transcripts should share a schema family but different write targets so test diagnostics can stay rich while docs output stays safe.
-- The e2e smoke subset must keep provider credentials and live-provider availability behind explicit gates, matching the Beta 1 verification contract.
+- The e2e smoke subset must keep provider credentials and live-provider availability behind explicit gates, matching the Alpha 4 verification contract.
 - Generated guide scenario tests remain gitignored; committed files are the MDX guides, fixtures, public docs integration, lint rules, and recipe README scaffold output where applicable.
 
 ## Success Metrics
@@ -214,4 +214,4 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 - Should public transcript artifacts be committed or generated during docs build? Default: generated during docs build, with committed source MDX and fixtures as the source of truth.
 - What exact runtime string should library-mode guides use in `<Run runtime="...">`? Default: `library`, matching the runtime concept in §16.
 - Which canonical recipe guide should carry the full acceptance path? Default: the smallest bundled recipe that already has stable fixtures and runs quickly on linux-x64.
-- Should the e2e `@smoke` guide subset be required on linux-arm64 during Beta 1? Default: no, linux-x64 only for Beta 1; all-platform e2e expansion is an RC gate.
+- Should the e2e `@smoke` guide subset be required on linux-arm64 during Alpha 4? Default: no, linux-x64 only for Alpha 4; all-platform e2e expansion is an RC gate.

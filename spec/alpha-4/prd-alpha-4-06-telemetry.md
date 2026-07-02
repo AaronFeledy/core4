@@ -1,16 +1,16 @@
-# PRD: BETA1-06 — Telemetry & redaction
+# PRD: ALPHA4-06 — Telemetry & redaction
 
 ## Introduction
 
-Telemetry (§2.4, §3.4, §4.2, §16.3, §17.6.3, and §18.1 through §18.6) turns the existing `Telemetry` service contract into a real runtime capability. Beta 1 ships a fire-and-forget transport, a documented event inventory, redaction rules, retention policy, default-on CLI behavior, library-mode default-off behavior, user opt-out controls, and first wired events for update outcomes and deprecated surface use.
+Telemetry (§2.4, §3.4, §4.2, §16.3, §17.6.3, and §18.1 through §18.6) turns the existing `Telemetry` service contract into a real runtime capability. Alpha 4 ships a fire-and-forget transport, a documented event inventory, redaction rules, retention policy, default-on CLI behavior, library-mode default-off behavior, user opt-out controls, and first wired events for update outcomes and deprecated surface use.
 
 The canonical event inventory is published at [`docs/telemetry/events.md`](../../docs/telemetry/events.md), backed by the machine-readable source of truth in [`core/src/telemetry/inventory.ts`](../../core/src/telemetry/inventory.ts) and enforced by the `check:telemetry-inventory` gate.
 
-Depends on: **BETA1-03** (deprecation governance publishes `deprecation-used` and the consumption path this PRD records). This PRD owns and closes the §14.2 telemetry decision (event inventory, redaction rules, retention, defaults, and disablement controls); PRD-02 closes the other §14.2 decisions (Bun floor, OCLIF, auto-setup, Compose subset, sshAgent, plugin trust).
+Depends on: **ALPHA4-03** (deprecation governance publishes `deprecation-used` and the consumption path this PRD records). This PRD owns and closes the §14.2 telemetry decision (event inventory, redaction rules, retention, defaults, and disablement controls); PRD-02 closes the other §14.2 decisions (Bun floor, OCLIF, auto-setup, Compose subset, sshAgent, plugin trust).
 
 This PRD also absorbs the canonical secret/PII redaction primitive. Redaction lives here because telemetry owns the machine-readable event inventory, the allowlist scrub, and the privacy contract that no sink observes raw payloads; the shared `@lando/sdk/secrets` primitive and core `RedactionService` make that contract reusable across logs, events, transcripts, and downloader events.
 
-Redaction work keeps its external dependencies on **BETA1-04** (schema publication), **BETA1-07** (executable guides public-transcript redaction), and **BETA1-09** (Downloader events composing the canonical redactor). The downstream **BETA1-11** SDK/library acceptance suite validates the exported surface.
+Redaction work keeps its external dependencies on **ALPHA4-04** (schema publication), **ALPHA4-07** (executable guides public-transcript redaction), and **ALPHA4-09** (Downloader events composing the canonical redactor). The downstream **ALPHA4-11** SDK/library acceptance suite validates the exported surface.
 
 ## Source References
 
@@ -30,7 +30,7 @@ Redaction work keeps its external dependencies on **BETA1-04** (schema publicati
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 redaction contract suite and §13.4 redaction-boundary gate.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.3.1 `${secret:…}` redaction rules.
 - [`spec/17-executable-tutorials.md`](../17-executable-tutorials.md) §19.6 transcript redaction list and golden frame.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ## Goals
 
@@ -230,7 +230,7 @@ The following stories are folded in from the Redaction primitive scope.
 
 ## Non-Goals
 
-- Building a public analytics dashboard in Beta 1.
+- Building a public analytics dashboard in Alpha 4.
 - Persisting telemetry queues across process restarts.
 - Adding telemetry to every command in the CLI surface during this PRD.
 - Collecting per-user, per-host, per-app, or per-project stable identifiers.
@@ -302,7 +302,7 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 - What is the canonical opt-out command id: `meta:config telemetry off`, `meta:telemetry:disable`, or `telemetry off`? Default: `meta:config telemetry off`, because it writes a global config key and keeps config ownership clear.
 - Should the telemetry inventory live under `docs/telemetry/` or `spec/`? Default: `docs/telemetry/events.md` with a `spec/` link, because users need to read it.
-- Should the first Beta 1 sink target the production endpoint or a staging endpoint until `next` stabilizes? Default: staging for the first beta, promoted by release config when accepted.
+- Should the first Alpha 4 sink target the production endpoint or a staging endpoint until `next` stabilizes? Default: staging for the first beta, promoted by release config when accepted.
 - How long should raw telemetry be retained before aggregation only? Default: 30 days raw, 13 months aggregate.
 
 ### Redaction open questions

@@ -1,10 +1,10 @@
-# PRD: BETA1-01 — Setup & uninstall completion
+# PRD: ALPHA4-01 — Setup & uninstall completion
 
 ## Introduction
 
-Beta 1 completes the host setup and uninstall lifecycle that users hit before and after every local development session. `lando setup` becomes a re-runnable readiness command that prepares the provider, certificate authority, proxy, shell integration, and file sync engine through the plugin system and direct service calls. `lando uninstall` becomes a first-class destructive command with clear previews, confirmations, and data-retention choices.
+Alpha 4 completes the host setup and uninstall lifecycle that users hit before and after every local development session. `lando setup` becomes a re-runnable readiness command that prepares the provider, certificate authority, proxy, shell integration, and file sync engine through the plugin system and direct service calls. `lando uninstall` becomes a first-class destructive command with clear previews, confirmations, and data-retention choices.
 
-This work closes the remaining setup and uninstall feature surface called out by the Beta 1 index and ROADMAP, then keeps source-mode OCLIF dispatch and the compiled `$bunfs` dispatcher in parity.
+This work closes the remaining setup and uninstall feature surface called out by the Alpha 4 index and ROADMAP, then keeps source-mode OCLIF dispatch and the compiled `$bunfs` dispatcher in parity.
 
 ## Source References
 
@@ -14,11 +14,11 @@ This work closes the remaining setup and uninstall feature surface called out by
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.9 logs, diagnostics, and readiness reporting.
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.2 built-in command list, including `lando uninstall`.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.7 first-run UX and uninstall.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, dual-dispatch parity, and destructive-confirmation rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, dual-dispatch parity, and destructive-confirmation rules.
 
 ## Goals
 
-- Make `lando setup` the one command that prepares a host for Beta 1 use.
+- Make `lando setup` the one command that prepares a host for Alpha 4 use.
 - Keep setup safe to rerun, with already-satisfied steps reported rather than repeated.
 - Honor provider, proxy, CA, shell, and file-sync choices through explicit flags.
 - Give `lando doctor` a complete readiness summary from the latest setup run.
@@ -248,7 +248,7 @@ This work closes the remaining setup and uninstall feature surface called out by
 - Silently elevating privileges or storing sudo credentials.
 - Embedding Mutagen in the compiled Lando binary.
 - Supporting Homebrew, scoop, winget, distro packages, or OCI installers in this PRD.
-- Auto-running setup from unrelated commands beyond the explicit Beta 1 setup surface.
+- Auto-running setup from unrelated commands beyond the explicit Alpha 4 setup surface.
 
 ## Technical Considerations
 
@@ -269,7 +269,7 @@ This work closes the remaining setup and uninstall feature surface called out by
 
 ## Guide Coverage
 
-Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
+Per [Alpha 4 index verification](./prd-alpha-4-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
 
 **Guides owned by this PRD:**
 

@@ -1,10 +1,10 @@
-# PRD: BETA1-08 — Release engineering & code signing
+# PRD: ALPHA4-08 — Release engineering & code signing
 
 ## Introduction
 
-Beta 1 turns the release script from partial machinery into the ordered release orchestrator for signed `4.0.0-beta.N` artifacts on the `next` channel. The release flow has one entry point, `scripts/release.ts`, and a fixed 13-stage order that covers codegen, gates, bundles, compiled binaries, signing, notarization, manifests, provenance, SBOMs, and publish.
+Alpha 4 turns the release script from partial machinery into the ordered release orchestrator for the final `4.0.0-alpha.N` artifacts on the `dev` channel and rehearses the signed beta/`next` pipeline that Beta 1 will use. The release flow has one entry point, `scripts/release.ts`, and a fixed 13-stage order that covers codegen, gates, bundles, compiled binaries, signing, notarization, manifests, provenance, SBOMs, and publish.
 
-This PRD covers §17.1 through §17.4 and the release-time deprecation gate from §18.7. Supply-chain attestations, self-update, and installers are covered by later Beta 1 PRDs but depend on this pipeline shape.
+This PRD covers §17.1 through §17.4 and the release-time deprecation gate from §18.7. Supply-chain attestations, self-update, and installers are covered by later Alpha 4 PRDs but depend on this pipeline shape.
 
 ## Source References
 
@@ -13,7 +13,7 @@ This PRD covers §17.1 through §17.4 and the release-time deprecation gate from
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.3 asset embedding.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.4 code signing and notarization.
 - [`spec/16-deprecation-and-surface-evolution.md`](../16-deprecation-and-surface-evolution.md) §18.7 release-time `removeIn` enforcement.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) PRD-08 range, dependencies, local rehearsal rule, and verification contract.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) PRD-08 range, dependencies, local rehearsal rule, and verification contract.
 
 ## Goals
 
@@ -113,11 +113,11 @@ This PRD covers §17.1 through §17.4 and the release-time deprecation gate from
 
 ### US-257: Compiled binaries use `--bytecode` and stay within the cold-build budget
 
-**Description:** As a maintainer, I can compile Beta 1 binaries with Bun bytecode enabled and catch release-time build slowdowns early.
+**Description:** As a maintainer, I can compile Alpha 4 binaries with Bun bytecode enabled and catch release-time build slowdowns early.
 
 **Acceptance Criteria:**
 - [ ] Stage 7 Compile invokes `bun build --compile --bytecode` against the canonical compiled entry.
-- [ ] Compile targets preserve the Beta 1 platform ids from the generated CI workflow.
+- [ ] Compile targets preserve the Alpha 4 platform ids from the generated CI workflow.
 - [ ] A perf guard measures one-target cold build time on reference linux-x64 and fails above 10 minutes.
 - [ ] Local rehearsal reports compile duration even when later signing stages are skipped.
 - [ ] Tests verify `--bytecode` is present and that the budget guard reports tagged failures.
@@ -127,7 +127,7 @@ This PRD covers §17.1 through §17.4 and the release-time deprecation gate from
 
 ## Functional Requirements
 
-- FR-1: `scripts/release.ts` MUST be the single release orchestrator for Beta 1 release artifacts.
+- FR-1: `scripts/release.ts` MUST be the single release orchestrator for Alpha 4 release artifacts.
 - FR-2: The orchestrator MUST define and run the 13 spec stages in order.
 - FR-3: Stage failures MUST halt the pipeline with tagged release errors.
 - FR-4: Shell-shaped stages MUST use `Bun.$`; argv-precise tools MUST use `Bun.spawn`.
@@ -144,7 +144,7 @@ This PRD covers §17.1 through §17.4 and the release-time deprecation gate from
 ## Non-Goals
 
 - Implementing SBOM generation, SLSA provenance, self-update, or installer scripts in this PRD.
-- Releasing all-platform RC acceptance. Beta 1 requires linux-x64 release machinery to be implemented and green.
+- Releasing all-platform RC acceptance. Alpha 4 requires linux-x64 release machinery to be implemented and green.
 - Supporting release tooling outside Bun.
 - Adding Homebrew, scoop, winget, distro, or OCI publication paths.
 - Changing platform ids or generated CI workflow semantics.
@@ -166,7 +166,7 @@ This PRD covers §17.1 through §17.4 and the release-time deprecation gate from
 
 ## Guide Coverage
 
-Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
+Per [Alpha 4 index verification](./prd-alpha-4-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
 
 **Guides owned by this PRD:**
 

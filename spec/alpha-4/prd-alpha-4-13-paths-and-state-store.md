@@ -1,20 +1,20 @@
-# PRD: BETA1-13 — Paths/Roots & durable StateStore
+# PRD: ALPHA4-13 — Paths/Roots & durable StateStore
 
 ## Introduction
 
-Beta 1 lands two coupled foundational primitives: the public Paths/Roots primitive and the durable `StateStore` primitive. They stay in one PRD because `StateStore` resolves and contains bucket paths through the Paths/Roots contract, and both features consolidate duplicated filesystem/root/persistence logic before Beta 1 enters feature freeze.
+Alpha 4 lands two coupled foundational primitives: the public Paths/Roots primitive and the durable `StateStore` primitive. They stay in one PRD because `StateStore` resolves and contains bucket paths through the Paths/Roots contract, and both features consolidate duplicated filesystem/root/persistence logic before the Beta 1 feature-freeze boundary.
 
-Beta 1 is still the last feature-surface phase, so the public Paths/Roots primitive lands now instead of being deferred to a post-freeze release. Root resolution (`userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot`) and the dozens of paths derived from those roots are currently re-implemented as ad-hoc helpers and hand-rolled `join()` calls across config, cache, plugin, scratch, shellenv, trust-store, planner, and uninstall code. Three separate modules reimplement the `$HOME`/XDG fallback with different bases, none of the non-conf roots implement the macOS/Windows platform defaults the spec mandates, `userCacheRoot` never reads `config.yml`, and `GlobalConfig` is missing the `userCacheRoot`/`systemPluginRoot` fields its own resolution order depends on.
+Alpha 4 is still the last feature-surface phase, so the public Paths/Roots primitive lands now instead of being deferred to a post-freeze release. Root resolution (`userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot`) and the dozens of paths derived from those roots are currently re-implemented as ad-hoc helpers and hand-rolled `join()` calls across config, cache, plugin, scratch, shellenv, trust-store, planner, and uninstall code. Three separate modules reimplement the `$HOME`/XDG fallback with different bases, none of the non-conf roots implement the macOS/Windows platform defaults the spec mandates, `userCacheRoot` never reads `config.yml`, and `GlobalConfig` is missing the `userCacheRoot`/`systemPluginRoot` fields its own resolution order depends on.
 
 This PRD implements the normative Paths/Roots primitive from §7.5.1: a single Effect-free `@lando/core/paths` resolver, the `PathsService` runtime tag, the `GlobalConfig` field additions, and the migration of every Lando-owned path derivation onto the primitive. Because the repo is private and nothing is published, behavior is aligned to the spec §7.5 matrix now (including the `userConfRoot` default move from `$HOME/.lando` to the platform-conventional config root).
 
-Beta 1 is still the last feature-surface phase, so the canonical durable-state primitive lands now instead of being deferred to a post-freeze release. Three subsystems already persist durable Lando-owned state, each reinventing a slice of the same machinery: the scratch registry (`core/src/scratch-app/registry.ts`) carries the most complete take (versioned envelope + `O_CREAT|O_EXCL` token lockfile + stale-owner detection + corruption quarantine + atomic write), the `.lando.lock.yml` include lockfile (`core/src/landofile/includes.ts`) carries a no-lock variant, and `core/src/cache/atomic.ts` carries the bare write-temp-then-rename. `CacheService` is not this primitive — it is the ephemeral, in-memory, TTL-bounded memo with a raw `writeAtomic` escape hatch.
+Alpha 4 is still the last feature-surface phase, so the canonical durable-state primitive lands now instead of being deferred to a post-freeze release. Three subsystems already persist durable Lando-owned state, each reinventing a slice of the same machinery: the scratch registry (`core/src/scratch-app/registry.ts`) carries the most complete take (versioned envelope + `O_CREAT|O_EXCL` token lockfile + stale-owner detection + corruption quarantine + atomic write), the `.lando.lock.yml` include lockfile (`core/src/landofile/includes.ts`) carries a no-lock variant, and `core/src/cache/atomic.ts` carries the bare write-temp-then-rename. `CacheService` is not this primitive — it is the ephemeral, in-memory, TTL-bounded memo with a raw `writeAtomic` escape hatch.
 
 This PRD promotes the union of those takes into one published, contract-tested primitive — `StateStore` — a core service (eager at `minimal`) that mints `StateBucket` handles (one file each) with `json`/`binary`/custom codecs, advisory file locking, corruption quarantine, version migration, and path containment. It then migrates the scratch registry and include lockfile onto it (behavior- and format-preserving) and exposes a pre-namespaced `StateBucket` factory to plugins and the full tag to embedding hosts, so a `SecretStore`, `UpdateService`, `ConfigTranslator`, or embedding host can persist durable state with the same guarantees core uses.
 
 This PRD implements the normative `StateStore` contract from §12.7 and aligns the existing durable-write call sites onto the published surface.
 
-Depends on: **BETA1-01** (setup/uninstall consume roots and derived paths), **BETA1-04** (schema publication and SDK surface discipline), and **BETA1-11** (SDK/library acceptance and import-boundary contracts). The `StateStore` scope also depends internally on the Paths/Roots primitive defined earlier in this PRD.
+Depends on: **ALPHA4-01** (setup/uninstall consume roots and derived paths), **ALPHA4-04** (schema publication and SDK surface discipline), and **ALPHA4-11** (SDK/library acceptance and import-boundary contracts). The `StateStore` scope also depends internally on the Paths/Roots primitive defined earlier in this PRD.
 
 ## Source References
 
@@ -26,7 +26,7 @@ Depends on: **BETA1-01** (setup/uninstall consume roots and derived paths), **BE
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2 public API surface (the Paths entry), §16.3/§16.5 `RootOverrides` via `makeLandoRuntime` options.
 - [`spec/04-pluggability.md`](../04-pluggability.md) §4.2 — `PathsService` is host/test-overridable but not a plugin contribution surface.
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) §12.1/§12.4 — the cache catalog and persistent-artifact paths the derived-path builders must encode.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
 
 ### StateStore source references
 
@@ -37,7 +37,7 @@ Depends on: **BETA1-01** (setup/uninstall consume roots and derived paths), **BE
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2 service tag on the embedding surface; §16.5 cache-root/path isolation; §16.8 `@lando/core/testing`.
 - [`spec/19-scratch-apps.md`](../19-scratch-apps.md) §21.11 scratch registry realized through `StateStore`.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.7.4 include lockfile realized through `StateStore`; §7.5.1 Paths/Roots primitive.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract and SDK/schema rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract and SDK/schema rules.
 
 ## Goals
 
@@ -225,7 +225,7 @@ Depends on: **BETA1-01** (setup/uninstall consume roots and derived paths), **BE
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
-**Notes:** Backlog hardening surfaced in `spec/beta-1/progress.txt` (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story. `Bun.Transpiler().scan()` erases `import type` edges and does not surface dynamic `import()`, so the walker needs a dedicated AST pass for the dynamic and re-export cases.
+**Notes:** Backlog hardening surfaced in `spec/alpha-4/progress.txt` (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story. `Bun.Transpiler().scan()` erases `import type` edges and does not surface dynamic `import()`, so the walker needs a dedicated AST pass for the dynamic and re-export cases.
 
 ## Functional Requirements
 
@@ -317,12 +317,12 @@ This PRD publishes foundational root-resolution and durable-state primitives. It
 
 ### Paths/Roots open questions
 
-- Should the legacy `resolveUserDataRoot`/`resolveUserConfRoot`/`resolveUserCacheRoot` named exports be deprecated (TSDoc `@deprecated` + `DeprecationService`) once every internal consumer migrates, or kept indefinitely as supported thin aliases? Default: keep them as supported internal aliases for Beta 1; revisit deprecation post-GA since they are not part of the published `@lando/core` surface.
+- Should the legacy `resolveUserDataRoot`/`resolveUserConfRoot`/`resolveUserCacheRoot` named exports be deprecated (TSDoc `@deprecated` + `DeprecationService`) once every internal consumer migrates, or kept indefinitely as supported thin aliases? Default: keep them as supported internal aliases for Alpha 4; revisit deprecation post-GA since they are not part of the published `@lando/core` surface.
 - Should `LandoPaths` expose `tempDir` (under the OS temp dir) as a builder now? Default: include it only if a current consumer needs it; otherwise reserve it to keep the contract minimal at first ship.
-- Should the `userConfRoot` default change ship with a one-time migration that relocates an existing `$HOME/.lando/config.yml`? Default: no automatic migration in Beta 1; document the new default and let users move config explicitly, since the repo is pre-release and has no installed-base guarantee.
+- Should the `userConfRoot` default change ship with a one-time migration that relocates an existing `$HOME/.lando/config.yml`? Default: no automatic migration in Alpha 4; document the new default and let users move config explicitly, since the repo is pre-release and has no installed-base guarantee.
 
 ### StateStore open questions
 
 - Should `StateStoreLive` write through the `FileSystem` service (for sandbox/test override) or stay node:fs-backed for v1? Default: node:fs-backed for the dependency-light `minimal` layer; revisit a FileSystem-backed variant if a sandboxing host needs it.
 - Should the `binary` codec default to `Bun.serialize`/`Bun.deserialize` or Effect Schema binary encoding? Default: `Bun.serialize` for buckets whose schema is not a public contract, Effect Schema binary for any bucket whose payload crosses the published schema surface, matching the §12.2 rule.
-- Should plugin buckets be allowed under `userCache` (not just `userData`) for plugin-owned ephemeral-but-durable caches? Default: `userData`-only in Beta 1; add a `userCache` namespace to the plugin factory in a follow-up if demand appears.
+- Should plugin buckets be allowed under `userCache` (not just `userData`) for plugin-owned ephemeral-but-durable caches? Default: `userData`-only in Alpha 4; add a `userCache` namespace to the plugin factory in a follow-up if demand appears.

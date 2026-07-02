@@ -1,8 +1,8 @@
-# PRD: BETA1-10 — Installers & distribution channels
+# PRD: ALPHA4-10 — Installers & distribution channels
 
 ## Introduction
 
-Beta 1 limits v4.0.0 distribution to exactly two install surfaces: GitHub Releases and curl-pipe installers. GitHub Releases publishes the signed artifact set from PRD-08 and PRD-09. The installer scripts at `get.lando.dev` detect the platform, resolve a channel, verify downloads against vendored trust roots, install the compiled binary, and optionally run setup.
+Alpha 4 limits v4.0.0 distribution to exactly two install surfaces: GitHub Releases and curl-pipe installers. GitHub Releases publishes the signed artifact set from PRD-08 and PRD-09. The installer scripts at `get.lando.dev` detect the platform, resolve a channel, verify downloads against vendored trust roots, install the compiled binary, and optionally run setup.
 
 This PRD covers §17.7 distribution channels and first-run install behavior. It deliberately defers package-manager channels until after GA.
 
@@ -12,7 +12,7 @@ This PRD covers §17.7 distribution channels and first-run install behavior. It 
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.5 supply-chain artifacts consumed by GitHub Releases.
 - [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) §17.6 update manifest and channel resolution reused by installers.
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.8 setup and host integration.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) PRD-10 range, dependency on PRD-09, and verification contract.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) PRD-10 range, dependency on PRD-09, and verification contract.
 
 ## Goals
 
@@ -31,7 +31,7 @@ This PRD covers §17.7 distribution channels and first-run install behavior. It 
 **Description:** As a user who downloads manually, I can get every binary, library archive, SBOM, provenance file, checksum, and signature from GitHub Releases.
 
 **Acceptance Criteria:**
-- [ ] GitHub Releases publishes signed binaries for every Beta 1 platform target.
+- [ ] GitHub Releases publishes signed binaries for every Alpha 4 platform target.
 - [ ] The release includes the library archive, SBOM files, provenance attestations, checksum manifests, signature files, certificates, and verification instructions.
 - [ ] The compiled binary embeds Bun, so binary-only installs require no separate Bun, Node, or package manager.
 - [ ] Mutagen is not embedded in the binary and remains acquired by `lando setup`.
@@ -128,7 +128,7 @@ This PRD covers §17.7 distribution channels and first-run install behavior. It 
 
 ## Non-Goals
 
-- Shipping Homebrew, scoop, winget, distro package, or OCI install channels in Beta 1.
+- Shipping Homebrew, scoop, winget, distro package, or OCI install channels in Alpha 4.
 - Embedding Mutagen into the compiled binary.
 - Installing a separate Bun runtime for binary-only users.
 - Auto-editing shell profiles without user consent.
@@ -151,7 +151,7 @@ This PRD covers §17.7 distribution channels and first-run install behavior. It 
 
 ## Guide Coverage
 
-Per [Beta 1 index verification](./prd-beta-1-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
+Per [Alpha 4 index verification](./prd-alpha-4-00-index.md) and the §19 guide convention, this PRD owns the executable guides listed below. Each guide exercises the happy path of its mapped user story; failure modes remain covered by unit and integration tests in the named packages. PRs that touch the listed surface paths MUST also touch the corresponding guide(s), or use the `Guide-Coverage-Skip:` escape hatch.
 
 **Guides owned by this PRD:**
 

@@ -1,12 +1,12 @@
-# PRD: BETA1-11 — Library API stability & §17.9 acceptance
+# PRD: ALPHA4-11 — Library API stability & §17.9 acceptance
 
 ## Introduction
 
-Beta 1 ends with the library API stable on the `next` channel and the §17.9 binary acceptance machinery green on the reference platform, linux-x64. This PRD depends on PRD-01 through PRD-10 because it verifies the whole product surface rather than one isolated subsystem.
+Alpha 4 ends with the library API surface frozen for the final alpha on the `dev` channel and the §17.9 binary acceptance machinery green on the reference platform, linux-x64. This PRD depends on PRD-01 through PRD-10 because it verifies the whole product surface rather than one isolated subsystem.
 
-The library API must be safe for embedding hosts, contract-tested from workspace and packed installs, and separated from OCLIF. The §17.9 acceptance set is **27 criteria** total (the `v4.0.0` release MUST list). Beta 1 is the last phase that adds feature surface, so the harness implements and runs **all 27 criteria** green on linux-x64 during Beta 1 — including external compiled-plugin loading (criteria 20–24) and the codegen/bundled-plugin/recipe gates (criteria 25–27). Only the all-platform acceptance pass is deferred to RC; RC and GA take bug fixes, not new feature surface.
+The library API must be safe for embedding hosts, contract-tested from workspace and packed installs, and separated from OCLIF. The §17.9 acceptance set is **27 criteria** total (the `v4.0.0` release MUST list). Alpha 4 is the last phase that adds feature surface, so the harness implements and runs **all 27 criteria** green on linux-x64 during Alpha 4 — including external compiled-plugin loading (criteria 20–24) and the codegen/bundled-plugin/recipe gates (criteria 25–27). Only the all-platform acceptance pass is deferred to RC; RC and GA take bug fixes, not new feature surface.
 
-Depends on: **BETA1-01 through BETA1-10**.
+Depends on: **ALPHA4-01 through ALPHA4-10**.
 
 ## Source References
 
@@ -18,20 +18,20 @@ Depends on: **BETA1-01 through BETA1-10**.
 
 ## Goals
 
-- Declare the Beta 1 stable `@lando/core` library entry points, including the `App` handle embedding primitive, and keep internal OCLIF code out of stable imports.
-- Make `@lando/core/testing` stable on `next` with deterministic test runtime coverage and JSDoc on every export.
+- Declare the Alpha 4 stable `@lando/core` library entry points, including the `App` handle embedding primitive, and keep internal OCLIF code out of stable imports.
+- Freeze the `@lando/core/testing` contract for Alpha 4 with deterministic test runtime coverage and JSDoc on every export.
 - Contract-test library-mode defaults, `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, CLI operations, and packed-install entry points.
 - Enforce plugin SDK compatibility through `requires."@lando/core": "^4.0.0"`.
 - Run the §17.9 acceptance harness green on linux-x64: implement all 27 criteria (1–19 runtime/release/update/setup, 20–24 external compiled-plugin loading, 25–27 codegen/bundled-plugin/recipe gates), with only the all-platform pass deferred to RC.
 
 ## User Stories
 
-### US-272: `@lando/core/testing` stable on `next` + deterministic `TestRuntime`
+### US-272: `@lando/core/testing` contract frozen for Alpha 4 + deterministic `TestRuntime`
 
-**Description:** As an embedding host or plugin author, I can import `@lando/core/testing` from the `next` channel and get deterministic in-memory testing utilities with documented exports.
+**Description:** As an embedding host or plugin author, I can import `@lando/core/testing` from the Alpha 4 library surface and get deterministic in-memory testing utilities with documented exports.
 
 **Acceptance Criteria:**
-- [ ] `@lando/core/testing` is declared stable on the `next` channel for Beta 1 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.
+- [ ] `@lando/core/testing` is declared part of the frozen Alpha 4 library surface while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.
 - [ ] `TestRuntime` satisfies every default service tag, is deterministic, and does not touch filesystem or network outside explicit overrides.
 - [ ] The provider contract suite runs against `TestRuntime` and proves the default fake provider behavior is stable.
 - [ ] Every `@lando/core/testing` export has JSDoc and is covered by workspace and packed-install resolution tests.
@@ -48,7 +48,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 - [ ] `core/test/library/import-boundary.test.ts` proves the default entry is OCLIF-free and `@lando/core/oclif` is internal-only.
 - [ ] `core/test/library/core-testing-export.test.ts` resolves `@lando/core/testing` from both workspace and packed install.
 - [ ] `core/test/library/cli-operations-export.test.ts` and `core/test/library/make-runtime-app.test.ts` cover CLI operation exports and runtime creation.
-- [ ] The known missing `@lando/core/docs/redactions` export is either added or ticketed with a failing contract test and explicit Beta 1 acceptance note.
+- [ ] The known missing `@lando/core/docs/redactions` export is either added or ticketed with a failing contract test and explicit Alpha 4 acceptance note.
 - [ ] Tests pass.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
@@ -71,7 +71,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 **Description:** As a plugin author, I need the plugin compatibility contract to reject plugins that target the wrong core major version.
 
 **Acceptance Criteria:**
-- [ ] Plugin manifests must declare `requires."@lando/core": "^4.0.0"` for Beta 1 compatibility.
+- [ ] Plugin manifests must declare `requires."@lando/core": "^4.0.0"` for Alpha 4 compatibility.
 - [ ] The plugin SDK contract test accepts compatible manifests and rejects missing, incompatible, or overly broad core requirements with tagged remediation.
 - [ ] Bundled plugin fixtures and generated schema snapshots are updated to match the compatibility requirement.
 - [ ] Plugin authoring docs explain the requirement and show the field in scaffolded `package.json` output.
@@ -193,7 +193,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 ## Functional Requirements
 
 - FR-1: Stable in-major entry points are `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli`; the default entry exposes `makeLandoRuntime`, `openLandoRuntime`, and `resolveApp` without importing OCLIF.
-- FR-2: `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions` publish on `next`/`dev`; only `@lando/core/testing` is declared stable at Beta 1.
+- FR-2: `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions` publish on `next`/`dev`; only `@lando/core/testing` is declared stable at Alpha 4.
 - FR-3: `@lando/core/oclif` remains internal-only and must not be imported by the default entry point.
 - FR-4: `@lando/core/cli` exports Effect-returning operations for every built-in command except explicitly omitted interactive or install surfaces; operations return typed results, not rendered text.
 - FR-5: `@lando/core/cli` exposes `runTooling(...)` and config-translator operations without touching stdio or OCLIF.
@@ -201,14 +201,14 @@ Depends on: **BETA1-01 through BETA1-10**.
 - FR-7: `openLandoRuntime` must retain one scoped runtime acquisition and expose `.app(selector)`, `.scratch(input)`, and `.run(effect)` without per-call Layer reacquisition.
 - FR-8: `resolveApp` and `runtime.app` must produce root-bound `App` handles whose one-shot methods have `R = never` after binding and whose live-resource methods retain `Scope.Scope` in `R`.
 - FR-9: Managed App lifecycle scopes must keep start-state resources alive between method calls, tear them down exactly once on stop/destroy/runtime-close, and preserve detached-start semantics.
-- FR-10: The §17.9 acceptance set is 27 criteria. The Beta 1 harness MUST implement all 27 criteria — including external compiled-plugin loading (criteria 20–24) and the `codegen:check` / bundled-plugin-removal / recipe-codegen gates (criteria 25–27) — and run them green on linux-x64. Only the all-platform pass is deferred to RC; no §17.9 criterion is deferred to RC as new feature work.
+- FR-10: The §17.9 acceptance set is 27 criteria. The Alpha 4 harness MUST implement all 27 criteria — including external compiled-plugin loading (criteria 20–24) and the `codegen:check` / bundled-plugin-removal / recipe-codegen gates (criteria 25–27) — and run them green on linux-x64. Only the all-platform pass is deferred to RC; no §17.9 criterion is deferred to RC as new feature work.
 
 ## Non-Goals
 
 - Declaring `@lando/core/docs/components` or `@lando/core/docs/redactions` stable before GA.
 - Exposing `@lando/core/oclif` as a supported embedding API.
 - Adding a Promise-based facade for the library API.
-- Requiring all-platform §17.9 acceptance during Beta 1.
+- Requiring all-platform §17.9 acceptance during Alpha 4.
 - Allowing library-mode operations to write rendered CLI text instead of typed results.
 - Replacing `makeLandoRuntime` with the runtime object wrapper; Layer-native hosts remain first-class.
 - Removing `@lando/core/cli` command operations; App handles are the preferred lifecycle primitive, not the only programmatic surface.
@@ -222,7 +222,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 - `loadUserLandofile` is currently cwd-bound; App-handle implementation needs a root-aware seam that keeps include resolution and reserved-id checks on non-frozen core helpers.
 - `startApp` currently owns file-sync session scope creation internally; App-handle implementation needs an injected managed-scope path without regressing CLI foreground signal teardown.
 - Live signing, notarization, installer, and update tests must stay environment-gated when credentials or external services are missing.
-- Acceptance criteria that are platform-specific should be represented in the harness at Beta 1 even when non-linux platforms are marked RC-gated.
+- Acceptance criteria that are platform-specific should be represented in the harness at Alpha 4 even when non-linux platforms are marked RC-gated.
 
 ## Success Metrics
 
@@ -267,8 +267,8 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 
 ## Open Questions
 
-- Should `@lando/core/docs/redactions` be added in Beta 1 or only ticketed? Default: add the export because §16 names it and the contract test should pass.
+- Should `@lando/core/docs/redactions` be added in Alpha 4 or only ticketed? Default: add the export because §16 names it and the contract test should pass.
 - Which interactive/install CLI surfaces are omitted from `@lando/core/cli` operations? Default: omit only surfaces that cannot return typed results without user prompts or external credentials.
 - Should `App` include both `logs()` and `events` at first ship, or should one of those wait until after the core lifecycle methods land? Default: include both in the frozen contract now because §16 promises lifecycle/event parity, even if their first implementation delegates to existing streams.
 - Should telemetry default-on apply in `TestRuntime`? Default: no, `TestRuntime` uses deterministic no-op telemetry unless explicitly overridden.
-- How should linux-only acceptance results be labeled in release notes? Default: clearly label them as Beta 1 reference-platform acceptance, with RC owning all-platform acceptance.
+- How should linux-only acceptance results be labeled in release notes? Default: clearly label them as Alpha 4 reference-platform acceptance, with RC owning all-platform acceptance.

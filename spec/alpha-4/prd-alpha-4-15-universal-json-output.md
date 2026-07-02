@@ -1,14 +1,14 @@
-# PRD: BETA1-15 — Universal `--format json` machine-output contract
+# PRD: ALPHA4-15 — Universal `--format json` machine-output contract
 
 ## Introduction
 
-Beta 1 ships the **Agent-native** tenet (§1.2), whose "machine-legibility" half asserts that every command is consumable by an agent or script without parsing prose. Today that is half-true and inconsistent: only ~16 of 57 command modules emit JSON at all, each hand-rolling its own `JSON.stringify(result, …)` inside its `render*` helper, with no stable envelope, no published schema, and no snapshot gate. The two output surfaces — `--renderer` (global output mode) and `--format` (per-command result encoding) — overlap with no contract between them, and roughly 40 commands have no JSON path whatsoever. An agent therefore cannot rely on `lando <anything> --format json` returning a predictable, parseable shape.
+Alpha 4 ships the **Agent-native** tenet (§1.2), whose "machine-legibility" half asserts that every command is consumable by an agent or script without parsing prose. Today that is half-true and inconsistent: only ~16 of 57 command modules emit JSON at all, each hand-rolling its own `JSON.stringify(result, …)` inside its `render*` helper, with no stable envelope, no published schema, and no snapshot gate. The two output surfaces — `--renderer` (global output mode) and `--format` (per-command result encoding) — overlap with no contract between them, and roughly 40 commands have no JSON path whatsoever. An agent therefore cannot rely on `lando <anything> --format json` returning a predictable, parseable shape.
 
-This PRD makes the tenet's assertion true and testable. It defines one universal, schema-backed result envelope (`CommandResultEnvelope`), makes `--format json` (plus the `--json` / `-j` shorthand) mandatory and uniform on every non-interactive command, routes all JSON through a single redaction-aware serialization seam (`encodeCommandResult`), and locks the shape with the §13.2 schema snapshot plus a §13.4 boundary gate and a §13.1 conformance layer. It is the output-side dual of the env-passthrough work (BETA1-16) that realizes the tenet's "context-continuity" half.
+This PRD makes the tenet's assertion true and testable. It defines one universal, schema-backed result envelope (`CommandResultEnvelope`), makes `--format json` (plus the `--json` / `-j` shorthand) mandatory and uniform on every non-interactive command, routes all JSON through a single redaction-aware serialization seam (`encodeCommandResult`), and locks the shape with the §13.2 schema snapshot plus a §13.4 boundary gate and a §13.1 conformance layer. It is the output-side dual of the env-passthrough work (ALPHA4-16) that realizes the tenet's "context-continuity" half.
 
 This is the last feature-surface phase, so the contract lands now rather than being deferred. The work consolidates duplication that already exists in shipped code (the per-command `JSON.stringify` calls in `info`, `list`, `doctor`, `app-config*`, `scratch`, `meta/global-status`, and the one-off NDJSON paths in `doctor-ndjson.ts` and the deprecation-event line) onto one contract.
 
-Depends on: **BETA1-04** (the `@lando/sdk` schema-publication discipline and the §7.8 registry the envelope joins), **BETA1-06** (the canonical `RedactionService` §3.7 that every envelope is masked through), **BETA1-11** (`@lando/core/testing` `TestRuntime`, the library-API contract gates, and the §13.1 dispatch-parity layer the conformance gate cross-checks), and **BETA1-14** (the `EventService` bounded redacted history that feeds streaming `event` frames). It must stay in lockstep with the deferred-command set (§17.1 stage 7) so deferred stubs also satisfy the conformance gate.
+Depends on: **ALPHA4-04** (the `@lando/sdk` schema-publication discipline and the §7.8 registry the envelope joins), **ALPHA4-06** (the canonical `RedactionService` §3.7 that every envelope is masked through), **ALPHA4-11** (`@lando/core/testing` `TestRuntime`, the library-API contract gates, and the §13.1 dispatch-parity layer the conformance gate cross-checks), and **ALPHA4-14** (the `EventService` bounded redacted history that feeds streaming `event` frames). It must stay in lockstep with the deferred-command set (§17.1 stage 7) so deferred stubs also satisfy the conformance gate.
 
 ## Source References
 
@@ -18,7 +18,7 @@ Depends on: **BETA1-04** (the `@lando/sdk` schema-publication discipline and the
 - [`spec/13-testing-and-distribution.md`](../13-testing-and-distribution.md) §13.1 the machine-output conformance test layer and the dispatch-parity layer; §13.2 the schema snapshot; §13.4 the `check:machine-output` boundary gate.
 - [`spec/03-architecture.md`](../03-architecture.md) §3.7 the canonical `RedactionService` every envelope is masked through.
 - [`spec/09-embedding.md`](../09-embedding.md) §16 embedding hosts and agents as the consumers of the stable envelope.
-- [`spec/beta-1/prd-beta-1-00-index.md`](./prd-beta-1-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
+- [`spec/alpha-4/prd-alpha-4-00-index.md`](./prd-alpha-4-00-index.md) verification contract, SDK/schema lockstep, and dual-dispatch rules.
 
 ## Goals
 
@@ -124,7 +124,7 @@ Acceptance criteria:
 
 ## Technical Considerations
 
-- **Reuses, does not reinvent:** the canonical `RedactionService` (§3.7, BETA1-06) is the only redactor; the §13.2 snapshot is the freeze mechanism; the §13.1 dispatch-parity layer (BETA1-11) is extended, not duplicated; the `EventService` redacted history (BETA1-14) feeds streaming `event` frames.
+- **Reuses, does not reinvent:** the canonical `RedactionService` (§3.7, ALPHA4-06) is the only redactor; the §13.2 snapshot is the freeze mechanism; the §13.1 dispatch-parity layer (ALPHA4-11) is extended, not duplicated; the `EventService` redacted history (ALPHA4-14) feeds streaming `event` frames.
 - **Primary risk — dual dispatch:** the `--format` parser exists twice (OCLIF + `runCompiledCli`); the single-source-of-truth rule (§8.4.1) and the parity layer are mandatory.
 - **`apiVersion`:** one global `"v4"` envelope version; per-command shape stability is enforced by the snapshot, not per-command versioning.
 - **`--json` shorthand:** `--json` and `-j` are global aliases for `--format json`, injected by the adapter, mirroring the `-j` convention agents/scripts expect (matching tools like DDEV/act).

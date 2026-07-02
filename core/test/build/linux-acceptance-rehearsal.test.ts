@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const guidePath = resolve(repoRoot, "docs/guides/release/linux-acceptance-rehearsal.mdx");
 const guideIndexPath = resolve(repoRoot, "docs/guides/INDEX.md");
-const prdPath = resolve(repoRoot, "spec/beta-1/prd-beta-1-11-library-and-acceptance.md");
+const prdPath = resolve(repoRoot, "spec/alpha-4/prd-alpha-4-11-library-and-acceptance.md");
 
 describe("Linux-x64 release acceptance rehearsal guide", () => {
   test("is declared by the PRD and shipped in the guide coverage index", async () => {
