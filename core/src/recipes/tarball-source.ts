@@ -147,6 +147,13 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 
 const TAR_BLOCK = 512;
+// Decompression-bomb guard for gzip-compressed recipe tarballs.
+const DEFAULT_MAX_DECOMPRESSED_BYTES = 2 * 1024 ** 3;
+
+interface TarballExtractionPolicy {
+  readonly source: string;
+  readonly maxDecompressedBytes: number;
+}
 
 /**
  * Safe relative path for a tar entry: forward-slash normalized, leading slashes
@@ -177,9 +184,26 @@ const safeEntryPath = (entryName: string, source: string): string => {
 const extractTarballToDirImpl = async (
   archiveBytes: Uint8Array,
   destDir: string,
-  source: string,
+  policy: TarballExtractionPolicy,
 ): Promise<void> => {
-  const tar = isGzip(archiveBytes) ? gunzipSync(Buffer.from(archiveBytes)) : Buffer.from(archiveBytes);
+  const archiveBuffer = Buffer.from(archiveBytes);
+  const tar = (() => {
+    if (!isGzip(archiveBytes)) return archiveBuffer;
+    try {
+      return gunzipSync(archiveBuffer, { maxOutputLength: policy.maxDecompressedBytes });
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ERR_BUFFER_TOO_LARGE") {
+        throw sourceError({
+          message: `Tarball recipe source ${policy.source} exceeded the decompressed-size cap of ${policy.maxDecompressedBytes} bytes.`,
+          source: policy.source,
+          kind: "extract-failed",
+          remediation:
+            "The archive is unreasonably large or likely malformed; re-publish a smaller archive and retry.",
+        });
+      }
+      throw cause;
+    }
+  })();
   await mkdir(destDir, { recursive: true });
   let pos = 0;
   let longName: string | undefined;
@@ -214,7 +238,7 @@ const extractTarballToDirImpl = async (
 
     const fullName = longName ?? (prefix === "" ? name : `${prefix}/${name}`);
     longName = undefined;
-    const safeRel = safeEntryPath(fullName, source);
+    const safeRel = safeEntryPath(fullName, policy.source);
     if (safeRel === "") continue;
     const target = join(destDir, safeRel);
 
@@ -231,9 +255,17 @@ const extractTarballToDirImpl = async (
   }
 };
 
-export const defaultTarballRecipeExtractor: TarballRecipeExtractor = {
-  extract: (archiveBytes, destDir) => extractTarballToDirImpl(archiveBytes, destDir, "tarball"),
+export const makeTarballRecipeExtractor = (options?: {
+  readonly maxDecompressedBytes?: number;
+}): TarballRecipeExtractor => {
+  const maxDecompressedBytes = options?.maxDecompressedBytes ?? DEFAULT_MAX_DECOMPRESSED_BYTES;
+  return {
+    extract: (archiveBytes, destDir) =>
+      extractTarballToDirImpl(archiveBytes, destDir, { source: "tarball", maxDecompressedBytes }),
+  };
 };
+
+export const defaultTarballRecipeExtractor: TarballRecipeExtractor = makeTarballRecipeExtractor();
 
 export const resolveTarballRecipeSource = async (
   options: ResolveTarballRecipeSourceOptions,

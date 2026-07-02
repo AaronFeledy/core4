@@ -86,6 +86,11 @@ tags: [beta, docs, providers, setup, selection]
         value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json"
         display="Setup state records the installed runtime version and runtimeBinDir for doctor and later provider resolution"
       />
+      <Variable
+        name="runtimeBundleDecompressionCap"
+        value="LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES"
+        display="Runtime bundle extraction fails closed before install when gzip or zip inflation exceeds the default decompressed-size cap; tests may override the cap with this environment variable"
+      />
     </Step>
   </Scenario>
 

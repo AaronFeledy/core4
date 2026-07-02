@@ -10,6 +10,16 @@ const PROVIDER_ID = "lando";
 const OPERATION = "setup";
 const REMEDIATION =
   "The Lando runtime bundle appears corrupt or unsafe. Retry `lando setup`; if it fails again, report the runtime bundle artifact.";
+export const DEFAULT_MAX_DECOMPRESSED_BYTES = 2 * 1024 ** 3;
+
+/**
+ * Env var that raises the runtime-bundle decompression-bomb guard.
+ *
+ * Parsed as a positive safe integer byte count. Invalid or absent values keep
+ * the default 2 GiB cap. Explicit extractor or installer options take
+ * precedence over this environment override.
+ */
+export const RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES_ENV = "LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES";
 
 export interface RuntimeArchiveEntry {
   readonly path: string;
@@ -17,15 +27,22 @@ export interface RuntimeArchiveEntry {
   readonly mode: number;
 }
 
-export type ExtractEntries = (archiveBytes: Uint8Array) => ReadonlyArray<RuntimeArchiveEntry>;
+export interface RuntimeExtractOptions {
+  readonly maxDecompressedBytes?: number | undefined;
+}
+
+export type ExtractEntries = (
+  archiveBytes: Uint8Array,
+  options?: RuntimeExtractOptions | undefined,
+) => ReadonlyArray<RuntimeArchiveEntry>;
 
 export class ProviderRuntimeExtractError extends ProviderUnavailableError {
-  constructor(message: string, cause?: unknown) {
+  constructor(message: string, cause?: unknown, remediation = REMEDIATION) {
     super({
       providerId: PROVIDER_ID,
       operation: OPERATION,
       message,
-      remediation: REMEDIATION,
+      remediation,
       ...(cause === undefined ? {} : { cause }),
     });
   }
@@ -37,6 +54,7 @@ export interface InstallRuntimeBundleOptions {
   readonly runtimeBinDir: string;
   readonly platform: HostPlatform;
   readonly extractImpl?: ExtractEntries;
+  readonly maxDecompressedBytes?: number | undefined;
 }
 
 export interface InstallRuntimeBundleResult {
@@ -54,6 +72,33 @@ const MARKER_FILE = ".runtime-installed-version";
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 const isZip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+
+const isPositiveSafeInteger = (value: number): boolean => Number.isSafeInteger(value) && value > 0;
+
+const parseMaxDecompressedBytesEnv = (): number | undefined => {
+  const raw = process.env[RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES_ENV];
+  if (raw === undefined) return undefined;
+  const parsed = Number(raw);
+  return isPositiveSafeInteger(parsed) ? parsed : undefined;
+};
+
+const resolveMaxDecompressedBytes = (options?: RuntimeExtractOptions | undefined): number => {
+  const explicitMax = options?.maxDecompressedBytes;
+  if (explicitMax !== undefined && isPositiveSafeInteger(explicitMax)) {
+    return explicitMax;
+  }
+  return parseMaxDecompressedBytesEnv() ?? DEFAULT_MAX_DECOMPRESSED_BYTES;
+};
+
+const decompressedCapRemediation = (): string =>
+  `The runtime bundle exceeded the decompressed-size cap. Set ${RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES_ENV} to a larger positive byte count only for a trusted runtime bundle, then retry \`lando setup\`.`;
+
+const decompressedCapError = (maxDecompressedBytes: number, cause?: unknown): ProviderRuntimeExtractError =>
+  new ProviderRuntimeExtractError(
+    `Runtime bundle exceeded the decompressed-size cap of ${maxDecompressedBytes} bytes.`,
+    cause,
+    decompressedCapRemediation(),
+  );
 
 const trimNulls = (value: string): string => value.replace(/\0+$/u, "");
 
@@ -89,8 +134,17 @@ const normalizeArchivePath = (entryName: string): string => {
   return segments.join("/");
 };
 
-const parseTarGzEntries = (archiveBytes: Uint8Array): ReadonlyArray<RuntimeArchiveEntry> => {
-  const tar = gunzipSync(Buffer.from(archiveBytes));
+const parseTarGzEntries = (
+  archiveBytes: Uint8Array,
+  maxDecompressedBytes: number,
+): ReadonlyArray<RuntimeArchiveEntry> => {
+  let tar: Buffer;
+  try {
+    tar = gunzipSync(Buffer.from(archiveBytes), { maxOutputLength: maxDecompressedBytes });
+  } catch (cause) {
+    if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) throw decompressedCapError(maxDecompressedBytes, cause);
+    throw cause;
+  }
   const entries: RuntimeArchiveEntry[] = [];
   let pos = 0;
   let longName: string | undefined;
@@ -178,11 +232,15 @@ const zipDataDescriptorLength = (archiveBytes: Uint8Array, descriptorOffset: num
   return view.getUint32(descriptorOffset, true) === ZIP_DATA_DESCRIPTOR_SIGNATURE ? 16 : 12;
 };
 
-const parseZipEntries = (archiveBytes: Uint8Array): ReadonlyArray<RuntimeArchiveEntry> => {
+const parseZipEntries = (
+  archiveBytes: Uint8Array,
+  maxDecompressedBytes: number,
+): ReadonlyArray<RuntimeArchiveEntry> => {
   const view = new DataView(archiveBytes.buffer, archiveBytes.byteOffset, archiveBytes.byteLength);
   const centralDirectory = readZipCentralDirectory(archiveBytes);
   const decoder = new TextDecoder("utf-8");
   const entries: RuntimeArchiveEntry[] = [];
+  let decompressedBytes = 0;
   let pos = 0;
 
   while (pos + 30 <= archiveBytes.length) {
@@ -211,14 +269,29 @@ const parseZipEntries = (archiveBytes: Uint8Array): ReadonlyArray<RuntimeArchive
     const safePath = normalizeArchivePath(filename);
     if (safePath !== "" && !filename.endsWith("/")) {
       if (compression === 0) {
+        decompressedBytes += uncompressedSize;
+        if (decompressedBytes > maxDecompressedBytes) throw decompressedCapError(maxDecompressedBytes);
         entries.push({
           path: safePath,
           bytes: archiveBytes.subarray(dataOffset, dataOffset + uncompressedSize),
           mode,
         });
       } else if (compression === 8) {
+        if (decompressedBytes >= maxDecompressedBytes) throw decompressedCapError(maxDecompressedBytes);
         const compressed = archiveBytes.subarray(dataOffset, dataOffset + compressedSize);
-        entries.push({ path: safePath, bytes: inflateRawSync(Buffer.from(compressed)), mode });
+        let bytes: Buffer;
+        try {
+          bytes = inflateRawSync(Buffer.from(compressed), {
+            maxOutputLength: maxDecompressedBytes - decompressedBytes,
+          });
+        } catch (cause) {
+          if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE"))
+            throw decompressedCapError(maxDecompressedBytes, cause);
+          throw cause;
+        }
+        decompressedBytes += bytes.byteLength;
+        if (decompressedBytes > maxDecompressedBytes) throw decompressedCapError(maxDecompressedBytes);
+        entries.push({ path: safePath, bytes, mode });
       } else {
         throw new ProviderRuntimeExtractError(
           `Runtime bundle ZIP entry ${filename} uses unsupported compression method ${compression}.`,
@@ -234,10 +307,11 @@ const parseZipEntries = (archiveBytes: Uint8Array): ReadonlyArray<RuntimeArchive
   return entries;
 };
 
-export const extractRuntimeArchiveEntries: ExtractEntries = (archiveBytes) => {
+export const extractRuntimeArchiveEntries: ExtractEntries = (archiveBytes, options) => {
+  const maxDecompressedBytes = resolveMaxDecompressedBytes(options);
   try {
-    if (isGzip(archiveBytes)) return parseTarGzEntries(archiveBytes);
-    if (isZip(archiveBytes)) return parseZipEntries(archiveBytes);
+    if (isGzip(archiveBytes)) return parseTarGzEntries(archiveBytes, maxDecompressedBytes);
+    if (isZip(archiveBytes)) return parseZipEntries(archiveBytes, maxDecompressedBytes);
     throw new ProviderRuntimeExtractError("Runtime bundle archive has an unrecognized format.");
   } catch (cause) {
     if (cause instanceof ProviderRuntimeExtractError) throw cause;
@@ -315,7 +389,9 @@ export const installRuntimeBundle = (
     yield* Effect.tryPromise({
       try: async () => {
         try {
-          const entries = extractImpl(options.archiveBytes);
+          const entries = extractImpl(options.archiveBytes, {
+            maxDecompressedBytes: options.maxDecompressedBytes,
+          });
           let fileCount = 0;
           await rm(tempDir, { recursive: true, force: true });
           await mkdir(tempDir, { recursive: true });

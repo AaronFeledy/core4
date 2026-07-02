@@ -388,6 +388,8 @@ const octal = (value: number, width: number): string => {
   return text.padStart(width - 1, "0");
 };
 
+const MAX_DECOMPRESSED_ARCHIVE_BYTES = 2 * 1024 ** 3;
+
 export const __testOnlyEncodeTarOctal = octal;
 
 const writeAscii = (target: Uint8Array, offset: number, value: string, length: number) => {
@@ -458,6 +460,46 @@ const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
 const webStreamBytes = async (stream: ReadableStream<Uint8Array>): Promise<Uint8Array> =>
   new Uint8Array(await new Response(stream).arrayBuffer());
 
+interface CappedWebStreamBytesInput {
+  readonly stream: ReadableStream<Uint8Array>;
+  readonly maxBytes: number;
+  readonly format: "tar.gz" | "tar.zst";
+  readonly path: string;
+}
+
+const webStreamBytesCapped = async (input: CappedWebStreamBytesInput): Promise<Uint8Array> => {
+  const reader = input.stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        const output = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          output.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return output;
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > input.maxBytes) {
+        await reader.cancel();
+        throw new ArchiveFormatError({
+          message: `Archive decompressed size exceeded ${input.maxBytes} bytes for ${input.format}.`,
+          format: input.format,
+          archivePath: input.path,
+          remediation: "Recreate or transfer a smaller archive.",
+        });
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+};
+
 const compressionFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
 
 const archivePayload = (
@@ -501,13 +543,20 @@ const archivePayload = (
   }
 };
 
-const unarchivePayload = (
-  payload: Uint8Array,
-  format: "tar" | "tar.gz" | "tar.zst",
-  path: string,
+interface UnarchivePayloadInput {
+  readonly payload: Uint8Array;
+  readonly format: "tar" | "tar.gz" | "tar.zst";
+  readonly path: string;
+  readonly maxDecompressedBytes: number;
+}
+
+const unarchivePayloadWithCap = (
+  input: UnarchivePayloadInput,
 ): Effect.Effect<Uint8Array, ArchiveFormatError> => {
+  const { format, path, payload } = input;
   switch (format) {
     case "tar":
+      // Uncompressed tar has no decompression amplification; allocation is bounded by on-disk size and header/truncation checks.
       return Effect.try({
         try: () => unpackTar(payload, path),
         catch: (cause) =>
@@ -525,9 +574,14 @@ const unarchivePayload = (
       return Effect.tryPromise({
         try: async () =>
           unpackTar(
-            await webStreamBytes(
-              new Blob([payload]).stream().pipeThrough(new DecompressionStream(compressionFormat(format))),
-            ),
+            await webStreamBytesCapped({
+              stream: new Blob([payload])
+                .stream()
+                .pipeThrough(new DecompressionStream(compressionFormat(format))),
+              maxBytes: input.maxDecompressedBytes,
+              format,
+              path,
+            }),
             path,
           ),
         catch: (cause) =>
@@ -542,6 +596,15 @@ const unarchivePayload = (
       });
   }
 };
+
+const unarchivePayload = (
+  payload: Uint8Array,
+  format: "tar" | "tar.gz" | "tar.zst",
+  path: string,
+): Effect.Effect<Uint8Array, ArchiveFormatError> =>
+  unarchivePayloadWithCap({ payload, format, path, maxDecompressedBytes: MAX_DECOMPRESSED_ARCHIVE_BYTES });
+
+export const __testOnlyUnarchivePayloadWithCap = unarchivePayloadWithCap;
 
 const serviceCommandFailure = (operation: string, cause: unknown): DataTransferError =>
   new DataTransferError({

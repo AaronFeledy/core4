@@ -48,6 +48,13 @@ tags: [beta, docs, library, testing]
     </Step>
   </Scenario>
 
+  <Scenario id="tool-provisioning-extraction-limits" render={false} reason="Tool provisioning extraction limits are locked by SDK unit tests with deterministic in-memory archives">
+    <Step name="extraction-limits">
+      <Variable name="nestedArchiveCap" value="2 GiB default" display="Tool provisioning caps gzip and zip member decompression before installing pinned helper binaries so malformed artifacts fail with ToolExtractError instead of unbounded memory growth" />
+      <Variable name="testOverride" value="ProvisionToolInput.maxDecompressedBytes" display="Library hosts and tests can lower the cap for deterministic boundary coverage without changing production defaults" />
+    </Step>
+  </Scenario>
+
   <Scenario id="runtime-overrides" render={false} reason="Override behavior is covered by testing runtime tests without requiring a provider backed app">
     <Step name="host-customization">
       <Variable name="withService" value="tag override" display="withService(tag, impl) lets hosts replace one service tag" />
