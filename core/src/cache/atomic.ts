@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { type FileHandle, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -13,8 +13,11 @@ const removeIfPresent = async (path: string): Promise<void> => {
 export interface AtomicWriteOptions {
   readonly randomId?: () => string;
   readonly renameFile?: (from: string, to: string) => Promise<void>;
+  readonly syncFile?: (handle: FileHandle) => Promise<void>;
 }
 
+// Durability contract: the temp file is fsynced before the rename so a power
+// loss can never publish a partially written live file.
 export const writeFileAtomicViaRename = async (
   path: string,
   content: string | Uint8Array,
@@ -23,7 +26,13 @@ export const writeFileAtomicViaRename = async (
   await mkdir(dirname(path), { recursive: true });
   const tempPath = `${path}.tmp-${options.randomId?.() ?? randomUUID()}`;
   try {
-    await writeFile(tempPath, content);
+    const handle = await open(tempPath, "w");
+    try {
+      await handle.writeFile(content);
+      await (options.syncFile ?? ((h: FileHandle) => h.sync()))(handle);
+    } finally {
+      await handle.close();
+    }
     await (options.renameFile ?? rename)(tempPath, path);
   } catch (cause) {
     await removeIfPresent(tempPath);

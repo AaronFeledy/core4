@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,6 +28,27 @@ describe("writeFileAtomicScoped", () => {
       await run(writeFileAtomicScoped(target, "db-password\n", { mode: 0o600 }));
       const stats = await stat(target);
       expect(stats.mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("flushes the temp file before rename and fails without a live file when the flush fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    try {
+      const target = join(dir, "unflushed.json");
+      const result = await Effect.runPromiseExit(
+        writeFileAtomicScoped(target, "{}\n", {
+          syncFile: async () => {
+            throw new Error("EIO: flush failed");
+          },
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      // The rename never ran, so no live file exists and the temp was cleaned up.
+      await expect(stat(target)).rejects.toThrow();
+      const leftovers = (await readdir(dir)).filter((name) => name.includes(".tmp-"));
+      expect(leftovers).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

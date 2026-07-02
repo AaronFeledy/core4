@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
 import { Effect, Schema } from "effect";
@@ -8,6 +8,7 @@ import { Effect, Schema } from "effect";
 import { CacheError } from "@lando/sdk/errors";
 
 import { CORE_VERSION } from "../version.ts";
+import { writeFileAtomicViaRename } from "./atomic.ts";
 
 export const CWD_APP_MAP_CACHE_MAGIC = Buffer.from("LCWM");
 export const CWD_APP_MAP_CACHE_HEADER_BYTES = 44;
@@ -135,10 +136,7 @@ export const writeCwdAppMapEntry = (input: {
     );
     const path = cachePath(input.cacheRoot);
     yield* Effect.tryPromise({
-      try: async () => {
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, encode({ landoVersion: CORE_VERSION, entries }));
-      },
+      try: () => writeFileAtomicViaRename(path, encode({ landoVersion: CORE_VERSION, entries })),
       catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
     });
   });
@@ -169,7 +167,7 @@ export const deleteCwdAppMapEntry = (input: {
       return;
     }
     yield* Effect.tryPromise({
-      try: () => writeFile(path, encode({ ...existing, entries })),
+      try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
       catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
     });
   });
