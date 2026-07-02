@@ -554,6 +554,37 @@ LANDO_SCRATCH_ISOLATE           # when LANDO_APP_KIND=scratch; "full" | "baked" 
 
 Raw `l337` services do not include the env layer; they receive only the compose-level env vars.
 
+#### 6.9.1 Host agent-context forwarding (`agentEnv`)
+
+The **Agent-native** tenet (§1.2) requires context continuity: when an AI coding agent's work crosses the host→container boundary, the identity markers the agent's tooling depends on travel with it instead of being silently dropped. Lando therefore forwards a small, name-allowlisted set of host environment variables into **per-invocation exec surfaces** — `app:exec`, `app:ssh`, `app:shell --service`, and tooling tasks run through the `providerExec` engine (§8.6). Forwarding is per-exec: the values ride the exec request's env, are never baked into the service's planned environment, never written to the app plan cache, and never appear in `LANDO_INFO`.
+
+Default forwarded names (the **agent-context allowlist**):
+
+```text
+CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI,
+GEMINI_CLI, AGENT, CI
+```
+
+Rules:
+
+- **Names, never patterns.** The allowlist is exact-name matching. Wildcards (`CLAUDE_*`) are rejected at config validation with `AgentEnvPatternError` — pattern forwarding is how host secrets leak into containers by accident.
+- **Presence-gated.** A name is forwarded only when set in the host environment at invocation time. Unset names inject nothing (no empty-string vars).
+- **Loser to explicit env.** A forwarded value never overrides env declared by the service (`services.<name>.environment`), the tooling task (`env:`, §8.5.3), or the exec request itself. Precedence: exec request > task/service declaration > agent-context forwarding.
+- **Redaction-aware.** Forwarded values pass through `RedactionService` (§3.7) on their way into lifecycle events (`pre-provider-exec` payloads) and transcripts, same as every other exec env var. The default allowlist deliberately contains only boolean/identity markers, not credentials; users who add credential-shaped names to the allowlist get redaction in Lando-owned output but are choosing to expose the value to the container.
+- **Not a general passthrough.** `agentEnv` is not a mechanism for forwarding arbitrary host env into services; that remains `services.<name>.environment` with `{{ env.NAME }}` expressions (§7.3.1). The allowlist exists so the *default* experience keeps agent context intact without any Landofile authoring.
+- **Host-proxy symmetry.** The in-container `lando` shim's env filter (§10.10.3) already forwards `LANDO_*`, `LC_*`, `LANG`, `TERM`; the agent-context allowlist is appended to that filter so a `runLando` re-entry initiated by an agent inside a container preserves the same markers on the way back out.
+
+Configuration (global config, §7.5):
+
+```yaml
+agentEnv:
+  enabled: true              # master switch; default true
+  allow: []                  # additional exact names forwarded beyond the built-in list
+  deny: []                   # built-in or allowed names to suppress
+```
+
+A Landofile MAY set `agentEnv: false` at the top level to opt one app out entirely (§7.4). `LANDO_AGENT_ENV=0` in the host environment disables forwarding for a single invocation. The resolved allowlist (built-ins + `allow` − `deny`) is reported by `lando info --deep` so users can audit exactly what crosses the boundary.
+
 ### 6.10 Service info
 
 `lando info` consumes provider-neutral `ServiceInfo`. The schema is invariant across providers.
