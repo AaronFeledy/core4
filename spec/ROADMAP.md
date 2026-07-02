@@ -11,7 +11,7 @@
 1. **MVP → Alpha 1**: prove the architecture works end-to-end on the *easiest* surface. One provider, one service, the happy path. No promises.
 2. **Alpha 1 → Alpha 2 → Alpha 3**: breadth across the catalog (service types, providers, plugins) with the bundled set hardened, the executable-guides scenario engine, and the global app + scratch apps. Library API usable internally; docs not yet stable. Published on the `dev` channel as `4.0.0-alpha.N`.
 3. **Alpha 3 → Alpha 4**: the **last feature surface**. Governance contracts go live (deprecation, signing, supply chain, schema publication, executable-guides-as-scenarios), the plugin authoring toolkit and telemetry land, and the remaining `lando setup` / `lando uninstall` functionality is completed. Open decisions in §14.2 are closed. Still published on the `dev` channel as `4.0.0-alpha.N`.
-4. **Alpha 4 → Beta 1**: **contract-completion remediation**. No new feature surface — every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed, audit-driven, before anything is called beta. The first signed `4.0.0-beta.N` ships on the `next` channel at the end of Beta 1, and **feature freeze is entered**.
+4. **Alpha 4 → Beta 1**: **contract completion + the agent-native feature wave**. Every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed, audit-driven, and one bounded feature wave lands as the true last feature surface: the agent-native surfaces (`lando mcp`, agent-context env forwarding), `lando open`, the Landofile version constraint, and the disposable tool runner (`lando run`). The first signed `4.0.0-beta.N` ships on the `next` channel at the end of Beta 1, and **feature freeze is entered**.
 5. **Beta 1 → Beta 2**: **feature-freeze hardening**. No new feature surface — only bug fixes surfaced by Beta 1 field use. Still `4.0.0-beta.N` on `next`.
 6. **Beta 2 → RC**: only fixes, plus the §17.9 binary acceptance criteria (signed, notarized, SBOM, self-update, curl-pipe installer all green on all platforms). Tagged `4.0.0-rc.N`.
 7. **RC → 4.0 GA**: only the bug fixes found during RC. Tag bump to `4.0.0` on `stable`.
@@ -565,9 +565,9 @@ Every Alpha 4 deliverable above is accepted, including the completed `lando setu
 
 ---
 
-## Phase 5 — Beta 1 ("contract-completion remediation")
+## Phase 5 — Beta 1 ("contract completion + the agent-native feature wave")
 
-> **One sentence**: Every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed — audit-driven, with no new feature surface — and only then does the first beta ship.
+> **One sentence**: Every gap between what the Alpha 4 PRDs promised (and the spec requires) and what actually shipped is closed — audit-driven — and one small, deliberate feature wave lands (the agent-native surfaces, `lando open`, the Landofile version constraint, and the disposable tool runner) before the first beta ships and feature freeze is entered.
 >
 > **Audience**: production users on the `next` channel. The first public `4.0.0-beta.N` binaries.
 
@@ -575,19 +575,30 @@ Every Alpha 4 deliverable above is accepted, including the completed `lando setu
 
 Make the shipped surface actually match its contracts before calling it beta. A post-Alpha-4 gap audit (2026-07-02) compared every Alpha 4 PRD acceptance criterion and the normative spec parts (§3, §6, §8, §12) against the working tree; all 172 Alpha 4 stories carried `passes: true`, but real gaps remained behind the green flags. Beta 1 closes all of them. See [`spec/beta-1/prd-beta-1-00-index.md`](./beta-1/prd-beta-1-00-index.md) for the full gap→story traceability table.
 
+Beta 1 additionally lands a bounded **feature wave** — the last new feature surface before freeze, sequenced here because each item either realizes the agent-native tenet on primitives Alpha 4 already shipped or is a small, high-leverage DX surface competitors ship out of the box:
+
+- **`lando mcp` + host agent-context env forwarding** (§10.14, §8.2.6, §6.9.1) — the MCP server projects the machine-output contract as typed agent tools; env forwarding carries agent context across the exec boundary.
+- **`lando open`** (§8.2.5) — open resolved app URLs in the host browser; the outbound sibling of the host-proxy `openUrl` channel.
+- **Landofile version constraint** (`lando: <semver-range>`, §7.4) — team-workflow version pinning with fail-closed remediation.
+- **Disposable tool runner** (`lando run`, `apps:scratch:run`, §21.10.3) — one-shot cwd-mounted toolbox containers as a thin layer over `ScratchAppService` plus the bundled `toolbox` recipe.
+
 ### Concrete deliverables
 
-Stories **US-372..US-395** across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`):
+Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`) plus the feature-wave stories **US-396+** (`spec/beta-1/prd-beta-1-{06..09}-*.md`):
 
 - **Durability & probe remediation (PRD-01)**: fsync-backed atomic writes everywhere durable state lands; exactly one durable-store implementation under `core/src/state/` (retire `json-bucket.ts`); real `runProbe`-backed `HealthcheckRunner`/`UrlScanner` built-ins plus doctor/downloader/setup-readiness migration; `waitForEvent` runtime coverage; working-tree hygiene.
 - **Managed-file contract completion (PRD-02)**: `RedactionService`-routed managed-file events; `PathsService.managedFileLedger(appId)`; `FileFormat` reconciled with the frozen contract.
 - **Renderer ownership & machine-output seam (PRD-03)**: `@lando/renderer-lando` actually owns the default renderer layer; doctor NDJSON goes through the central `StreamFrame` seam.
 - **Setup, uninstall & release remediation (PRD-04)**: plugin `setup.flags` merged into `lando setup`; uninstall tears down Lando-owned provider machines and never drops the resumable report; macOS/Windows managed runtime runs on bundled Podman machine tooling; the release-automation posture is decided and wired.
 - **CLI spec parity (PRD-05)**: writable `app config` / `meta config` / `meta global config`; the full `config translate` flow; source-scoped `includes update` with `--no-network`; `app shell` spec parity on `ShellRunner`; `app logs --follow`/`--since`; real `meta global list/info/logs/restart`; real build-time version reporting.
+- **Agent-native surfaces (PRD-06)**: `McpService` + `meta:mcp` (`lando mcp`) serving allowlist-governed MCP tools generated from the command registry over stdio, with the `mcpAllowed:` spec flag, `mcp-allowlist` cache, `mcp.*` config, and contract suite; host agent-context env forwarding (`agentEnv`, §6.9.1) into `app:exec`/`app:ssh`/`app:shell --service`/`providerExec` tooling.
+- **`lando open` (PRD-07)**: `app:open` with target resolution from the app plan, `--service`/`--route`/`--all`/`--print`, headless degradation, and host-proxy round-trip (`hostProxyAllowed: true`).
+- **Landofile version constraint (PRD-08)**: the top-level `lando:` key, accumulate-across-layers semantics, prerelease-inclusive range evaluation, `LandofileVersionConstraintError`, the `LANDO_SKIP_VERSION_CONSTRAINT` escape, hot-path enforcement from the plan cache, and doctor reporting.
+- **Disposable tool runner (PRD-09)**: `apps:scratch:run` (`lando run`) over `ScratchAppService.acquire`, the bundled `toolbox` canonical recipe, cwd-mount default, exit-code propagation, `--keep` detachment, and the reserved bare `run` alias.
 
 ### Exit criteria for Beta 1
 
-Every US-372..US-395 story is accepted with its verification contract green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only.
+Every US-372..US-395 remediation story and every US-396+ feature-wave story is accepted with its verification contract green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only.
 
 ---
 
