@@ -1,0 +1,14 @@
+# Ralph Progress Log — Lando v4 Beta 1 (contract-completion remediation)
+
+Branch: ralph/beta-1
+Source PRDs: spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395)
+Spec source of truth: spec/{01..19}-*.md + the originating Alpha 4 PRDs cited per story
+Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceability table)
+
+## Conventions
+
+- Append one entry per completed story/verify/babysit cycle, newest at the top of the entry list, matching the beta-1 progress.txt format.
+- Every entry records: what changed, verification evidence (gates + tests + manual QA), and learnings for future iterations.
+- A story that relaxes a shipped contract (US-381 FileFormat, US-388 release posture, US-392 shell default) must record the decision and the synchronized spec/PRD/snapshot updates in its entry.
+
+---

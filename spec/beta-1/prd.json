@@ -1,0 +1,434 @@
+{
+  "project": "Lando v4 Phase 5 Beta 1",
+  "branchName": "ralph/beta-1",
+  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change.",
+  "userStories": [
+    {
+      "id": "US-372",
+      "title": "Durable atomic writes fsync before rename",
+      "description": "As a user whose machine loses power mid-write, no Lando-owned durable file (state store, cache, cwd-app map) is ever left partially written, because every atomic write path flushes to disk before the rename.",
+      "acceptanceCriteria": [
+        "`writeFileAtomicScoped` (`core/src/state-store/atomic.ts`) fsyncs the temp file before rename; the rename only happens after a successful flush.",
+        "`writeFileAtomicViaRename` (`core/src/cache/atomic.ts`) gains the same fsync-before-rename behavior.",
+        "`core/src/cache/cwd-app-map.ts` no longer writes with raw `writeFile`; it routes through the atomic helper.",
+        "A unit test proves the temp file is flushed before rename (injected fs seam or flush-failure rejection).",
+        "`check:state-store-boundary` still passes; no new hand-rolled temp+rename paths are introduced.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-13 FR-3 ('temp + fsync + rename') — audit found zero fsync calls in either helper; cwd-app-map bypasses the helper entirely."
+    },
+    {
+      "id": "US-373",
+      "title": "One durable-store implementation — retire json-bucket.ts",
+      "description": "As a maintainer, all durable, versioned, lockable Lando-owned writes flow through `StateStore`, so envelope/lock/quarantine semantics exist in exactly one place.",
+      "acceptanceCriteria": [
+        "The managed-file ledger (`core/src/managed-file/service.ts`) persists through `StateStore` (or a StateStore-backed bucket adapter) instead of `openJsonBucket`.",
+        "`core/src/state-store/json-bucket.ts`'s independent versioned-envelope + advisory-lock + quarantine implementation is removed or reduced to a thin delegating shim over `core/src/state/**` with no duplicated envelope/lock logic.",
+        "Existing ledger data written by the old bucket format is still readable (migration or format-compatibility test), or the ledger format is explicitly versioned forward with a documented migration.",
+        "The `check:state-store-boundary` allowlist entry for `core/src/state-store/json-bucket.ts` is removed or narrowed to the shim, and the `check:probe-boundary` advisory-lock allowlist is re-audited.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-13 FR-1 / success metric (exactly one durable-store implementation under core/src/state/). Coordinate with US-379/US-380 which touch the same service file."
+    },
+    {
+      "id": "US-374",
+      "title": "Ship the runProbe-backed default HealthcheckRunner",
+      "description": "As a service author, healthchecks declared in a Landofile run through a real `HealthcheckRunner` built on `runProbe`, with retry/delay/timeout mapped onto a `RetryPolicy` and verdicts mapped onto `ProbeOutcome`.",
+      "acceptanceCriteria": [
+        "A live `HealthcheckRunner` implementation replaces `HealthcheckRunnerUnavailableLive` as the default wiring; the stub remains only as an explicit test/degraded-mode layer if still needed.",
+        "The implementation builds on `@lando/sdk/probe`'s `runProbe` — no hand-rolled `Effect.retry`/`Schedule` loop — and passes `check:probe-boundary`.",
+        "Healthcheck `retry`/`delay`/`timeout` config map onto `RetryPolicy` per §10.5; the runner's verdict maps onto `ProbeOutcome` (green/yellow/red).",
+        "`ProbeResult.lastError` is redacted through `RedactionService` before it reaches any event, transcript, or readiness summary.",
+        "Behavior is asserted deterministically under `TestClock` (attempt counts, backoff, timeout) with no wall-clock flake.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-14 US-317 — audit found `core/src/subsystems/healthcheck/api.ts` is an Unavailable stub and zero runProbe call sites exist in core/src."
+    },
+    {
+      "id": "US-375",
+      "title": "Ship the runProbe-backed default UrlScanner",
+      "description": "As a user running `lando start`, URL scanning ('is this route responding yet?') runs through a real `UrlScanner` built on `runProbe`.",
+      "acceptanceCriteria": [
+        "A live `UrlScanner` implementation replaces `UrlScannerUnavailableLive` as the default wiring.",
+        "The implementation builds on `runProbe`, maps scanner config onto `RetryPolicy`, and returns `ProbeOutcome`-shaped verdicts per §10.5.",
+        "Outbound requests go through the `HttpClient` egress chokepoint (no ad-hoc fetch), honoring `network.proxy` / `network.ca`.",
+        "`ProbeResult.lastError` is redacted through `RedactionService` before leaving the scanner.",
+        "Deterministic `TestClock` coverage for attempts/backoff/timeout.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-14 US-317 — `core/src/subsystems/scanner/api.ts` is an Unavailable stub."
+    },
+    {
+      "id": "US-376",
+      "title": "Migrate doctor, downloader, and setup readiness onto runProbe",
+      "description": "As a maintainer, the remaining PRD-ALPHA4-14 US-317 consumers — DoctorService shell checks, the Downloader retry path, and `lando setup` readiness waits — run their retry/timeout-to-verdict loops through `runProbe`, and `lando doctor` wires the real subsystems.",
+      "acceptanceCriteria": [
+        "`DoctorService` shell checks with retry/timeout semantics run through `runProbe`.",
+        "The `Downloader` retry path maps its retry policy onto `RetryPolicy` and executes attempts through `runProbe` (or documents, in the probe-boundary allowlist with justification, any loop that genuinely cannot map).",
+        "`lando setup` readiness waits (socket probe, provider readiness) consume `runProbe`.",
+        "`core/src/cli/commands/doctor-subsystems.ts` wires the real HealthcheckRunner/UrlScanner layers; the Unavailable stubs no longer appear in any default bootstrap path.",
+        "`check:probe-boundary` allowlist shrinks to only the documented state-lock loops; a hand-rolled retry loop reintroduced in any migrated consumer fails the gate.",
+        "Existing setup/doctor/downloader behavior tests stay green; migrated behavior is asserted under `TestClock` where timing-sensitive.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-14 US-317. Depends on US-374/US-375 for the real subsystem layers."
+    },
+    {
+      "id": "US-377",
+      "title": "Runtime behavior test for waitForEvent",
+      "description": "As a plugin author relying on `@lando/core/testing`, `waitForEvent` is proven at runtime to delegate to `EventService.waitFor` and honor the timeout contract, not just to exist as an export.",
+      "acceptanceCriteria": [
+        "A runtime test in `core/test/testing/` proves `waitForEvent` resolves when a matching event is published.",
+        "A runtime test proves `waitForEvent` fails with the `EventError` `reason: \"timeout\"` contract when the deadline elapses, driven deterministically through `TestClock`.",
+        "The test asserts the returned event is the typed, redacted payload (parity with `EventService.waitFor` semantics).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-14 FR-9 — audit found `waitForEvent` covered only by an export-existence assertion (`core/test/library/core-testing-export.test.ts`) while `expectEvent` has real runtime coverage."
+    },
+    {
+      "id": "US-378",
+      "title": "Resolve the orphaned Mutagen downloader files",
+      "description": "As a maintainer, the working tree carries no orphaned product files: the untracked `plugins/file-sync-mutagen/src/download.ts` and `plugins/file-sync-mutagen/test/download.test.ts` are either deleted (the shipped path is `provisionMutagen` in `plugins/file-sync-mutagen/src/provision.ts`) or deliberately wired and committed.",
+      "acceptanceCriteria": [
+        "A decision is recorded in this story's notes: the bespoke downloader is redundant with the tool-provisioning path, or it serves a purpose provision.ts does not.",
+        "If redundant: both files are deleted; no production or test code references them.",
+        "If kept: `download.ts` is imported by the plugin's production path, its test runs in CI, and both files are committed.",
+        "`git status` is clean of these paths after the change (no untracked product files).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Origin: working-tree discipline (root AGENTS.md). These files already blocked one push (spec/alpha-4/progress.txt 2026-07-02 04:42 entry). Only referenced by each other; plugin entry imports provisionMutagen only."
+    },
+    {
+      "id": "US-379",
+      "title": "Managed-file events route through RedactionService",
+      "description": "As a security-conscious user, managed-file events and transcripts never contain unredacted secrets, because the service uses the canonical redaction registry instead of a local empty redactor.",
+      "acceptanceCriteria": [
+        "`ManagedFileServiceLive` resolves `RedactionService` and uses it for every event payload and transcript line it emits; `createSecretRedactor([])` is removed from `core/src/managed-file/service.ts`.",
+        "A test proves a registered secret value appearing in a managed-file event payload is masked in the emitted event.",
+        "The `check:redaction-boundary` gate covers the managed-file event path (added to the gate's consumer inventory if it enumerates consumers).",
+        "`RedactionService` is provided directly to the sub-layer that needs it (per the Layer.mergeAll sibling-visibility gotcha in root AGENTS.md).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-18 ('Every ManagedFile event and transcript MUST be routed through RedactionService'). Audit found a local empty redactor at core/src/managed-file/service.ts:911-943."
+    },
+    {
+      "id": "US-380",
+      "title": "PathsService.managedFileLedger(appId)",
+      "description": "As a plugin author or embedding host, I can resolve the managed-file ledger path for an app through `PathsService` / `@lando/core/paths` instead of re-deriving it.",
+      "acceptanceCriteria": [
+        "`PathsService` (`sdk/src/services/paths.ts`) gains `managedFileLedger(appId: string)`; the pure `makeLandoPaths` peer gains the equivalent member.",
+        "`core/src/config/roots.ts`'s `managedFileLedger` helper delegates to (or is replaced by) the primitive; internal callers migrate to the sanctioned surface.",
+        "The addition follows sdk/AGENTS.md: `sdk/API_COMPATIBILITY.md` updated, `bun run codegen:schema-snapshot` refreshed, export/import-boundary tests updated.",
+        "`check:paths-boundary` passes; no hand-rolled ledger path joins remain.",
+        "Path-matrix tests cover the new member across platforms (win32/linux/darwin separators, overridden roots).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-18 ('PathsService / @lando/core/paths gain a managedFileLedger(appId) derived path'). Audit found the helper only in core/src/config/roots.ts:19."
+    },
+    {
+      "id": "US-381",
+      "title": "Reconcile FileFormat with the frozen contract",
+      "description": "As an SDK consumer, the shipped `FileFormat` enum and the PRD-ALPHA4-18 contract say the same thing: either the JS/TS formats are formally adopted into the contract, or the schema is trimmed back to the frozen 7-value enum.",
+      "acceptanceCriteria": [
+        "A decision is recorded in this story's notes: adopt `javascript`/`typescript` into the contract, or remove them from `sdk/src/schema/managed-file.ts`.",
+        "If adopted: `spec/alpha-4/prd-alpha-4-18-managed-files.md` (and §10.13 if it enumerates formats) is updated to the 9-value enum, codec behavior for both formats is tested (write/read round-trip, marker handling), and the schema snapshot reflects the adopted surface.",
+        "If trimmed: the two values are removed, no shipped consumer references them (verified by search + tests), and the schema snapshot is refreshed.",
+        "PRD text, schema, snapshot, and `sdk/API_COMPATIBILITY.md` agree after the change; no silent drift remains.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-18 freezes FileFormat as the 7-value enum; sdk/src/schema/managed-file.ts:18-28 ships 9 values. Check the introducing commit's intent before choosing trim vs adopt."
+    },
+    {
+      "id": "US-382",
+      "title": "@lando/renderer-lando owns the default renderer layer",
+      "description": "As a renderer-plugin author, I can read `@lando/renderer-lando` as the reference implementation: its exported renderer layer IS the default TTY renderer, and core wires it via the bundled-plugin mechanism rather than assembling it.",
+      "acceptanceCriteria": [
+        "`plugins/renderer-lando`'s renderer export is the real default TTY renderer layer (task-tree painter, event consumer, plain/json fallbacks) — no more `Layer.empty` placeholder.",
+        "`core/src/cli/renderer/bundled-renderers.ts` no longer constructs the lando renderer from parts; it resolves the renderer contribution from the bundled plugin (shared primitives may live in `@lando/sdk/renderer`, but composition/ownership sits in the plugin).",
+        "Fallback modes (non-TTY plain, `--renderer=json`) and renderer selection order are preserved; existing renderer golden/visual-QA tests stay green (goldens may move, not weaken).",
+        "Cold-start discipline holds: the plugin's renderer layer stays off the cold-start static import graph and `@opentui/core` remains behind the dynamic-import boundary; import-boundary gates pass.",
+        "Bundled-plugin codegen is regenerated in the same change if the contribution shape changes; `git diff --exit-code` clean on generated paths after codegen.",
+        "`check:renderer-boundary` passes; dual-dispatch parity tests pass.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-12 renderer-plugin ownership AC. Audit: plugins/renderer-lando/src/index.ts:14 exports `renderer = Layer.empty` while core assembles the real renderer in bundled-renderers.ts."
+    },
+    {
+      "id": "US-383",
+      "title": "Doctor NDJSON goes through the central StreamFrame seam",
+      "description": "As an agent consuming `lando doctor` NDJSON, every emitted line is produced by the central redaction-aware StreamFrame encoder, uniform with every other streaming command.",
+      "acceptanceCriteria": [
+        "`core/src/cli/commands/doctor-ndjson.ts` serializes frames through the central StreamFrame encode seam, not raw `JSON.stringify`.",
+        "`core/src/cli/commands/doctor-report.ts`'s doctor.check event lines go through the same seam.",
+        "Emitted NDJSON output stays byte-compatible with the frozen shapes (snapshot/conformance tests), or any deliberate shape change updates the frozen snapshot with justification.",
+        "A redaction test proves a registered secret in a doctor check result is masked in the NDJSON output.",
+        "Any machine-output-gate allowlist entries for these two files are removed.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-15 US-326 (migrate one-off NDJSON/event-line renderers onto StreamFrame). Audit found raw JSON.stringify call sites in both files."
+    },
+    {
+      "id": "US-384",
+      "title": "Merge plugin setup.flags into lando setup",
+      "description": "As a provider-plugin author, flags I contribute through `setup.flags` appear in `lando setup --help`, parse correctly, and reach my setup subscriber — on both the OCLIF source path and the compiled binary path.",
+      "acceptanceCriteria": [
+        "Discovered plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing); name collisions with built-in flags fail with a tagged error at plugin load, not silently.",
+        "Parsed plugin flag values are delivered to the contributing plugin's setup handler.",
+        "Parsing tests cover a contributed flag (presence in metadata, value round-trip, unknown-flag rejection), fulfilling PRD-ALPHA4-01 US-200 AC-4.",
+        "Source-dispatch and `runCompiledCli` behave identically (parity test), respecting the compiled-manifest constraints in core/AGENTS.md.",
+        "Cold-start budget holds: flag merging must not force plugin loading before the setup command actually runs.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-01 US-200 AC-4. Audit: sdk/src/schema/plugin.ts:153-202 declares setup.flags; meta/setup.ts:563-589 hardcodes built-in flags with no merge path."
+    },
+    {
+      "id": "US-385",
+      "title": "Uninstall tears down Lando-owned provider machines",
+      "description": "As a user running `lando uninstall --purge`, Lando-owned provider machines (the managed Podman machine/socket) are stopped and removed automatically, not listed for manual cleanup.",
+      "acceptanceCriteria": [
+        "The uninstall plan executes teardown for provider machines Lando created (stop the managed socket/service, remove the machine/VM state) instead of marking `managed-provider-machines` as manual.",
+        "Machines not owned by Lando are never touched; ownership is determined from recorded setup state, and ambiguous ownership degrades to manual with remediation text.",
+        "The uninstall report records each machine action (removed / skipped-not-owned / failed with remediation).",
+        "Idempotency: re-running uninstall after a partial machine teardown converges without error.",
+        "Scenario tests cover owned-machine removal and not-owned skip on the test provider; live provider integration remains env-gated.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-01 uninstall contract. Audit: core/src/cli/commands/uninstall.ts:193-197 marks managed-provider-machines as manual. Depends on machine-identity state recorded by US-387."
+    },
+    {
+      "id": "US-386",
+      "title": "Uninstall report survives purge failures",
+      "description": "As a user whose `lando uninstall --purge` fails partway, I always get a resumable report telling me what was removed and what remains, even when `userDataRoot` itself is already gone.",
+      "acceptanceCriteria": [
+        "The report writer no longer silently skips when `userDataRoot` was purged: the report is written to a fallback location that survives the purge, and its path is printed in the failure output.",
+        "The report content still enumerates completed, failed, and remaining steps with remediation, and a re-run consumes/reconciles it.",
+        "A test simulates a step failure after `userDataRoot` removal and asserts a resumable report exists at the fallback path.",
+        "Report writing routes through the sanctioned atomic-write helper (post-US-372).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-01 US-206 ('Partial failures leave a resumable uninstall report'). Audit: uninstall.ts:320-322 skips the report when userDataRoot was purged."
+    },
+    {
+      "id": "US-387",
+      "title": "macOS/Windows managed runtime uses bundled Podman machine tooling",
+      "description": "As a macOS or Windows user, `lando setup` stands up the Lando-managed runtime with the bundled Podman machine tooling and the Lando-owned socket — never by falling back to system Podman machine tooling or a test environment variable.",
+      "acceptanceCriteria": [
+        "The mac/win ensureRuntime path in `plugins/provider-lando/src/setup.ts` resolves the machine runner from the installed runtime bundle (Paths-driven binaries), removing the `makeSystemPodmanMachineRunner(undefined, …)` production fallback.",
+        "`process.env.LANDO_TEST_PODMAN_SOCKET` is honored only in explicit test wiring, never as a production fallback in the setup path (mirror the Linux socket-resolution precedence: explicit option > injected paths > managed default).",
+        "Machine lifecycle (init/start/socket resolution/restart-on-stale) works from the bundled tooling; recorded setup state includes the machine identity and socket path needed for idempotent re-detection and for US-385 teardown.",
+        "When the runtime bundle lacks machine tooling for the host platform, setup fails with a tagged remediation error naming the bundle/platform — it does not silently use system tooling.",
+        "Unit/scenario coverage runs against fake runners for both platforms; live verification is recorded via the provider-integration CI jobs.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-01 US-363..US-367 (runtime-socket autosetup). Audit: setup.ts:550-567 falls back to system machine runner + LANDO_TEST_PODMAN_SOCKET when no socket is injected. If partial mac/win scope is accepted for Beta 1, cut the scope in PRD text explicitly, not silently."
+    },
+    {
+      "id": "US-388",
+      "title": "Release-automation posture is decided and wired",
+      "description": "As a maintainer preparing 4.0.0-beta.N, CI can produce the full signed release (13-stage scripts/release.ts) — or, if beta releases are deliberately manual, that decision is recorded where the RC acceptance criteria will collect it.",
+      "acceptanceCriteria": [
+        "A decision record lands (in this story's notes and the PRD-ALPHA4-08 open-questions section): full pipeline in CI for Beta, or manual invocation until RC.",
+        "If CI: `scripts/build-release-workflow.ts` emits a workflow that invokes the `scripts/release.ts` orchestrator with credential-gated signing stages (skipping cleanly with warnings when credentials are absent), committed via codegen with drift check clean.",
+        "If manual-until-RC: the release runbook documents the exact invocation, required credentials, and verification steps, and the generated workflow's dev-prerelease-only scope is stated in the workflow header comment.",
+        "The per-platform binary jobs and the release workflow reference the same platform id vocabulary (windows-x64 CI/release domain vs win32-x64 runtime host key preserved).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Origin: PRD-ALPHA4-08. Audit: .github/workflows/release.yml runs only dev-prerelease-linux-x64 + npm-alpha-packages; nothing invokes the 13-stage pipeline. May be intentional — hence a decision story, not a blind implementation story."
+    },
+    {
+      "id": "US-389",
+      "title": "Config write surfaces (app config / meta config / meta global config)",
+      "description": "As a user, I can set, unset, edit, and validate configuration at all three scopes — app Landofile, global config, global-app stack — exactly as §8.2 specifies, with writes that are atomic and serializer-canonical.",
+      "acceptanceCriteria": [
+        "`app config set/unset/edit/validate` operate on the app Landofile: set/unset accept the spec'd path grammar, `edit` opens $EDITOR with post-edit validation, `validate` reports schema errors with remediation.",
+        "`meta config set/unset/edit/validate` operate on global config with the same semantics.",
+        "`meta global config` gains the spec'd write verbs for the global-app stack.",
+        "Writes round-trip through the canonical `@lando/sdk/landofile` serializer (comment/format preservation per §7.8.1) and land via the atomic write helper (US-372).",
+        "Every write emits its result through the universal machine-output contract (faithful resultSchema, --json envelope) and honors --dry-run where the spec requires it.",
+        "Rejecting writes (invalid path, schema violation) fail with tagged errors + remediation, exit non-zero, and leave the file untouched.",
+        "Dual-dispatch parity tests cover the new verbs; command result schemas are frozen in the snapshot.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Origin: spec §8.2.1/§8.2.2/§8.4 — audit found all three config surfaces read-only (plus a telemetry toggle)."
+    },
+    {
+      "id": "US-390",
+      "title": "app config translate detect/list/from/file flow",
+      "description": "As a migrating user, `lando config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file — not just the cwd happy path.",
+      "acceptanceCriteria": [
+        "Autodetection: with no args, the command probes registered ConfigTranslators' detect surfaces against the cwd and picks the unambiguous match; ambiguity fails with a list + remediation.",
+        "`--list` enumerates registered translators (id, source format) through the machine-output contract.",
+        "`--from=<id>` forces a translator; `--file=<path>` translates an explicit file.",
+        "Output composes with the existing `--write` flag and the §7.8.1 serializer; non-write mode prints through the renderer/JSON seam.",
+        "The translate command paths are exercised against the config-translator contract suite fixtures.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Origin: spec §8.2.1 translate flow. Audit: core/src/cli/commands/app-config-translate.ts only supports cwd + --write."
+    },
+    {
+      "id": "US-391",
+      "title": "Source-scoped app includes update with --no-network",
+      "description": "As a user with many includes, I can refresh a single include source and run include updates offline against the lockfile/cache, per §8.2.3.",
+      "acceptanceCriteria": [
+        "`app includes update [source]` accepts an optional source identifier and refreshes only that include; unknown sources fail with the known-source list.",
+        "`--no-network` performs the update strictly from cache/lock state, failing with remediation when a required artifact is absent — it never touches the network (asserted via the network-boundary test seam).",
+        "Default behavior (all sources, network allowed) is unchanged; `--check` composes with both new options.",
+        "Result schema extends faithfully (per-source outcomes) and is snapshot-frozen.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Origin: spec §8.2.3. Audit: core/src/cli/commands/app-includes-update.ts always refreshes all includes; wrapper exposes only --check."
+    },
+    {
+      "id": "US-392",
+      "title": "app shell spec parity (host default, ShellRunner, history/interactive flags)",
+      "description": "As a user, `lando shell` behaves as §8.2.4 specifies: host mode is the default, host execution runs through the Bun-Shell-backed ShellRunner service, and --no-history / --no-interactive are honored.",
+      "acceptanceCriteria": [
+        "Default mode is host; `--service <name>` selects service mode explicitly (per §8.2.4 precedence — read the spec verbatim before flipping; amend the spec first if ambiguous). The default flip is routed through the deprecation governance surface.",
+        "Host execution routes through the `ShellRunner` service (`core/src/services/shell-runner.ts`), not `child_process.spawn` in the command body — command bodies stay side-effect-free per spec §1.2.",
+        "`--no-history` prevents host shell-history persistence for the session; `--no-interactive` runs non-TTY (suitable for agents/CI) with deterministic exit-code propagation.",
+        "Interactive TTY behavior (signal forwarding, exit codes, terminal restore) is covered by a tmux-driven integration test or an equivalent PTY harness.",
+        "Dual-dispatch parity holds; renderer boundary passes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Origin: spec §8.2.4. Audit: core/src/cli/commands/shell.ts defaults to service mode and spawns host shells via child_process; flags limited to service/host."
+    },
+    {
+      "id": "US-393",
+      "title": "app logs --follow and --since",
+      "description": "As a user debugging a service, I can stream logs live (--follow) and bound them by time (--since), per §8.2.5.",
+      "acceptanceCriteria": [
+        "`--follow` streams provider logs until interrupt, through the renderer in TTY mode and as StreamFrame NDJSON under --format json; cancellation cleans up the provider log stream under Scope.",
+        "`--since` accepts the spec'd duration/timestamp grammar and filters accordingly; invalid grammar fails with remediation.",
+        "Both compose with existing --service / --tail.",
+        "Provider capability is validated before planning: providers that cannot stream fail up front with a tagged error, not mid-stream.",
+        "Deterministic tests via the test provider's log source; live provider stream behavior covered in the env-gated integration suite.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Origin: spec §8.2.5. Audit: logs.ts honors only service/tail; the OCLIF wrapper marks follow/since as Beta-only — Beta is now."
+    },
+    {
+      "id": "US-394",
+      "title": "Real implementations for meta global list/info/logs/restart",
+      "description": "As a user of the global app (shipped in Alpha 3), the global-app management commands actually work instead of returning deferred-stub errors.",
+      "acceptanceCriteria": [
+        "`meta global list` enumerates global-app services with status through the machine-output contract.",
+        "`meta global info` reports the global app's resolved config/urls/services (parity with `app info` shape where §8.4 says so).",
+        "`meta global logs` supports the same surface as `app logs` (including US-393 flags) scoped to the global app.",
+        "`meta global restart` restarts the global app deterministically (stop+start semantics per §8.4).",
+        "The deferred-stub helper is no longer referenced by these four commands; compiled-dispatch branches exist and parity tests cover them.",
+        "Result schemas are added to the frozen snapshot; --json envelopes verified by the conformance suite.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Origin: spec §8.4 / §18 (global app shipped in Alpha 3). Audit: all four are makeDeferredStubCommand stubs. Share implementation with app-scoped commands via the global AppRef; do not fork logic."
+    },
+    {
+      "id": "US-395",
+      "title": "Real version reporting",
+      "description": "As a user (or installer, or self-update flow), `lando version` and `lando --version` report the actual build version, embedded at build time — never 0.0.0.",
+      "acceptanceCriteria": [
+        "`CORE_VERSION` (`core/src/version.ts`) and the `version` command result derive from the package version at build time: compiled binaries embed it via the build's define/injection step, and source dispatch reads the workspace package version.",
+        "`lando version` reports core, Bun, and platform truthfully in both dispatch modes; `lando --version` stays within the cold-start budget (< 80ms cold) with no Effect/OCLIF import creep.",
+        "The release pipeline's version stamping (scripts/release.ts) and this embedding agree — one source of truth; a release-stage test asserts the built binary prints the stamped version.",
+        "A guard test fails if CORE_VERSION regresses to the 0.0.0 placeholder in a built artifact.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Origin: spec §8.1/§17. Audit: core/src/version.ts is `export const CORE_VERSION = \"0.0.0\"` and core/src/cli/commands/version.ts hardcodes core: \"0.0.0\" with a TODO. Compiled-mode constraint: no import.meta.url for package metadata (core/AGENTS.md)."
+    }
+  ]
+}
