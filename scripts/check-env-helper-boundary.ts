@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
-import ts from "typescript";
+import { scanModuleEdges } from "./module-edge-scan.ts";
 
 export interface EnvHelperBoundaryOffender {
   readonly file: string;
@@ -61,34 +61,26 @@ const importsEnvFeatureModule = (root: string, importer: string, specifier: stri
     (candidate) => toRepoRelative(root, candidate) === ENV_FEATURE_MODULE,
   );
 
-const hasBlockedNamedImport = (importClause: ts.ImportClause | undefined): boolean => {
-  const namedBindings = importClause?.namedBindings;
-  if (!namedBindings || !ts.isNamedImports(namedBindings)) return false;
-
-  return namedBindings.elements.some((element) => {
-    const importedName = element.propertyName?.text ?? element.name.text;
-    return BLOCKED_NAMED_IMPORTS.has(importedName);
-  });
-};
+const hasBlockedName = (names: ReadonlyArray<string>): boolean =>
+  names.some((name) => BLOCKED_NAMED_IMPORTS.has(name));
 
 const scanFile = async (root: string, file: string): Promise<ReadonlyArray<EnvHelperBoundaryOffender>> => {
   const sourceText = await Bun.file(file).text();
-  const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const offenders: EnvHelperBoundaryOffender[] = [];
 
-  const visit = (node: ts.Node): void => {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      const specifier = node.moduleSpecifier.text;
-      if (importsEnvFeatureModule(root, file, specifier) || hasBlockedNamedImport(node.importClause)) {
-        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
-        offenders.push({ file, line: line + 1, specifier });
-      }
+  // Every module edge counts: static imports, statically resolvable dynamic
+  // `import()` / `require()` calls, and barrel re-exports. Reaching the env
+  // feature module through any of them — or pulling a blocked helper name
+  // through an import/re-export from any module — is a boundary violation.
+  for (const edge of scanModuleEdges(file, sourceText)) {
+    const reachesEnvModule = importsEnvFeatureModule(root, file, edge.specifier);
+    const pullsBlockedName =
+      (edge.kind === "import" || edge.kind === "re-export") && hasBlockedName(edge.names);
+    if (reachesEnvModule || pullsBlockedName) {
+      offenders.push({ file, line: edge.line, specifier: edge.specifier });
     }
+  }
 
-    ts.forEachChild(node, visit);
-  };
-
-  visit(source);
   return offenders;
 };
 
