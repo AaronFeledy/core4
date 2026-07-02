@@ -736,6 +736,83 @@ describe("dynamic-import and re-export escape hatches", () => {
     }
   });
 
+  test("a later function-scoped const shadow does not hide a banned module-scope dynamic specifier", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "shadowed-function.ts",
+        [
+          'const mod = "@oclif/" + "core";',
+          "export const load = async (): Promise<unknown> => import(mod);",
+          "export const decoy = (): string => {",
+          '  const mod = "./safe-local.ts";',
+          "  return mod;",
+          "};",
+          "",
+        ].join("\n"),
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(1);
+      expect(dynamicViolations[0]?.family).toBe("oclif");
+      expect(dynamicViolations[0]?.reason).toContain("@oclif/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test("a later block-scoped const shadow does not hide a banned module-scope dynamic specifier", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "shadowed-block.ts",
+        [
+          'const tuiSpecifier = "@opentui/core";',
+          "export const load = async (): Promise<unknown> => import(tuiSpecifier);",
+          "if (Math.random() > 1) {",
+          '  const tuiSpecifier = "./harmless.ts";',
+          "  void tuiSpecifier;",
+          "}",
+          "",
+        ].join("\n"),
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(1);
+      expect(dynamicViolations[0]?.family).toBe("tui");
+      expect(dynamicViolations[0]?.reason).toContain("@opentui/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test("an inner-scope dynamic import resolves the nearest lexical const, not the module-scope one", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "inner-shadow-use.ts",
+        [
+          'const mod = "./harmless.ts";',
+          "export const load = async (): Promise<unknown> => {",
+          '  const mod = "@oclif/core";',
+          "  return import(mod);",
+          "};",
+          "",
+        ].join("\n"),
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(1);
+      expect(dynamicViolations[0]?.family).toBe("oclif");
+      expect(dynamicViolations[0]?.reason).toContain("@oclif/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
   test("the lazy walker ignores runtime-computed dynamic specifiers", async () => {
     const dir = await makeFixtureDir();
     try {

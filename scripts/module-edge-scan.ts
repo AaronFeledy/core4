@@ -33,6 +33,12 @@ export interface ModuleEdge {
 }
 
 /**
+ * Resolve an identifier USE to the `const` initializer that lexically binds
+ * it, or `undefined` when no statically known `const` binding is in scope.
+ */
+export type ConstBindingResolver = (identifier: ts.Identifier) => ts.Expression | undefined;
+
+/**
  * Statically evaluate a specifier expression: string literals, template
  * literals, `+` concatenation, parenthesized expressions, and identifiers
  * bound by a same-file `const` whose initializer is itself statically
@@ -41,44 +47,74 @@ export interface ModuleEdge {
  */
 export const resolveStaticString = (
   expression: ts.Expression,
-  constBindings: ReadonlyMap<string, ts.Expression>,
-  seen: ReadonlySet<string> = new Set(),
+  resolveBinding: ConstBindingResolver,
+  seen: ReadonlySet<ts.Expression> = new Set(),
 ): string | undefined => {
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return expression.text;
   }
   if (ts.isParenthesizedExpression(expression)) {
-    return resolveStaticString(expression.expression, constBindings, seen);
+    return resolveStaticString(expression.expression, resolveBinding, seen);
   }
   if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    const left = resolveStaticString(expression.left, constBindings, seen);
+    const left = resolveStaticString(expression.left, resolveBinding, seen);
     if (left === undefined) return undefined;
-    const right = resolveStaticString(expression.right, constBindings, seen);
+    const right = resolveStaticString(expression.right, resolveBinding, seen);
     return right === undefined ? undefined : left + right;
   }
   if (ts.isTemplateExpression(expression)) {
     let result = expression.head.text;
     for (const span of expression.templateSpans) {
-      const value = resolveStaticString(span.expression, constBindings, seen);
+      const value = resolveStaticString(span.expression, resolveBinding, seen);
       if (value === undefined) return undefined;
       result += value + span.literal.text;
     }
     return result;
   }
   if (ts.isIdentifier(expression)) {
-    if (seen.has(expression.text)) return undefined;
-    const initializer = constBindings.get(expression.text);
-    if (initializer === undefined) return undefined;
-    return resolveStaticString(initializer, constBindings, new Set([...seen, expression.text]));
+    const initializer = resolveBinding(expression);
+    if (initializer === undefined || seen.has(initializer)) return undefined;
+    return resolveStaticString(initializer, resolveBinding, new Set([...seen, initializer]));
   }
   return undefined;
 };
 
-const collectConstBindings = (source: ts.SourceFile): ReadonlyMap<string, ts.Expression> => {
-  const bindings = new Map<string, ts.Expression>();
+/**
+ * Nodes that open a lexical scope for `const` declarations. Function bodies
+ * are `Block`s, so this list covers module scope, block statements, `case`
+ * blocks, namespace bodies, and `for` heads (`for (const x of ...)`).
+ */
+const isConstScopeBoundary = (node: ts.Node): boolean =>
+  ts.isSourceFile(node) ||
+  ts.isBlock(node) ||
+  ts.isModuleBlock(node) ||
+  ts.isCaseBlock(node) ||
+  ts.isForStatement(node) ||
+  ts.isForOfStatement(node) ||
+  ts.isForInStatement(node);
+
+const enclosingConstScope = (node: ts.Node): ts.Node => {
+  let current: ts.Node = node;
+  while (!isConstScopeBoundary(current)) current = current.parent;
+  return current;
+};
+
+/**
+ * Index every same-file `const` binding BY ITS LEXICAL SCOPE, and return a
+ * resolver that walks an identifier use outward through its enclosing scopes
+ * to the nearest binding. A flat name-keyed map would let a later block- or
+ * function-scoped `const` overwrite the module-scope binding that actually
+ * resolves a dynamic `import()` / `require()` argument, making the gate
+ * evaluate the wrong module string and miss a boundary violation.
+ */
+const collectConstBindings = (source: ts.SourceFile): ConstBindingResolver => {
+  const scopes = new Map<ts.Node, Map<string, ts.Expression>>();
 
   const visit = (node: ts.Node): void => {
     if (ts.isVariableDeclarationList(node) && (node.flags & ts.NodeFlags.Const) !== 0) {
+      const scope = enclosingConstScope(node);
+      const bindings = scopes.get(scope) ?? new Map<string, ts.Expression>();
+      scopes.set(scope, bindings);
       for (const declaration of node.declarations) {
         if (ts.isIdentifier(declaration.name) && declaration.initializer !== undefined) {
           bindings.set(declaration.name.text, declaration.initializer);
@@ -89,7 +125,14 @@ const collectConstBindings = (source: ts.SourceFile): ReadonlyMap<string, ts.Exp
   };
 
   visit(source);
-  return bindings;
+
+  return (identifier) => {
+    for (let node: ts.Node | undefined = identifier.parent; node !== undefined; node = node.parent) {
+      const binding = scopes.get(node)?.get(identifier.text);
+      if (binding !== undefined) return binding;
+    }
+    return undefined;
+  };
 };
 
 const namedImportNames = (importClause: ts.ImportClause | undefined): ReadonlyArray<string> => {
@@ -119,7 +162,7 @@ export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyA
     true,
     fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
-  const constBindings = collectConstBindings(source);
+  const resolveConstBinding = collectConstBindings(source);
   const edges: ModuleEdge[] = [];
 
   const lineOf = (node: ts.Node): number =>
@@ -146,7 +189,8 @@ export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyA
       const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
       if ((isDynamicImport || isRequireCall(node)) && node.arguments.length >= 1) {
         const argument = node.arguments[0];
-        const specifier = argument === undefined ? undefined : resolveStaticString(argument, constBindings);
+        const specifier =
+          argument === undefined ? undefined : resolveStaticString(argument, resolveConstBinding);
         if (specifier !== undefined) {
           edges.push({
             kind: isDynamicImport ? "dynamic-import" : "require",
