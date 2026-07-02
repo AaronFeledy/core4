@@ -516,6 +516,8 @@ Compiled templates are content-addressed and cached at `<userCacheRoot>/template
 ```yaml
 name: <string>                         # optional for supported Compose input; inferred from app root when omitted
 runtime: 4                             # optional; default 4 — Landofile runtime/format major version (see "Runtime vs api" below)
+lando: <semver-range>                  # optional; Lando core version constraint (see "Version constraint" below)
+agentEnv: <bool>                       # optional; default true — opt this app out of host agent-context forwarding (§6.9.1)
 
 includes:                              # composition primitive (§7.7); local/git/npm/registry sources
   - <IncludeRef>
@@ -610,6 +612,22 @@ Rules:
 - The canonical import surface is **`includes:`** (§7.7), which accepts a `kind:` discriminator: `landofile` (the default — whole-file fragment merge), `tooling` (tooling-only fragments per §8.5.8), or `compose` (Compose-spec project fragments). Each kind preserves its own resolution timing and namespacing rules; the unification is at the *surface* level so authors learn one key.
 - `toolingIncludes:` is sugar for `includes: [{ source, kind: tooling, ... }]` and is preserved as an idiomatic shorthand. New documentation, generated examples, and `lando init` output use `includes:` with `kind: tooling`; `toolingIncludes:` MAY appear interchangeably and is not deprecated. Both surfaces resolve through the same machinery.
 - Compose's top-level `include:` is recognized as `includes: [{ ..., kind: compose }]`. When both `includes:` and a top-level `include:` appear in the same file, `include:` entries are appended to the resolved `includes:` list with `kind: compose`. Lando's `includes:` is otherwise a strict superset of the supported Compose `include:` forms, with additional source schemes (git, npm, registry) and Lando-aware merge semantics.
+
+**Version constraint (`lando:`).** The optional top-level `lando:` key declares a semver range the running Lando core version must satisfy before the app is planned or started — the team-workflow guarantee that "works on my machine because my Lando is newer" fails fast instead of failing weird. It mirrors the `requires.lando` key recipes already declare (§8.8.3).
+
+```yaml
+name: my-site
+lando: ">=4.1 <5"
+```
+
+Rules:
+
+- The value MUST be a valid semver range. An unparseable range fails Landofile validation with `LandofileParseError` and remediation showing valid range syntax.
+- The constraint is evaluated **after the six-file merge** (§7.2) and before planning. Every merge layer MAY declare a `lando:` constraint; constraints **accumulate** — the running version must satisfy *all* declared ranges (a base layer can pin a floor, a local layer can tighten it; a lower-precedence layer can never loosen a stricter one).
+- Range evaluation includes prereleases: `>=4.1` is satisfied by `4.1.0-beta.2`. This keeps the constraint useful on the `dev`/`next` channels without forcing teams to author prerelease-aware ranges.
+- An unsatisfied constraint fails closed with tagged `LandofileVersionConstraintError` carrying the declared range(s), the source layer of each, the running version, and remediation (`lando update`, or edit the constraint). The check runs in every command that loads the app — including the `tooling` hot path, where the constraint is carried in the app plan cache and compared against the embedded `CORE_VERSION` without provider contact.
+- `LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades the failure to a renderer warning for the invocation — an escape hatch for CI emergencies and constraint-repair edits, not a workflow. `lando doctor` reports any app whose constraint is unsatisfied or being skipped.
+- `lando:` constrains the **core version**; it is unrelated to `runtime:` (Landofile format major, below) and per-service `api:`. A future Lando 5 binary reading a `runtime: 4` Landofile still honors the `lando:` range.
 
 **Runtime vs api.** `runtime:` and per-service `api:` are distinct version surfaces:
 
@@ -772,6 +790,18 @@ commandAliases:
   enabled: true                        # master switch for top-level aliases
   disabled: []                         # opt out of specific top-level aliases (e.g. ["start", "poweroff"])
   custom: {}                           # add user-defined top-level aliases mapping to canonical ids (e.g. halt: app:stop)
+
+# Host agent-context env forwarding into exec surfaces (§6.9.1).
+agentEnv:
+  enabled: true                        # master switch; LANDO_AGENT_ENV=0 disables per invocation
+  allow: []                            # extra exact env-var names forwarded beyond the built-in list
+  deny: []                             # built-in or allowed names to suppress
+
+# MCP server surface (§10.14, §8.2.6).
+mcp:
+  allow: []                            # extra canonical command ids exposed as MCP tools beyond the mcpAllowed defaults
+  deny: []                             # default-allowed ids to suppress
+  tooling: false                       # also expose the resolved app's tooling tasks as MCP tools
 
 pluginConfig:
   "@lando/proxy-traefik":
