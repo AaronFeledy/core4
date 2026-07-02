@@ -1,6 +1,6 @@
-# PRD Index — Lando v4 Phase 5 (Beta 1 / "contract-completion remediation")
+# PRD Index — Lando v4 Phase 5 (Beta 1 / "contract completion + the agent-native feature wave")
 
-> **Phase position:** Beta 1 is the **fifth** shipped phase (**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1**) and the first beta: **contract-completion remediation** between Alpha 4 ("governance + the last feature surface") and Beta 2 ("feature-freeze hardening"). It adds **no new feature surface**: every story either completes a contract that a shipped Alpha 4 PRD already promised (an explicit MUST in `spec/alpha-4/prd-alpha-4-*.md` whose story was marked `passes: true` while an acceptance sub-requirement remained unmet), or closes spec §8/§12 drift that no later phase owns. At the end of Beta 1 the first signed `4.0.0-beta.N` ships on the `next` channel and **feature freeze is entered**. See [`spec/ROADMAP.md`](../ROADMAP.md) Phase 5 for the authoritative ladder.
+> **Phase position:** Beta 1 is the **fifth** shipped phase (**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1**) and the first beta, sitting between Alpha 4 ("governance + the last feature surface") and Beta 2 ("feature-freeze hardening"). It has two halves. **Remediation (PRD-01..05):** every story either completes a contract that a shipped Alpha 4 PRD already promised (an explicit MUST in `spec/alpha-4/prd-alpha-4-*.md` whose story was marked `passes: true` while an acceptance sub-requirement remained unmet), or closes spec §8/§12 drift that no later phase owns. **Feature wave (PRD-06..09):** a bounded, deliberate set of new feature surface — the agent-native surfaces (`lando mcp` + agent-context env forwarding), `lando open`, the Landofile version constraint, and the disposable tool runner (`lando run`) — sequenced here because each either realizes the agent-native tenet (§1.2) on primitives Alpha 4 already shipped or is a small, high-leverage DX surface, and Beta 1 is the last phase that can add SDK surface before freeze. At the end of Beta 1 the first signed `4.0.0-beta.N` ships on the `next` channel and **feature freeze is entered**. See [`spec/ROADMAP.md`](../ROADMAP.md) Phase 5 for the authoritative ladder.
 
 ## Introduction
 
@@ -13,7 +13,9 @@ A post-Alpha-4 gap audit (2026-07-02) compared every Alpha 4 PRD acceptance crit
 - **Setup/uninstall/release acceptance residue.** Plugin `setup.flags` are declared in the SDK schema but never merged into `lando setup` metadata; uninstall marks managed provider machines `manual` and can drop the resumable report after a purge failure; macOS/Windows `ensureRuntime` still falls back to system Podman machine tooling and the `LANDO_TEST_PODMAN_SOCKET` test variable; the committed release workflow runs only the dev prerelease, not the 13-stage pipeline.
 - **Spec §8 CLI parity drift.** Config surfaces are read-only where §8.2 requires write; `app shell`, `app logs`, `app includes update`, the global-app commands, and `lando version` all diverge from their spec'd contracts; §12 cache writes bypass the atomic helper.
 
-This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-395**.
+This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-409**: US-372..US-395 are the remediation stories, US-396..US-409 are the feature-wave stories.
+
+The feature wave is spec'd first, PRD'd second: the four features were worked into the normative spec parts before these PRDs were written — `McpService` (§10.14) + `meta:mcp` (§8.2.6) + `mcpAllowed:` (§8.3), agent-context env forwarding (§6.9.1, §7.4, §7.5), `app:open` (§8.2.5), the `lando:` version constraint (§7.4), and `apps:scratch:run` + the `toolbox` recipe (§21.10.3, §8.8.10). When a feature PRD and a spec part disagree, the spec part wins.
 
 ## How to use this set of PRDs
 
@@ -32,6 +34,10 @@ This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through *
 | 03 | [Renderer ownership & machine-output seam](./prd-beta-1-03-renderer-and-output-seam.md) | `@lando/renderer-lando` owns the default renderer layer; doctor NDJSON through the central StreamFrame seam | US-382..US-383 | — |
 | 04 | [Setup, uninstall & release remediation](./prd-beta-1-04-setup-uninstall-release.md) | plugin `setup.flags` merge, uninstall machine teardown + report durability, macOS/Windows managed-runtime path, release-automation decision | US-384..US-388 | — |
 | 05 | [CLI spec parity (§8)](./prd-beta-1-05-cli-spec-parity.md) | config write surfaces, translate flow, includes update scoping, shell parity, logs follow/since, global-app stubs, real version | US-389..US-395 | PRD-01 (US-372 atomic helper) |
+| 06 | [Agent-native surfaces](./prd-beta-1-06-agent-native-surfaces.md) | `McpService` + `meta:mcp` (§10.14, §8.2.6), `mcpAllowed:` allowlist + cache, MCP contract suite + doctor check, agent-context env forwarding (§6.9.1) | US-396..US-401 | PRD-03 (output seam) |
+| 07 | [`lando open`](./prd-beta-1-07-app-open.md) | `app:open` target resolution, opener helper, headless degradation, host-proxy round-trip (§8.2.5) | US-402..US-403 | — |
+| 08 | [Landofile version constraint](./prd-beta-1-08-version-constraint.md) | top-level `lando:` key, accumulate-across-layers evaluation, `LandofileVersionConstraintError`, hot-path enforcement, doctor reporting (§7.4) | US-404..US-405 | — |
+| 09 | [Disposable tool runner](./prd-beta-1-09-disposable-tool-runner.md) | `apps:scratch:run` (`lando run`), bundled `toolbox` recipe, exit-code propagation, `--keep`, reserved `run` alias (§21.10.3, §8.8.10) | US-406..US-409 | PRD-06 (US-400 env forwarding) |
 
 ## Verification contract (applies to every story)
 

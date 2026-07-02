@@ -159,6 +159,7 @@ If you are looking for…
 | Picking values from JSON/YAML/TOML files (`get()` and direct access) | 07 | §7.3 |
 | `load()` / `import()` security policy and limits | 07 | §7.3 |
 | Top-level Landofile keys, Compose subset compatibility, config translation, and forbidden wrappers (`compose:`, `recipe:`, `recipes:`) | 07 | §7.4 |
+| Landofile version constraint (`lando: <semver-range>`, `LandofileVersionConstraintError`) | 07 | §7.4 |
 | `commandAliases:` Landofile key (per-app override) | 07 | §7.4 |
 | Global config keys and user root defaults | 07 | §7.5 |
 | Root and path resolution primitive (`@lando/core/paths`, `PathsService`) | 07 | §7.5.1 |
@@ -274,6 +275,10 @@ If you are looking for…
 | Corporate proxies and outbound trust | 11 | §10.3.1 |
 | SSH and host identity (sidecar-by-default agent) | 11 | §10.4 |
 | Host proxy (container→host RPC: `xdg-open` shim, in-container `lando` shim) | 11 | §10.10 |
+| MCP server (`McpService`, `lando mcp`, `mcpAllowed:`, `mcp.*` config) | 11 | §10.14 + §8.2.6 + §8.3 |
+| Host agent-context env forwarding (`agentEnv`, agent-native context continuity) | 06 | §6.9.1 + §7.5 |
+| `lando open` (`app:open`, host browser open) | 08 | §8.2.5 |
+| Disposable tool runner (`apps:scratch:run`, `lando run`, `toolbox` recipe) | 19 | §21.10.3 + §8.8.10 |
 | Host-proxy wire protocol (`openUrl`, `openPath`, `runLando`, `runBun`, `notify`, `clipboardCopy`, NDJSON streaming) | 11 | §10.10.2 |
 | Host-proxy `runBun` channel + verb allowlist | 11 | §10.10.2 |
 | In-container shim binary (argv[0] dispatch on `xdg-open` / `open` / `lando`) | 11 | §10.10.3 |

@@ -952,4 +952,40 @@ type ManagedFileError = {
 
 The §13.1 managed-file contract suite is StateStore-style: it protects a core integrity invariant rather than a §4.2 plugin abstraction. It runs against `ManagedFileServiceLive`, `TestManagedFileStore`, and host/test overrides. It asserts create/update/skip-unchanged/skip-adopted/conflict/adopt/release/remove; `plan` matches `apply`; atomic replace leaves no torn file under `Effect.interrupt`; path escapes are rejected; markers round-trip per format; `block` mode is idempotent; ledger corruption uses `StateStore` quarantine semantics; and a known secret never appears in emitted events/history/transcripts. The §13.4 `check:managed-file-boundary` gate forbids parallel host-project-file writers with their own marker/overwrite logic outside `core/src/managed-file/**` and named consumers.
 
+### 10.14 MCP server (`McpService`)
+
+`McpService` is the in-process **Model Context Protocol server**: the subsystem behind `lando mcp` (§8.2.6) that exposes Lando's command surface to AI agents as typed, discoverable MCP tools. It exists because the agent-native tenet (§1.2) makes agents a first-class operator: the machine-output contract (§8.11) already gives every command a schema-backed result; `McpService` is the thin dispatch layer that publishes those commands *as* an agent protocol instead of leaving agents to shell out and scrape.
+
+Design rule: **MCP is a projection, not a parallel surface.** The server owns no command logic, no second result encoding, and no bespoke tool list. Everything it serves is derived from canonical registries:
+
+- **Tools** are generated from the `LandoCommandSpec` registry (§8.3): one tool per allowlisted canonical id. Tool input schemas derive from the command's `FlagSpec`/`ArgSpec` set; tool results are the command's `CommandResultEnvelope` (§8.11.1) encoded through the single `encodeCommandResult` seam — redaction included. Streaming commands surface their `StreamFrame`s as MCP progress notifications terminated by the result envelope.
+- **Tooling tasks** (§8.5) are optionally projected as tools (config `mcp.tooling`, flag `--tooling`), dispatched through `runTooling` (§16.7).
+- **Resources** expose read surfaces an agent needs for grounding: the resolved Landofile (`app config view --source resolved` shape), `app:info --deep`, `apps:list`, and the doctor report. Resource payloads are the same schemas the corresponding commands emit.
+- **Notifications** replay redacted lifecycle events from the `EventService` bounded history (§11.1) for the apps a session touches; they are not a second event tap.
+
+```ts
+export class McpService extends Context.Service<McpService, {
+  readonly serve: (options: McpServeOptions) => Effect.Effect<void, McpError, Scope.Scope>;
+  readonly catalog: (options?: McpCatalogOptions) => Effect.Effect<McpCatalog, McpError>;  // the `--list` shape
+}>()("@lando/core/McpService") {}
+```
+
+Required behaviors:
+
+- **Transport.** stdio in v4.0; the dispatch core is transport-agnostic and a streamable-HTTP transport is deferred post-v4.0 (the architecture MUST NOT preclude it). Inbound stdio is not network egress; any *outbound* HTTP a future transport or capability performs MUST flow through `HttpClient` (§10.3.2) — this is the "in-process MCP surface" consumer already named there.
+- **Retained runtime.** `serve` holds one retained `LandoRuntime` for the session and dispatches tool calls through the `@lando/core/cli` command operations (§16.7), exactly like the host-proxy dispatcher (§10.10.1). Successive tool calls hit the §2.1 hot-path budgets, not cold start. App resolution per call follows `resolveApp`/`AppSelector` (§16.3) against the tool call's declared app path or the serve-time cwd.
+- **Allowlist enforcement.** The effective tool set is the generated `mcp-allowlist` cache (from `mcpAllowed: true` specs, §8.3) plus `mcp.allow` (§7.5) and `--allow`, minus `mcp.deny` / `--deny`. Requests for ids outside the effective set are rejected with `McpToolNotAllowedError`. Destructive command ids are never default-allowed and carry MCP's destructive-operation annotation when explicitly enabled.
+- **Non-interactive by construction.** Tool dispatch runs with `interaction: "non-interactive"` (§8.10.3); a command that would prompt fails with its standard missing-answer tagged error rather than hanging the protocol. Confirmation-gated commands require their `--yes`-equivalent input field to be set explicitly by the client.
+- **Concurrency and cancellation.** In-flight tool calls are capped (default 4, config `mcp.maxConcurrent`); each call runs in its own fiber, MCP cancellation requests map to `Effect.interrupt`, and closing the transport interrupts the serve scope — every in-flight call finalizes through its `Scope`.
+- **Redaction.** Every tool result, resource payload, and notification passes through `RedactionService` (§3.7) before serialization. The contract suite asserts a known secret never crosses the transport.
+- **Events.** The server publishes `pre-mcp-call` / `post-mcp-call` lifecycle events for every dispatch (including rejected ones) with redacted payloads: tool id, canonical command id, app ref summary, duration, and tagged failure detail.
+- **Not proxied, not scaffolded.** `meta:mcp` is excluded from the host-proxy `runLando` allowlist and the recipe post-init allowlist (§8.3); a container or recipe MUST NOT be able to start a host MCP server.
+- **Doctor.** `lando doctor` includes an MCP check: allowlist cache fresh, catalog generates cleanly, and a canary tool round-trip against the test runtime succeeds.
+
+Tagged errors: `McpToolNotAllowedError` (id outside the effective allowlist; payload lists the effective set source), `McpToolInputError` (input failed the derived schema decode; carries the flag/arg path), `McpTransportError` (stdio framing/protocol failure), `McpAllowlistConflictError` (a destructive built-in declared `mcpAllowed: true` at registration), plus pass-through of the dispatched command's own tagged errors inside the result envelope (`ok: false`), which is not an MCP-level failure.
+
+`McpService` is **core-owned and not plugin-replaceable in v4.0** (like `DataMover`, §10.11): the pluggable seams are the allowlist flags on command specs, the `mcp.*` config keys, and the fact that plugin-contributed commands with `mcpAllowed: true` project into the catalog automatically. A `mcpServers:`-style plugin contribution surface is deferred until real demand exists (§14.2 discipline).
+
+The §13.1 MCP contract suite exercises: catalog generation matches the allowlist caches; tool input schemas round-trip against `FlagSpec`/`ArgSpec`; a success and a failure dispatch both return schema-valid envelopes; deny wins over allow; destructive-id self-allow rejection; non-interactive prompt failure; cancellation mid-call; concurrency cap; and redaction.
+
 ---

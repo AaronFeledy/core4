@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change.",
+  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins.",
   "userStories": [
     {
       "id": "US-372",
@@ -429,6 +429,257 @@
       "priority": 24,
       "passes": false,
       "notes": "Origin: spec §8.1/§17. Audit: core/src/version.ts is `export const CORE_VERSION = \"0.0.0\"` and core/src/cli/commands/version.ts hardcodes core: \"0.0.0\" with a TODO. Compiled-mode constraint: no import.meta.url for package metadata (core/AGENTS.md)."
+    },
+    {
+      "id": "US-396",
+      "title": "mcpAllowed command flag + mcp-allowlist cache + MCP SDK contracts",
+      "description": "As a command author (core or plugin), I mark a command `mcpAllowed: true` and it becomes a default MCP tool, with the MCP schemas and tagged errors published from @lando/sdk.",
+      "acceptanceCriteria": [
+        "`LandoCommandSpec` gains `mcpAllowed?: boolean` (default false) per spec 8.3; the shipped default opt-ins are the read-only/laterally-scoped set plus non-destructive lifecycle (`app:info`, `app:logs`, `apps:list`, `app:config get|view`, `meta:version`, `meta:doctor`, `apps:scratch:list`, `app:start`, `app:stop`, `app:restart`, `app:exec`).",
+        "The generated `mcp-allowlist` cache (spec 12.1 style, like `host-proxy-allowlist`) is produced from every spec with `mcpAllowed: true` and refreshed on the same triggers as the command indexes.",
+        "A destructive built-in (`app:destroy`, `apps:poweroff`, `meta:uninstall`, plugin mutations) declaring `mcpAllowed: true` is rejected at registration with `McpAllowlistConflictError`.",
+        "MCP tagged errors (`McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, `McpAllowlistConflictError`) and the catalog/serve-options schemas are published from @lando/sdk; `sdk/API_COMPATIBILITY.md` updated and `bun run codegen:schema-snapshot` refreshed in the same change.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 10.14, 8.3). Mirror the hostProxyAllowed mechanics; do not invent a second allowlist shape."
+    },
+    {
+      "id": "US-397",
+      "title": "McpService core: catalog projection + retained-runtime dispatch",
+      "description": "As an AI agent, every allowlisted Lando command is a typed MCP tool whose input schema derives from the command's flags/args and whose result is the command's redacted CommandResultEnvelope.",
+      "acceptanceCriteria": [
+        "`McpService` (`serve`, `catalog`) ships per spec 10.14: tools are generated from the LandoCommandSpec registry; no hand-maintained tool list exists.",
+        "Tool dispatch goes through the `@lando/core/cli` command operations against one retained LandoRuntime for the session (host-proxy dispatcher pattern, spec 10.10.1); successive calls hit hot-path budgets.",
+        "Tool results are produced by `encodeCommandResult` (spec 8.11.2) and pass through `RedactionService`; streaming commands surface StreamFrames as MCP progress notifications terminated by the result envelope.",
+        "Dispatch runs `interaction: \"non-interactive\"`; prompting commands fail with their standard missing-answer tagged error inside an `ok: false` envelope.",
+        "In-flight calls are capped (default 4, `mcp.maxConcurrent`); MCP cancellation maps to `Effect.interrupt`; closing the transport interrupts the serve scope and finalizes in-flight calls.",
+        "`pre-mcp-call` / `post-mcp-call` events publish for every dispatch including rejected ones, with redacted payloads.",
+        "Tooling tasks project as tools when enabled (config `mcp.tooling` / `--tooling`), dispatched through `runTooling` (spec 16.7).",
+        "`McpService` registers in @lando/core/services and the spec 3.4 table row semantics hold (Layer.suspend at level `plugins`; nothing constructs it unless requested).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 10.14). Core-owned, not plugin-replaceable in v4.0."
+    },
+    {
+      "id": "US-398",
+      "title": "meta:mcp command (lando mcp) over stdio",
+      "description": "As a user, I point my agent's MCP client config at `lando mcp` and the agent can discover and call Lando tools; `lando mcp --list` shows me exactly what is exposed.",
+      "acceptanceCriteria": [
+        "`meta:mcp` (top-level alias `mcp`, bootstrap `plugins`) serves MCP over stdio per spec 8.2.6; the serve loop runs until the client closes the transport or the process is interrupted.",
+        "The effective tool set is mcpAllowed defaults + `mcp.allow` + `--allow`, minus `mcp.deny` + `--deny`; requests outside it fail with `McpToolNotAllowedError`.",
+        "`--list` prints the effective catalog (id, summary, allowance source) through the machine-output contract and exits; serve mode is the interactive carve-out per spec 8.11.4.",
+        "`meta:mcp` sets neither `hostProxyAllowed` nor `recipePostInitAllowed`; tests assert both allowlist caches exclude it.",
+        "Dual-dispatch parity: registered in the OCLIF command class and the compiled registry/`runCompiledCli` switch; parity tests cover `--list` and serve-refusal-without-stdin cases.",
+        "Global config `mcp:` block ({allow, deny, tooling}) validates against the published global-config schema (spec 7.5).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 8.2.6). stdio only in v4.0; HTTP transport is deferred and must not be precluded."
+    },
+    {
+      "id": "US-399",
+      "title": "MCP contract suite + doctor check",
+      "description": "As a maintainer, the MCP surface is protected by a contract suite and lando doctor can tell a user whether their MCP surface is healthy.",
+      "acceptanceCriteria": [
+        "The spec 10.14 contract suite ships: catalog matches the allowlist caches; tool input schemas round-trip against FlagSpec/ArgSpec; success and failure dispatches return schema-valid envelopes; deny wins over allow; destructive self-allow rejection; non-interactive prompt failure; cancellation mid-call; concurrency cap; a known secret never crosses the transport.",
+        "`lando doctor` gains an MCP check: allowlist cache fresh, catalog generates cleanly, canary tool round-trip against the test runtime succeeds.",
+        "The suite runs against the test runtime per-PR; no live agent client is required.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 10.14 contract-suite bullet list)."
+    },
+    {
+      "id": "US-400",
+      "title": "Agent-context env forwarding into exec surfaces",
+      "description": "As an AI agent driving Lando, my identity markers (CLAUDECODE, CURSOR_AGENT, OPENCODE, ...) travel into `lando exec`/`ssh`/service shells and providerExec tooling automatically, so in-container tooling keeps agent context.",
+      "acceptanceCriteria": [
+        "The spec 6.9.1 default allowlist (CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI) forwards into `app:exec`, `app:ssh`, `app:shell --service`, and providerExec tooling tasks, per invocation only.",
+        "Forwarding is presence-gated (unset names inject nothing) and loses to explicit env: exec request > task/service declaration > forwarding (spec 8.5.3 slot 7).",
+        "Forwarded values are never baked into planned service env, never written to the app plan cache, and never appear in LANDO_INFO.",
+        "The in-container `lando` shim env filter (spec 10.10.3) appends the agent-context allowlist so runLando re-entries preserve the markers.",
+        "Forwarded values pass through RedactionService in `pre-provider-exec` event payloads and transcripts; `check:redaction-boundary` stays green.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 6.9.1). Exact names only; wildcard handling is US-401."
+    },
+    {
+      "id": "US-401",
+      "title": "agentEnv config, off-switches, and audit surface",
+      "description": "As a security-conscious user, I can extend, restrict, disable, and audit exactly which host env names cross into containers.",
+      "acceptanceCriteria": [
+        "Global config `agentEnv:` ({enabled, allow, deny}) validates per spec 7.5; wildcards in allow/deny are rejected at config validation with `AgentEnvPatternError`.",
+        "Landofile top-level `agentEnv: false` opts one app out (spec 7.4); `LANDO_AGENT_ENV=0` disables forwarding for a single invocation.",
+        "`lando info --deep` reports the resolved allowlist (built-ins + allow - deny) so users can audit what crosses the boundary.",
+        "`AgentEnvPatternError` and the agentEnv config schema are published from @lando/sdk with the schema snapshot refreshed; `sdk/API_COMPATIBILITY.md` updated as required.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "Feature wave PRD-06 (spec 6.9.1, 7.4, 7.5)."
+    },
+    {
+      "id": "US-402",
+      "title": "app:open (lando open) opens resolved app URLs",
+      "description": "As a user, `lando open` opens my app's primary URL in my real browser, and `--service`/`--route`/`--all`/`--print` give me precise control.",
+      "acceptanceCriteria": [
+        "`app:open` (alias `open`, bootstrap `app`) resolves targets from the app plan/ServiceInfo per spec 8.2.5: default = first proxy route of the first service that declares one, preferring https; `--service`, `--route <host>`, `--all` scope/override; the command never invents URLs.",
+        "No resolvable target fails with tagged `OpenTargetUnresolvedError` listing what app:info knows plus proxy-config remediation.",
+        "Only http/https URLs are opened; the invariant is asserted structurally and on violation fails with HostProxyOpenUrlSchemeError semantics.",
+        "The URL opens through the platform opener (xdg-open/open/start) via a ShellRunner-backed host-opener helper; a headless host degrades to printing the URL with a note and exit 0.",
+        "`--print` skips opening and prints resolved URL(s); `--format json` returns the resolved target list through the machine-output contract with a frozen resultSchema.",
+        "Resolution is hot-path friendly: cached plan/service info, no provider contact unless `--service` needs live endpoint state.",
+        "`pre-open-url` / `post-open-url` events publish per opened URL with redacted summaries; `cli-app:open-*` lifecycle events publish per spec 3.5.",
+        "Dual-dispatch parity tests cover the new canonical id; schema snapshot updated.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "Feature wave PRD-07 (spec 8.2.5)."
+    },
+    {
+      "id": "US-403",
+      "title": "app:open host-proxy round-trip",
+      "description": "As a developer inside a container shell, typing `lando open` still opens the URL in my host browser via the host proxy.",
+      "acceptanceCriteria": [
+        "`app:open` registers `hostProxyAllowed: true`; the generated host-proxy allowlist cache includes it.",
+        "An in-container `lando open` forwards over the spec 10.10 runLando channel; the host dispatcher resolves against the retained runtime and performs the same target resolution and opener behavior.",
+        "The host-proxy contract suite gains coverage for the app:open round-trip (allowlist presence, dispatch, exit-code propagation).",
+        "Guide coverage exists for `lando open` (executable guide or existing guide updated with drift gate re-run).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": "Feature wave PRD-07 (spec 8.2.5, 10.10)."
+    },
+    {
+      "id": "US-404",
+      "title": "Top-level lando: version constraint key",
+      "description": "As a team lead, I commit `lando: \">=4.1 <5\"` in our Landofile and teammates on an unsatisfying Lando version fail fast with clear remediation instead of failing weird.",
+      "acceptanceCriteria": [
+        "The top-level `lando: <semver-range>` key validates per spec 7.4: unparseable ranges fail Landofile validation with `LandofileParseError` and range-syntax remediation.",
+        "Constraints are evaluated after the six-file merge and ACCUMULATE across layers: the running version must satisfy every declared range; a lower-precedence layer cannot loosen a stricter one.",
+        "Range evaluation includes prereleases (`>=4.1` is satisfied by `4.1.0-beta.2`).",
+        "An unsatisfied constraint fails closed with tagged `LandofileVersionConstraintError` carrying the declared range(s), each range's source layer, the running version, and remediation (`lando update` or edit the constraint).",
+        "`LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades the failure to a renderer warning for the invocation.",
+        "The key, error, and semantics land in the published Landofile schema; snapshot refreshed and `sdk/API_COMPATIBILITY.md` updated as required.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": "Feature wave PRD-08 (spec 7.4). Distinct from runtime:/api:; mirrors recipe requires.lando (spec 8.8.3)."
+    },
+    {
+      "id": "US-405",
+      "title": "Version-constraint hot-path enforcement + doctor reporting",
+      "description": "As a user running cached tooling commands, the version constraint is still enforced without provider contact, and lando doctor tells me when an app's constraint is unsatisfied or being skipped.",
+      "acceptanceCriteria": [
+        "The resolved constraint set is carried in the app plan cache and re-checked on the `tooling` bootstrap hot path against the embedded `CORE_VERSION` without provider contact.",
+        "The hot-path perf budget stays green (benchmark gate unaffected by the check).",
+        "`lando doctor` reports any app whose constraint is unsatisfied or being skipped via LANDO_SKIP_VERSION_CONSTRAINT.",
+        "Guide coverage exists for the version constraint (team-workflow guide section with drift gate green).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": "Feature wave PRD-08 (spec 7.4, 12.1)."
+    },
+    {
+      "id": "US-406",
+      "title": "Bundled toolbox canonical recipe",
+      "description": "As a user with no Landofile, the bundled `toolbox` recipe gives `lando run` a default disposable tool container that never blocks on prompts.",
+      "acceptanceCriteria": [
+        "A `toolbox` recipe ships under `recipes/toolbox/` per spec 8.8.10: one `type: lando` service on a version-pinned general-purpose CLI image; every prompt has a non-interactive default.",
+        "The recipe is wired through `scripts/build-bundled-recipes.ts` codegen into the binary; `bun run codegen` leaves `git diff --exit-code` clean on generated paths.",
+        "`meta:recipes:list` includes it; `meta:recipes:describe toolbox` and `meta:recipes:validate` pass.",
+        "Rendering it through the scratch pipeline (spec 21.4.2) with zero answers succeeds in --no-interactive mode.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": "Feature wave PRD-09 (spec 8.8.10, 21.10.3)."
+    },
+    {
+      "id": "US-407",
+      "title": "apps:scratch:run command core (lando run)",
+      "description": "As a developer, `lando run composer install` spins a cwd-mounted toolbox container, runs the command, gives me its exit code, and cleans up completely - no Landofile required.",
+      "acceptanceCriteria": [
+        "`apps:scratch:run` (aliases `scratch:run` and reserved bare `run`, bootstrap `scratch`) acquires via `ScratchAppService.acquire` with `source: from-recipe` (default `toolbox`, `--from` overrides), `isolate: \"cwd\"` + `mountCwd: <cwd>` (or `isolate: \"baked\"` with `--no-mount`), `detached: false`, recipe postInit skipped, per spec 21.10.3.",
+        "Everything after `--` passes verbatim to `RuntimeProvider.exec` in the target service (recipe primary service; `--service` selects; unknown service fails with `ScratchRunTargetError` listing available services) with TTY allocation when stdin is a TTY.",
+        "The container process exit code propagates as the command's exit code; a non-zero tool exit is NOT a tagged error.",
+        "Scope close destroys the scratch on normal exit, non-zero exit, and Ctrl+C (`Effect.interrupt`); `--keep` converts to detached after exec, prints the scratch id, and hands ownership to the registry.",
+        "The bare `run` top-level alias is reserved per spec 21.10.2: plugin/tooling claims are rejected with `CommandAliasConflictError`; user `commandAliases.custom` remap still works.",
+        "Dual-dispatch parity tests cover the new canonical id; `--answer` flows to recipe prompts as in apps:init.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": "Feature wave PRD-09 (spec 21.10.3). Thin layer over ScratchAppService - no new lifecycle machinery."
+    },
+    {
+      "id": "US-408",
+      "title": "apps:scratch:run streaming output + agent env forwarding",
+      "description": "As a script or agent, `lando run --format json` gives me well-formed NDJSON frames and a terminal result carrying the exit code and scratch id; my agent-context env rides into the exec.",
+      "acceptanceCriteria": [
+        "The command declares `streaming` per spec 8.11.3; under `--format json` it emits StreamFrames and a terminal `result` frame carrying the exec exit code and the scratch id, with a frozen resultSchema in the snapshot.",
+        "stdout/stderr stream live through the renderer in TTY mode.",
+        "The agent-context env allowlist (spec 6.9.1) forwards into the exec; forwarded values are redacted in event payloads.",
+        "The machine-output conformance layer drives the command with `--format json` for success and failure cases.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": "Feature wave PRD-09 (spec 21.10.3, 8.11.3). Depends on US-400 for the forwarding primitive."
+    },
+    {
+      "id": "US-409",
+      "title": "apps:scratch:run hardening: registry/gc, warm repeats, guide",
+      "description": "As a user, disposable runs never leak resources, repeat runs are fast, and the feature is documented as an executable guide.",
+      "acceptanceCriteria": [
+        "A `--keep` scratch appears in `apps:scratch:list` and is reaped by `apps:scratch:gc --prune`; an interrupted (Ctrl+C) run leaves no registry entries, containers, volumes, or scratch roots behind.",
+        "A second `lando run` against the same toolbox skips recipe re-resolution and image rebuild via the content-addressed recipe cache and buildKey short-circuit (spec 6.13.5), asserted by test.",
+        "Executable-guide coverage exists for `lando run` (guide scenario green, guide gates pass).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": "Feature wave PRD-09 (spec 21.10.3, 21.11, 21.15 warm-pool non-goal)."
     }
   ]
 }

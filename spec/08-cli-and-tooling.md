@@ -119,6 +119,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:includes:verify` | *(none)* | `minimal` | Re-check every `includes:` checksum without updating; succeeds without network access on a warm cache (§7.7.4, §15.C) |
 | `app:info` | `info` | `app` | Print app/service runtime information |
 | `app:logs` | `logs` | `app` | Stream service logs |
+| `app:open` | `open` | `app` | Open a resolved app URL in the host browser (§8.2.5) |
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
 | `app:restart` | `restart` | `app` | Stop then start the app |
 | `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
@@ -136,6 +137,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:scratch:info` | `scratch:info` | `scratch` | Print runtime info for a scratch app; `<id>` selects, `--service`, `--format` (§21.10) |
 | `apps:scratch:list` | `scratch:list` | `scratch` | List every scratch app from the registry plus orphans found via provider labels; `--format table\|json` (§21.10) |
 | `apps:scratch:logs` | `scratch:logs` | `scratch` | Stream scratch service logs; `<id>` selects, `--service`, `--follow`, `--tail`, `--since` (§21.10) |
+| `apps:scratch:run` | `scratch:run`, `run` | `scratch` | Disposable tool runner: acquire a scope-bound toolbox scratch, exec `<argv>` in it with the cwd mounted, stream output, propagate the exit code, destroy on exit (§21.10.3) |
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | Start a scratch app; `--fork` or `--from <recipe-ref>` is required, `--isolate=full\|baked\|cwd`, `--mount-cwd`, `--share-global-storage`, `--detach` (§21.10) |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop a scratch app; `<id>` selects (or stops the foreground scratch in this shell session); calls destroy (§21.10) |
 | `meta:bun` | `bun` | `minimal` | Proxy to the embedded Bun CLI via `BunSelfRunner` (§3.4); the canonical user-visible BUN_BE_BUN entry point (§8.2.4) |
@@ -153,6 +155,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `meta:global:start` | `global:start` | `global` | Start the global app; `--service <id>` (repeatable) starts a subset (§20.7) |
 | `meta:global:stop` | `global:stop` | `global` | Stop the global app's services |
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's `globalServices:` contributions and stop affected services (§20.7) |
+| `meta:mcp` | `mcp` | `plugins` | Serve the Model Context Protocol over stdio so AI agents drive Lando through typed tools generated from the command registry (§8.2.6, §10.14) |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install a plugin |
 | `meta:plugin:build` | *(none)* | `minimal` | Build the current plugin source via `BunSelfRunner.buildLib` (§9.10). Authoring command. |
 | `meta:plugin:link` | *(none)* | `plugins` | Symlink the current plugin into the user-global plugin store via `BunSelfRunner` `link` semantics (§9.10). Authoring command. |
@@ -184,7 +187,10 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:stop` stops the current app.
 - `apps:poweroff` stops every Lando-managed service across apps (across providers when capability allows).
 - `app:restart` is `app:stop` + `app:start`.
-- `app:exec` runs a command in a service. `app:ssh` is `app:exec` with default `--interactive --tty`.
+- `app:exec` runs a command in a service. `app:ssh` is `app:exec` with default `--interactive --tty`. Both forward the host agent-context env allowlist per §6.9.1.
+- `app:open` opens a resolved app URL in the host browser; `--service`, `--route`, `--all`, `--print` (§8.2.5). It is `hostProxyAllowed: true` so `lando open` typed inside a container round-trips through the host proxy's `openUrl` channel (§10.10.2).
+- `meta:mcp` serves MCP over stdio; it is interactive/long-running (exempt from `--format json` in serve mode per §8.11.4) and MUST NOT be on the host-proxy or recipe post-init allowlists (§8.2.6, §10.14).
+- `apps:scratch:run` is the disposable tool runner (§21.10.3): acquire a toolbox scratch under the command's scope, exec the argv, stream, propagate the exit code, destroy on scope close; `--keep` detaches instead.
 - `app:shell` requires a TTY; with `--no-interactive` it errors with `ShellRequiresTtyError`. Defaults to host mode (a `Bun.$`-backed REPL via `ShellRunner`) so ad-hoc commands run cross-platform without leaving the project's env; `--service <name>` runs the REPL inside a service via provider exec instead. Behavioral details in §8.2.3.
 - `app:destroy` requires confirmation unless `--yes` is passed.
 - `meta:events:follow` supports `--follow`, `--format json|table`, repeated `--event`, `--scope`, and `--since`; it reads the EventService trace sink used by diagnostics/e2e and does not subscribe to plugin events itself.
@@ -284,7 +290,7 @@ lando app shell [--service=<name>] [--no-history]
 Behaviors:
 
 - **Host mode (default).** A `Bun.$`-backed REPL runs on the host through `ShellRunner` (§3.4) with the app's `LANDO_*` env vars (§6.9) injected, the working directory set to the app root, and `host.lando.internal` resolution active. Interactive commands compose with Bun Shell's pipes, redirection, globs, and built-ins so the same syntax works on Linux, macOS, and Windows.
-- **Service mode.** With `--service <name>`, the REPL runs *inside* the named service via `RuntimeProvider.exec` with TTY allocation (the same mechanism `app:exec` and `app:ssh` use). The user's shell of choice (`SHELL` env var inside the service, falling back to `/bin/bash`) is invoked. Cancellation propagates through `Effect.interrupt` (§3.4).
+- **Service mode.** With `--service <name>`, the REPL runs *inside* the named service via `RuntimeProvider.exec` with TTY allocation (the same mechanism `app:exec` and `app:ssh` use). The user's shell of choice (`SHELL` env var inside the service, falling back to `/bin/bash`) is invoked. The host agent-context env allowlist is forwarded per §6.9.1. Cancellation propagates through `Effect.interrupt` (§3.4).
 - **Secrets.** `${secret:…}` references resolve through `SecretStore` (§4.2) only when explicitly used in a command typed at the prompt; the shell does NOT preload secret values into the environment. Secrets that *are* resolved during the session redact in lifecycle events and the active `Logger` per §3.4.
 - **History.** Host-mode history is persisted at `<userCacheRoot>/shell/<app-id>/history`. `--no-history` disables persistence for the session. Lines that contain a resolved `${secret:…}` value are redacted before write regardless of `--no-history`.
 - **Bootstrap level:** `app`. Runtime resources (provider connection in service mode, the `ShellRunner` `Scope` in host mode) are released by `Effect.scoped` when the user exits the REPL.
@@ -312,6 +318,44 @@ Behaviors:
 - **Top-level alias conflicts.** `lando bun` and `lando x` follow §8.1.2. The default top-level aliases `bun` and `x` are reserved by core; plugin contributions and tooling tasks that try to claim them are rejected with `CommandAliasConflictError` per the built-in-wins rule.
 - **`hostProxyAllowed: false`.** Both commands MUST NOT be on the in-container `lando` shim allowlist (§10.10). A container that needs Bun should declare a `lando.bun-self` service feature (§6.11) — the container-side Bun primitive — instead of round-tripping through the host. Allowing `lando bun` over the host proxy would let a container install host-global packages or run host-side `bun create` against the user's home directory, both of which violate the host-proxy threat model.
 - **Offline mode.** When the user's effective configuration declares `offline: true` (§7.5), `meta:x` refuses uncached packages with `BunSelfOfflineError` and suggests `lando bun add <pkg>` (which writes the user's lockfile and lets the next `lando x` hit the cache). `meta:bun` passes the offline flag through to the embedded Bun unchanged.
+
+#### 8.2.5 The `app open` command
+
+`lando app open` (default top-level alias `lando open`) opens a resolved app URL in the user's real browser. It is the outbound sibling of the host-proxy `openUrl` channel (§10.10.2): same scheme discipline, same "the URL comes from the app plan" rule, running host-side instead of container-side.
+
+```text
+lando app open [--service <name>] [--route <host>] [--all] [--print]
+```
+
+Behaviors:
+
+- **Target resolution.** With no flags, the command opens the app's **primary route**: the first proxy route of the first service that declares one (§6.6), preferring `https`. `--service <name>` scopes resolution to that service's routes/endpoints; `--route <host>` selects an exact route hostname; `--all` opens every resolved route. Resolution reads the same `ServiceInfo`/route data `app:info` reports — the command never invents URLs.
+- **No target.** An app with no routes and no HTTP endpoints fails with tagged `OpenTargetUnresolvedError` listing what `app:info` knows about and remediation pointing at `proxy:` config (§6.6).
+- **Scheme allowlist.** Only `http` and `https` URLs are ever opened. Because targets come from the resolved plan this is structural, not sanitization; the invariant is still asserted and violations fail with `HostProxyOpenUrlSchemeError` semantics.
+- **Opener.** The URL is opened through the platform opener (`xdg-open` / `open` / `start`) via `ShellRunner` behind a small host-opener helper shared with any future DB-GUI launchers. The helper is capability-checked: a headless host (no `DISPLAY`/opener) degrades to printing the URL with a note, exit 0.
+- **`--print`** skips opening and prints the resolved URL(s) — the CI/agent/SSH-session mode. `--format json` returns the resolved target list either way; `--json` implies no browser launch unless `--service`/`--route` selection was explicit and a TTY is present.
+- **In-container.** The command is `hostProxyAllowed: true`; `lando open` typed inside a service forwards over the host proxy and the host-side dispatcher performs the same resolution against the retained runtime.
+- **Bootstrap level:** `app`, hot-path friendly: resolution reads the cached app plan/service info and does not contact the provider unless `--service` needs live endpoint state.
+- **Lifecycle events** publish `cli-app:open-init` / `-run` / `-error`; each opened URL additionally publishes `pre-open-url` / `post-open-url` with the redacted URL summary.
+
+#### 8.2.6 The `meta mcp` command
+
+`lando meta mcp` (default top-level alias `lando mcp`) serves the **Model Context Protocol** so AI agents operate Lando through typed tools instead of scraping CLI text. It is the third leg of the agent-native tenet (§1.2): the machine-output contract (§8.11) makes every command result schema-backed, agent env forwarding (§6.9.1) keeps context across the exec boundary, and `lando mcp` makes the whole command surface *discoverable and callable* by any MCP client. The server contract lives in §10.14; this section is the command surface.
+
+```text
+lando meta mcp [--allow <canonical-id>]... [--deny <canonical-id>]... [--tooling] [--list]
+```
+
+Behaviors:
+
+- **Transport.** stdio only in v4.0 (the standard MCP client-launches-server model: an agent config points at `lando mcp` and owns the process). Streamable-HTTP transport is deferred post-v4.0; the architecture preserves it (the server is transport-agnostic over the §10.14 dispatch core).
+- **Tools are commands.** The tool catalog is **generated from the `LandoCommandSpec` registry** (§8.3): each allowlisted canonical id becomes one MCP tool whose input schema derives from the command's flags/args and whose result is the command's `--format json` envelope (§8.11.1), redacted as always. There is no second, hand-maintained tool list.
+- **Allowlist.** Commands opt in via `mcpAllowed: true` (§8.3), which generates the `mcp-allowlist` cache (§12.1). The effective set is `mcpAllowed` defaults + global config `mcp.allow` + `--allow`, minus `mcp.deny` / `--deny`. Destructive surfaces (`app:destroy`, `apps:poweroff`, `meta:uninstall`, `meta:plugin:*` mutations) are **never** default-allowed; exposing them requires explicit config, and the server tags them with MCP's destructive-operation hint.
+- **Tooling tasks.** `--tooling` (or `mcp.tooling: true`, §7.5) additionally exposes the resolved app's tooling tasks (§8.5) as tools, named by canonical id.
+- **`--list`** prints the effective tool catalog (id, summary, source of allowance) through the machine-output contract and exits — the audit/debug mode; this is the command's non-interactive result shape per §8.11.4.
+- **Bootstrap level:** `plugins`. The server holds one retained `LandoRuntime` and dispatches every tool call through the `@lando/core/cli` command operations (§16.7) against it — the same warm-runtime pattern as the host-proxy dispatcher (§10.10.1), so successive tool calls hit hot-path budgets.
+- **Never proxied, never scaffolded.** `meta:mcp` MUST NOT set `hostProxyAllowed` or `recipePostInitAllowed`; a container or recipe has no business starting a host MCP server.
+- **Lifecycle events** publish `cli-meta:mcp-init` / `-run` / `-error`; per-call events are owned by §10.14 (`pre-mcp-call` / `post-mcp-call`).
 - **Errors.** Non-zero embedded Bun exit produces `BunSelfExecError` with the redacted argv and the embedded Bun's stderr. The Lando exit code matches the embedded Bun's exit code so CI scripts can assert on it identically to a real `bun …` invocation.
 
 ### 8.3 Command contract
@@ -340,6 +384,7 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly deprecated?: DeprecationNotice;               // command-wide deprecation; see §18
   readonly recipePostInitAllowed?: boolean;              // true only for commands in the generated recipe allowlist (§8.8.8)
   readonly hostProxyAllowed?: boolean;                   // true only for commands safe to invoke from inside a container via the in-container `lando` shim (§10.10)
+  readonly mcpAllowed?: boolean;                         // true only for commands exposed as MCP tools by default (§8.2.6, §10.14)
   readonly docs?: CommandDocsMetadata;
   readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
   readonly resultSchema: Schema.Schema<A>;               // REQUIRED — the machine-readable shape of this command's result (§8.11)
@@ -366,6 +411,7 @@ Rules:
 - `deprecated` declares a command-wide `DeprecationNotice` (§18.2). When set, every invocation of the command (canonical id or any alias) records a `deprecation-used` event with `kind: "command"` and `id: <canonical-id>`. A non-deprecated alias of a deprecated canonical raises `DeprecationContradictionError` at registration (§18.3).
 - `FlagSpec.deprecated?` and `ArgSpec.deprecated?` declare `DeprecationNotice`s scoped to the flag or arg. Using a deprecated flag/arg records `kind: "flag"` / `kind: "arg"` with `id: "<canonical-id>.<flag-or-arg-name>"`.
 - `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
+- `mcpAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **`mcp-allowlist`** cache (§12.1) — the default set of canonical command ids `lando mcp` exposes as MCP tools (§8.2.6, §10.14). Read-only and laterally-scoped commands (`app:info`, `app:logs`, `apps:list`, `app:config get|view`, `meta:version`, `meta:doctor`, `apps:scratch:list`) plus non-destructive lifecycle (`app:start`, `app:stop`, `app:restart`, `app:exec`) are the shipped opt-ins. Destructive commands (`app:destroy`, `apps:poweroff`, `meta:uninstall`, plugin mutations) MUST NOT set this true; users expose them only via explicit `mcp.allow` config, and registration rejects a destructive built-in that tries to self-allow with `McpAllowlistConflictError`.
 - `hostProxyAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **host-proxy `runLando` allowlist** (§10.10) — the set of canonical command ids the in-container `lando` shim is permitted to forward to the host. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT set this true; they would self-destruct the container that issued the call. Read-only and laterally-scoped commands (`app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:list`, `meta:version`, `meta:doctor`, `meta:events:follow`, `app:config get|view`) are the typical opt-ins. The flag generates the `host-proxy-allowlist` cache (§12.1); the host-side `HostProxyService` rejects any `runLando` request whose canonical id is not in that cache with `HostProxyCommandNotAllowedError`.
 - `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
 - `resultSchema` is **required** for every command (a command with no payload registers `Schema.Struct({})`). It is the single source of truth for the machine-readable shape of the command's result and is the schema `--format json` encodes against (§8.11). A command spec missing `resultSchema` is rejected at registration with `CommandRegistrationError`, and the §13 machine-output conformance gate fails the build. `streaming` is present only for commands that stream incremental output (`app:logs`, `app:exec`, build progress); it declares the per-line `StreamFrame` schema (§8.11).
@@ -679,7 +725,8 @@ When the user runs `lando start --rebuild`:
 4. Included tooling file `vars`.
 5. `toolingIncludes.<namespace>.vars`.
 6. `toolingDefaults.vars` / `toolingDefaults.env`.
-7. Process environment exposed under `.env`.
+7. Host agent-context env forwarded per the §6.9.1 allowlist (`providerExec` tasks only; per-invocation, never cached).
+8. Process environment exposed under `.env`.
 
 Static values are expression-resolved with the config-wide expression language (§7.3.1). Dynamic command variables use explicit `sh` and are evaluated at invocation time, not during command registration:
 
@@ -1235,6 +1282,7 @@ The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each shi
 | `hugo` | Hugo static site |
 | `eleventy` | Eleventy static site |
 | `empty` | Blank Landofile starter: service catalog selection only, no opinion |
+| `toolbox` | Disposable tool-runner default (§21.10.3): one `type: lando` service with a version-pinned general-purpose CLI image; every prompt has a non-interactive default |
 
 Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts` which generates `src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
@@ -1553,7 +1601,7 @@ export const CommandResultEnvelope = Schema.Struct({
 JSON output is produced by **one** function — `encodeCommandResult` — used by every command, never by per-command `JSON.stringify`:
 
 1. On success, `Schema.encode(spec.resultSchema)` encodes the result; on failure, the tagged error is encoded via its §7.8 schema and `ok: false`. The process exit code is preserved — JSON output never swallows a non-zero exit.
-2. The encoded envelope is passed through the canonical `RedactionService` (§3.7) before any byte is written, so resolved `${secret:…}` values and `secret: true` environment values (§6.9.1) are masked uniformly.
+2. The encoded envelope is passed through the canonical `RedactionService` (§3.7) before any byte is written, so resolved `${secret:…}` values and `secret: true` creds values (§6.12.4) are masked uniformly.
 3. The §13.4 renderer-boundary lint gate forbids `JSON.stringify` of a command result anywhere outside `encodeCommandResult`; per-command `render*` helpers produce **human** encodings only (`text`/`table`/`yaml`), never JSON.
 
 #### 8.11.3 Streaming commands

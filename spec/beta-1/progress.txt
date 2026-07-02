@@ -1,7 +1,7 @@
 # Ralph Progress Log — Lando v4 Beta 1 (contract-completion remediation)
 
 Branch: ralph/beta-1
-Source PRDs: spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395)
+Source PRDs: spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395, remediation) + spec/beta-1/prd-beta-1-{06..09}-*.md (US-396..US-409, agent-native feature wave)
 Spec source of truth: spec/{01..19}-*.md + the originating Alpha 4 PRDs cited per story
 Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceability table)
 
