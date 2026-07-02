@@ -3056,7 +3056,7 @@
         "Lint passes"
       ],
       "priority": 152,
-      "passes": false,
+      "passes": true,
       "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-363 and US-308 review notes): decompression size caps and parser depth/size limits were each flagged as nonblocking supply-chain / DoS follow-ups with no owning story."
     },
     {

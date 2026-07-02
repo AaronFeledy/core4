@@ -33,6 +33,8 @@ import type { ToolManifest } from "../schema/index.ts";
 import { type DownloadError, Downloader } from "../services/index.ts";
 
 const DEFAULT_MODE = 0o755;
+// SHA-256 verifies provenance; this cap bounds memory before or independent of content trust.
+const MAX_DECOMPRESSED_BYTES = 2 * 1024 ** 3;
 const NESTED_ARCHIVE_SUFFIXES = [".tar.gz", ".tgz", ".zip"] as const;
 
 export interface ProvisionToolInput {
@@ -52,6 +54,7 @@ export interface ProvisionToolInput {
   readonly force?: boolean | undefined;
   /** Pass-through to the `Downloader`; fails when the artifact is not cached. */
   readonly offline?: boolean | undefined;
+  readonly maxDecompressedBytes?: number | undefined;
 }
 
 export interface InstalledTool {
@@ -194,8 +197,22 @@ const extractTarMember = (tar: Uint8Array, member: string): Uint8Array | undefin
   return undefined;
 };
 
-const extractTarGzMember = (archive: Uint8Array, member: string): Uint8Array | undefined =>
-  extractTarMember(new Uint8Array(gunzipSync(Buffer.from(archive))), member);
+class DecompressedSizeCapExceeded extends Error {}
+
+const decompressedSizeCapMessage = (): string => "The tool archive exceeded the decompressed-size cap.";
+
+const isBufferTooLargeError = (cause: unknown): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ERR_BUFFER_TOO_LARGE";
+
+const extractTarGzMember = (
+  archive: Uint8Array,
+  member: string,
+  maxDecompressedBytes: number,
+): Uint8Array | undefined =>
+  extractTarMember(
+    new Uint8Array(gunzipSync(Buffer.from(archive), { maxOutputLength: maxDecompressedBytes })),
+    member,
+  );
 
 const ZIP_LOCAL_HEADER = 0x04034b50;
 const ZIP_CENTRAL_HEADER = 0x02014b50;
@@ -233,9 +250,14 @@ const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEnt
   return new Map();
 };
 
-const extractZipMember = (archive: Uint8Array, member: string): Uint8Array | undefined => {
+const extractZipMember = (
+  archive: Uint8Array,
+  member: string,
+  maxDecompressedBytes: number,
+): Uint8Array | undefined => {
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   const central = readZipCentralDirectory(archive);
+  let decompressedBytes = 0;
   let pos = 0;
   while (pos + 30 <= archive.length) {
     if (view.getUint32(pos, true) !== ZIP_LOCAL_HEADER) break;
@@ -251,15 +273,23 @@ const extractZipMember = (archive: Uint8Array, member: string): Uint8Array | und
     const compression = indexed?.compression ?? headerCompression;
     const compressedSize = indexed?.compressedSize ?? headerCompressedSize;
     const uncompressedSize = indexed?.uncompressedSize ?? headerUncompressedSize;
+    const remaining = maxDecompressedBytes - decompressedBytes;
+    if (remaining <= 0 || uncompressedSize > remaining) {
+      throw new DecompressedSizeCapExceeded(decompressedSizeCapMessage());
+    }
     if (filename === member || basename(filename) === member) {
+      decompressedBytes += uncompressedSize;
       if (compression === 0) return archive.subarray(dataOffset, dataOffset + uncompressedSize);
       if (compression === 8) {
         return new Uint8Array(
-          inflateRawSync(Buffer.from(archive.subarray(dataOffset, dataOffset + compressedSize))),
+          inflateRawSync(Buffer.from(archive.subarray(dataOffset, dataOffset + compressedSize)), {
+            maxOutputLength: remaining,
+          }),
         );
       }
       return undefined;
     }
+    decompressedBytes += uncompressedSize;
     const descriptorLength =
       (flags & 0x08) !== 0 ? zipDescriptorLength(view, archive, dataOffset + compressedSize) : 0;
     pos = dataOffset + compressedSize + descriptorLength;
@@ -283,8 +313,11 @@ const extractMemberFromArchive = (
   archive: Uint8Array,
   kind: "tar.gz" | "zip",
   member: string,
+  maxDecompressedBytes: number,
 ): Uint8Array | undefined =>
-  kind === "tar.gz" ? extractTarGzMember(archive, member) : extractZipMember(archive, member);
+  kind === "tar.gz"
+    ? extractTarGzMember(archive, member, maxDecompressedBytes)
+    : extractZipMember(archive, member, maxDecompressedBytes);
 
 /**
  * Resolve a (possibly nested, single-boundary) member selector against an
@@ -296,13 +329,14 @@ const extractSelector = (
   outer: Uint8Array,
   outerKind: "tar.gz" | "zip",
   selector: string,
+  maxDecompressedBytes: number,
 ): { ok: true; bytes: Uint8Array } | { ok: false; reason: string } => {
   if (selector.length === 0 || selector.includes("\0")) {
     return { ok: false, reason: `Invalid member selector "${selector}".` };
   }
   const boundaryIndex = findNestedBoundary(selector);
   if (boundaryIndex === undefined) {
-    const bytes = extractMemberFromArchive(outer, outerKind, selector);
+    const bytes = extractMemberFromArchive(outer, outerKind, selector, maxDecompressedBytes);
     return bytes === undefined
       ? { ok: false, reason: `Member "${selector}" not found.` }
       : { ok: true, bytes };
@@ -312,7 +346,7 @@ const extractSelector = (
   if (remaining.length === 0 || remaining.includes("/")) {
     return { ok: false, reason: `Nested member selector "${selector}" exceeds one archive boundary.` };
   }
-  const nestedArchive = extractMemberFromArchive(outer, outerKind, nestedMemberName);
+  const nestedArchive = extractMemberFromArchive(outer, outerKind, nestedMemberName, maxDecompressedBytes);
   if (nestedArchive === undefined) {
     return { ok: false, reason: `Nested archive "${nestedMemberName}" not found.` };
   }
@@ -320,7 +354,7 @@ const extractSelector = (
   if (nestedKind === undefined) {
     return { ok: false, reason: `Unsupported nested archive type for "${nestedMemberName}".` };
   }
-  const bytes = extractMemberFromArchive(nestedArchive, nestedKind, remaining);
+  const bytes = extractMemberFromArchive(nestedArchive, nestedKind, remaining, maxDecompressedBytes);
   return bytes === undefined
     ? { ok: false, reason: `Member "${remaining}" not found in nested archive "${nestedMemberName}".` }
     : { ok: true, bytes };
@@ -477,7 +511,24 @@ export const provisionTool = (
           }),
         );
       }
-      const extracted = extractSelector(archiveBytes, entry.archive, member);
+      const maxDecompressedBytes = input.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES;
+      let extracted: { ok: true; bytes: Uint8Array } | { ok: false; reason: string };
+      try {
+        extracted = extractSelector(archiveBytes, entry.archive, member, maxDecompressedBytes);
+      } catch (cause) {
+        if (cause instanceof DecompressedSizeCapExceeded || isBufferTooLargeError(cause)) {
+          return yield* Effect.fail(
+            new ToolExtractError({
+              message: decompressedSizeCapMessage(),
+              toolId: input.toolId,
+              member,
+              remediation: "Use a tool archive whose decompressed contents fit within the cap.",
+              cause,
+            }),
+          );
+        }
+        throw cause;
+      }
       if (!extracted.ok) {
         return yield* Effect.fail(
           new ToolExtractError({

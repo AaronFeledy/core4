@@ -39,7 +39,11 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
-import { DataMoverLive, __testOnlyEncodeTarOctal } from "../../src/data-mover/service.ts";
+import {
+  DataMoverLive,
+  __testOnlyEncodeTarOctal,
+  __testOnlyUnarchivePayloadWithCap,
+} from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
@@ -82,6 +86,46 @@ const invalidSizeTar = (): Uint8Array => {
   const archive = minimalEmptyTar();
   archive.set(encoder.encode("not-octal\0\0\0"), 124);
   return archive;
+};
+
+const testTar = (payload: Uint8Array): Uint8Array => {
+  const header = new Uint8Array(512);
+  const write = (offset: number, value: string, length: number) => {
+    header.set(encoder.encode(value.slice(0, length)), offset);
+  };
+  write(0, "payload", 100);
+  write(100, `${__testOnlyEncodeTarOctal(0o644, 8)}\0`, 8);
+  write(108, `${__testOnlyEncodeTarOctal(0, 8)}\0`, 8);
+  write(116, `${__testOnlyEncodeTarOctal(0, 8)}\0`, 8);
+  write(124, `${__testOnlyEncodeTarOctal(payload.byteLength, 12)}\0`, 12);
+  write(136, `${__testOnlyEncodeTarOctal(0, 12)}\0`, 12);
+  header.fill(0x20, 148, 156);
+  write(156, "0", 1);
+  write(257, "ustar", 6);
+  write(263, "00", 2);
+  const checksum = header.reduce((sum, byte) => sum + byte, 0);
+  write(148, `${__testOnlyEncodeTarOctal(checksum, 7)}\0 `, 8);
+
+  const paddedSize = Math.ceil(payload.byteLength / 512) * 512;
+  const archive = new Uint8Array(512 + paddedSize + 1024);
+  archive.set(header, 0);
+  archive.set(payload, 512);
+  return archive;
+};
+
+const compressionStreamFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
+
+const compressedTarFixture = async (
+  payload: Uint8Array,
+  format: "tar.gz" | "tar.zst",
+): Promise<{ readonly archive: Uint8Array; readonly compressed: Uint8Array }> => {
+  const archive = testTar(payload);
+  const compressed = new Uint8Array(
+    await new Response(
+      new Blob([archive]).stream().pipeThrough(new CompressionStream(compressionStreamFormat(format))),
+    ).arrayBuffer(),
+  );
+  return { archive, compressed };
 };
 
 const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
@@ -300,6 +344,79 @@ describe("DataMoverLive", () => {
     const maxPortableTarSize = 0o77777777777;
     expect(__testOnlyEncodeTarOctal(maxPortableTarSize, 12)).toBe("77777777777");
     expect(() => __testOnlyEncodeTarOctal(maxPortableTarSize + 1, 12)).toThrow(ArchiveFormatError);
+  });
+
+  test("rejects tar.gz archives whose decompressed size exceeds the configured cap", async () => {
+    // Given: a gzip archive that expands past a tiny injected cap.
+    const capBytes = 4096;
+    const { compressed } = await compressedTarFixture(new Uint8Array(capBytes + 1), "tar.gz");
+
+    // When: host-side unarchive attempts to decompress the archive.
+    const exit = await Effect.runPromiseExit(
+      __testOnlyUnarchivePayloadWithCap({
+        payload: compressed,
+        format: "tar.gz",
+        path: "payload.tar.gz",
+        maxDecompressedBytes: capBytes,
+      }),
+    );
+
+    // Then: decompression fails before collecting an unbounded buffer.
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
+      expect(exit.cause.error).toMatchObject({ format: "tar.gz", archivePath: "payload.tar.gz" });
+      expect(exit.cause.error.message).toContain("decompressed size exceeded");
+      expect(exit.cause.error.message).toContain(String(capBytes));
+      expect(exit.cause.error.message).toContain("tar.gz");
+      expect(exit.cause.error.remediation).toContain("smaller archive");
+    }
+  });
+
+  test("rejects tar.zst archives whose decompressed size exceeds the configured cap", async () => {
+    // Given: a zstd archive that expands past a tiny injected cap.
+    const capBytes = 4096;
+    const { compressed } = await compressedTarFixture(new Uint8Array(capBytes + 1), "tar.zst");
+
+    // When: host-side unarchive attempts to decompress the archive.
+    const exit = await Effect.runPromiseExit(
+      __testOnlyUnarchivePayloadWithCap({
+        payload: compressed,
+        format: "tar.zst",
+        path: "payload.tar.zst",
+        maxDecompressedBytes: capBytes,
+      }),
+    );
+
+    // Then: decompression fails before collecting an unbounded buffer.
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
+      expect(exit.cause.error).toMatchObject({ format: "tar.zst", archivePath: "payload.tar.zst" });
+      expect(exit.cause.error.message).toContain("decompressed size exceeded");
+      expect(exit.cause.error.message).toContain(String(capBytes));
+      expect(exit.cause.error.message).toContain("tar.zst");
+      expect(exit.cause.error.remediation).toContain("smaller archive");
+    }
+  });
+
+  test("round-trips tar.gz archives whose decompressed size stays under the configured cap", async () => {
+    // Given: a gzip archive whose decompressed tar bytes are just under the cap.
+    const payload = bytes("under-cap-payload");
+    const { archive, compressed } = await compressedTarFixture(payload, "tar.gz");
+
+    // When: host-side unarchive runs with a cap one byte larger than the tar archive.
+    const result = await Effect.runPromise(
+      __testOnlyUnarchivePayloadWithCap({
+        payload: compressed,
+        format: "tar.gz",
+        path: "payload.tar.gz",
+        maxDecompressedBytes: archive.byteLength + 1,
+      }),
+    );
+
+    // Then: the payload is byte-identical to the original input.
+    expect(Array.from(result)).toEqual(Array.from(payload));
   });
 
   test("imports to volumes when existence preflight is unavailable", async () => {
@@ -1398,9 +1515,9 @@ describe("DataMoverLive", () => {
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
       const testStore = makeTestStateStore();
       let removeNativeCalls = 0;
-      const failingStateStore = {
+      const failingStateStore: Context.Tag.Service<typeof StateStore> = {
         ...testStore.service,
-        open: (spec: Parameters<typeof testStore.service.open>[0]) =>
+        open: (spec) =>
           testStore.service.open(spec).pipe(
             Effect.map((bucket) =>
               spec.key === "index.bin"
