@@ -32,4 +32,11 @@ tags: [beta, docs, landofile, includes, lockfile]
       <Variable name="report" value="{ added, updated, unchanged, removed, drift, wrote, checkMode }" display="Text and JSON output report per-include added, updated, and unchanged statuses, removed stale sources, whether drift exists, whether the lockfile was written, and whether --check was used" />
     </Step>
   </Scenario>
+
+  <Scenario id="landofile-parser-input-limits" render={false} reason="Parser resource limits are covered by SDK parser unit tests with synthetic Landofile content">
+    <Step name="parser-limits">
+      <Variable name="contentCap" value="1 MiB UTF-8 input" display="The published Landofile parser rejects oversized input with LandofileParseError before include or lockfile state is processed" />
+      <Variable name="depthCap" value="64 nested levels" display="Deep block indentation and inline-array nesting fail closed with LandofileParseError instead of recursing indefinitely" />
+    </Step>
+  </Scenario>
 </Guide>
