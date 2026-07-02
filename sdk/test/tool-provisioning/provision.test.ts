@@ -175,6 +175,117 @@ describe("provisionTool", () => {
     }
   });
 
+  test("rejects a tar.gz archive that expands over the decompressed-size cap", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    dl.serve("https://example.test/host.tar.gz", HOST_TARGZ);
+    const manifest = manifestFor("linux-x64/cli", {
+      url: "https://example.test/host.tar.gz",
+      sha256: HOST_TARGZ_SHA,
+      archive: "tar.gz",
+      member: "mutagen",
+      installName: "mutagen",
+    });
+    try {
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "linux-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "linux",
+            maxDecompressedBytes: 1,
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+      const error = failure(exit);
+      expect(error).toBeInstanceOf(ToolExtractError);
+      expect(error.message).toContain("decompressed-size cap");
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
+  test("rejects a zip archive when cumulative stored entries exceed the decompressed-size cap", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    const first = text("first-entry");
+    const second = text("second-entry");
+    const zip = makeZip([
+      { name: "first", bytes: first },
+      { name: "mutagen.exe", bytes: second },
+    ]);
+    dl.serve("https://example.test/cumulative.zip", zip);
+    const manifest = manifestFor("win32-x64/cli", {
+      url: "https://example.test/cumulative.zip",
+      sha256: sha256Hex(zip),
+      archive: "zip",
+      member: "mutagen.exe",
+      installName: "mutagen.exe",
+    });
+    try {
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "win32-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "win32",
+            maxDecompressedBytes: first.byteLength + second.byteLength - 1,
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+      const error = failure(exit);
+      expect(error).toBeInstanceOf(ToolExtractError);
+      expect(error.message).toContain("decompressed-size cap");
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
+  test("extracts a zip archive just under the decompressed-size cap byte-for-byte", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    const first = text("first-entry");
+    const second = text("second-entry");
+    const zip = makeZip([
+      { name: "first", bytes: first },
+      { name: "mutagen.exe", bytes: second },
+    ]);
+    dl.serve("https://example.test/under-cap.zip", zip);
+    const manifest = manifestFor("win32-x64/cli", {
+      url: "https://example.test/under-cap.zip",
+      sha256: sha256Hex(zip),
+      archive: "zip",
+      member: "mutagen.exe",
+      installName: "mutagen.exe",
+    });
+    try {
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "win32-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "win32",
+            maxDecompressedBytes: first.byteLength + second.byteLength,
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+      expect(exit._tag).toBe("Success");
+      const installed = await readFile(join(dirs.binDir, "mutagen.exe"));
+      expectBytes(installed, second);
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
   test("installs raw bytes when archive is omitted", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();

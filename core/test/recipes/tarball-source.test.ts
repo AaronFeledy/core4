@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -12,7 +12,9 @@ import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
 import {
   type TarballRecipeFetcher,
+  defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
+  makeTarballRecipeExtractor,
   resolveTarballRecipeSource,
 } from "../../src/recipes/tarball-source.ts";
 
@@ -100,6 +102,53 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("resolveTarballRecipeSource", () => {
+  test("gzip archives exceeding the decompressed-size cap fail as extract-failed", async () => {
+    await withTempRoot(async (dir) => {
+      const cap = 4096;
+      const bytes = await makeTarball({ "payload.bin": "\0".repeat(64 * 1024) });
+      const extractor = makeTarballRecipeExtractor({ maxDecompressedBytes: cap });
+
+      let caught: unknown;
+      try {
+        await extractor.extract(bytes, join(dir, "out"));
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(RecipeSourceError);
+      if (caught instanceof RecipeSourceError) {
+        expect(caught.kind).toBe("extract-failed");
+        expect(caught.message).toContain("decompressed-size cap");
+        expect(caught.message).toContain(`${cap}`);
+        expect(caught.remediation).toContain("unreasonably large");
+        expect(caught.remediation).toContain("re-publish a smaller archive");
+      }
+    });
+  });
+
+  test("gzip archives under the decompressed-size cap extract byte-for-byte", async () => {
+    await withTempRoot(async (dir) => {
+      const content = "under-cap payload\n".repeat(32);
+      const bytes = await makeTarball({ "nested/payload.txt": content });
+      const extractor = makeTarballRecipeExtractor({ maxDecompressedBytes: 1024 * 1024 });
+
+      await extractor.extract(bytes, join(dir, "out"));
+
+      const extracted = await readFile(join(dir, "out", "nested", "payload.txt"));
+      expect(extracted).toEqual(Buffer.from(content, "utf8"));
+    });
+  });
+
+  test("default tarball extractor still extracts a normal recipe archive", async () => {
+    await withTempRoot(async (dir) => {
+      const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
+
+      await defaultTarballRecipeExtractor.extract(bytes, join(dir, "out"));
+
+      expect(await Bun.file(join(dir, "out", "recipe.yml")).text()).toBe(VALID_RECIPE);
+    });
+  });
+
   test("downloads, extracts, and publishes under userDataRoot/recipe-cache/tarball/<sha256>", async () => {
     await withTempRoot(async (dir) => {
       const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });

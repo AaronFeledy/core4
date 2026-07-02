@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { gzipSync } from "node:zlib";
+import { deflateRawSync, gzipSync } from "node:zlib";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
@@ -88,41 +88,77 @@ const crc32 = (bytes: Uint8Array): number => {
   return (c ^ 0xffffffff) >>> 0;
 };
 
-const buildStoredZip = (name: string, bytes: Uint8Array, mode = 0o100644): Uint8Array => {
-  const nameBytes = Buffer.from(name, "utf8");
-  const crc = crc32(bytes);
-  const local = Buffer.alloc(30 + nameBytes.byteLength);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(20, 4);
-  local.writeUInt16LE(0, 6);
-  local.writeUInt16LE(0, 8);
-  local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(bytes.byteLength, 18);
-  local.writeUInt32LE(bytes.byteLength, 22);
-  local.writeUInt16LE(nameBytes.byteLength, 26);
-  nameBytes.copy(local, 30);
+interface ZipEntrySpec {
+  readonly name: string;
+  readonly bytes: Uint8Array;
+  readonly mode?: number;
+  readonly compression?: 0 | 8;
+}
 
-  const central = Buffer.alloc(46 + nameBytes.byteLength);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(0x031e, 4);
-  central.writeUInt16LE(20, 6);
-  central.writeUInt16LE(0, 8);
-  central.writeUInt16LE(0, 10);
-  central.writeUInt32LE(crc, 16);
-  central.writeUInt32LE(bytes.byteLength, 20);
-  central.writeUInt32LE(bytes.byteLength, 24);
-  central.writeUInt16LE(nameBytes.byteLength, 28);
-  central.writeUInt32LE((mode << 16) >>> 0, 38);
-  central.writeUInt32LE(0, 42);
-  nameBytes.copy(central, 46);
+const buildZip = (entries: ReadonlyArray<ZipEntrySpec>): Uint8Array => {
+  const localChunks: Uint8Array[] = [];
+  const centralChunks: Uint8Array[] = [];
+  let localOffset = 0;
 
+  for (const entry of entries) {
+    const nameBytes = Buffer.from(entry.name, "utf8");
+    const compression = entry.compression ?? 0;
+    const compressedBytes = compression === 8 ? deflateRawSync(Buffer.from(entry.bytes)) : entry.bytes;
+    const crc = crc32(entry.bytes);
+    const local = Buffer.alloc(30 + nameBytes.byteLength);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(compression, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(compressedBytes.byteLength, 18);
+    local.writeUInt32LE(entry.bytes.byteLength, 22);
+    local.writeUInt16LE(nameBytes.byteLength, 26);
+    nameBytes.copy(local, 30);
+    localChunks.push(local, Buffer.from(compressedBytes));
+
+    const central = Buffer.alloc(46 + nameBytes.byteLength);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(0x031e, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(compression, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(compressedBytes.byteLength, 20);
+    central.writeUInt32LE(entry.bytes.byteLength, 24);
+    central.writeUInt16LE(nameBytes.byteLength, 28);
+    central.writeUInt32LE(((entry.mode ?? 0o100644) << 16) >>> 0, 38);
+    central.writeUInt32LE(localOffset, 42);
+    nameBytes.copy(central, 46);
+    centralChunks.push(central);
+    localOffset += local.byteLength + compressedBytes.byteLength;
+  }
+
+  const centralDirectory = Buffer.concat(centralChunks.map((chunk) => Buffer.from(chunk)));
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
-  eocd.writeUInt16LE(1, 8);
-  eocd.writeUInt16LE(1, 10);
-  eocd.writeUInt32LE(central.byteLength, 12);
-  eocd.writeUInt32LE(local.byteLength + bytes.byteLength, 16);
-  return Buffer.concat([local, Buffer.from(bytes), central, eocd]);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralDirectory.byteLength, 12);
+  eocd.writeUInt32LE(localOffset, 16);
+  return Buffer.concat([...localChunks.map((chunk) => Buffer.from(chunk)), centralDirectory, eocd]);
+};
+
+const buildStoredZip = (name: string, bytes: Uint8Array, mode = 0o100644): Uint8Array => {
+  return buildZip([{ name, bytes, mode }]);
+};
+
+const expectCapError = (action: () => unknown, cap: number): ProviderRuntimeExtractError => {
+  try {
+    action();
+  } catch (cause) {
+    expect(cause).toBeInstanceOf(ProviderRuntimeExtractError);
+    const error = cause as ProviderRuntimeExtractError;
+    expect(error.message).toContain(`${cap}`);
+    expect(error.remediation).toContain("LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES");
+    return error;
+  }
+  throw new Error("expected runtime extraction to fail on decompressed-size cap");
 };
 
 const makeTempRuntimeBinDir = async (): Promise<{
@@ -176,6 +212,64 @@ describe("installRuntimeBundle", () => {
     expect(() => extractRuntimeArchiveEntries(encoder.encode("not an archive"))).toThrow(
       ProviderRuntimeExtractError,
     );
+  });
+
+  test("rejects tar.gz runtime bundles exceeding an explicit decompressed-size cap", () => {
+    const cap = 1024;
+    const archiveBytes = buildTarGz([{ path: "podman", bytes: new Uint8Array(64 * 1024) }]);
+
+    expectCapError(() => extractRuntimeArchiveEntries(archiveBytes, { maxDecompressedBytes: cap }), cap);
+  });
+
+  test("rejects a deflated ZIP entry expanding over the decompressed-size cap", () => {
+    const cap = 1024;
+    const archiveBytes = buildZip([{ name: "podman", bytes: new Uint8Array(64 * 1024), compression: 8 }]);
+
+    expectCapError(() => extractRuntimeArchiveEntries(archiveBytes, { maxDecompressedBytes: cap }), cap);
+  });
+
+  test("rejects ZIP entries that cumulatively exceed the decompressed-size cap", () => {
+    const cap = 1024;
+    const archiveBytes = buildZip([
+      { name: "podman", bytes: new Uint8Array(700), compression: 8 },
+      { name: "gvproxy", bytes: new Uint8Array(700), compression: 8 },
+    ]);
+
+    expectCapError(() => extractRuntimeArchiveEntries(archiveBytes, { maxDecompressedBytes: cap }), cap);
+  });
+
+  test("extracts archives just under the decompressed-size cap byte-for-byte", () => {
+    const podman = encoder.encode("podman".repeat(50));
+    const gvproxy = encoder.encode("gvproxy".repeat(50));
+    const cap = podman.byteLength + gvproxy.byteLength + 1;
+    const archiveBytes = buildZip([
+      { name: "podman", bytes: podman, compression: 8 },
+      { name: "gvproxy", bytes: gvproxy },
+    ]);
+
+    const entries = extractRuntimeArchiveEntries(archiveBytes, { maxDecompressedBytes: cap });
+
+    expect(entries.map((entry) => entry.path)).toEqual(["podman", "gvproxy"]);
+    expect(entries[0]?.bytes).toEqual(podman);
+    expect(entries[1]?.bytes).toEqual(gvproxy);
+  });
+
+  test("uses env-var decompressed-size cap unless an explicit option overrides it", () => {
+    const cap = 1024;
+    const previous = process.env.LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES;
+    const archiveBytes = buildTarGz([{ path: "podman", bytes: new Uint8Array(2048) }]);
+    try {
+      process.env.LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES = `${cap}`;
+
+      expectCapError(() => extractRuntimeArchiveEntries(archiveBytes), cap);
+      expect(extractRuntimeArchiveEntries(archiveBytes, { maxDecompressedBytes: 4096 })).toHaveLength(1);
+    } finally {
+      if (previous === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES");
+      } else {
+        process.env.LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES = previous;
+      }
+    }
   });
 
   test("rejects tar traversal entries without writing runtimeBinDir", async () => {
@@ -249,6 +343,33 @@ describe("installRuntimeBundle", () => {
       expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("old-podman");
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
         "1.0.0",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails installation when the runtime bundle exceeds maxDecompressedBytes", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const cap = 1024;
+      const archiveBytes = buildTarGz([{ path: "podman", bytes: new Uint8Array(64 * 1024) }]);
+
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes,
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          maxDecompressedBytes: cap,
+        }),
+      );
+
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect((failure as ProviderRuntimeExtractError).message).toContain(`${cap}`);
+      expect((failure as ProviderRuntimeExtractError).remediation).toContain(
+        "LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES",
       );
     } finally {
       await rm(root, { recursive: true, force: true });

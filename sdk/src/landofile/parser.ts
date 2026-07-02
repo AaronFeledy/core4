@@ -37,6 +37,10 @@ export interface ParseOptions {
   readonly file: string;
   readonly content: string;
   readonly cwd: string;
+  readonly limits?: {
+    readonly maxContentBytes?: number;
+    readonly maxDepth?: number;
+  };
 }
 
 interface ParsedLine {
@@ -47,6 +51,19 @@ interface ParsedLine {
 
 const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
   new LandofileParseErrorClass({ message, filePath, line, column });
+
+const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
+const DEFAULT_MAX_DEPTH = 64;
+
+const assertDepth = (filePath: string, line: number, depth: number, maxDepth: number): void => {
+  if (depth > maxDepth) {
+    throw parseError(
+      filePath,
+      `Landofile nesting depth exceeds the maximum depth of ${maxDepth} at line ${line}`,
+      line,
+    );
+  }
+};
 
 const stripComment = (line: string): string => {
   const colonIdx = line.indexOf(":");
@@ -143,10 +160,17 @@ const splitInlineArray = (value: string): ReadonlyArray<string> => {
   return parts;
 };
 
-const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
+const parseInlineArray = (
+  value: string,
+  filePath: string,
+  line: number,
+  depth: number,
+  maxDepth: number,
+): ReadonlyArray<unknown> => {
+  assertDepth(filePath, line, depth, maxDepth);
   const inner = value.slice(1, -1).trim();
   if (inner === "") return [];
-  return splitInlineArray(inner).map((part) => parseScalar(part.trim(), filePath, line));
+  return splitInlineArray(inner).map((part) => parseScalar(part.trim(), filePath, line, depth, maxDepth));
 };
 
 const unescapeDoubleQuotedScalar = (value: string): string =>
@@ -157,7 +181,13 @@ const unescapeDoubleQuotedScalar = (value: string): string =>
     return escaped;
   });
 
-const parseScalar = (value: string, filePath: string, line: number): unknown => {
+const parseScalar = (
+  value: string,
+  filePath: string,
+  line: number,
+  depth: number,
+  maxDepth: number,
+): unknown => {
   const trimmed = value.trim();
 
   // A quoted scalar is a literal: its content is never re-interpreted as an
@@ -180,7 +210,9 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, filePath, line);
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return parseInlineArray(trimmed, filePath, line, depth + 1, maxDepth);
+  }
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     // The flow-empty map `{}` is the only inline object the Landofile emitter
     // produces (for empty records, which have no block sequence-item form).
@@ -212,7 +244,12 @@ const parseMap = (
   filePath: string,
   start: number,
   indent: number,
+  depth: number,
+  maxDepth: number,
 ): readonly [Record<string, unknown>, number] => {
+  const startLine = lines[start];
+  if (startLine !== undefined) assertDepth(filePath, startLine.line, depth, maxDepth);
+
   const result: Record<string, unknown> = {};
   let index = start;
 
@@ -244,18 +281,18 @@ const parseMap = (
         continue;
       }
       if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(lines, filePath, index + 1, next.indent);
+        const [items, nextIndex] = parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth);
         result[key] = items;
         index = nextIndex;
         continue;
       }
-      const [nested, nextIndex] = parseMap(lines, filePath, index + 1, next.indent);
+      const [nested, nextIndex] = parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth);
       result[key] = nested;
       index = nextIndex;
       continue;
     }
 
-    result[key] = parseScalar(rawValue, filePath, line.line);
+    result[key] = parseScalar(rawValue, filePath, line.line, depth, maxDepth);
     index += 1;
   }
 
@@ -267,7 +304,12 @@ const parseList = (
   filePath: string,
   start: number,
   indent: number,
+  depth: number,
+  maxDepth: number,
 ): readonly [ReadonlyArray<unknown>, number] => {
+  const startLine = lines[start];
+  if (startLine !== undefined) assertDepth(filePath, startLine.line, depth, maxDepth);
+
   const result: unknown[] = [];
   let index = start;
 
@@ -305,13 +347,15 @@ const parseList = (
         indent + 2,
         firstKey,
         firstRawValue,
+        depth + 1,
+        maxDepth,
       );
       result.push(item);
       index = nextIndex;
       continue;
     }
 
-    result.push(parseScalar(value, filePath, line.line));
+    result.push(parseScalar(value, filePath, line.line, depth, maxDepth));
     index += 1;
   }
 
@@ -326,7 +370,11 @@ const parseListItemMap = (
   childIndent: number,
   firstKey: string,
   firstRawValue: string,
+  depth: number,
+  maxDepth: number,
 ): readonly [Record<string, unknown>, number] => {
+  assertDepth(filePath, startLine.line, depth, maxDepth);
+
   const item: Record<string, unknown> = {};
   let index = startIndex + 1;
 
@@ -338,17 +386,17 @@ const parseListItemMap = (
         return;
       }
       if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(lines, filePath, index, next.indent);
+        const [items, nextIndex] = parseList(lines, filePath, index, next.indent, depth + 1, maxDepth);
         item[key] = items;
         index = nextIndex;
         return;
       }
-      const [nested, nextIndex] = parseMap(lines, filePath, index, next.indent);
+      const [nested, nextIndex] = parseMap(lines, filePath, index, next.indent, depth + 1, maxDepth);
       item[key] = nested;
       index = nextIndex;
       return;
     }
-    item[key] = parseScalar(rawValue, filePath, keyLine);
+    item[key] = parseScalar(rawValue, filePath, keyLine, depth, maxDepth);
   };
 
   consumeKey(firstKey, firstRawValue, startLine.line, childIndent);
@@ -378,9 +426,19 @@ const parseListItemMap = (
   return [item, index];
 };
 
-const parseYaml = ({ content, file }: ParseOptions): unknown => {
+const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
+  const maxContentBytes = limits?.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
+  const actualContentBytes = Buffer.byteLength(content, "utf8");
+  if (actualContentBytes > maxContentBytes) {
+    throw parseError(
+      file,
+      `Landofile exceeds the maximum input size: ${actualContentBytes} bytes > ${maxContentBytes} bytes`,
+    );
+  }
+
+  const maxDepth = limits?.maxDepth ?? DEFAULT_MAX_DEPTH;
   const lines = toLines(content, file);
-  const [parsed, index] = parseMap(lines, file, 0, 0);
+  const [parsed, index] = parseMap(lines, file, 0, 0, 1, maxDepth);
   if (index < lines.length) {
     const line = lines[index];
     if (line !== undefined) {
