@@ -265,3 +265,10 @@ This period built the §6.11 service-composition model, published the paths/land
   - The lazy-closure walker must classify ONLY dynamic edges (never static edges of dynamically reached files) — `cli/index.ts → ./run.ts` lazily pulls the whole OCLIF surface by design, so folding lazy reachability into the eager ledgers would false-positive every entry point.
   - Boundary-gate allowlists should key `<repo-relative file> -> <specifier>` and tests should assert the allowlisted edge IS detected, keeping the allowlist load-bearing rather than dead configuration.
 ---
+
+## 2026-07-02 05:05 CDT - US-371 Verify
+- Story verified complete on branch us-371-dynamic-import-gates (no new code): the shared module-edge scanner, hardened env-helper gate, import-boundary lazy-closure walker, and the load-bearing OpenTUI allowlist test are all committed and green.
+- Verification: typecheck, lint passed; env-helper-boundary gate passed on the real tree; story spot checks (check-env-helper-boundary, import-boundary — 46 tests) and adjacent file-sync-mutagen spot checks passed.
+- **Learnings for future iterations:**
+  - Stale pre-deletion copies of files removed on main (e.g. `plugins/file-sync-mutagen/src/download.ts` from before the tool-provisioning migration) can linger untracked in the working tree and would re-trip boundary gates; diff suspicious untracked files against `git log --all -- <path>` history before treating them as in-progress work.
+---
