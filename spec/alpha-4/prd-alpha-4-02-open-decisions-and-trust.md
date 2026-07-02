@@ -18,7 +18,7 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 
 ## Goals
 
-- Close every remaining §14.2 decision that blocks Alpha 4 feature freeze.
+- Close every remaining §14.2 decision that blocks the Beta 1 feature-freeze boundary.
 - Keep current hard facts explicit: Bun floor is `>=1.3.14`, OCLIF is v4 today, and compiled dispatch remains permanently dual path.
 - Publish schema-backed compatibility and trust surfaces instead of relying on narrative docs alone.
 - Make untrusted plugin postinstall behavior safe by default while preserving a deliberate trust path for users and authoring workflows.

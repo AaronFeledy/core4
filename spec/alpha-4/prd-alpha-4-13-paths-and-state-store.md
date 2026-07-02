@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Alpha 4 lands two coupled foundational primitives: the public Paths/Roots primitive and the durable `StateStore` primitive. They stay in one PRD because `StateStore` resolves and contains bucket paths through the Paths/Roots contract, and both features consolidate duplicated filesystem/root/persistence logic before Alpha 4 enters feature freeze.
+Alpha 4 lands two coupled foundational primitives: the public Paths/Roots primitive and the durable `StateStore` primitive. They stay in one PRD because `StateStore` resolves and contains bucket paths through the Paths/Roots contract, and both features consolidate duplicated filesystem/root/persistence logic before the Beta 1 feature-freeze boundary.
 
 Alpha 4 is still the last feature-surface phase, so the public Paths/Roots primitive lands now instead of being deferred to a post-freeze release. Root resolution (`userConfRoot`, `userCacheRoot`, `userDataRoot`, `systemPluginRoot`) and the dozens of paths derived from those roots are currently re-implemented as ad-hoc helpers and hand-rolled `join()` calls across config, cache, plugin, scratch, shellenv, trust-store, planner, and uninstall code. Three separate modules reimplement the `$HOME`/XDG fallback with different bases, none of the non-conf roots implement the macOS/Windows platform defaults the spec mandates, `userCacheRoot` never reads `config.yml`, and `GlobalConfig` is missing the `userCacheRoot`/`systemPluginRoot` fields its own resolution order depends on.
 
