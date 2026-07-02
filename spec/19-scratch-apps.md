@@ -394,6 +394,7 @@ Scratch apps get their own CLI subtree under the `apps:` namespace. Default top-
 | `apps:scratch:list` | `scratch:list` | `scratch` | List every scratch app from the scratch registry plus orphans found via the provider label scan. `--format table\|json`. |
 | `apps:scratch:info` | `scratch:info` | `scratch` | Print runtime info for a scratch app. `<id>` selects; `--service`, `--format`. |
 | `apps:scratch:logs` | `scratch:logs` | `scratch` | Stream scratch service logs. `<id>` selects; `--service`, `--follow`, `--tail`, `--since`. |
+| `apps:scratch:run` | `scratch:run`, `run` | `scratch` | Disposable tool runner (§21.10.3). Acquire a scope-bound toolbox scratch with the cwd mounted, exec `<argv>` in it, stream output, propagate the exit code, destroy on exit. |
 | `apps:scratch:gc` | `scratch:gc` | `scratch` | Find orphaned scratch resources (stale registry entries, label-matched containers/volumes whose scratch root or registry entry is missing) and report them. `--prune` reaps. Recommended for cron or post-host-reboot cleanup. |
 
 `apps:list` shows user apps by default. `apps:list --include-scratch` adds running scratch apps; `apps:list --all` is the union (`--all` continues to include stopped user apps, the global app, and scratch apps).
@@ -430,7 +431,27 @@ Behaviors:
 
 #### 21.10.2 Top-level alias reservation
 
-The §8.1.2 alias-collision policy reserves the `scratch:` prefix and the bare `scratch` alias for the `apps:scratch:*` defaults listed above. Plugin- or tooling-contributed top-level aliases that begin with `scratch:` or that are exactly `scratch` collide with the built-ins and are rejected with `CommandAliasConflictError`. User overrides via `commandAliases.custom:` MAY remap a `scratch:*` alias to a user-defined tooling task; the underlying `apps:scratch:*` canonical id is always callable directly.
+The §8.1.2 alias-collision policy reserves the `scratch:` prefix and the bare `scratch` alias for the `apps:scratch:*` defaults listed above. The bare `run` alias is likewise reserved for `apps:scratch:run` (§21.10.3). Plugin- or tooling-contributed top-level aliases that begin with `scratch:`, or that are exactly `scratch` or `run`, collide with the built-ins and are rejected with `CommandAliasConflictError`. User overrides via `commandAliases.custom:` MAY remap a `scratch:*` or `run` alias to a user-defined tooling task; the underlying `apps:scratch:*` canonical id is always callable directly.
+
+#### 21.10.3 `apps:scratch:run` — the disposable tool runner
+
+`lando run <argv…>` answers "I need composer/drush/node/psql *right here, right now* without authoring a Landofile": a one-shot, cwd-mounted toolbox container that exists exactly as long as the command it runs. It is deliberately a **thin convenience layer over `ScratchAppService.acquire`** — no new lifecycle machinery, no new isolation semantics, no new cleanup path.
+
+```text
+lando apps scratch run [--from <recipe-ref>] [--service <name>]
+        [--no-mount] [--answer key=value]... [--keep]
+        [--] <argv...>
+```
+
+Behaviors:
+
+- **Source.** Defaults to the bundled `toolbox` canonical recipe (§8.8.10) — one `type: lando` service on a version-pinned general-purpose CLI image, every prompt answerable by its default so the non-interactive one-shot path never blocks. `--from <recipe-ref>` swaps in any recipe the standard source registry resolves (§8.8.4); a PHP shop points `--from lamp` and gets `composer` in the right runtime.
+- **Acquisition.** The command calls `ScratchAppService.acquire` (§21.5) under its own scope with `source: from-recipe`, `isolate: "cwd"`, `mountCwd: <cwd>`, `detached: false`. The user's cwd is bind-mounted read-write at the appMount destination, so tools operate on real project files. `--no-mount` switches to `isolate: "baked"` for runs that must not see the cwd. Recipe `postInit:` actions are skipped, exactly as §21.4.2 specifies.
+- **Exec.** Once healthy, `<argv>` runs in the target service (default: the recipe's primary/only service; `--service <name>` selects) via `RuntimeProvider.exec` with TTY allocation when stdin is a TTY, agent-context env forwarded per §6.9.1, stdout/stderr streamed live through the renderer, and the container process's **exit code propagated as the command's exit code**. Everything after `--` is passed verbatim, never parsed as Lando flags.
+- **Teardown.** Scope close destroys the scratch — normal exit, non-zero exit, and `Ctrl+C` (`Effect.interrupt`) all converge on the §21.6 finalizer. `--keep` converts the scratch to detached after the exec completes instead of destroying it, prints the scratch id, and leaves subsequent runs to `apps:scratch:*` verbs; the registry and `apps:scratch:gc` own it from there (§21.11).
+- **Warm repeats.** The recipe render is content-addressed and the toolbox image rides the standard `buildKey` short-circuit (§6.13.5), so the second `lando run` against the same toolbox pays container start, not recipe resolution or image build. Per-run acquisition cost is inherent to the disposable model; a warm-pool optimization is an explicit non-goal (§21.15).
+- **Machine output.** The command declares `streaming` (§8.11.3): under `--format json` it emits `StreamFrame`s and a terminal `result` frame carrying the exec exit code and the scratch id.
+- **Errors.** Source and materialization failures surface the standard §21.14 errors. An unknown `--service` fails with `ScratchRunTargetError` listing the recipe's services. A non-zero tool exit is **not** a Lando error: no tagged error, no remediation, just the propagated code.
 
 ### 21.11 Cleanup, registry, and orphan reaping
 
@@ -534,6 +555,7 @@ Tagged errors specific to scratch apps live in `@lando/core/errors`:
 - `ScratchIsolationUnsupportedError` — `--isolate=passthrough` (deferred) or another mode the active provider does not satisfy. Payload: `{ mode, requiredCapability?: keyof ProviderCapabilities }`.
 - `ScratchRecipeAnswersError` — recipe prompts could not be satisfied (missing answer in `--no-interactive`, validation failure). Wraps `RecipeMissingAnswerError` / `RecipeOutputValidationError` with the scratch id attached.
 - `ScratchRegistryCorruptError` — the registry binary failed schema decode and was quarantined to `<userCacheRoot>/scratch/registry.bin.corrupt-<timestamp>`. The next operation rebuilds an empty registry and triggers a label-driven `apps:scratch:gc` run to recover orphans.
+- `ScratchRunTargetError` — `apps:scratch:run --service <name>` referenced a service the resolved toolbox recipe does not define. Payload: `{ service, available: ReadonlyArray<string> }` (§21.10.3).
 
 Every error includes a `remediation` field. Errors raised during scope finalization are *also* logged via `Logger` at warn level so they are observable even when the destroy path swallows them to keep the scope finalizer honoring "best-effort cleanup" semantics.
 
@@ -547,4 +569,5 @@ Out of scope for v4.0; the architecture preserves the option for each:
 - **Scratch as cross-app source.** User apps cannot reference `scratchApps.<id>.*` in cross-service expressions (§21.9.3). Scratch ids are stable but transient; reaching across the boundary would tempt the user into committing config that breaks when the scratch is destroyed.
 - **User-relocatable scratch root.** The path `<userCacheRoot>/scratch/` is canonical at v4.0; there is no `scratch.root:` global config key. If users want scratch state on a different filesystem, they relocate `<userCacheRoot>` (a documented operation) — scratch state moves with it.
 - **Persistent agent for scratch.** §14.2's deferred persistent agent would cache a warm runtime for fast successive invocations. That is orthogonal to scratch: even with a warm runtime, scratch apps still have to materialize, plan, and start their services. The two compose cleanly when both ship.
+- **Warm toolbox pool for `apps:scratch:run`.** Each `lando run` (§21.10.3) acquires and destroys a fresh scratch; there is no kept-warm container pool amortizing start latency across runs. The recipe cache and `buildKey` short-circuit bound the repeat cost; a pool would reintroduce exactly the long-lived-state problems scratch apps exist to avoid. Users who need a persistent toolbox use `lando run --keep` or a real app.
 - **Scratch through `meta:plugin:add` install.** A plugin author cannot register a scratch app at install time. Scratch acquisition is always a user-initiated CLI invocation or a library-mode `acquire`. Plugins MAY contribute new `globalServices:` (§20) or new recipes (§8.8.4) that scratches can consume; they do not own scratches themselves.
