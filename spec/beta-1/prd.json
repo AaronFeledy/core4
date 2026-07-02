@@ -3073,7 +3073,7 @@
         "Lint passes"
       ],
       "priority": 153,
-      "passes": false,
+      "passes": true,
       "notes": "Backlog hardening surfaced in spec/beta-1/progress.txt (US-305 and US-362 review notes): dynamic-import / re-export coverage for the static boundary gates was repeatedly deferred as non-blocking lint hardening with no owning story."
     }
   ]

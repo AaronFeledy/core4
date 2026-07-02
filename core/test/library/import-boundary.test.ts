@@ -1,8 +1,11 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+
+import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
@@ -134,6 +137,122 @@ const resolveFirstParty = (specifier: string, importerAbs: string): string | und
   } catch {
     return undefined;
   }
+};
+
+/**
+ * Sanctioned lazy-loading boundaries: dynamic imports of otherwise-banned
+ * packages that are the DESIGN (constructed specifiers hiding heavy native
+ * deps from the bundler). Key format: `<repo-relative importer> -> <specifier>`.
+ */
+const DYNAMIC_IMPORT_ALLOWLIST: ReadonlySet<string> = new Set([
+  "plugins/renderer-lando/src/opentui/prompt-driver.ts -> @opentui/core",
+]);
+
+type DynamicViolationFamily = "oclif" | "tui" | "effect";
+
+interface DynamicEdgeRecord {
+  readonly importerAbs: string;
+  readonly specifier: string;
+  readonly family: DynamicViolationFamily;
+  readonly reason: string;
+}
+
+const dynamicEdgeCache = new Map<string, ReadonlyArray<{ specifier: string }>>();
+
+const scanDynamicEdges = (absPath: string, source: string): ReadonlyArray<{ specifier: string }> => {
+  const cached = dynamicEdgeCache.get(absPath);
+  if (cached !== undefined) return cached;
+  const edges =
+    source.includes("import(") || source.includes("require(")
+      ? scanModuleEdges(absPath, source)
+          .filter((edge) => edge.kind === "dynamic-import" || edge.kind === "require")
+          .map((edge) => ({ specifier: edge.specifier }))
+      : [];
+  dynamicEdgeCache.set(absPath, edges);
+  return edges;
+};
+
+const classifyDynamicEdge = (edge: {
+  readonly importerAbs: string;
+  readonly specifier: string;
+  readonly resolvedAbs: string | undefined;
+}): { family: DynamicViolationFamily; reason: string } | undefined => {
+  const oclifReason = classifyOclifImport(edge);
+  if (oclifReason !== undefined) return { family: "oclif", reason: oclifReason };
+  const tuiReason = classifyTuiImport(edge);
+  if (tuiReason !== undefined) return { family: "tui", reason: tuiReason };
+  const effectReason = classifyEffectImport(edge);
+  if (effectReason !== undefined) return { family: "effect", reason: effectReason };
+  return undefined;
+};
+
+/**
+ * Walk the LAZY module closure rooted at `entryAbs`: follow both static
+ * imports and statically resolvable dynamic `import()` edges across
+ * first-party modules, and classify every dynamic edge against the banned-
+ * dependency classifiers. Unlike {@link walkStaticImportGraph} (the eager
+ * graph the boundary assertions freeze), this closure exists to catch a
+ * banned dependency slipping past the gate via `await import(...)` — the
+ * sanctioned lazy boundaries live in {@link DYNAMIC_IMPORT_ALLOWLIST}.
+ */
+const walkLazyModuleGraph = (
+  entryAbs: string,
+): {
+  readonly visited: ReadonlySet<string>;
+  readonly dynamicViolations: ReadonlyArray<DynamicEdgeRecord>;
+  readonly allowlistedDynamicEdges: ReadonlyArray<DynamicEdgeRecord>;
+} => {
+  const visited = new Set<string>();
+  const dynamicViolations: DynamicEdgeRecord[] = [];
+  const allowlistedDynamicEdges: DynamicEdgeRecord[] = [];
+
+  const visit = (absPath: string): void => {
+    if (visited.has(absPath)) return;
+    visited.add(absPath);
+    if (!/\.tsx?$/.test(absPath)) return;
+
+    let source: string;
+    try {
+      source = readFileSync(absPath, "utf8");
+    } catch {
+      return;
+    }
+
+    const followEdge = (specifier: string): string | undefined =>
+      isFollowableSpecifier(specifier) ? resolveFirstParty(specifier, absPath) : undefined;
+
+    for (const specifier of scanStaticImports(absPath, source)) {
+      const resolvedAbs = followEdge(specifier);
+      if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) visit(resolvedAbs);
+    }
+
+    for (const edge of scanDynamicEdges(absPath, source)) {
+      const resolvedAbs = followEdge(edge.specifier);
+      const classified = classifyDynamicEdge({
+        importerAbs: absPath,
+        specifier: edge.specifier,
+        resolvedAbs,
+      });
+      if (classified !== undefined) {
+        const record: DynamicEdgeRecord = {
+          importerAbs: absPath,
+          specifier: edge.specifier,
+          family: classified.family,
+          reason: classified.reason,
+        };
+        const allowKey = `${repoRelative(absPath)} -> ${edge.specifier}`;
+        if (DYNAMIC_IMPORT_ALLOWLIST.has(allowKey)) {
+          allowlistedDynamicEdges.push(record);
+        } else {
+          dynamicViolations.push(record);
+        }
+      }
+      if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) visit(resolvedAbs);
+    }
+  };
+
+  visit(realpathSync(entryAbs));
+  return { visited, dynamicViolations, allowlistedDynamicEdges };
 };
 
 /**
@@ -507,6 +626,126 @@ describe("Effect-free @lando/core/paths", () => {
     }
     expect(effectViolations.length).toBe(0);
     expect(violations.length).toBe(0);
+  });
+});
+
+describe("dynamic-import and re-export escape hatches", () => {
+  const makeFixtureDir = async (): Promise<string> =>
+    (await import("node:fs/promises")).mkdtemp(resolve(tmpdir(), "lando-import-boundary-"));
+
+  const writeFixture = async (dir: string, name: string, content: string): Promise<string> => {
+    const file = resolve(dir, name);
+    await (await import("node:fs/promises")).writeFile(file, content, "utf8");
+    return file;
+  };
+
+  const removeFixture = async (dir: string): Promise<void> =>
+    (await import("node:fs/promises")).rm(dir, { recursive: true, force: true });
+
+  test("the static scanner surfaces barrel re-exports so the walker flags them like direct imports", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const star = await writeFixture(dir, "star.ts", 'export * from "@oclif/core";\n');
+      const named = await writeFixture(dir, "named.ts", 'export { Command } from "@oclif/core";\n');
+
+      const starWalk = walkStaticImportGraph(star);
+      expect(starWalk.violations.length).toBe(1);
+      expect(starWalk.violations[0]?.reason).toContain("@oclif/core");
+
+      const namedWalk = walkStaticImportGraph(named);
+      expect(namedWalk.violations.length).toBe(1);
+      expect(namedWalk.violations[0]?.reason).toContain("@oclif/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test("the lazy walker flags a dynamic import of a banned npm package", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "dynamic-oclif.ts",
+        'export const load = async (): Promise<unknown> => import("@oclif/core");\n',
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(1);
+      expect(dynamicViolations[0]?.family).toBe("oclif");
+      expect(dynamicViolations[0]?.reason).toContain("@oclif/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test("the lazy walker resolves constructed dynamic specifiers through same-file consts", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "constructed-tui.ts",
+        [
+          'const tuiSpecifier = "@opentui/" + "core";',
+          "export const load = async (): Promise<unknown> => import(tuiSpecifier);",
+          "",
+        ].join("\n"),
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(1);
+      expect(dynamicViolations[0]?.family).toBe("tui");
+      expect(dynamicViolations[0]?.reason).toContain("@opentui/core");
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test("the lazy walker ignores runtime-computed dynamic specifiers", async () => {
+    const dir = await makeFixtureDir();
+    try {
+      const entry = await writeFixture(
+        dir,
+        "runtime-path.ts",
+        "export const load = async (path: string): Promise<unknown> => import(`${path}?t=${Date.now()}`);\n",
+      );
+
+      const { dynamicViolations } = walkLazyModuleGraph(entry);
+      expect(dynamicViolations.length).toBe(0);
+    } finally {
+      await removeFixture(dir);
+    }
+  });
+
+  test.each(CRITICAL_ENTRY_POINTS)(
+    "$specifier lazy module closure has no non-allowlisted banned dynamic imports",
+    (entry: CriticalEntryPoint) => {
+      const entryAbs = resolveEntrySource(entry.specifier);
+      const { dynamicViolations } = walkLazyModuleGraph(entryAbs);
+
+      const relevant = dynamicViolations.filter(
+        (violation) => violation.family !== "effect" || entry.specifier === "@lando/core/paths",
+      );
+      if (relevant.length > 0) {
+        const report = relevant
+          .map((violation) => `${repoRelative(violation.importerAbs)} ${violation.reason}`)
+          .join("\n");
+        throw new Error(`${entry.specifier} lazy closure has banned dynamic imports:\n${report}`);
+      }
+      expect(relevant.length).toBe(0);
+    },
+  );
+
+  test("the OpenTUI constructed-specifier boundary is detected AND allowlisted (allowlist stays load-bearing)", () => {
+    const entryAbs = resolveEntrySource("@lando/core/cli");
+    const { allowlistedDynamicEdges } = walkLazyModuleGraph(entryAbs);
+
+    const promptDriverHit = allowlistedDynamicEdges.find(
+      (edge) =>
+        repoRelative(edge.importerAbs) === "plugins/renderer-lando/src/opentui/prompt-driver.ts" &&
+        edge.specifier === "@opentui/core",
+    );
+    expect(promptDriverHit).toBeDefined();
+    expect(promptDriverHit?.family).toBe("tui");
   });
 });
 
