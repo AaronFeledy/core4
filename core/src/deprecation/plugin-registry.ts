@@ -9,6 +9,11 @@ import {
   schemaDeprecationsFromJsonSchema,
 } from "@lando/sdk/schema";
 import { DeprecationService, PluginRegistry } from "@lando/sdk/services";
+import {
+  SETUP_BUILTIN_FLAG_NAMES,
+  findSetupFlagCollision,
+  manifestSetupFlagContributions,
+} from "../plugins/setup-flags.ts";
 import { registerBuiltInContractDeprecations } from "./built-in-contracts.ts";
 
 type ContributionKind =
@@ -112,6 +117,11 @@ export const DeprecationPluginRegistryLive = Layer.scopedDiscard(
     const plugins = yield* PluginRegistry;
     const manifests = yield* plugins.list.pipe(Effect.catchAll(() => Effect.succeed([])));
     const deprecations = yield* DeprecationService;
+    const collision = findSetupFlagCollision(
+      SETUP_BUILTIN_FLAG_NAMES,
+      manifestSetupFlagContributions(manifests),
+    );
+    if (collision !== undefined) yield* Effect.fail(collision);
     yield* registerSchemaDeprecations;
     yield* registerBuiltInContractDeprecations(deprecations);
     yield* registerPluginDeprecations(manifests);

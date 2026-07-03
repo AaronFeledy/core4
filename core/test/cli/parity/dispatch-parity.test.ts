@@ -393,6 +393,10 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Nonexistent flag: --definitely-not-a-setup-flag");
     }, 30_000);
 
+    test("meta:setup help exposes provider-contributed flags on both paths", async () => {
+      await expectHelpParity("meta:setup", ["--runtime-bundle-url", "--runtime-bundle-sha256"]);
+    }, 30_000);
+
     test("meta:setup representative validation failure matches on both paths", async () => {
       const source = await runSourceCli(["meta:setup", "--host-proxy=bad"]);
       const compiled = await runCompiledCli(["meta:setup", "--host-proxy=bad"]);

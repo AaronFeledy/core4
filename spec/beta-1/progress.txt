@@ -11,6 +11,34 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Every entry records: what changed, verification evidence (gates + tests + manual QA), and learnings for future iterations.
 - A story that relaxes a shipped contract (US-381 FileFormat, US-388 release posture, US-392 shell default) must record the decision and the synchronized spec/PRD/snapshot updates in its entry.
 
+## Codebase Patterns
+
+- To surface bundled-plugin manifest data (e.g. `setup.flags`) inside a CLI command, generate an `import type`-only literal-data module (see `core/src/cli/oclif/generated/setup-plugin-flags.ts` + `scripts/build-setup-plugin-flags.ts`). NEVER import `core/src/plugins/bundled.ts` from a command module: `run.ts` → `compiled-commands.ts` imports every command, so pulling `bundled.ts` there drags all bundled plugin Layers into the compiled CLI graph — a cold-start regression.
+- New codegen scripts wire in three places: `package.json` (`codegen:<id>`), `scripts/codegen.ts` (catalog, ordered before any consumer generator), and a matching drift note. A flag/metadata generator that feeds `SetupCommand.flags` must run before `oclif-manifest` since that generator serializes the command's static flags.
+
+---
+
+## 2026-07-03 14:38 CDT - US-384 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup` completed with the local runtime bundle manifest, then completed again using the provider-contributed `--runtime-bundle-url`/`--runtime-bundle-sha256` flags directly; compiled setup help now exposes those contributed flags, bad setup flags still fail with exit 2, setup JSON output remains canonical, and adjacent `version`, `shellenv`, and `doctor --format json` smokes passed.
+- Fixed a real compiled-binary help regression at the root cause: compiled mode's custom command help renderer printed only description/usage/aliases and ignored command flag metadata, so provider-contributed setup flags parsed correctly but did not appear in `core/dist/lando setup --help`.
+- **Learnings for future iterations:** When a story changes command metadata, verify the compiled help renderer as well as the generated OCLIF manifest; compiled mode owns a lightweight help path that can drift from source OCLIF help even when parsing metadata is present.
+---
+
+## 2026-07-03 14:22 CDT - US-384 Review
+- Review found no code blockers in the `setup.flags` merge. It recorded the accepted Beta 1 scope explicitly in the source PRD and PRD index: bundled provider flags are exposed through the static OCLIF/compiled setup metadata, while runtime-discovered plugin flags are collision-checked at plugin load and dynamic external-flag parsing remains deferred to a later two-phase parser story.
+- Review notes (deferred/rejected): raw runtime-discovered plugin flag parsing is deferred because OCLIF's command metadata is static and loading arbitrary plugins into the cold-start command graph would violate the story's cold-start constraint; duplicate delivery of the Lando runtime-bundle flags as typed fields plus `setupFlags` is accepted to preserve the existing provider-lando setup contract while adding the generic plugin flag channel.
+- Verification: typecheck, lint passed; focused setup flag merge/surface/setup/deprecation/plugin collision suites passed; setup flag and OCLIF manifest codegen produced no tracked drift; review-only PRD JSON validity check passed.
+---
+
+## 2026-07-03 13:16 CDT - US-384
+- `lando setup` now merges provider-plugin `setup.flags` contributions into the `meta:setup` flag surface on both the OCLIF source path and the compiled binary path. Bundled contributions flow through a new `import type`-only generated module (`core/src/cli/oclif/generated/setup-plugin-flags.ts`, built by `scripts/build-setup-plugin-flags.ts`, ordered before the oclif-manifest generator), merged by a pure `mergeSetupPluginFlags` that converts each contribution to an OCLIF flag and rejects any name colliding with a built-in or another plugin via the tagged `SetupFlagCollisionError`.
+- The Lando runtime-bundle flags (`--runtime-bundle-url`/`--runtime-bundle-sha256`) moved OUT of the hardcoded core built-ins and are now genuinely sourced from `@lando/provider-lando`'s `setup.flags` contribution (they were previously decorative in the manifest and duplicated as built-ins). `host-proxy` and the `skip-*`/`provider` flags stay core built-ins. Parsed contributed values are delivered to the selected provider's `setup()` via a new additive `ProviderSetupOptions.setupFlags` map scoped to the plugin that registers the provider; the typed `runtimeBundleUrl`/`runtimeBundleSha256` conveniences are preserved.
+- Collision detection is enforced twice: at merge time (bundled contributions, at command load) and at the bootstrap manifest pass (`DeprecationPluginRegistryLive`) for runtime-discovered user/app plugins, both failing with `SetupFlagCollisionError`. Per the Oracle-validated design, the compiled parse table is NOT dynamically mutated for runtime-discovered plugins — baking bundled provider flags into the compiled manifest satisfies Beta 1 parity; dynamic external-flag parsing is a later two-phase feature.
+- Verification: typecheck, lint passed; new merge/collision/scenario suites plus the setup, deprecation-bootstrap, dispatch-parity, and generated-bootstrap-layer spot checks green; full codegen produced no unexpected drift and the schema snapshot fixture is unchanged (`ProviderSetupOptions` is a plain TS interface, so the additive field is an `API_COMPATIBILITY.md` bullet only). Manual QA: `bun bin/lando.ts setup --help` renders `--runtime-bundle-url`/`--runtime-bundle-sha256` sourced from the merge.
+- **Learnings for future iterations:**
+  - `ReturnType<typeof Flags.string>` resolves to the `multiple: true` overload (`string[]`), which breaks under `exactOptionalPropertyTypes`. Type merged OCLIF flags as `Interfaces.BooleanFlag<string | boolean | undefined> | Interfaces.OptionFlag<string | undefined>` instead.
+  - Keep the collision authority (`SetupFlagCollisionError` + `findSetupFlagCollision` + `SETUP_BUILTIN_FLAG_NAMES`) in a neutral, OCLIF-free module (`core/src/plugins/setup-flags.ts`) so both the CLI merge and the bootstrap manifest pass can import it without a layering inversion; guard the reserved-name list against drift with a test comparing it to `SetupCommand.flags` keys.
+  - The bootstrap "read every discovered manifest's `setup.flags`" hook already exists in `DeprecationPluginRegistryLive`; failing it with the tagged error is the minimal "collision fails at plugin load" path for runtime-discovered plugins without touching the high-blast-radius `PluginRegistry.list` error contract.
 ---
 
 ## 2026-07-03 07:11 CDT - US-380 Review

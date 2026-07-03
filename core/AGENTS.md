@@ -40,6 +40,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - JSON renderer parity is byte-identical apart from normalized timestamps/temp paths; plain/`lando` stderr is allowed to differ in wrapping/prefixes but must preserve tagged-error fields.
 - Host-safe `meta:setup` parity tests should force `PATH=/no-such-path`, isolated `LANDO_USER_*` roots, and `--provider=podman`; the default `lando` provider attempts a network bundle download.
 - Compiled `meta:plugin:*` handlers must manually replicate OCLIF parse errors. `--renderer`/`--help`/`--version` are stripped before command dispatch, while command-scoped unknown flags still need exit-2 rejection.
+- Bundled plugin `setup.flags` are merged into `meta:setup` from the generated literal-data module `core/src/cli/oclif/generated/setup-plugin-flags.ts` (regen: `codegen:setup-plugin-flags`, ordered before `oclif-manifest`). Never import `core/src/plugins/bundled.ts` from a command module to reach plugin manifests: `run.ts` → `compiled-commands.ts` → every command, so that import pulls all bundled plugin Layers into the compiled CLI graph (a cold-start regression). The generated flag module is deliberately `import type`-only. Flag-name collisions surface as the `SetupFlagCollisionError` from `core/src/plugins/setup-flags.ts`, enforced both at the merge and at the bootstrap manifest pass (`DeprecationPluginRegistryLive`) for runtime-discovered plugins.
 
 ## Machine-output gate
 

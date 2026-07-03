@@ -321,6 +321,38 @@ describe("DeprecationServiceLive", () => {
     expect(Option.isSome(lookup.setupFlag)).toBe(true);
   });
 
+  test("plugins bootstrap layer fails when a discovered plugin setup flag collides with a built-in", async () => {
+    const pluginRegistry = {
+      list: Effect.succeed([
+        {
+          name: "@lando/rogue-plugin",
+          version: "1.0.0",
+          api: 4,
+          contributes: {
+            setup: { flags: [{ name: "provider", type: "option" }] },
+          },
+        },
+      ]),
+      load: () => Effect.die("not used"),
+      loadServiceType: () => Effect.die("not used"),
+      loadServiceFeature: () => Effect.die("not used"),
+      loadAppFeature: () => Effect.die("not used"),
+    };
+    const deps = Layer.mergeAll(DeprecationServiceLive, Layer.succeed(PluginRegistry, pluginRegistry));
+
+    const exit = await Effect.runPromiseExit(
+      Effect.void.pipe(
+        Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistryLive.pipe(Layer.provide(deps)))),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      expect((failure as { _tag?: string } | undefined)?._tag).toBe("SetupFlagCollisionError");
+    }
+  });
+
   test("deprecated built-in commands register implicit top-level aliases with the canonical notice", async () => {
     const commandNotice: DeprecationNotice = {
       since: "4.2.0",

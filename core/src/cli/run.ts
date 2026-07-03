@@ -219,6 +219,8 @@ interface CompiledCommandInput {
 }
 
 type OclifFlagDefinition = {
+  readonly name?: string;
+  readonly description?: string;
   readonly type?: string;
   readonly char?: string;
   readonly aliases?: ReadonlyArray<string>;
@@ -383,14 +385,38 @@ COMMANDS`,
   emitResultLine(lines.join("\n"));
 };
 
+const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
+  const short = definition.char === undefined ? "" : `, -${definition.char}`;
+  return `--${definition.name ?? name}${short}`;
+};
+
+const renderCommandHelpFlags = (command: CompiledCommand): ReadonlyArray<string> => {
+  const entries = Object.entries(flagDefinitionsForCommand(command)).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  if (entries.length === 0) return [];
+
+  const lines = ["", "FLAGS"];
+  for (const [name, definition] of entries) {
+    const options = definition.options === undefined ? "" : ` (${definition.options.join(", ")})`;
+    const description = definition.description === undefined ? "" : ` ${definition.description}${options}`;
+    lines.push(`  ${helpFlagToken(name, definition)}${description}`);
+  }
+  return lines;
+};
+
 const printCommandHelp = (id: string, command: CompiledCommand): void => {
-  emitResultLine(`${command.description ?? command.summary ?? id}
+  const lines = [
+    `${command.description ?? command.summary ?? id}
 
 USAGE
   $ lando ${commandName(id, command)}
 
 ALIASES
-  ${[id, ...(command.aliases ?? [])].join(", ")}`);
+  ${[id, ...(command.aliases ?? [])].join(", ")}`,
+  ];
+  lines.push(...renderCommandHelpFlags(command));
+  emitResultLine(lines.join("\n"));
 };
 
 let activeRendererMode: RendererMode = "lando";

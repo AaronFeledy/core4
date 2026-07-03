@@ -53,6 +53,8 @@ export interface ProviderSetupOptions {
   readonly runtimeBundleSha256?: string;
   readonly network?: NetworkConfig;
   readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
+  /** Parsed values of the setup flags this provider's plugin contributed via `setup.flags`. */
+  readonly setupFlags?: Readonly<Record<string, unknown>>;
 }
 
 export interface ProviderStatus {
