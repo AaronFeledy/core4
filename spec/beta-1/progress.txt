@@ -13,6 +13,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 07:11 CDT - US-380 Review
+- Review fixed the missing public boundary coverage for the new paths member: `@lando/core/paths` package export, packed-package import, import-boundary, and live `PathsService` runtime tests now assert `managedFileLedger(appId)` resolves to the expected ledger path. Review also corrected the managed-file service header comment so it names the current primitive.
+- Review notes (deferred/rejected): strict `PathsService` DI usage in the managed-file backend is not required here because repo rules sanction the pure `makeLandoPaths` primitive and the backend needs a per-call injected ledger root; public `appId` sanitization in path builders remains a pre-existing trusted-caller pattern shared with `appPluginsDir`/`appSnapshotsDir`, while the managed-file runtime still uses sanitized `deriveAppId` output.
+- Verification: typecheck, lint, check:paths-boundary, check:managed-file-boundary, check:redaction-boundary passed; focused paths/config roots, path export/runtime/import-boundary, and managed-file service spot checks passed.
+---
+
 ## 2026-07-03 07:01 CDT - US-380
 - The managed-file ledger path is now a first-class member of the paths surface: `LandoPaths` (SDK) and the pure `makeLandoPaths` peer gain `managedFileLedger(appId)` returning `<userDataRoot>/managed-files/<appId>/ledger.json`, built with the platform-aware `joinFor` so win32/darwin/linux separators are honored (matching spec §7.5.1, which already documented the member).
 - `core/src/config/roots.ts` no longer hand-rolls the `managed-files/`+`ledger.json` join; both `managedFileLedger` and `managedFilesRoot` (now `dirname` of the ledger file) delegate to the primitive. `core/src/managed-file/service.ts` migrated off the roots helper and resolves the ledger location through `makeLandoPaths({ userDataRoot }).managedFileLedger(appId)`, splitting it into the StateStore bucket's `root` dir + `key` filename via `dirname`/`basename` so the segment/filename live only in the primitive.
