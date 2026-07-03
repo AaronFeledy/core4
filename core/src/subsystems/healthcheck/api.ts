@@ -7,13 +7,13 @@
  * - Object form supports `command`, `user`, `retry`, `delay`, `timeout`.
  * - Startup distinguishes `running` from `ready`. The `ready` event fires
  *   when all healthchecks pass.
- * - The active `HealthcheckRunner` decides execution mechanics. Default:
- *   `RuntimeProvider.exec` with retry/delay loop. The full provider-exec
- *   runner is not implemented yet; when it lands, its retry/delay/timeout
- *   loop and `ready` verdict must build on `@lando/sdk/probe`'s `runProbe`
- *   rather than a hand-rolled `Effect.retry`/`Schedule` loop (enforced by the
- *   probe boundary gate), and must redact `ProbeResult.lastError` before it
- *   reaches an event or transcript.
+ * - The active `HealthcheckRunner` decides execution mechanics. The default
+ *   provider-exec runner lives in `live.ts`, executes command healthchecks via
+ *   `RuntimeProvider.exec`, builds retry/delay/timeout behavior on
+ *   `@lando/sdk/probe`'s `runProbe`, and redacts probe failure details through
+ *   `RedactionService` before surfacing them.
+ * - This module keeps the explicit degraded-mode layer for contexts where no
+ *   runtime provider is available.
  */
 import { Effect, Layer } from "effect";
 
