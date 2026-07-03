@@ -140,7 +140,7 @@
         "Lint passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-18 ('Every ManagedFile event and transcript MUST be routed through RedactionService'). Audit found a local empty redactor at core/src/managed-file/service.ts:911-943."
     },
     {

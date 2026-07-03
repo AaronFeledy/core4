@@ -60,7 +60,9 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     SecretStoreLive,
     StateStoreLive,
     redactionLive,
-    Layer.suspend(() => ManagedFileServiceLive).pipe(Layer.provide(eventServiceLive)),
+    Layer.suspend(() => ManagedFileServiceLive).pipe(
+      Layer.provide(Layer.mergeAll(eventServiceLive, redactionLive)),
+    ),
     Layer.suspend(() => InteractionServiceLive),
     httpClientLive,
     DownloaderLive.pipe(Layer.provide(httpClientLive)),

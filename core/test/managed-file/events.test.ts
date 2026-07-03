@@ -12,8 +12,10 @@ import {
   makeDiskBackend,
   makeManagedFileService,
 } from "../../src/managed-file/service.ts";
+import { RedactionServiceLive } from "../../src/redaction/service.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
@@ -180,6 +182,63 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
       expect(managedEvents.length).toBeGreaterThan(0);
       expect(JSON.stringify(collected)).not.toContain(secret);
       expect(await readFile(join(base, "settings.php"), "utf8")).toContain(secret);
+    } finally {
+      if (previous === undefined) {
+        process.env.LANDO_USER_DATA_ROOT = "";
+        Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      } else {
+        process.env.LANDO_USER_DATA_ROOT = previous;
+      }
+      await rm(base, { recursive: true, force: true });
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("a registered secret appearing in an event payload field is masked via RedactionService", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "lando-mfe-rs-base-")));
+    const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-mfe-rs-data-")));
+    const previous = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    // The owner marker carries a value that is a registered secret; the redactor
+    // must mask it out of the emitted event's `owner` field.
+    const secret = "owner-token-9f3a-SHHH";
+    const secretStore = makeTestSecretStore({ secrets: { OWNER_TOKEN: secret } });
+    const redactionLive = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+
+    try {
+      const layer = Layer.mergeAll(
+        EventServiceLive,
+        ManagedFileServiceLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
+      );
+
+      const collected = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const managed = yield* ManagedFileService;
+            yield* managed.apply([
+              file({
+                id: "cms:settings",
+                owner: secret,
+                base: base as ManagedFile["base"],
+                path: "settings.txt",
+                content: { kind: "text", value: "hello world\n" },
+              }),
+            ]);
+            yield* Effect.sleep("25 millis");
+            const drained = yield* Queue.takeAll(queue);
+            return Chunk.toReadonlyArray(drained);
+          }).pipe(Effect.provide(layer)),
+        ),
+      );
+
+      const managedEvents = collected.filter((event) => String(event._tag).includes("managed-file"));
+      expect(managedEvents.length).toBeGreaterThan(0);
+      for (const event of managedEvents) {
+        expect(event.owner).toBe("[redacted]");
+      }
+      expect(JSON.stringify(collected)).not.toContain(secret);
     } finally {
       if (previous === undefined) {
         process.env.LANDO_USER_DATA_ROOT = "";
