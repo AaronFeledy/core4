@@ -106,7 +106,7 @@
         "Lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-14 FR-9 — audit found `waitForEvent` covered only by an export-existence assertion (`core/test/library/core-testing-export.test.ts`) while `expectEvent` has real runtime coverage."
     },
     {

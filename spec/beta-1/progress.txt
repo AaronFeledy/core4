@@ -13,6 +13,21 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 03:57 CDT - US-377 Review
+- Review confirmed US-377 satisfies the source PRD and tightened the runtime test so `waitForEvent` proves `filter` pass-through with a same-name event filtered out before the accepted event resolves. Review also corrected a strict branded-type assertion in the new test.
+- Review notes (deferred/rejected): live-stream secret-redaction assertions remain rejected because `waitForEvent` intentionally has parity with `EventService.waitFor`, while `EventServiceLive` redacts only the history buffer returned by `query`.
+- Verification: typecheck, lint passed; focused `wait-for-event` story test and adjacent `events`/`event-service` spot checks passed; edited TypeScript file has clean LSP diagnostics.
+---
+
+## 2026-07-03 03:49 CDT - US-377
+- `waitForEvent` from `@lando/core/testing` now has real runtime behavior coverage instead of only an export-existence assertion. New `core/test/testing/wait-for-event.test.ts` proves the helper delegates to `EventService.waitFor`: it resolves the first matching event as the exact typed payload (honoring `filter`), returns byte-identical results to a direct `EventService.waitFor` call (parity), fails with the `EventError` `reason: "timeout"` contract when an explicit deadline elapses (driven deterministically through `TestClock`), and — unlike `expectEvent` — waits indefinitely when no timeout is supplied (still pending after a one-hour virtual clock advance).
+- Verification: typecheck, lint passed; new suite green (4 tests) with a RED-integrity spot check confirming the payload assertions actually bite; adjacent `expectEvent` and `EventServiceLive` suites still green (7 tests). No CLI surface — the real-runtime surface is the test runner exercising `EventServiceLive`.
+- **Learnings for future iterations:**
+  - `waitForEvent`/`EventService.waitFor` return the raw live-stream payload; redaction applies only to the history buffer (`query`), so the "typed, redacted payload" contract is satisfied by parity (the bus carries redacted-at-source events) — do not assert live secret-redaction on the resolved event, it would be false.
+  - The established timeout-test idiom for these helpers is `Effect.exit`+`Effect.fork` a waiter, `TestClock.adjust` past the deadline, `Fiber.join`, then `Cause.failureOption` on the failure exit; provide both `EventServiceLive` and `TestContext.TestContext`.
+  - To prove indefinite waiting under a virtual clock: fork the waiter, `TestClock.adjust` a long span with nothing published, assert `Fiber.poll` is `Option.none`, then interrupt to clean up.
+---
+
 ## 2026-07-03 02:39 CDT - US-376 Review
 - Review confirmed the build commit satisfies US-376: doctor now wires the real runProbe-backed healthcheck/scanner runners, setup readiness was already on `runProbe`, and downloader had no retry loop to migrate. Review fixed strict test typing in the doctor fix suite by narrowing the subsystem classification assertion and using a typed `ProxyError` in the redaction fixture.
 - Review notes (deferred/rejected): identity-only readiness for healthcheck/scanner is accepted because `subsystemDoctor` reports implementation wiring by service id and never calls `run()`/`scan()`; the commit title's downloader/setup wording is accepted because the progress entry documents those as audited no-ops; the HttpClient retry-surface drift noted by context mining is outside US-376.
