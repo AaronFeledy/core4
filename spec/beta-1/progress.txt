@@ -13,6 +13,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 06:10 CDT - US-379 Review
+- Review fixed a managed-file event redaction parity gap: `ManagedFileServiceLive` now passes `sourceEnv` into both the canonical `RedactionService` branch and the standalone fallback, so secret-bearing env values outside the `LANDO_SECRET_` store prefix are exact-value masked before event publication.
+- Review notes (deferred/rejected): resolving the managed-file redactor at layer construction is accepted for current production contracts because `SecretStoreLive` is env-backed with no runtime registration API; if a mutable production secret store is introduced later, the event seam should resolve the redactor per operation.
+- Verification: typecheck, lint, check:redaction-boundary, check:managed-file-boundary passed; focused managed-file env/event, service, contract, generated-bootstrap-layer, redaction, and redaction-boundary spot checks passed.
+---
+
 ## 2026-07-03 06:05 CDT - US-379
 - Managed-file lifecycle events now redact through the canonical `RedactionService` instead of a local empty `createSecretRedactor([])`. `ManagedFileServiceLive` resolves `RedactionService` optionally and builds a `secrets`-profile redactor (`forProfile("secrets")`), falling back to `createStandaloneRedactor("secrets")` when the service is absent so payloads are never retained raw; `makeLiveManagedFileEvents` now takes the resolved `redactText` seam. Every free-string payload field (`path`, `owner`, `summary`) it publishes is masked by the registry-backed redactor, so a value registered in the `SecretStore` can no longer leak through a managed-file event.
 - The `minimal` bootstrap layer now provides `redactionLive` directly to the `ManagedFileServiceLive` layer (via the `build-bootstrap-layers.ts` generator + regenerated `minimal.ts`), because redaction was previously only an internal dep of `EventService` and thus invisible to the managed-file layer's `serviceOption(RedactionService)` resolution.
