@@ -175,7 +175,7 @@
         "Lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-18 freezes FileFormat as the 7-value enum; sdk/src/schema/managed-file.ts:18-28 ships 9 values. Check the introducing commit's intent before choosing trim vs adopt."
     },
     {

@@ -111,7 +111,9 @@ tag instead of inventing my own ownership-aware file-write surface.
 - [ ] A new `sdk/src/schema/managed-file.ts` exports `ManagedFile` (`id`, `owner`, `path`,
   `mode: "file" | "block" | "keys"`, `format`, `content`, `marker?`, `perms?`,
   `onConflict?`, `base?`), `FileFormat` (`"text" | "env" | "json" | "yaml" | "toml" | "ini"
-  | "landofile"`), `ContentSource` (the four-member tagged union `text` | `structured` |
+  | "landofile" | "javascript" | "typescript"` — `javascript`/`typescript` are written
+  verbatim like `text` but carry a `//` ownership marker so scaffolded code files stay
+  valid), `ContentSource` (the four-member tagged union `text` | `structured` |
   `template` | `inline`), `ManagedFileAction` (`"create" | "update" | "skip-unchanged" |
   "skip-adopted" | "conflict" | "adopt-detected"`), `ManagedFilePlan`, `ManagedFileInfo`
   (`path`, `owner`, `mode`, `state: "managed" | "adopted" | "conflict" | "missing" |
