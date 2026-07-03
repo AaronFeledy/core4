@@ -90,7 +90,7 @@
         "Lint passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-14 US-317. Depends on US-374/US-375 for the real subsystem layers."
     },
     {

@@ -179,7 +179,7 @@ describe("meta:doctor combined report", () => {
         timestamp: "1970-01-01T00:00:00.000Z",
         checks: 9,
         failed: 0,
-        warned: 7,
+        warned: 5,
       },
     });
   });

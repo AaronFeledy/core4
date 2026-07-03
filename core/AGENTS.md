@@ -54,3 +54,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - Reuse `@lando/sdk/verified-stream` for stream -> hash -> temp -> atomic rename; do not add another checksum/temp-file implementation.
 - Bootstrap wiring is provided-only: the generator emits `DownloaderLive.pipe(Layer.provide(Layer.mergeAll(HttpClientLive, EventServiceLive)))`. Edit `scripts/build-bootstrap-layers.ts` and regenerate, never hand-edit `core/src/runtime/generated/layers/minimal.ts`.
 - Downloader progress/redaction/egress-fence contracts are implemented through the SDK contract suite; memory downloads return verified metadata without raw bytes.
+
+## Doctor subsystems
+
+- `DefaultSubsystemDoctorLayer` (`core/src/cli/commands/doctor-subsystems.ts`) is self-contained (zero `R`) so `subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer))` works without app bootstrap. It wires the real `HealthcheckRunnerLive`/`UrlScannerLive`, supplying their `RuntimeProvider` (via the bootstrap placeholder `runtimeProviderService`) and `HttpClientLive` internally. `subsystemDoctor` reads only the runner `.id` (ready iff id is not `unavailable`/`disabled`), never calling `run()`/`scan()`, so the placeholder provider is sufficient — do not re-add the `Unavailable` stubs to the layer (they remain exported for explicit degraded mode).
