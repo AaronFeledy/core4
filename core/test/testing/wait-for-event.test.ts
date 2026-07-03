@@ -123,8 +123,6 @@ describe("waitForEvent", () => {
     const polled = await Effect.runPromise(
       Effect.gen(function* () {
         const waiter = yield* waitForEvent("pre-app-start").pipe(Effect.fork);
-        // Unlike expectEvent, waitForEvent injects no default timeout: even after
-        // a long virtual delay with nothing published, the fiber is still pending.
         yield* TestClock.adjust("1 hour");
         const result = yield* Fiber.poll(waiter);
         yield* Fiber.interrupt(waiter);
