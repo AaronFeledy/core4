@@ -9,6 +9,11 @@ import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import {
+  type ManagedProviderMachineClassification,
+  classifyManagedProviderMachine,
+  teardownManagedProviderMachine,
+} from "../../runtime/managed-provider-machine.ts";
+import {
   buildManagedRuntimeServiceSpec,
   terminateOwnedRuntimeService,
 } from "../../runtime/managed-runtime-service.ts";
@@ -54,6 +59,10 @@ export interface UninstallOptions {
   readonly teardownRuntimeService?: (
     userDataRoot: string,
   ) => Promise<{ readonly terminated: boolean; readonly pid?: number }>;
+  readonly readManagedProviderMachine?: (userDataRoot: string) => ManagedProviderMachineClassification;
+  readonly teardownProviderMachines?: (
+    userDataRoot: string,
+  ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
 }
 
 export interface UninstallResult {
@@ -134,6 +143,44 @@ const defaultTeardownRuntimeService = (
   return Effect.runPromise(terminateOwnedRuntimeService(spec));
 };
 
+const managedProviderMachineStep = (
+  classification: ManagedProviderMachineClassification,
+): UninstallPlanStep => {
+  const base = { id: "managed-provider-machines", label: "managed provider machines", destructive: true };
+  const machineName = classification.name ?? "lando";
+  switch (classification.ownership) {
+    case "owned":
+      return {
+        ...base,
+        target: machineName,
+        status: "owned",
+        detail: `Remove the Lando-created managed provider machine "${machineName}".`,
+      };
+    case "not-owned":
+      return {
+        ...base,
+        target: machineName,
+        status: "user-owned",
+        detail: `The "${machineName}" provider machine was not created by Lando; remove it manually with \`podman machine rm ${machineName}\` if you no longer need it.`,
+      };
+    case "ambiguous":
+      return {
+        ...base,
+        target: "Lando-managed provider machines",
+        status: "manual",
+        detail:
+          "Provider machine ownership could not be determined from setup state; review and remove Lando-managed provider machines manually.",
+      };
+    case "absent":
+      return {
+        ...base,
+        target: "Lando-managed provider machines",
+        status: "skipped",
+        detail: "No managed provider machine is recorded in setup state.",
+      };
+  }
+};
+
 const outcomeForSkippedStep = (step: UninstallPlanStep): UninstallStepOutcome => {
   if (step.status === "manual" || step.status === "user-owned") return "manual";
   return "skipped";
@@ -164,6 +211,8 @@ export const buildUninstallPlan = (
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
+  const classifyMachine = options.readManagedProviderMachine ?? classifyManagedProviderMachine;
+  const machineClassification = classifyMachine(userDataRoot);
   const paths = makeLandoPaths({ userDataRoot });
   const runtimeDir = paths.runtimeDir;
   const managedProviderRuntime = join(userDataRoot, "providers", "lando");
@@ -189,14 +238,7 @@ export const buildUninstallPlan = (
       status: pathStatus(managedProviderRuntime, exists),
       detail: "Remove Lando-managed runtime bundles when present.",
     },
-    {
-      id: "managed-provider-machines",
-      label: "managed provider machines",
-      target: "Lando-managed provider machines",
-      destructive: true,
-      status: "manual",
-      detail: "Provider machine removal requires provider-specific confirmation.",
-    },
+    managedProviderMachineStep(machineClassification),
     {
       id: "mutagen-binary",
       label: "Mutagen binary",
@@ -293,6 +335,8 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const remove = options.remove ?? defaultRemove;
   const teardownRuntimeService = options.teardownRuntimeService ?? defaultTeardownRuntimeService;
+  const teardownProviderMachines =
+    options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const steps = buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
@@ -307,6 +351,13 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
         if (!result.terminated && result.pid !== undefined) {
           throw new Error("managed runtime service was not terminated");
         }
+      }
+      if (step.id === "managed-provider-machines") {
+        // The target is a machine NAME, not a filesystem path: tear it down via the
+        // provider-machine seam and never fall through to remove(step.target).
+        await teardownProviderMachines(userDataRoot);
+        executed.push({ ...step, outcome: "completed" });
+        continue;
       }
       await remove(step.target);
       executed.push({ ...step, outcome: "completed" });

@@ -266,17 +266,18 @@ export const makeSystemPodmanMachineRunner = (
 
 export const ensureMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
-): Effect.Effect<void, ProviderUnavailableError> =>
+): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
       yield* machine.start;
-      return;
+      return { createdByLando: true };
     }
     if (status === "stopped") {
       yield* machine.start;
     }
+    return { createdByLando: false };
   });
 
 export const upgradeMacOSPodmanMachine = (
@@ -293,17 +294,18 @@ export const teardownMacOSPodmanMachine = (
 
 export const ensureWindowsPodmanMachine = (
   machine: PodmanMachineRunner,
-): Effect.Effect<void, ProviderUnavailableError> =>
+): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
       yield* machine.start;
-      return;
+      return { createdByLando: true };
     }
     if (status === "stopped") {
       yield* machine.start;
     }
+    return { createdByLando: false };
   });
 
 export const upgradeWindowsPodmanMachine = (
@@ -367,6 +369,7 @@ const persistSetupState = (
     readonly runtimeBundleSha256?: string;
     readonly runtimeBinDir?: string;
     readonly socketPath?: string;
+    readonly machine?: { readonly name: "lando"; readonly createdByLando: boolean };
   },
 ) =>
   Effect.tryPromise({
@@ -509,6 +512,7 @@ export const setupProviderLando = (
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
       const runtimeConfigDir = options.runtimeConfigDir;
+      let machineOwnership: { readonly name: "lando"; readonly createdByLando: boolean } | undefined;
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -543,7 +547,7 @@ export const setupProviderLando = (
       );
 
       if (platform === "darwin" && machineStep !== undefined) {
-        yield* withStep(
+        const ensured = yield* withStep(
           options.eventService,
           machineStep,
           counter,
@@ -551,10 +555,11 @@ export const setupProviderLando = (
             options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
           ),
         );
+        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       if (platform === "win32" && machineStep !== undefined) {
-        yield* withStep(
+        const ensured = yield* withStep(
           options.eventService,
           machineStep,
           counter,
@@ -562,6 +567,7 @@ export const setupProviderLando = (
             options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
           ),
         );
+        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
@@ -597,6 +603,7 @@ export const setupProviderLando = (
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
                 ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
                 ...(socketPath === undefined ? {} : { socketPath }),
+                ...(machineOwnership === undefined ? {} : { machine: machineOwnership }),
               }),
             );
 

@@ -18,6 +18,8 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _execPath?: unknown;
     readonly _exists?: unknown;
     readonly _remove?: unknown;
+    readonly _readManagedProviderMachine?: unknown;
+    readonly _teardownProviderMachines?: unknown;
   };
   const purge = flags.purge === true;
   return {
@@ -31,6 +33,20 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     ...(typeof extra._exists === "function" ? { exists: extra._exists as (path: string) => boolean } : {}),
     ...(typeof extra._remove === "function"
       ? { remove: extra._remove as (path: string) => Promise<void> }
+      : {}),
+    ...(typeof extra._readManagedProviderMachine === "function"
+      ? {
+          readManagedProviderMachine: extra._readManagedProviderMachine as NonNullable<
+            UninstallOptions["readManagedProviderMachine"]
+          >,
+        }
+      : {}),
+    ...(typeof extra._teardownProviderMachines === "function"
+      ? {
+          teardownProviderMachines: extra._teardownProviderMachines as NonNullable<
+            UninstallOptions["teardownProviderMachines"]
+          >,
+        }
       : {}),
   };
 };
