@@ -133,28 +133,49 @@ type RecordedMachineOwnership = { readonly name: "lando"; readonly createdByLand
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
 
+const hasErrorCode = (cause: unknown, code: string): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+
 const readExistingMachineOwnership = (
   stateDir: string,
-): Effect.Effect<RecordedMachineOwnership | undefined> =>
-  Effect.tryPromise(async () => {
-    const parsed: unknown = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
-    if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
-    const machine = (parsed as { readonly machine: unknown }).machine;
-    if (typeof machine !== "object" || machine === null) return undefined;
-    const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
-    const createdByLando =
-      "createdByLando" in machine
-        ? (machine as { readonly createdByLando: unknown }).createdByLando
-        : undefined;
-    if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-    const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
-    return ownership;
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+): Effect.Effect<RecordedMachineOwnership | undefined, ProviderUnavailableError> =>
+  Effect.tryPromise({
+    try: async () => {
+      let raw: string;
+      try {
+        raw = await readFile(providerStatePath(stateDir), "utf8");
+      } catch (cause) {
+        // No prior state file is a legitimate "nothing recorded yet" case, not a failure.
+        if (hasErrorCode(cause, "ENOENT")) return undefined;
+        throw cause;
+      }
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
+      const machine = (parsed as { readonly machine: unknown }).machine;
+      if (typeof machine !== "object" || machine === null) return undefined;
+      const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
+      const createdByLando =
+        "createdByLando" in machine
+          ? (machine as { readonly createdByLando: unknown }).createdByLando
+          : undefined;
+      if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
+      const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
+      return ownership;
+    },
+    catch: (cause) =>
+      new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation: "setup",
+        message: "Unable to read the existing provider-lando setup state.",
+        remediation: `Check permissions for ${providerStatePath(stateDir)} and rerun \`lando setup\`.`,
+        cause,
+      }),
+  });
 
 const preserveRecordedMachineOwnership = (
   stateDir: string,
   current: RecordedMachineOwnership,
-): Effect.Effect<RecordedMachineOwnership> =>
+): Effect.Effect<RecordedMachineOwnership, ProviderUnavailableError> =>
   current.createdByLando
     ? Effect.succeed(current)
     : readExistingMachineOwnership(stateDir).pipe(

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
+
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import {
   type PodmanCommandRunner,
@@ -129,6 +131,49 @@ describe("provider-lando machine ownership recording", () => {
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("setup fails instead of downgrading ownership when prior state cannot be parsed", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-corrupt-"));
+    try {
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanMachine: machineRunner("missing", []),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      const statePath = providerStatePath(stateDir);
+      const before = await readFile(statePath, "utf8");
+      await writeFile(statePath, "{not valid json");
+
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanMachine: machineRunner("running", []),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        }
+      }
+
+      expect(before).toContain('"createdByLando": true');
+      expect(await readFile(statePath, "utf8")).toBe("{not valid json");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
