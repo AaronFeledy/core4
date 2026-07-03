@@ -33,7 +33,7 @@ PRD-ALPHA4-01 (setup & uninstall) and PRD-ALPHA4-08/-09/-10 (release, supply cha
 
 **Acceptance Criteria:**
 
-- [ ] Discovered plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing) at the point where plugin manifests are available; name collisions with built-in flags fail with a tagged error at plugin load, not silently.
+- [ ] Bundled provider plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing) at the static OCLIF command surface; runtime-discovered plugin contributions are collision-checked at plugin load and dynamic external-flag parsing is deferred to a later two-phase parser story.
 - [ ] Parsed plugin flag values are delivered to the contributing plugin's setup handler.
 - [ ] Parsing tests cover a contributed flag (presence in metadata, value round-trip, unknown-flag rejection), fulfilling PRD-ALPHA4-01 US-200 AC-4.
 - [ ] Source-dispatch and `runCompiledCli` behave identically (parity test), respecting the compiled manifest constraints in `core/AGENTS.md`.

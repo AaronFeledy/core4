@@ -220,7 +220,7 @@
       "title": "Merge plugin setup.flags into lando setup",
       "description": "As a provider-plugin author, flags I contribute through `setup.flags` appear in `lando setup --help`, parse correctly, and reach my setup subscriber — on both the OCLIF source path and the compiled binary path.",
       "acceptanceCriteria": [
-        "Discovered plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing); name collisions with built-in flags fail with a tagged error at plugin load, not silently.",
+        "Bundled provider plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing) at the static OCLIF command surface; runtime-discovered plugin contributions are collision-checked at plugin load and dynamic external-flag parsing is deferred to a later two-phase parser story.",
         "Parsed plugin flag values are delivered to the contributing plugin's setup handler.",
         "Parsing tests cover a contributed flag (presence in metadata, value round-trip, unknown-flag rejection), fulfilling PRD-ALPHA4-01 US-200 AC-4.",
         "Source-dispatch and `runCompiledCli` behave identically (parity test), respecting the compiled-manifest constraints in core/AGENTS.md.",
@@ -231,7 +231,7 @@
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-01 US-200 AC-4. Audit: sdk/src/schema/plugin.ts:153-202 declares setup.flags; meta/setup.ts:563-589 hardcodes built-in flags with no merge path."
+      "notes": "Origin: PRD-ALPHA4-01 US-200 AC-4. Audit: sdk/src/schema/plugin.ts:153-202 declares setup.flags; meta/setup.ts:563-589 hardcodes built-in flags with no merge path. Beta 1 scope: expose bundled provider setup flags through the static OCLIF/compiled metadata surface, validate runtime-discovered plugin flag collisions at plugin load, and defer dynamic external-flag parsing to a later two-phase parser story."
     },
     {
       "id": "US-385",
