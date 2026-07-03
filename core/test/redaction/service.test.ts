@@ -1,9 +1,14 @@
-import { Effect, Layer } from "effect";
+import { describe, expect, test } from "bun:test";
+import { type Context, Effect, Layer } from "effect";
 
 import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
 import type { Redactor } from "@lando/sdk/secrets";
-import { RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
+import {
+  RedactionService,
+  RedactionServiceLive,
+  createStandaloneRedactor,
+} from "../../src/redaction/service.ts";
 
 const secretStoreLayer = (values: Record<string, string>) =>
   Layer.succeed(SecretStore, {
@@ -59,7 +64,7 @@ describe("RedactionServiceLive", () => {
         listReads += 1;
         return ["LATER"];
       }),
-    } satisfies SecretStore.Service;
+    } satisfies Context.Tag.Service<typeof SecretStore>;
 
     const program = Effect.gen(function* () {
       const service = yield* RedactionService;
@@ -85,7 +90,7 @@ describe("RedactionServiceLive", () => {
           : Effect.succeed("stillsecret"),
       has: () => Effect.succeed(true),
       list: Effect.succeed(["MISSING", "PRESENT"]),
-    } satisfies SecretStore.Service;
+    } satisfies Context.Tag.Service<typeof SecretStore>;
 
     const redactor = await Effect.runPromise(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(
@@ -106,6 +111,29 @@ describe("RedactionServiceLive", () => {
     );
 
     expect(redactor.redactString("value tok123")).toBe("value [redacted]");
+  });
+
+  test("masks exact source env values for secret-bearing keys", async () => {
+    const secret = "us374-super-secret-token";
+    const redactor = await runWithStore(
+      Effect.flatMap(RedactionService, (service) =>
+        service.forProfile("secrets", { sourceEnv: { US374_VERIFY_SECRET: secret } }),
+      ),
+      {},
+    );
+
+    const redacted = redactor.redactString(`provider leaked ${secret}`);
+    expect(redacted).toBe("provider leaked [redacted]");
+  });
+
+  test("standalone redactor masks source env values for secret-bearing keys", () => {
+    const secret = "us374-standalone-secret";
+    const redactor = createStandaloneRedactor("secrets", {
+      sourceEnv: { US374_VERIFY_SECRET: secret },
+    });
+
+    const redacted = redactor.redactString(`provider leaked ${secret}`);
+    expect(redacted).toBe("provider leaked [redacted]");
   });
 
   test("masks proxy URL userinfo credentials", async () => {

@@ -13,6 +13,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-02 23:02 CDT - US-374 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync`, drove the provider-exec healthcheck runner through compiled `lando bun` with retry success, provider failure redaction, and timeout redaction, and smoke-tested adjacent compiled `version`, `doctor --help`, and live `doctor --format json` provider diagnostics.
+- Fixed a real redaction regression found by the compiled scenario: when `RedactionService` is absent, standalone redaction now treats common secret-bearing env keys as exact redaction values, so provider healthcheck status cannot leak env-sourced secrets.
+- **Learnings for future iterations:** The setup verify path must stage `dist/cache/runtime-bundle` and export `LANDO_RUNTIME_BUNDLE_MANIFEST`; a fresh `core` build can remove the prior local bundle and otherwise force the placeholder release manifest download path.
+---
+
 ## 2026-07-02 - US-374
 - The healthcheck subsystem now ships a real default runner: `core/src/subsystems/healthcheck/live.ts` exports `makeHealthcheckRunner` (provider-exec, id `provider-exec`), `HealthcheckRunnerLive` (Layer requiring `RuntimeProvider`), and `HealthcheckRunnerDefaultLayer`. Command healthchecks run through `RuntimeProvider.exec` driven by `runProbe`: `retries` -> `maxAttempts`, `intervalSeconds` -> fixed `delay`, `timeoutSeconds` -> per-attempt cap via `Effect.timeoutTo` (probe-boundary-safe), `startPeriodSeconds` -> grace sleep before the first attempt. Green resolves healthy; exhausted non-green resolves `healthy: false` with an exact `lastStatus` (`ok`/`exit <code>`/provider message); a final-attempt timeout fails `HealthcheckTimeoutError` whose message and `probe` payload embed the redacted command. `kind: none` short-circuits healthy/skipped; `http`/`tcp`/missing command fail `HealthcheckError`.
 - `lastStatus`, timeout messages, and the `probe` payload are redacted through `RedactionService` (`forProfile("secrets")`, identity fallback when absent) before leaving the runner. The unavailable stub in `api.ts` remains as the explicit degraded-mode layer; doctor wiring intentionally stays on the stub until the doctor migration story lands.

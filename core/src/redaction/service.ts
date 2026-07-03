@@ -31,6 +31,19 @@ export class RedactionService extends Context.Tag("@lando/core/RedactionService"
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
 
+const SECRET_ENV_KEY_PARTS = new Set([
+  "apikey",
+  "authkey",
+  "authtoken",
+  "credential",
+  "key",
+  "pass",
+  "passwd",
+  "password",
+  "secret",
+  "token",
+]);
+
 const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof SecretStore>) =>
   Effect.gen(function* () {
     const ids = yield* secretStore.list;
@@ -44,7 +57,9 @@ const collectEnvValues = (sourceEnv: Record<string, string | undefined> | undefi
   if (sourceEnv === undefined) return [];
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
-    if ((key === "BUN_AUTH_TOKEN" || key.toLowerCase().endsWith("_authtoken")) && nonEmpty(value)) {
+    const normalizedParts = key.toLowerCase().split("_").filter(nonEmpty);
+    const carriesSecret = normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
+    if (carriesSecret && nonEmpty(value)) {
       values.push(value);
     }
   }
