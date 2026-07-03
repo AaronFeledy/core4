@@ -436,6 +436,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.globalAppRoot).toBe(join(data, "global"));
     expect(paths.snapshotsDir).toBe(join(data, "snapshots"));
     expect(paths.appSnapshotsDir("app-one")).toBe(join(data, "snapshots", "app-one"));
+    expect(paths.managedFileLedger("app-one")).toBe(join(data, "managed-files", "app-one", "ledger.json"));
     expect(paths.tunnelRunDir).toBe(join(data, "run", "tunnels"));
   });
 
@@ -490,6 +491,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.pluginsDir).toBe("/iso/data/plugins");
     expect(paths.snapshotsDir).toBe("/iso/data/snapshots");
     expect(paths.appSnapshotsDir("app-one")).toBe("/iso/data/snapshots/app-one");
+    expect(paths.managedFileLedger("app-one")).toBe("/iso/data/managed-files/app-one/ledger.json");
     expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
     expect(paths.scratchDir).toBe("/iso/cache/scratch");
     expect(paths.runtimeBinDir).toBe("/iso/data/runtime/bin");
@@ -514,6 +516,9 @@ describe("makeLandoPaths derived builders", () => {
       },
     });
     expect(paths.pluginsDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\plugins");
+    expect(paths.managedFileLedger("app-one")).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\managed-files\\app-one\\ledger.json",
+    );
     expect(paths.scratchRegistryFile).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\scratch\\registry.bin",
     );
@@ -531,5 +536,11 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.providerPidPath).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\run\\podman.pid",
     );
+  });
+
+  test("darwin managed-file ledger derives under Application Support with forward slashes", () => {
+    const paths = makeLandoPaths({ platform: "darwin", home: "/Users/tester", env: noEnv });
+    const data = "/Users/tester/Library/Application Support/Lando";
+    expect(paths.managedFileLedger("app-one")).toBe(`${data}/managed-files/app-one/ledger.json`);
   });
 });

@@ -12,7 +12,7 @@
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { type Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
@@ -42,7 +42,8 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { managedFilesRoot, resolveUserDataRoot } from "../config/roots.ts";
+import { makeLandoPaths } from "../config/paths.ts";
+import { resolveUserDataRoot } from "../config/roots.ts";
 import { RedactionService, createStandaloneRedactor } from "../redaction/service.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { withAdvisoryLock } from "../state/lock.ts";
@@ -831,8 +832,17 @@ export const makeDiskBackend = (options: {
   Effect.gen(function* () {
     const stateStore = makeStateStore();
 
+    // Ledger dir + filename come from the paths primitive; never re-spell the
+    // `managed-files/` segment or `ledger.json` filename here.
+    const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
+      const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(
+        deriveAppId(base),
+      );
+      return { dir: dirname(file), key: basename(file) };
+    };
+
     const ledgerBucketFor = (base: string, onCorrupt: "quarantine" | "discard") => {
-      const dir = managedFilesRoot(deriveAppId(base), options.ledgerRoot());
+      const { dir, key } = ledgerLocation(base);
       // The `{ path }` root must exist before `open`: containment realpath-checks
       // the deepest existing ancestor, which would sit above a missing root.
       return Effect.tryPromise({
@@ -842,7 +852,7 @@ export const makeDiskBackend = (options: {
         Effect.zipRight(
           stateStore.open({
             root: { path: dir as AbsolutePath },
-            key: "ledger.json",
+            key,
             version: LEDGER_VERSION,
             schema: LedgerStateSchema,
             onCorrupt,
@@ -855,7 +865,7 @@ export const makeDiskBackend = (options: {
     const readonlyLedgerEntries = (
       operation: ManagedFileOperation,
     ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> => {
-      const dir = managedFilesRoot(deriveAppId(options.defaultBase()), options.ledgerRoot());
+      const { dir } = ledgerLocation(options.defaultBase());
       return Effect.tryPromise({
         try: async () => {
           try {
