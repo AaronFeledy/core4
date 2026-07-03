@@ -13,6 +13,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-02 19:17 CDT - US-373 Review
+- Review fixed a StateStore migration regression where read-only managed-file ledger access (`status`/`plan`) created the `managed-files` ledger root even when no ledger existed; read-only access now returns an empty ledger without creating directories, while mutation paths still create the root before opening the StateStore bucket.
+- Review notes (deferred/rejected): the missing managed-file-level concurrent mutation test is non-blocking because the migrated code uses the existing `withAdvisoryLock` primitive and the state lock suite covers the stale-lock behavior moved from `json-bucket`.
+- Verification: typecheck, lint, check:state-store-boundary, check:probe-boundary passed; focused spot checks passed for managed-file service/contract/events, state lock/contract/plugin-state, StateStore unit coverage, and state-store boundary script.
+---
+
 ## 2026-07-02 - US-373
 - The managed-file ledger now persists through the single `StateStore` implementation: `makeDiskBackend` opens a StateStore bucket at the ledger path and serializes effectful read-modify-write through `withAdvisoryLock` from `core/src/state/lock.ts`, so envelope/lock/quarantine semantics exist in exactly one place. `core/src/state-store/json-bucket.ts` (the parallel versioned-envelope + advisory-lock + quarantine implementation) is deleted outright, and its `check:probe-boundary` carve-out is removed so only the documented `core/src/state/lock.ts` loop remains allowlisted.
 - Ledger format compatibility is proven, not assumed: the old bucket and StateStore's `json` codec emit byte-identical `{ version, data }` envelopes, and a new characterization test hand-writes the legacy serializer's exact bytes and reads them back through the new path. The old bucket's dead-pid lock-takeover coverage was ported to a new `core/test/state/lock.test.ts` against `withAdvisoryLock` so retiring the module dropped no behavior coverage.

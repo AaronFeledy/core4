@@ -510,6 +510,19 @@ describe("ManagedFileService (disk backend)", () => {
       Effect.flatMap(makeManagedFileService),
     );
 
+  test("read-only ledger access does not create the ledger root", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+
+      await expect(run(service.status)).resolves.toEqual([]);
+      await expect(run(service.plan([file({ id: "d:readonly", path: "readonly.txt" })]))).resolves.toEqual({
+        entries: [{ id: "d:readonly", path: "readonly.txt", action: "create" }],
+      });
+
+      expect(await readdir(dirs.dataRoot)).not.toContain("managed-files");
+    });
+  });
+
   test("writes to real disk and persists a ledger that leaves no temp files", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
