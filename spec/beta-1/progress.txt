@@ -18,6 +18,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 14:38 CDT - US-384 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup` completed with the local runtime bundle manifest, then completed again using the provider-contributed `--runtime-bundle-url`/`--runtime-bundle-sha256` flags directly; compiled setup help now exposes those contributed flags, bad setup flags still fail with exit 2, setup JSON output remains canonical, and adjacent `version`, `shellenv`, and `doctor --format json` smokes passed.
+- Fixed a real compiled-binary help regression at the root cause: compiled mode's custom command help renderer printed only description/usage/aliases and ignored command flag metadata, so provider-contributed setup flags parsed correctly but did not appear in `core/dist/lando setup --help`.
+- **Learnings for future iterations:** When a story changes command metadata, verify the compiled help renderer as well as the generated OCLIF manifest; compiled mode owns a lightweight help path that can drift from source OCLIF help even when parsing metadata is present.
+---
+
 ## 2026-07-03 14:22 CDT - US-384 Review
 - Review found no code blockers in the `setup.flags` merge. It recorded the accepted Beta 1 scope explicitly in the source PRD and PRD index: bundled provider flags are exposed through the static OCLIF/compiled setup metadata, while runtime-discovered plugin flags are collision-checked at plugin load and dynamic external-flag parsing remains deferred to a later two-phase parser story.
 - Review notes (deferred/rejected): raw runtime-discovered plugin flag parsing is deferred because OCLIF's command metadata is static and loading arbitrary plugins into the cold-start command graph would violate the story's cold-start constraint; duplicate delivery of the Lando runtime-bundle flags as typed fields plus `setupFlags` is accepted to preserve the existing provider-lando setup contract while adding the generic plugin flag channel.
