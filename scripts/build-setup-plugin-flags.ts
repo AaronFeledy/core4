@@ -19,7 +19,7 @@
  */
 import { resolve } from "node:path";
 
-import type { PluginManifest, PluginSetupFlagContribution } from "@lando/sdk/schema";
+import type { ContributionRef, PluginManifest, PluginSetupFlagContribution } from "@lando/sdk/schema";
 
 import { buildConfig } from "../core/build.config.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
@@ -46,6 +46,15 @@ interface Contribution {
   readonly providers: ReadonlyArray<string>;
   readonly flag: PluginSetupFlagContribution;
 }
+
+/**
+ * `contributes.providers` entries are `ContributionRef`s: either a plain
+ * provider id string, or a `{ id, deprecated }` object for a deprecated id
+ * kept for back-compat. Normalize to the id string here so downstream
+ * `meta:setup` provider matching (plain string equality) works for both forms.
+ */
+export const contributionId = (entry: ContributionRef): string =>
+  typeof entry === "string" ? entry : entry.id;
 
 const renderFlag = (flag: PluginSetupFlagContribution): string => {
   const parts: string[] = [`name: ${JSON.stringify(flag.name)}`, `type: ${JSON.stringify(flag.type)}`];
@@ -89,9 +98,9 @@ const main = async (): Promise<void> => {
     if (manifest === undefined) continue;
     const flags = manifest.contributes?.setup?.flags ?? [];
     if (flags.length === 0) continue;
-    const providers = manifest.contributes?.providers ?? [];
+    const providers = (manifest.contributes?.providers ?? []).map(contributionId);
     for (const flag of flags) {
-      contributions.push({ plugin: entry.name, providers: [...providers], flag });
+      contributions.push({ plugin: entry.name, providers, flag });
     }
   }
 
@@ -99,4 +108,4 @@ const main = async (): Promise<void> => {
   console.log(`[build-setup-plugin-flags] wrote ${OUTPUT} (${contributions.length} contributions)`);
 };
 
-await main();
+if (import.meta.main) await main();
