@@ -13,6 +13,24 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-02 23:02 CDT - US-374 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync`, drove the provider-exec healthcheck runner through compiled `lando bun` with retry success, provider failure redaction, and timeout redaction, and smoke-tested adjacent compiled `version`, `doctor --help`, and live `doctor --format json` provider diagnostics.
+- Fixed a real redaction regression found by the compiled scenario: when `RedactionService` is absent, standalone redaction now treats common secret-bearing env keys as exact redaction values, so provider healthcheck status cannot leak env-sourced secrets.
+- **Learnings for future iterations:** The setup verify path must stage `dist/cache/runtime-bundle` and export `LANDO_RUNTIME_BUNDLE_MANIFEST`; a fresh `core` build can remove the prior local bundle and otherwise force the placeholder release manifest download path.
+---
+
+## 2026-07-02 - US-374
+- The healthcheck subsystem now ships a real default runner: `core/src/subsystems/healthcheck/live.ts` exports `makeHealthcheckRunner` (provider-exec, id `provider-exec`), `HealthcheckRunnerLive` (Layer requiring `RuntimeProvider`), and `HealthcheckRunnerDefaultLayer`. Command healthchecks run through `RuntimeProvider.exec` driven by `runProbe`: `retries` -> `maxAttempts`, `intervalSeconds` -> fixed `delay`, `timeoutSeconds` -> per-attempt cap via `Effect.timeoutTo` (probe-boundary-safe), `startPeriodSeconds` -> grace sleep before the first attempt. Green resolves healthy; exhausted non-green resolves `healthy: false` with an exact `lastStatus` (`ok`/`exit <code>`/provider message); a final-attempt timeout fails `HealthcheckTimeoutError` whose message and `probe` payload embed the redacted command. `kind: none` short-circuits healthy/skipped; `http`/`tcp`/missing command fail `HealthcheckError`.
+- `lastStatus`, timeout messages, and the `probe` payload are redacted through `RedactionService` (`forProfile("secrets")`, identity fallback when absent) before leaving the runner. The unavailable stub in `api.ts` remains as the explicit degraded-mode layer; doctor wiring intentionally stays on the stub until the doctor migration story lands.
+- Verification: typecheck, lint, check:probe-boundary, check:renderer-boundary, check:redaction-boundary passed; focused suite (12 TestClock tests: attempt counts, 20s fixed-backoff timing, per-attempt timeout, startPeriod grace, redaction on/off, SDK `runHealthcheckContract`, layer wiring) green; doctor-subsystems, probe, healthcheck-contract, and plugin-abstraction-coverage spot checks green; manual QA drove `HealthcheckRunnerLive` end-to-end with a scripted provider under the real clock (green-on-3rd-attempt at ~2s wall, skip path, provider-failure path).
+- **Learnings for future iterations:**
+  - `RetryPolicy.timeout` is an OVERALL deadline across attempts, not per-attempt. For docker-shaped healthcheck plans (`timeoutSeconds` = per-attempt), cap the attempt effect itself with `Effect.timeoutTo` — allowed by check:probe-boundary — and leave `policy.timeout` unset; otherwise the shipped defaults (interval 10 > timeout 5) degenerate to one attempt. US-375/US-376 scanner/doctor migrations should reuse this pattern where config is per-attempt shaped.
+  - Make `runProbe` attempts NEVER fail: wrap exec in `Effect.either` + `timeoutTo`, record a discriminated `AttemptStatus` in a `Ref`, and classify sentinels. That keeps the ProbeResult/verdict mapping and error construction in one place after the probe resolves.
+  - `Effect.serviceOption(RedactionService)` inside the run effect keeps `HealthcheckRunnerShape`'s R = never while still redacting when the service is present (shell-runner idiom).
+  - `TestRuntimeProvider` from `@lando/sdk/test` + spread-override (`{ ...TestRuntimeProvider, exec }`) is the cheap way to fake a provider for layer tests.
+  - Codegen'd lint is strict about import sorting/format on new files: run `bun x biome check --write <files>` before `bun run lint` (`bunx` is not on PATH; use `bun x`).
+---
+
 ## 2026-07-02 19:17 CDT - US-373 Review
 - Review fixed a StateStore migration regression where read-only managed-file ledger access (`status`/`plan`) created the `managed-files` ledger root even when no ledger existed; read-only access now returns an empty ledger without creating directories, while mutation paths still create the root before opening the StateStore bucket.
 - Review notes (deferred/rejected): the missing managed-file-level concurrent mutation test is non-blocking because the migrated code uses the existing `withAdvisoryLock` primitive and the state lock suite covers the stale-lock behavior moved from `json-bucket`.
@@ -39,4 +57,17 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Injectable `syncFile`/`renameFile` options on the atomic helpers are the test seam for syscall-ordering proofs — no fs module mocking needed.
   - `check-state-store-boundary.ts` carve-outs already cover both atomic helpers; routing callers through them (instead of raw writeFile) is what keeps new files off the offender list.
   - When editing `spec/beta-1/prd.json` with Python, use `json.dumps(..., ensure_ascii=False)` — the file contains literal em dashes and § characters.
+---
+## [2026-07-02 21:26:27 CDT] - Babysit
+- PR: #503 https://github.com/AaronFeledy/core4/pull/503
+- CI outcome: pass
+- Review feedback: fixed (triage added retrying, fully-qualified CI provider image pre-pulls after linux-x64 provider integration hit registry pull failure)
+- Merge: merged (squash)
+---
+
+## 2026-07-02 22:44 CDT - US-374 Review
+- Review fixed the healthcheck runner's absent-RedactionService path so provider/timeout details use the canonical standalone secrets redactor instead of an identity fallback; tests now prove fallback redacts secret-shaped provider output. Review also split reusable healthcheck test fixtures out of the oversized focused test module while preserving the same behavior coverage.
+- Review notes (deferred/rejected): `RetryPolicy.timeout` mapping was rejected because `HealthcheckPlan.timeoutSeconds` is the SDK schema's per-attempt timeout and wiring it as `RetryPolicy.timeout` would turn the shipped default interval/timeout combination into an overall deadline; doctor subsystem wiring and stale healthcheck guide prose are deferred to the US-376/guide-drift owners rather than folded into this story.
+- Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; focused healthcheck runner suite passed (12 tests, 47 assertions); adjacent probe suite passed (21 tests, 71 assertions); changed TypeScript files have clean LSP diagnostics and each remains under the 250 pure-LOC ceiling.
+- **Learnings for future iterations:** When a service intentionally keeps `R = never` by resolving `RedactionService` optionally, the absent-service branch must use `createStandaloneRedactor("secrets", ...)`, not identity redaction.
 ---

@@ -53,7 +53,7 @@
         "Lint passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-14 US-317 — audit found `core/src/subsystems/healthcheck/api.ts` is an Unavailable stub and zero runProbe call sites exist in core/src."
     },
     {
