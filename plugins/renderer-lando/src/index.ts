@@ -1,55 +1,19 @@
-import { Layer, Schema } from "effect";
+import { Schema } from "effect";
 
-import type {
-  RendererContribution,
-  RendererContributionFactory,
-  RendererIO,
-  RendererRuntimePrimitives,
-} from "@lando/sdk/renderer";
+import type { RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
-import type { EventService } from "@lando/sdk/services";
+
+import { landoRendererContribution } from "./renderer-runtime.ts";
 
 export const PLUGIN_NAME = "@lando/renderer-lando" as const;
 
-export const renderer = Layer.empty;
-
-const makeLandoEventConsumer = (
-  primitives: RendererRuntimePrimitives,
-  io: RendererIO,
-): Layer.Layer<never, never, EventService> => {
-  if (io.isTTY !== true) {
-    return primitives.makeEventConsumer((event) => {
-      const line = primitives.renderPlainLine(event);
-      if (line !== null) io.writeStdout(`${line}\n`);
-    });
-  }
-  const painter = primitives.createTaskTreePainter({
-    getTerminalColumns: () => io.terminalColumns,
-    getTerminalRows: () => io.terminalRows,
-  });
-  const display = primitives.makeEventConsumer((event) => {
-    if (primitives.isRenderableTaskTreeEvent(event)) {
-      io.writeStdout(painter.consume(event));
-      return;
-    }
-    const line = primitives.renderPlainLine(event);
-    if (line !== null) io.writeStdout(painter.passthrough(line));
-  });
-  return io.subscribeInput === undefined ? display : Layer.merge(display, painter.makeInputLive(io));
-};
-
-const landoRendererFactory: RendererContributionFactory = {
-  id: "lando",
-  make: (primitives): RendererContribution => ({
-    id: "lando",
-    makeService: (io) => primitives.makeRendererService(io, "lando"),
-    makeEventConsumer: (io) => makeLandoEventConsumer(primitives, io),
-  }),
-};
-
-export const rendererFactories: ReadonlyMap<string, RendererContributionFactory> = new Map([
-  ["lando", landoRendererFactory],
-]);
+/**
+ * The default TTY renderer, owned by this plugin: the task-tree painter, event
+ * consumer, `Renderer` service, and non-TTY plain fallback. Core resolves this
+ * contribution through the bundled-renderer registry instead of assembling the
+ * renderer from parts.
+ */
+export const renderer: RendererContribution = landoRendererContribution;
 
 export const loadInteractivePromptDriver = async (): Promise<{
   readRaw: (request: unknown) => Promise<string>;
