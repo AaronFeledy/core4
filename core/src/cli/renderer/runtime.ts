@@ -1,7 +1,6 @@
 import { DateTime, Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import type { RendererRuntimePrimitives } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
@@ -186,30 +185,3 @@ export const makeJsonRendererServiceLive = (io: RendererIO): Layer.Layer<Rendere
 
 export const makeVerboseRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>
   Layer.succeed(Renderer, makeVerboseRenderer(io));
-
-/**
- * Core-supplied rendering primitives injected into a renderer plugin factory
- * (see `@lando/sdk/renderer`). Keeps the painter, input controller, formatters,
- * and message/output infra in core while the bundled `@lando/renderer-lando`
- * plugin owns the `lando` renderer assembly. The plugin sees only the opaque
- * `TaskTreePainterHandle`, never the painter or controller classes.
- */
-export const coreLandoRendererPrimitives: RendererRuntimePrimitives = {
-  makeRendererService: (io, id) =>
-    Layer.succeed(Renderer, {
-      id,
-      message: makeMessageContract(renderPlainLine, io, "stdout"),
-      output: makeOutputChannel(io),
-    }),
-  createTaskTreePainter: (options) => {
-    const painter = new LandoTreePainter(options);
-    return {
-      consume: (event) => painter.consume(event),
-      passthrough: (line) => painter.passthrough(line),
-      makeInputLive: (io) => makeTaskTreeInputLive(io, painter),
-    };
-  },
-  makeEventConsumer: (handle) => makeEventConsumerRendererLive(handle),
-  renderPlainLine,
-  isRenderableTaskTreeEvent,
-};

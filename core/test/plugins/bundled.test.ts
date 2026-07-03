@@ -27,7 +27,7 @@ const EXPECTED_BUNDLED_PLUGINS = [
   { name: "@lando/provider-podman", layer: providerPodman.provider, manifest: providerPodman.manifest },
   { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
   { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
-  { name: "@lando/renderer-lando", layer: rendererLando.renderer, manifest: rendererLando.manifest },
+  { name: "@lando/renderer-lando", layer: Layer.empty, manifest: rendererLando.manifest },
   {
     name: "@lando/file-sync-mutagen",
     layer: fileSyncMutagen.engine,

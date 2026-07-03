@@ -1,13 +1,18 @@
 import type { RendererContribution } from "@lando/sdk/renderer";
 
-import { rendererFactories } from "@lando/renderer-lando";
+import { renderer as landoRendererContribution } from "@lando/renderer-lando";
 
-import { coreLandoRendererPrimitives } from "./runtime.ts";
+/**
+ * The renderer contributions supplied by bundled renderer plugins. Each plugin
+ * owns and exports its finished `RendererContribution`; core only resolves the
+ * contribution here — it does not assemble the renderer from parts.
+ */
+const bundledRendererContributions: ReadonlyArray<RendererContribution> = [landoRendererContribution];
 
 const buildRegistry = (): ReadonlyMap<string, RendererContribution> => {
   const registry = new Map<string, RendererContribution>();
-  for (const [id, factory] of rendererFactories) {
-    if (!registry.has(id)) registry.set(id, factory.make(coreLandoRendererPrimitives));
+  for (const contribution of bundledRendererContributions) {
+    if (!registry.has(contribution.id)) registry.set(contribution.id, contribution);
   }
   return registry;
 };

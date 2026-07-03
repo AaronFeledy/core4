@@ -12,7 +12,7 @@
  * discovery or contribute their own Layers.
  */
 
-import { Effect, type Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -176,7 +176,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   },
   {
     name: "@lando/renderer-lando",
-    layer: plugin5.renderer,
+    layer: Layer.empty,
     manifest: plugin5.manifest,
     ...serviceTypesFrom({ ...plugin5 }),
     ...serviceFeaturesFrom({ ...plugin5 }),

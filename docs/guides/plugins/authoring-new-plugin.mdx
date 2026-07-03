@@ -24,7 +24,7 @@ tags: [beta, docs, plugins, authoring]
     <Step name="first-party-example">
       <Variable name="plugin" value="@lando/renderer-lando" display="Use the bundled Lando renderer plugin as the maintained first-party example for renderer authors" />
       <Variable name="manifest" value="contributes.renderers: [lando]" display="Renderer plugins declare their renderer ids through the manifest contribution surface" />
-      <Variable name="layer" value="renderer Layer export" display="The plugin exports a renderer layer while core preserves plain, json, and verbose fallback modes" />
+      <Variable name="layer" value="renderer contribution export" display="The plugin owns and exports the renderer contribution while core preserves plain, json, and verbose fallback modes" />
     </Step>
   </Scenario>
 </Guide>

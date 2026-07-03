@@ -194,7 +194,7 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-12 renderer-plugin ownership AC. Audit: plugins/renderer-lando/src/index.ts:14 exports `renderer = Layer.empty` while core assembles the real renderer in bundled-renderers.ts."
     },
     {

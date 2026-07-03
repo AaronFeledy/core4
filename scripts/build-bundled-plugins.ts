@@ -52,8 +52,15 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     ].join("\n");
   }
 
+  // Renderer plugins own their default renderer as a `RendererContribution`
+  // (resolved via the bundled-renderer registry), not as a runtime `Layer`, so
+  // their bundled-table `layer` slot carries `Layer.empty`. That requires a
+  // value import of `Layer`.
+  const usesLayerValue = entries.some((entry) => entry.contributes?.renderers !== undefined);
   const imports: Array<string> = [
-    'import { Effect, type Layer } from "effect";',
+    usesLayerValue
+      ? 'import { Effect, Layer } from "effect";'
+      : 'import { Effect, type Layer } from "effect";',
     "",
     'import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";',
     'import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";',
@@ -66,12 +73,13 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   entries.forEach((entry, index) => {
     const moduleName = `plugin${index}`;
     pluginImports.push({ name: entry.name, statement: `import * as ${moduleName} from "${entry.name}";` });
-    const layerExport = layerExportFor(entry);
+    const layerValue =
+      entry.contributes?.renderers !== undefined ? "Layer.empty" : `${moduleName}.${layerExportFor(entry)}`;
     tableRows.push(
       [
         "  {",
         `    name: "${entry.name}",`,
-        `    layer: ${moduleName}.${layerExport},`,
+        `    layer: ${layerValue},`,
         `    manifest: ${moduleName}.manifest,`,
         `    ...serviceTypesFrom({ ...${moduleName} }),`,
         `    ...serviceFeaturesFrom({ ...${moduleName} }),`,
