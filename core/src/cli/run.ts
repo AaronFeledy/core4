@@ -42,7 +42,13 @@ import { appIncludesVerify, renderIncludesVerifyResult } from "./commands/app-in
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
-import { doctorReport, renderDoctorReport, renderDoctorReportAsYaml } from "./commands/doctor-report.ts";
+import {
+  type DoctorReport,
+  doctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+  renderDoctorReportAsYaml,
+} from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
@@ -900,14 +906,17 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
       format,
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
-    (value, ctx) => {
-      if (format === "yaml") return renderDoctorReportAsYaml(value);
-      return renderDoctorReport(value, ctx);
-    },
+    renderCompiledDoctorReport,
     {
       suppressDeprecationDiagnostics: format === "json" || format === "yaml",
     },
   );
+};
+
+export const renderCompiledDoctorReport = (value: DoctorReport, ctx: RenderContext): string | undefined => {
+  if (ctx.format === "ndjson") return renderDoctorReportAsNdjson(value);
+  if (ctx.format === "yaml") return renderDoctorReportAsYaml(value);
+  return renderDoctorReport(value, ctx);
 };
 
 interface ParsedExecArgv {

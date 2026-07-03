@@ -244,3 +244,8 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - `encodeStreamEventFrame({ event, payload, redactor: identityRedactor })` is byte-for-byte equal to `JSON.stringify(Schema.encodeSync(StreamFrame)({ _tag:"event", event, payload }))`, so migrating one-off event-line renderers onto the seam is a safe no-diff refactor — verify with a characterization test that pins the first line.
   - The doctor sync `render(value, ctx)` path has no `RedactionService` (RenderContext carries mode/format/columns/isTTY only), which is why doctor NDJSON uses injectable-redactor threading rather than the Effect-resolved redactor the streaming-JSON path uses.
 ---
+## [2026-07-03 13:40 CDT] - US-383 Verify
+- Verified the freshly built compiled binary in `lando4-dev`: `setup` completed cleanly, then a throwaway app run of `lando --format=ndjson doctor` emitted StreamFrame NDJSON (`doctor.check` events plus terminal result), with adjacent `--format=json doctor` and `doctor --help` smoke checks green.
+- Fixed a compiled-dispatch regression where `runDoctor` ignored `ctx.format === "ndjson"` and rendered text instead of the shared doctor NDJSON StreamFrame renderer.
+- **Learnings for future iterations:** Source/OCLIF doctor render tests are not enough for this seam; compiled `core/src/cli/run.ts` has a separate `runDoctor` render branch that must explicitly preserve NDJSON.
+---
