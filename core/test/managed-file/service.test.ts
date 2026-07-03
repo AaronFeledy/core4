@@ -530,6 +530,44 @@ describe("ManagedFileService (disk backend)", () => {
     });
   });
 
+  test("a ledger written in the legacy bucket envelope format is still readable", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      await runScoped(service.apply([file({ id: "d:compat", path: "compat.txt" })]));
+      const ledgerDir = join(
+        dirs.dataRoot,
+        "managed-files",
+        (await readdir(join(dirs.dataRoot, "managed-files")))[0] ?? "",
+      );
+      const ledgerPath = join(ledgerDir, "ledger.json");
+
+      // Byte-for-byte the envelope the retired generic JSON bucket serializer
+      // produced: `{ version, data }`, two-space indent, trailing newline.
+      const legacyEntry = {
+        id: "legacy:1",
+        owner: "legacy",
+        path: "legacy.txt",
+        mode: "file",
+        format: "text",
+        marker: "legacy:1",
+        lastWrittenChecksum: "0".repeat(64),
+        sourceHash: "1".repeat(64),
+        state: "managed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      await writeFile(
+        ledgerPath,
+        `${JSON.stringify({ version: 1, data: { entries: [legacyEntry] } }, null, 2)}\n`,
+      );
+
+      const infos = await run(service.status);
+      expect(infos).toHaveLength(1);
+      expect(infos[0]?.path).toBe("legacy.txt");
+      expect(infos[0]?.state).toBe("missing");
+    });
+  });
+
   test("a corrupt ledger is quarantined and apply still succeeds", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
