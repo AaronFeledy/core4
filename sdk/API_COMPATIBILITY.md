@@ -295,6 +295,7 @@
 - `ProviderSetupOptions.privilege`
 - `LandoPaths.tunnelRegistryFile`
 - `LandoPaths.tunnelRunDir`
+- `LandoPaths.managedFileLedger`
 
 ## Additive Beta schema fields
 

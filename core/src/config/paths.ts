@@ -284,6 +284,7 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     globalAppRoot: j(userDataRoot, "global"),
     snapshotsDir: j(userDataRoot, "snapshots"),
     appSnapshotsDir: (appId: string) => j(userDataRoot, "snapshots", appId),
+    managedFileLedger: (appId: string) => j(userDataRoot, "managed-files", appId, "ledger.json"),
     // userCache-scoped
     logsDir: j(userCacheRoot, "logs"),
     toolDownloadsDir: (toolId: string) => j(userCacheRoot, "tool-downloads", toolId),

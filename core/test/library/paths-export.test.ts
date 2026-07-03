@@ -46,6 +46,15 @@ describe("@lando/core/paths package export", () => {
     expect(paths.resolveLandoRoots).toBeFunction();
     expect(paths.makeLandoPaths).toBeFunction();
     expect(paths.normalizeHostPlatform).toBeFunction();
+    expect(
+      (
+        paths.makeLandoPaths as (overrides: { readonly userDataRoot: string }) => {
+          readonly managedFileLedger: (appId: string) => string;
+        }
+      )({
+        userDataRoot: "/tmp/lando-data",
+      }).managedFileLedger("app-one"),
+    ).toBe("/tmp/lando-data/managed-files/app-one/ledger.json");
     expect(corePackage.exports["./paths"]).toEqual({
       types: "./src/config/paths.ts",
       import: "./src/config/paths.ts",
@@ -101,9 +110,11 @@ describe("@lando/core/paths package export", () => {
         "const mod = await import('@lando/core/paths');",
         "const names = ['resolveLandoRoots', 'makeLandoPaths', 'normalizeHostPlatform'];",
         "const missing = names.filter((name) => typeof mod[name] !== 'function');",
+        "const ledger = mod.makeLandoPaths({ userDataRoot: '/tmp/lando-data' }).managedFileLedger('app-one');",
         "console.log(JSON.stringify(missing));",
+        "console.log(ledger);",
         "console.log(Bun.resolveSync('@lando/core/paths', process.cwd()));",
-        "process.exit(missing.length === 0 ? 0 : 1);",
+        "process.exit(missing.length === 0 && ledger === '/tmp/lando-data/managed-files/app-one/ledger.json' ? 0 : 1);",
       ].join("");
 
       const resolved = await runCommand([process.execPath, "-e", probe], consumerDir);
@@ -112,6 +123,7 @@ describe("@lando/core/paths package export", () => {
 
       const lines = resolved.stdout.trimEnd().split("\n");
       expect(JSON.parse(lines[0] ?? "[]")).toEqual([]);
+      expect(lines[1]).toBe("/tmp/lando-data/managed-files/app-one/ledger.json");
       const resolvedPath = lines.at(-1);
       if (resolvedPath === undefined) throw new Error("packed @lando/core/paths import did not print a path");
       expect(await realpath(resolvedPath)).toBe(

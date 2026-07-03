@@ -31,6 +31,9 @@ describe("library makeLandoRuntime paths surface", () => {
       expect(paths.roots.userDataRoot).toBe(dataRoot);
       expect(paths.roots.userCacheRoot).toBe(cacheRoot);
       expect(paths.pluginsDir).toBe(join(dataRoot, "plugins"));
+      expect(paths.managedFileLedger("app-one")).toBe(
+        join(dataRoot, "managed-files", "app-one", "ledger.json"),
+      );
       expect(paths.scratchDir).toBe(join(cacheRoot, "scratch"));
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
@@ -68,6 +71,9 @@ describe("library makeLandoRuntime paths surface", () => {
       expect(paths.roots.userCacheRoot).toBe(cacheRoot);
       expect(paths.roots.systemPluginRoot).toBe(systemRoot);
       expect(paths.binDir).toBe(join(dataRoot, "bin"));
+      expect(paths.managedFileLedger("app-two")).toBe(
+        join(dataRoot, "managed-files", "app-two", "ledger.json"),
+      );
       expect(paths.configFile).toBe(join(confRoot, "config.yml"));
     } finally {
       await rm(confRoot, { recursive: true, force: true });
