@@ -8,7 +8,7 @@
 // the in-memory `TestManagedFileStore` share one implementation. The ledger is
 // realized through a `StateStore` bucket (not a bespoke
 // registry/lock/quarantine); the ledger path is derived once by the paths
-// primitive (`makeLandoPaths().managedFileLedger`), never re-spelled here.
+// primitive for the ledger path; never re-spell managed-files/ledger.json here.
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
@@ -832,8 +832,6 @@ export const makeDiskBackend = (options: {
   Effect.gen(function* () {
     const stateStore = makeStateStore();
 
-    // Ledger dir + filename come from the paths primitive; never re-spell the
-    // `managed-files/` segment or `ledger.json` filename here.
     const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
       const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(
         deriveAppId(base),
