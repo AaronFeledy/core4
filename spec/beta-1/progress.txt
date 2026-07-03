@@ -13,6 +13,21 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 05:09 CDT - US-378 Review
+- Review fixed stale Mutagen setup guide skip reasons that still pointed at the deleted plugin-local `download.test.ts`; the guide now cites the live `provision.test.ts` and shared downloader acceptance coverage that prove the tool-provisioning path.
+- Review notes (deferred/rejected): deleted-path hits in historical progress/PRD text are intentionally retained as audit history and source story context, not active code or guide references.
+- Verification: typecheck, lint passed; relevant Mutagen provision/import-boundary/contract/downloader acceptance and focused guide checks passed.
+---
+
+## 2026-07-03 - US-378
+- Decision recorded: the bespoke Mutagen downloader is **redundant**. The shipped provisioning path is `provisionMutagen` in `plugins/file-sync-mutagen/src/provision.ts`, which delegates to the shared `provisionTool`/`resolveHostKey` helper (`@lando/sdk/tool-provisioning`) over the SDK `Downloader` service and is the only path the plugin's `engine` Layer and `index.ts` wire. The orphaned `plugins/file-sync-mutagen/src/download.ts` (556 LOC) and `plugins/file-sync-mutagen/test/download.test.ts` (837 LOC) duplicated fetch/checksum/install logic the tool-provisioning helper already owns, so they served no purpose `provision.ts` does not.
+- No new code was needed: both files were already deleted when Mutagen migrated onto the tool-provisioning helper (PR #493). This story verified and closed the working-tree-discipline gap: repo-wide sweep confirms nothing imports the deleted `download.ts`/`./download` (remaining "download" hits are the unrelated SDK `Downloader` service, download *events*, and the GitHub `releases/download` URL literal), and `git status` is clean of these paths with no untracked product files.
+- Verification: typecheck, lint passed; Mutagen provision/import-boundary/contract spot checks green (13 tests, 40 assertions) proving the `provisionMutagen` path stands alone. No CLI surface change.
+- **Learnings for future iterations:**
+  - When an audit-style story flags orphaned/untracked files, first check `git log --all --follow --name-status` on the path: the redundant Mutagen downloader had already been deleted in the tool-provisioning migration (#493), so the story was a verify-and-record close, not a re-deletion.
+  - The mutagen plugin's real download path is `provisionMutagen` -> `provisionTool` (SDK `@lando/sdk/tool-provisioning`) over the injected `Downloader` service; there is no plugin-local downloader module, and there should not be one.
+---
+
 ## 2026-07-03 03:57 CDT - US-377 Review
 - Review confirmed US-377 satisfies the source PRD and tightened the runtime test so `waitForEvent` proves `filter` pass-through with a same-name event filtered out before the accepted event resolves. Review also corrected a strict branded-type assertion in the new test.
 - Review notes (deferred/rejected): live-stream secret-redaction assertions remain rejected because `waitForEvent` intentionally has parity with `EventService.waitFor`, while `EventServiceLive` redacts only the history buffer returned by `query`.

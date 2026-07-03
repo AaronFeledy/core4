@@ -7,7 +7,7 @@ tags: [beta, docs, file-sync, mutagen, setup]
 ---
 
 <Guide>
-  <Scenario id="mutagen-download-on-setup" render={false} reason="Mutagen host CLI and per-platform agent downloads are exercised by plugins/file-sync-mutagen/test/download.test.ts; the live network path requires the pinned CDN endpoints">
+  <Scenario id="mutagen-download-on-setup" render={false} reason="Mutagen host CLI and per-platform agent downloads are exercised by plugins/file-sync-mutagen/test/provision.test.ts and core/test/downloader/acceptance.test.ts; the live network path requires the pinned CDN endpoints">
     <Step name="mutagen-download">
       <Variable name="setupCommand" value="lando setup" display="Mutagen downloads during setup on slow bind-mount providers" />
       <Variable name="hostCliPath" value="$LANDO_DATA_DIR/bin/mutagen" display="Mutagen host CLI installed under the per-user data root" />
@@ -18,7 +18,7 @@ tags: [beta, docs, file-sync, mutagen, setup]
     </Step>
   </Scenario>
 
-  <Scenario id="mutagen-idempotent-rerun" render={false} reason="Idempotency is exercised by plugins/file-sync-mutagen/test/download.test.ts; the marker file path is implementation-only">
+  <Scenario id="mutagen-idempotent-rerun" render={false} reason="Idempotency is exercised by plugins/file-sync-mutagen/test/provision.test.ts; the marker file path is implementation-only">
     <Step name="mutagen-idempotency">
       <Variable name="markerFile" value="$LANDO_DATA_DIR/bin/.mutagen-installed-version" display="Marker file stores the pinned version of the installed Mutagen binaries" />
       <Variable name="reuseCondition" value="marker matches pinned version" display="If the pinned version matches, lando setup reuses the existing binaries" />
@@ -41,7 +41,7 @@ tags: [beta, docs, file-sync, mutagen, setup]
     </Step>
   </Scenario>
 
-  <Scenario id="mutagen-failure-modes" render={false} reason="Network, checksum, and unsupported-platform failure modes are exercised by plugins/file-sync-mutagen/test/download.test.ts">
+  <Scenario id="mutagen-failure-modes" render={false} reason="Network, checksum, and unsupported-platform failure modes are exercised by plugins/file-sync-mutagen/test/provision.test.ts and core/test/downloader/acceptance.test.ts">
     <Step name="mutagen-failures">
       <Variable name="networkError" value="FileSyncDownloadError" display="Network failures surface as FileSyncDownloadError; remediation cites connectivity and proxy or CA config" />
       <Variable name="checksumError" value="FileSyncChecksumError" display="Checksum mismatches surface as FileSyncChecksumError" />

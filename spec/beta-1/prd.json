@@ -123,7 +123,7 @@
         "Lint passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: working-tree discipline (root AGENTS.md). These files already blocked one push (spec/alpha-4/progress.txt 2026-07-02 04:42 entry). Only referenced by each other; plugin entry imports provisionMutagen only."
     },
     {
