@@ -13,6 +13,22 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 06:10 CDT - US-379 Review
+- Review fixed a managed-file event redaction parity gap: `ManagedFileServiceLive` now passes `sourceEnv` into both the canonical `RedactionService` branch and the standalone fallback, so secret-bearing env values outside the `LANDO_SECRET_` store prefix are exact-value masked before event publication.
+- Review notes (deferred/rejected): resolving the managed-file redactor at layer construction is accepted for current production contracts because `SecretStoreLive` is env-backed with no runtime registration API; if a mutable production secret store is introduced later, the event seam should resolve the redactor per operation.
+- Verification: typecheck, lint, check:redaction-boundary, check:managed-file-boundary passed; focused managed-file env/event, service, contract, generated-bootstrap-layer, redaction, and redaction-boundary spot checks passed.
+---
+
+## 2026-07-03 06:05 CDT - US-379
+- Managed-file lifecycle events now redact through the canonical `RedactionService` instead of a local empty `createSecretRedactor([])`. `ManagedFileServiceLive` resolves `RedactionService` optionally and builds a `secrets`-profile redactor (`forProfile("secrets")`), falling back to `createStandaloneRedactor("secrets")` when the service is absent so payloads are never retained raw; `makeLiveManagedFileEvents` now takes the resolved `redactText` seam. Every free-string payload field (`path`, `owner`, `summary`) it publishes is masked by the registry-backed redactor, so a value registered in the `SecretStore` can no longer leak through a managed-file event.
+- The `minimal` bootstrap layer now provides `redactionLive` directly to the `ManagedFileServiceLive` layer (via the `build-bootstrap-layers.ts` generator + regenerated `minimal.ts`), because redaction was previously only an internal dep of `EventService` and thus invisible to the managed-file layer's `serviceOption(RedactionService)` resolution.
+- Verification: typecheck, lint, check:redaction-boundary passed; new events-test proves a `SecretStore`-registered secret placed in an event `owner` field is masked to `[redacted]` (RED before the wiring, GREEN after), adjacent managed-file service/contract/events, runtime bootstrap-layer, redaction, and event-service spot checks green; generated-layer drift limited to the intended `minimal.ts` line.
+- **Learnings for future iterations:**
+  - The `check:redaction-boundary` gate is a pattern scanner over all of `core/src`+`plugins` (sentinel strings + ad-hoc secret regexes); it has no consumer inventory, so a new redaction consumer is covered automatically — no gate edit needed.
+  - `EventServiceLive` resolves `RedactionService` via `serviceOption` (optional), so it builds without it; but that does NOT make `RedactionService` visible to a sibling layer that also `serviceOption`s it. To wire redaction into `ManagedFileServiceLive`, provide `redactionLive` to that layer explicitly (`Layer.mergeAll(eventServiceLive, redactionLive)`), not just through `EventService`.
+  - Reuse the healthcheck/scanner redaction idiom for event seams: `Effect.serviceOption(RedactionService)` + `forProfile("secrets")` with a `createStandaloneRedactor("secrets")` fallback keeps the layer's `R = never` while still redacting when present.
+---
+
 ## 2026-07-03 05:09 CDT - US-378 Review
 - Review fixed stale Mutagen setup guide skip reasons that still pointed at the deleted plugin-local `download.test.ts`; the guide now cites the live `provision.test.ts` and shared downloader acceptance coverage that prove the tool-provisioning path.
 - Review notes (deferred/rejected): deleted-path hits in historical progress/PRD text are intentionally retained as audit history and source story context, not active code or guide references.

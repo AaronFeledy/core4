@@ -34,7 +34,6 @@ import type {
   PortablePath,
 } from "@lando/sdk/schema";
 import { FileFormat as FileFormatSchema } from "@lando/sdk/schema";
-import { createSecretRedactor } from "@lando/sdk/secrets";
 import {
   EventService,
   type LandoEvent,
@@ -44,6 +43,7 @@ import {
 } from "@lando/sdk/services";
 
 import { managedFilesRoot, resolveUserDataRoot } from "../config/roots.ts";
+import { RedactionService, createStandaloneRedactor } from "../redaction/service.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { withAdvisoryLock } from "../state/lock.ts";
 import { makeStateStore } from "../state/service.ts";
@@ -960,27 +960,25 @@ const deriveAppId = (base: string): string => {
 
 const makeLiveManagedFileEvents = (
   eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
-): ManagedFileEvents => {
-  // `@lando/sdk/secrets` value redactor; value-set may be empty until a global
-  // redaction feed is wired — content-free payloads still prevent secret leaks.
-  const { redact } = createSecretRedactor([]);
-  return {
-    redactText: redact,
-    publish: Option.match(eventService, {
-      onNone: () => () => Effect.void,
-      onSome:
-        (service) =>
-        (event): Effect.Effect<void> =>
-          service.publish(event).pipe(Effect.catchAllCause(() => Effect.void)),
-    }),
-  };
-};
+  redactText: (text: string) => string,
+): ManagedFileEvents => ({
+  redactText,
+  publish: Option.match(eventService, {
+    onNone: () => () => Effect.void,
+    onSome:
+      (service) =>
+      (event): Effect.Effect<void> =>
+        service.publish(event).pipe(Effect.catchAllCause(() => Effect.void)),
+  }),
+});
 
 /**
  * The disk-backed `ManagedFileService` layer, available at bootstrap `minimal`.
  * Constructing it touches no provider, network, or plugin module. `EventService`
- * is resolved optionally from the layer build context (the bootstrap layer
- * `Layer.provide`s it) so library callers without an `EventService` still work.
+ * and `RedactionService` are resolved optionally from the layer build context
+ * (the bootstrap layer `Layer.provide`s them) so library callers without them
+ * still work; an absent `RedactionService` falls back to the standalone secrets
+ * redactor so event payloads are never retained raw.
  */
 export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.effect(
   ManagedFileService,
@@ -990,6 +988,15 @@ export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.eff
       ledgerRoot: () => resolveUserDataRoot(),
     });
     const eventService = yield* Effect.serviceOption(EventService);
-    return yield* makeManagedFileService(backend, makeLiveManagedFileEvents(eventService));
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactorOptions = { sourceEnv: { ...process.env } };
+    const redactor =
+      redaction._tag === "None"
+        ? createStandaloneRedactor("secrets", redactorOptions)
+        : yield* redaction.value.forProfile("secrets", redactorOptions);
+    return yield* makeManagedFileService(
+      backend,
+      makeLiveManagedFileEvents(eventService, redactor.redactString),
+    );
   }),
 );
