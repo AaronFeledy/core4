@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { renderer as landoContribution } from "@lando/renderer-lando";
+import { TaskStartEvent } from "@lando/sdk/events";
 
 import { EventService, Renderer } from "@lando/sdk/services";
 
@@ -48,12 +49,14 @@ describe("bundled renderer resolution", () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const events = yield* EventService;
-      yield* events.publish({
-        _tag: "task.start",
-        taskId: "web",
-        label: "start web",
-        timestamp: new Date().toISOString(),
-      } as never);
+      yield* events.publish(
+        Schema.decodeUnknownSync(TaskStartEvent)({
+          _tag: "task.start",
+          taskId: "web",
+          label: "start web",
+          timestamp: new Date().toISOString(),
+        }),
+      );
       yield* Effect.sleep("20 millis");
     });
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);

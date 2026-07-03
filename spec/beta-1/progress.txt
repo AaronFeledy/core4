@@ -223,3 +223,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Plugin subpath re-export shims are the cheap way to relocate implementation into a plugin without churning core importers: add `exports` subpaths in the plugin `package.json` (mirror `sdk/package.json`; `moduleResolution: bundler` honors them) and leave the old core file as `export * from "@lando/renderer-lando/<name>"`. All prior import sites keep resolving.
   - The renderer implementation cluster (`format.ts` → `task-tree-tail.ts` → `keybindings.ts`) depends only on `@lando/sdk/*` + effect, so it moves into a plugin cleanly; `console-layout.ts`/`summary.ts` are a separate cluster (used by `summary.ts`, not the event-stream renderer) and stay in core.
 ---
+
+## 2026-07-03 10:22 CDT - US-382 Review
+- Review confirmed the renderer ownership move satisfies US-382 and fixed the new bundled-renderer ownership test to publish a schema-decoded `task.start` event instead of using a type escape.
+- Review notes (deferred/rejected): compatibility re-export shims and plugin-owned fallback formatter helpers are accepted as deliberate zero-churn ownership seams documented in `core/AGENTS.md`; duplicated event-consumer/input wiring and the plugin `./runtime` export are non-blocking follow-ups, not story blockers.
+- Verification: typecheck, lint, check:renderer-boundary passed; focused bundled renderer/plugin tests passed; edited TypeScript file has clean LSP diagnostics.
+---
