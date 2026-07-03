@@ -7,11 +7,11 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
 ---
 
 <Guide>
-  <Scenario id="healthcheck-sdk-contract" render={false} reason="HealthcheckRunner SDK contract is exercised by sdk/test/contract/healthcheck-runner.test.ts against TestHealthcheckRunner; the provider-exec Live Layer requires a running provider and container">
+  <Scenario id="healthcheck-sdk-contract" render={false} reason="HealthcheckRunner SDK contract is exercised by sdk/test/contract/healthcheck-runner.test.ts against TestHealthcheckRunner; provider-exec behavior is covered by core/test/subsystems/healthcheck/live.test.ts without a live container">
     <Step name="healthcheck-contract">
       <Variable name="sdkTag" value="HealthcheckRunner" display="Effect Service tag published in @lando/sdk; plugins implement HealthcheckRunnerShape" />
       <Variable name="contractRunner" value="runHealthcheckContract" display="Contract runner from @lando/sdk/test validates id and run() resolves with HealthcheckResult" />
-      <Variable name="testDouble" value="TestHealthcheckRunner / makeTestHealthcheckRunner" display="In-memory test double; records run calls and returns healthy=true" />
+      <Variable name="testDouble" value="TestHealthcheckRunner / makeTestHealthcheckRunner" display="In-memory test double; records run calls and returns healthy=true; core tests inject a fake provider exec for provider-exec behavior" />
     </Step>
   </Scenario>
 
@@ -31,11 +31,11 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
     </Step>
   </Scenario>
 
-  <Scenario id="healthcheck-probe-primitive" render={false} reason="Provider-exec HealthcheckRunner is not implemented yet; documents the required probe primitive for future retry/delay/timeout loops">
+  <Scenario id="healthcheck-probe-primitive" render={false} reason="Provider-exec HealthcheckRunner uses runProbe for retry/delay/timeout loops; live provider execution still requires a running container">
     <Step name="probe-primitive">
-      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Future healthcheck retry/delay/timeout-to-ready loops must use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
+      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Healthcheck retry/delay/timeout-to-ready loops use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
       <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
-      <Variable name="apiRef" value="core/src/subsystems/healthcheck/api.ts" display="HealthcheckRunnerUnavailableLive stub documents the contract until provider-exec lands" />
+      <Variable name="apiRef" value="core/src/subsystems/healthcheck/live.ts" display="HealthcheckRunnerLive wires provider-exec to RuntimeProvider.exec and redacts final provider status" />
     </Step>
   </Scenario>
 </Guide>
