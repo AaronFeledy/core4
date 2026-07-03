@@ -174,9 +174,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
             return Chunk.toReadonlyArray(drained);
           }).pipe(Effect.provide(layer)),
         ),
-      ).catch((error: unknown) => {
-        throw error;
-      });
+      );
 
       const managedEvents = collected.filter((event) => String(event._tag).includes("managed-file"));
       expect(managedEvents.length).toBeGreaterThan(0);
