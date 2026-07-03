@@ -71,7 +71,7 @@
         "Lint passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-14 US-317 — `core/src/subsystems/scanner/api.ts` is an Unavailable stub."
     },
     {
