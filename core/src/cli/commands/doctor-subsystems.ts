@@ -25,15 +25,18 @@ import {
   HealthcheckRunner,
   HostProxyService,
   ProxyService,
+  RuntimeProvider,
   SshService,
   UrlScanner,
 } from "@lando/sdk/services";
 
+import { HttpClientLive } from "../../http-client/live.ts";
+import { runtimeProviderService } from "../../runtime/bootstrap-layer-support.ts";
 import { CertificateAuthorityUnavailableLive } from "../../subsystems/certs/api.ts";
-import { HealthcheckRunnerUnavailableLive } from "../../subsystems/healthcheck/api.ts";
+import { HealthcheckRunnerLive } from "../../subsystems/healthcheck/live.ts";
 import { HostProxyServiceDisabledLive } from "../../subsystems/host-proxy/api.ts";
 import { ProxyServiceUnavailableLive } from "../../subsystems/proxy/api.ts";
-import { UrlScannerUnavailableLive } from "../../subsystems/scanner/api.ts";
+import { UrlScannerLive } from "../../subsystems/scanner/live.ts";
 import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
 import { redactString } from "../redact.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
@@ -90,14 +93,25 @@ export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFai
  * These bundled fallback/disabled stubs do not require app bootstrap or any
  * other ambient service.
  */
+// `subsystemDoctor` reads only the runner `id`, never invoking `run()`/`scan()`,
+// so the bootstrap placeholder provider satisfies the real layers' dependencies
+// while keeping `DefaultSubsystemDoctorLayer` self-contained.
+const DoctorRuntimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
+
+const HealthcheckRunnerDoctorLive = HealthcheckRunnerLive.pipe(Layer.provide(DoctorRuntimeProviderLive));
+
+const UrlScannerDoctorLive = UrlScannerLive.pipe(
+  Layer.provide(Layer.mergeAll(DoctorRuntimeProviderLive, HttpClientLive)),
+);
+
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
   ProxyService | CertificateAuthority | SshService | HealthcheckRunner | UrlScanner | HostProxyService
 > = Layer.mergeAll(
   ProxyServiceUnavailableLive,
   CertificateAuthorityUnavailableLive,
   SshServiceUnavailableLive,
-  HealthcheckRunnerUnavailableLive,
-  UrlScannerUnavailableLive,
+  HealthcheckRunnerDoctorLive,
+  UrlScannerDoctorLive,
   HostProxyServiceDisabledLive,
 );
 

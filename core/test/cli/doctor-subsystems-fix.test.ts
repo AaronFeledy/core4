@@ -27,6 +27,8 @@ import { SshServiceUnavailableLive } from "../../src/subsystems/ssh/api.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["proxy", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;
+const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
+const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(subsystemDoctor({ fix }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
@@ -67,14 +69,24 @@ describe("subsystem failure-recovery classification", () => {
     }
   });
 
-  test("read-only mode keeps a manual `lando setup` solution for privileged / no-setup subsystems", async () => {
+  test("read-only mode keeps a manual `lando setup` solution for degraded stub-backed subsystems", async () => {
     const result = await runDefault(false);
-    for (const name of MANUAL_SUBSYSTEMS) {
+    for (const name of DEGRADED_MANUAL_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
       expect(solution?.command).toBe("lando setup");
+    }
+  });
+
+  test("healthcheck and scanner report ready via their real runProbe-backed runners", async () => {
+    const result = await runDefault(false);
+    for (const name of READY_MANUAL_SUBSYSTEMS) {
+      const check = result.checks.find((c) => c.name === name);
+      expect(check?.status).toBe("pass");
+      expect(check?.context.ready).toBe("true");
+      expect(check?.solutions).toEqual([]);
     }
   });
 
@@ -153,13 +165,22 @@ describe("doctor --fix recovery", () => {
     }
   });
 
-  test("--fix records skipped-manual for privileged / no-setup subsystems and never runs them", async () => {
+  test("--fix records skipped-manual for degraded stub-backed subsystems and never runs them", async () => {
     const result = await runDefault(true);
-    for (const name of MANUAL_SUBSYSTEMS) {
+    for (const name of DEGRADED_MANUAL_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.context.fixOutcome).toBe("skipped-manual");
       expect(check?.context.fixExitCode).toBeUndefined();
       expect(check?.solutions[0]?.kind).toBe("manual");
+    }
+  });
+
+  test("--fix leaves ready healthcheck/scanner untouched with no fix outcome", async () => {
+    const result = await runDefault(true);
+    for (const name of READY_MANUAL_SUBSYSTEMS) {
+      const check = result.checks.find((c) => c.name === name);
+      expect(check?.status).toBe("pass");
+      expect(check?.context.fixOutcome).toBeUndefined();
     }
   });
 

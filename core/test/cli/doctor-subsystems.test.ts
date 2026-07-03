@@ -111,6 +111,22 @@ describe("meta:doctor subsystem checks", () => {
     expect(proxy?.solutions).toEqual([]);
   });
 
+  test("wires the real runProbe-backed healthcheck and scanner runners, not the unavailable stubs", async () => {
+    const result = await runDefault();
+    const healthcheck = result.checks.find((check) => check.name === "healthcheck");
+    const scanner = result.checks.find((check) => check.name === "scanner");
+
+    expect(healthcheck?.context.subsystemId).toBe("provider-exec");
+    expect(healthcheck?.context.ready).toBe("true");
+    expect(healthcheck?.status).toBe("pass");
+    expect(healthcheck?.solutions).toEqual([]);
+
+    expect(scanner?.context.subsystemId).toBe("http-probe");
+    expect(scanner?.context.ready).toBe("true");
+    expect(scanner?.status).toBe("pass");
+    expect(scanner?.solutions).toEqual([]);
+  });
+
   test("plain-text renderer surfaces every subsystem name, status, and remediation", async () => {
     const result = await runDefault();
     const text = renderSubsystemDoctorResult(result);

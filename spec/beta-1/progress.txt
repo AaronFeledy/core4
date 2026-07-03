@@ -13,6 +13,29 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 - US-376
+- `lando doctor`'s subsystem diagnostics now wire the real `runProbe`-backed runners: `DefaultSubsystemDoctorLayer` (`core/src/cli/commands/doctor-subsystems.ts`) drops the `HealthcheckRunnerUnavailableLive`/`UrlScannerUnavailableLive` stubs and instead builds `HealthcheckRunnerLive` (with the bootstrap placeholder `RuntimeProvider`) and `UrlScannerLive` (placeholder `RuntimeProvider` + `HttpClientLive`), staying self-contained. Doctor now reports `healthcheck`→`provider-exec` and `scanner`→`http-probe` as ready/pass instead of degraded "run lando setup" — closing the US-374/US-375 "doctor reports the real runner, not the unavailable stub" criterion. The `Unavailable` stubs remain exported for explicit degraded-mode contexts.
+- Audit of the other US-317 consumers confirmed nothing left to migrate: the doctor path has no hand-rolled retry/timeout loop (its retry-to-verdict logic lives in the now-real healthcheck/scanner runners, both already on `runProbe`); every `Downloader.download` call site is single-attempt by design with no retry loop to map; and `lando setup` provider/socket readiness already runs through `runProbe` (`plugins/provider-lando/src/ensure-runtime.ts` `verifyRuntimeReachable`). The `check:probe-boundary` allowlist is already minimal (`core/src/state/lock.ts` only), and its test already proves a reintroduced `Effect.retry`/`Schedule` loop fails the gate.
+- Verification: typecheck, lint, `check:probe-boundary` passed; focused doctor suite (72 pass incl. new "wires the real runProbe-backed runners" assertion) plus adjacent scanner/healthcheck/generated-bootstrap-layers/probe-boundary spot checks green; the `meta-doctor.subsystems.ndjson` fixture was regenerated. Manual QA: ran `lando doctor --format ndjson` and confirmed `healthcheck`/`scanner` report `provider-exec`/`http-probe` ready while `proxy` stays `unavailable`.
+- **Learnings for future iterations:**
+  - `subsystemDoctor` reads only a subsystem's service `.id` (ready iff not `unavailable`/`disabled`), so a real Live layer can be wired for identity-only reporting using the bootstrap placeholder `runtimeProviderService` without ever exercising `run()`/`scan()` — keeping `DefaultSubsystemDoctorLayer` requirement-free for its tests.
+  - Flipping a subsystem from stub→real changes the committed `meta-doctor.subsystems.ndjson` fixture and the `warned` counts in `doctor-report`/`doctor-subsystems-fix` tests; distinguish a subsystem's static `recovery` class (unchanged) from its runtime `status` (now pass) when updating those tests.
+---
+
+## 2026-07-03 02:10 CDT - Babysit
+- PR: #505 https://github.com/AaronFeledy/core4/pull/505
+- CI outcome: pass
+- Review feedback: fixed guide-drift by adding the allowed PR-body `Guide-Coverage-Skip:` reason and rerunning the guide-scenarios matrix green; Bugbot inline comments were empty.
+- Merge: merged (squash)
+---
+
+## 2026-07-03 01:04 CDT - US-375 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync` successfully, then exercised `UrlScannerLive` through compiled `lando bun` against a real local HTTP server using `HttpClientLive`; scanner returned one green reachable endpoint with HTTP 200.
+- Adjacent compiled smokes passed for `version`, `doctor --format json`, and `global:stop --help`; `global:stop --yes` cleaned partial global state and no US-375 temp app dirs or containers remained.
+- Full throwaway-app `lando start` scanner path could not run in this sandbox because `global:start` requires Traefik to bind `127.0.0.1:80`, which is already in use in `lando4-dev`; after pre-pulling `mailpit`, `traefik`, and `node:lts`, the blocker remained an environmental port bind conflict rather than a scanner failure.
+- **Learnings for future iterations:** If a verify story needs real `lando start` in `lando4-dev`, check/free port 80 before `global:start`; provider-lando also does not auto-pull global/app images, so pre-pull required images into the managed Podman store first.
+---
+
 ## 2026-07-03 00:42 CDT - US-375 Review
 - Review fixed the default scanner wiring so provider-and-above bootstrap layers now provide `UrlScannerLive` through the generated bootstrap source, backed by a generated-layer regression test. Review also corrected stale scanner API/guide guidance that still described the live scanner as unavailable, and split the oversized scanner test module into focused behavior/probe/live-layer files while preserving coverage.
 - Review notes (deferred/rejected): doctor-subsystems still using `UrlScannerUnavailableLive` is deferred to US-376, whose acceptance criteria explicitly migrate doctor wiring; redirect-follow SSRF risk is non-blocking because redirects default to manual and user scanner config is not exposed yet, but future config work should validate redirected hops before enabling bounded follow behavior.
