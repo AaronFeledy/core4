@@ -847,7 +847,7 @@ export const ManagedFile = Schema.Struct({
   owner: Schema.String,                      // recipe/plugin/core id
   path: PortablePath,                        // relative to base
   mode: Schema.Literal("file", "block", "keys"),
-  format: FileFormat,                        // text | env | json | yaml | toml | ini | landofile
+  format: FileFormat,                        // text | env | json | yaml | toml | ini | landofile | javascript | typescript
   content: ContentSource,                    // text | structured | template | inline
   marker: Schema.optional(Schema.String),    // defaults to id
   perms: Schema.optional(Schema.String),     // octal

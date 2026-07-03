@@ -187,3 +187,27 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; focused healthcheck runner suite passed (12 tests, 47 assertions); adjacent probe suite passed (21 tests, 71 assertions); changed TypeScript files have clean LSP diagnostics and each remains under the 250 pure-LOC ceiling.
 - **Learnings for future iterations:** When a service intentionally keeps `R = never` by resolving `RedactionService` optionally, the absent-service branch must use `createStandaloneRedactor("secrets", ...)`, not identity redaction.
 ---
+
+## [2026-07-03 08:25:16 CDT] - Babysit
+- PR: #510 https://github.com/AaronFeledy/core4/pull/510
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip PR metadata for additive PathsService.managedFileLedger helper; no code changes)
+- Merge: merged (squash)
+---
+
+## 2026-07-03 08:37 CDT - US-381
+- Decision recorded: **ADOPT** `javascript`/`typescript` into the `FileFormat` contract, not trim. The introducing commit (#416, "migrate recipe scaffolding") deliberately added both values with real, distinct behavior: the codec encodes/decodes them verbatim (like `text`) but the marker layer gives them a `//` ownership-comment prefix instead of `#`, so a scaffolded `.js`/`.ts` source file stays syntactically valid. They are actively used by shipped consumers — `inferRecipeScaffoldFormat` in `lando init` maps `.js/.cjs/.mjs`→`javascript` and `.ts/.cts/.mts`→`typescript`, and the bundled `node-postgres` (server.js) and `node-ts` (.lando.ts) recipes emit code files through that path. Trimming would break init scaffolding and corrupt those files with `#` markers, so trim was rejected.
+- Reconciled the only remaining drift, which was documentation-only: the SDK schema, committed schema snapshot, `dist/schemas/managed-file.json`, and `sdk/API_COMPATIBILITY.md` already carried the adopted 9-value surface, but the frozen contract text still listed 7. Updated the `FileFormat` enumeration in `prd-alpha-4-18-managed-files.md` and the normative §10.13.1 `ManagedFile` model comment in `spec/11-subsystems.md` to the 9-value enum (with a note that js/ts are verbatim + `//` marker). PRD text, spec, schema, snapshot, and API_COMPATIBILITY now agree with no silent drift.
+- Added a focused marker unit test (`core/test/unit/managed-file-marker.test.ts`): the marker module previously had no direct unit coverage. It pins `commentPrefix` for every format and proves the js/ts `//` ownership round-trip (compose → detect → strip-back-to-body), locking the marker contract the adopt decision preserves.
+- Verification: typecheck, lint passed; `codegen:schema-snapshot` regenerated with zero drift (snapshot/dist/docs already at 9 values). Test spot checks green — new marker suite + managed-file codecs + managed-file service (86) and the js/ts-scaffolding init suites `init.canonical-recipes`/`init.landofile-ts` (29). Manual QA drove the real codec+marker surface via a throwaway driver: both formats encode/decode verbatim, compose a `//` marker line, detect it, and strip back to the raw body.
+- **Learnings for future iterations:**
+  - When an audit flags a "schema ships N, contract says M" mismatch, check the introducing commit and whether the extra values have distinct behavior (codec branch, marker prefix) and real consumers before choosing trim vs adopt — here the schema/snapshot/API_COMPATIBILITY were already adopted and only the two normative enum enumerations (PRD acceptance-criteria list + §10.13.1 code-comment) were stale.
+  - `bun run codegen:schema-snapshot` refreshes `sdk/test/fixtures/schema-snapshot.json`, `dist/schemas`, and `docs/reference/schemas` together; for an already-consistent enum it produces zero drift — run it to confirm agreement, don't expect a diff.
+  - `commentPrefix(format)` (`core/src/managed-file/marker.ts`) is the single source of per-format ownership-comment syntax: `//` for javascript/typescript, `;` for ini, `null` for json (ledger/`x-lando-generated` key), `#` for everything else.
+---
+
+## 2026-07-03 08:47 CDT - US-381 Review
+- Review fixed the new marker test's `test.each` rows so TypeScript/LSP diagnostics understand the javascript/typescript parameterized cases while preserving the same marker behavior coverage.
+- Review notes (deferred/rejected): archival `spec/alpha-4/prd.json` still mirrors the old 7-value Alpha PRD text, but it is not a named normative US-381 surface and no repo script consumes it; duplicate marker-prefix sentinel test is intentional as a regression pin for the js/ts corruption risk; marker-id control-character hardening is pre-existing trusted-plugin-surface work, not a blocker for this contract reconciliation.
+- Verification: typecheck, lint passed; focused marker, managed-file codec, and managed-file service spot checks passed; all five review-work lanes passed with no blocking findings.
+---
