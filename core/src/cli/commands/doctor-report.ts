@@ -25,7 +25,7 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "../renderer/summary.ts";
-import { encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import {
   DefaultGlobalAppDoctorLayer,
@@ -377,7 +377,7 @@ const renderAppConfigSection = (result: ConfigLintResult): string => {
 };
 
 const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
-  JSON.stringify({ _tag: "event", event: "doctor.check", payload });
+  Effect.runSync(encodeStreamEventFrame({ event: "doctor.check", payload, redactor: identityRedactor }));
 
 const appConfigCheckLine = (result: ConfigLintResult): string =>
   doctorCheckFrameLine({

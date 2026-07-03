@@ -212,7 +212,7 @@
         "Lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-15 US-326 (migrate one-off NDJSON/event-line renderers onto StreamFrame). Audit found raw JSON.stringify call sites in both files."
     },
     {
