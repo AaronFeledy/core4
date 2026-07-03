@@ -22,7 +22,7 @@ export { UrlScanner };
 
 const SCANNER_UNAVAILABLE_ID = "unavailable" as const;
 const SCANNER_UNAVAILABLE_MESSAGE =
-  "UrlScanner requires a running provider. Run `lando setup` to install the provider (full implementation is not available yet).";
+  "UrlScanner requires a running provider. Run `lando setup` to install the provider.";
 
 export const UrlScannerUnavailableLive = Layer.succeed(UrlScanner, {
   id: SCANNER_UNAVAILABLE_ID,
