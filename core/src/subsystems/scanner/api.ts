@@ -6,13 +6,12 @@
  * - Scanner config: `enabled`, `retry`, `delay`, `timeout`, `path`,
  *   `okCodes`, `maxRedirects`.
  * - Per-service overrides under `services.<name>.scanner:`.
- * - Results are reported as green/yellow/red with optional structured
- *   detail. The full scanner is not implemented yet; when it lands, its
- *   `retry`/`delay`/`timeout` loop and green/yellow/red verdict must build on
- *   `@lando/sdk/probe`'s `runProbe` rather than a hand-rolled
- *   `Effect.retry`/`Schedule` loop (enforced by the probe boundary gate), and
- *   must redact `ProbeResult.lastError` before it reaches an event or
- *   transcript.
+ * - Results are reported as green/yellow/red with optional structured detail.
+ *   The default scanner lives in `live.ts`, builds `retry`/`delay`/`timeout`
+ *   behavior on `@lando/sdk/probe`'s `runProbe`, and redacts probe failure
+ *   details before surfacing them.
+ * - This module keeps the explicit degraded-mode layer for contexts where no
+ *   runtime provider is available.
  */
 import { Effect, Layer } from "effect";
 
