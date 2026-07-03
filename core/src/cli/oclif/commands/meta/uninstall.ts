@@ -51,7 +51,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   };
 };
 
-export const metaUninstallSpec: LandoCommandSpec<UninstallResult> = {
+export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, never> = {
   resultSchema: UninstallResultSchema,
   id: "meta:uninstall",
   summary: "Remove Lando-owned installed files after confirmation.",

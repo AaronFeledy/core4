@@ -20,6 +20,14 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 16:58 CDT - US-385 Review
+- Review fixed a setup-state ownership regression: rerunning `lando setup` after Lando created the managed Podman machine no longer overwrites `machine.createdByLando: true` with `false` when the already-running VM is observed on the second setup pass, so a later `lando uninstall --purge` still tears down the Lando-owned machine automatically.
+- Review also tightened the `meta:uninstall` command spec environment type so scenario tests see the command as self-contained (`R = never`) instead of widened to `unknown`.
+- Review notes (deferred/rejected): `--keep-data` still tearing down owned provider machines is rejected as a US-385 blocker because this story's contract is `uninstall --purge`; revisit if product semantics require VM preservation under keep-data. Windows elevation through `PrivilegeService` remains deferred because the current privilege service has no Windows elevation implementation and US-385's live provider path stays env-gated.
+- Verification: typecheck, lint passed; focused provider-machine/uninstall/setup-ownership spot checks passed (30 pass, 1 env-gated live integration skip); edited TypeScript files have clean LSP diagnostics.
+- **Learnings for future iterations:** Machine ownership is historical once Lando creates the reserved machine; setup reruns must preserve an existing recorded `createdByLando: true` unless/until a future machine-identity story can prove the recorded VM was replaced.
+---
+
 ## 2026-07-03 16:40 CDT - US-385
 - `lando uninstall --purge` now tears down the Lando-owned managed provider machine (the macOS/Windows Podman VM) automatically instead of always listing `managed-provider-machines` as `manual`. Ownership is authoritative from recorded setup state: provider-lando setup now records `machine: { name: "lando", createdByLando }` in `setup-state.json`, where `createdByLando` is true only when `podman machine inspect` returned `missing` before create (Lando created the VM) and false when it adopted a pre-existing `lando` machine. `ensureMacOSPodmanMachine`/`ensureWindowsPodmanMachine` return that signal; the field is written only on darwin/win32 and omitted on Linux (no VM).
 - A new core module `core/src/runtime/managed-provider-machine.ts` (no `@lando/provider-lando` import — it only mirrors the setup-state path convention and the `podman machine rm` argv, keeping the plugin out of CLI cold-start) classifies ownership from setup-state into owned/not-owned/ambiguous/absent, and tears down owned machines via `podman machine rm --force lando` behind an injectable spawn seam. Podman exit 125 (machine not found) is treated as an idempotent no-op so a rerun after partial/complete teardown converges. Corrupt or unexpectedly-named machine records degrade to `ambiguous → manual` so uninstall never removes a machine Lando did not create.
