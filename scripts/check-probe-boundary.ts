@@ -30,8 +30,6 @@ const CARVE_OUTS = new Set<string>([
   // Advisory state lockfile acquisition: a bounded retry on O_EXCL contention,
   // not a probe-to-verdict loop.
   "core/src/state/lock.ts",
-  // State-bucket lockfile acquisition: same advisory-lock retry shape.
-  "core/src/state-store/json-bucket.ts",
 ]);
 
 // `Effect.<member>(...)` calls that are hand-rolled retry/backoff primitives.

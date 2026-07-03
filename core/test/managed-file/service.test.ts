@@ -510,6 +510,19 @@ describe("ManagedFileService (disk backend)", () => {
       Effect.flatMap(makeManagedFileService),
     );
 
+  test("read-only ledger access does not create the ledger root", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+
+      await expect(run(service.status)).resolves.toEqual([]);
+      await expect(run(service.plan([file({ id: "d:readonly", path: "readonly.txt" })]))).resolves.toEqual({
+        entries: [{ id: "d:readonly", path: "readonly.txt", action: "create" }],
+      });
+
+      expect(await readdir(dirs.dataRoot)).not.toContain("managed-files");
+    });
+  });
+
   test("writes to real disk and persists a ledger that leaves no temp files", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
@@ -527,6 +540,44 @@ describe("ManagedFileService (disk backend)", () => {
       const ledger = JSON.parse(await readFile(ledgerPath, "utf8"));
       expect(ledger.version).toBe(1);
       expect(ledger.data.entries[0].id).toBe("d:1");
+    });
+  });
+
+  test("a ledger written in the legacy bucket envelope format is still readable", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      await runScoped(service.apply([file({ id: "d:compat", path: "compat.txt" })]));
+      const ledgerDir = join(
+        dirs.dataRoot,
+        "managed-files",
+        (await readdir(join(dirs.dataRoot, "managed-files")))[0] ?? "",
+      );
+      const ledgerPath = join(ledgerDir, "ledger.json");
+
+      // Byte-for-byte the envelope the retired generic JSON bucket serializer
+      // produced: `{ version, data }`, two-space indent, trailing newline.
+      const legacyEntry = {
+        id: "legacy:1",
+        owner: "legacy",
+        path: "legacy.txt",
+        mode: "file",
+        format: "text",
+        marker: "legacy:1",
+        lastWrittenChecksum: "0".repeat(64),
+        sourceHash: "1".repeat(64),
+        state: "managed",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+      await writeFile(
+        ledgerPath,
+        `${JSON.stringify({ version: 1, data: { entries: [legacyEntry] } }, null, 2)}\n`,
+      );
+
+      const infos = await run(service.status);
+      expect(infos).toHaveLength(1);
+      expect(infos[0]?.path).toBe("legacy.txt");
+      expect(infos[0]?.state).toBe("missing");
     });
   });
 

@@ -6,16 +6,17 @@
 // The decision algorithm and marker handling are backend-agnostic: the service
 // is built over a `ManagedFileBackend` so the real disk-backed `Live` layer and
 // the in-memory `TestManagedFileStore` share one implementation. The ledger is
-// realized through the generic durable JSON state bucket (not a bespoke
+// realized through a `StateStore` bucket (not a bespoke
 // registry/lock/quarantine); the ledger path is derived once by the paths
 // primitive (`managedFilesRoot`), never re-spelled here.
 
 import { createHash } from "node:crypto";
+import { mkdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { type Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
-import { ManagedFileError } from "@lando/sdk/errors";
+import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
   ManagedFileConflictDetectedEvent,
   ManagedFileSkippedEvent,
@@ -23,6 +24,7 @@ import {
   PreManagedFileWriteEvent,
 } from "@lando/sdk/events";
 import type {
+  AbsolutePath,
   FileFormat,
   ManagedFile,
   ManagedFileAction,
@@ -43,7 +45,8 @@ import {
 
 import { managedFilesRoot, resolveUserDataRoot } from "../config/roots.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
-import { type JsonBucket, openJsonBucket } from "../state-store/json-bucket.ts";
+import { withAdvisoryLock } from "../state/lock.ts";
+import { makeStateStore } from "../state/service.ts";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
   canCarryFileMarker,
@@ -803,6 +806,12 @@ const realpathIfExists = async (path: string): Promise<string | null> => {
   });
 };
 
+const isMissingPath = (cause: unknown): boolean =>
+  typeof cause === "object" &&
+  cause !== null &&
+  ((cause as { readonly code?: unknown }).code === "ENOENT" ||
+    (cause as { readonly code?: unknown }).code === "ENOTDIR");
+
 const resolveMissingTargetRealPath = async (target: string): Promise<string> => {
   let ancestor = dirname(target);
   while (true) {
@@ -820,23 +829,59 @@ export const makeDiskBackend = (options: {
   readonly ledgerRoot: () => string;
 }): Effect.Effect<ManagedFileBackend> =>
   Effect.gen(function* () {
-    const ledgerBucketFor = (base: string): Effect.Effect<JsonBucket<LedgerState>> =>
-      openJsonBucket({
-        dir: managedFilesRoot(deriveAppId(base), options.ledgerRoot()),
-        key: "ledger.json",
-        version: LEDGER_VERSION,
-        schema: LedgerStateSchema,
-        lock: "advisory",
-        onCorrupt: "quarantine",
-        default: { entries: [] },
-      });
+    const stateStore = makeStateStore();
+
+    const ledgerBucketFor = (base: string, onCorrupt: "quarantine" | "discard") => {
+      const dir = managedFilesRoot(deriveAppId(base), options.ledgerRoot());
+      // The `{ path }` root must exist before `open`: containment realpath-checks
+      // the deepest existing ancestor, which would sit above a missing root.
+      return Effect.tryPromise({
+        try: () => mkdir(dir, { recursive: true }),
+        catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+      }).pipe(
+        Effect.zipRight(
+          stateStore.open({
+            root: { path: dir as AbsolutePath },
+            key: "ledger.json",
+            version: LEDGER_VERSION,
+            schema: LedgerStateSchema,
+            onCorrupt,
+            default: { entries: [] },
+          }),
+        ),
+      );
+    };
+
+    const readonlyLedgerEntries = (
+      operation: ManagedFileOperation,
+    ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> => {
+      const dir = managedFilesRoot(deriveAppId(options.defaultBase()), options.ledgerRoot());
+      return Effect.tryPromise({
+        try: async () => {
+          try {
+            return (await stat(dir)).isDirectory();
+          } catch (cause) {
+            if (isMissingPath(cause)) return false;
+            throw cause;
+          }
+        },
+        catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+      }).pipe(
+        Effect.flatMap((exists) =>
+          exists ? ledgerBucketFor(options.defaultBase(), "discard") : Effect.succeed(null),
+        ),
+        Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
+        Effect.map((state) => state?.entries ?? []),
+        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
+      );
+    };
 
     const ledgerEntries = (
-      mutate: boolean,
+      onCorrupt: "quarantine" | "discard",
       operation: ManagedFileOperation,
     ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> =>
-      ledgerBucketFor(options.defaultBase()).pipe(
-        Effect.flatMap((bucket) => (mutate ? bucket.get : bucket.peek)),
+      ledgerBucketFor(options.defaultBase(), onCorrupt).pipe(
+        Effect.flatMap((bucket) => bucket.get),
         Effect.map((state) => state?.entries ?? []),
         Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
       );
@@ -882,13 +927,18 @@ export const makeDiskBackend = (options: {
           },
           catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
         }),
-      readLedger: (operation) => ledgerEntries(true, operation),
-      peekLedger: (operation) => ledgerEntries(false, operation),
+      readLedger: (operation) => ledgerEntries("quarantine", operation),
+      peekLedger: (operation) => readonlyLedgerEntries(operation),
       mutateLedger: (operation, f) =>
-        ledgerBucketFor(options.defaultBase()).pipe(
+        ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
           Effect.flatMap((bucket) =>
-            bucket.modify((state) =>
-              f(state?.entries ?? []).pipe(Effect.map(([result, entries]) => [result, { entries }] as const)),
+            withAdvisoryLock(
+              bucket.path,
+              operation,
+              bucket.get.pipe(
+                Effect.flatMap((state) => f(state?.entries ?? [])),
+                Effect.flatMap(([result, entries]) => bucket.set({ entries }).pipe(Effect.as(result))),
+              ),
             ),
           ),
           Effect.mapError((cause) =>
@@ -896,7 +946,7 @@ export const makeDiskBackend = (options: {
           ),
         ),
       writeLedger: (entries, operation) =>
-        ledgerBucketFor(options.defaultBase()).pipe(
+        ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
           Effect.flatMap((bucket) => bucket.set({ entries })),
           Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
         ),

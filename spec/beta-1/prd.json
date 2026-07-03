@@ -35,7 +35,7 @@
         "Lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-13 FR-1 / success metric (exactly one durable-store implementation under core/src/state/). Coordinate with US-379/US-380 which touch the same service file."
     },
     {

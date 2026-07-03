@@ -13,6 +13,23 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-02 19:17 CDT - US-373 Review
+- Review fixed a StateStore migration regression where read-only managed-file ledger access (`status`/`plan`) created the `managed-files` ledger root even when no ledger existed; read-only access now returns an empty ledger without creating directories, while mutation paths still create the root before opening the StateStore bucket.
+- Review notes (deferred/rejected): the missing managed-file-level concurrent mutation test is non-blocking because the migrated code uses the existing `withAdvisoryLock` primitive and the state lock suite covers the stale-lock behavior moved from `json-bucket`.
+- Verification: typecheck, lint, check:state-store-boundary, check:probe-boundary passed; focused spot checks passed for managed-file service/contract/events, state lock/contract/plugin-state, StateStore unit coverage, and state-store boundary script.
+---
+
+## 2026-07-02 - US-373
+- The managed-file ledger now persists through the single `StateStore` implementation: `makeDiskBackend` opens a StateStore bucket at the ledger path and serializes effectful read-modify-write through `withAdvisoryLock` from `core/src/state/lock.ts`, so envelope/lock/quarantine semantics exist in exactly one place. `core/src/state-store/json-bucket.ts` (the parallel versioned-envelope + advisory-lock + quarantine implementation) is deleted outright, and its `check:probe-boundary` carve-out is removed so only the documented `core/src/state/lock.ts` loop remains allowlisted.
+- Ledger format compatibility is proven, not assumed: the old bucket and StateStore's `json` codec emit byte-identical `{ version, data }` envelopes, and a new characterization test hand-writes the legacy serializer's exact bytes and reads them back through the new path. The old bucket's dead-pid lock-takeover coverage was ported to a new `core/test/state/lock.test.ts` against `withAdvisoryLock` so retiring the module dropped no behavior coverage.
+- Verification: typecheck, lint, check:state-store-boundary, check:probe-boundary passed; spot checks green (managed-file service/contract/events, state contract/lock/plugin-state, state-store atomic, boundary-script tests, cli init); manual QA drove the real disk surface end-to-end (apply -> ledger bytes -> legacy-format overwrite -> status -> locked remove) with zero `.tmp-`/`.lock`/`.corrupt-` leftovers.
+- **Learnings for future iterations:**
+  - `resolveStatePath` rejects a `{ path }` StateStore root that does not exist yet: containment realpath-checks the deepest EXISTING ancestor, which sits above a missing root. `mkdir -p` the root before `stateStore.open` when pinning an explicit directory.
+  - `StateBucket` has no `peek`; a side-effect-free read is the same spec opened with `onCorrupt: "discard"` (recovers to `default` without quarantining).
+  - `StateBucket.modify` takes a PURE function; effectful read-modify-write composes as `withAdvisoryLock(bucket.path, op, bucket.get -> f -> bucket.set)` over a `lock: "none"` bucket.
+  - The retired json-bucket envelope and StateStore's `json` codec are byte-identical (`JSON.stringify({version, data}, null, 2) + "\n"`), so no data migration was needed - pin that with a literal-bytes characterization test whenever swapping serializers.
+---
+
 ## 2026-07-02 - US-372
 - Durable atomic writes now flush to disk before publishing: `writeFileAtomicScoped` (state store / managed-file seam) and `writeFileAtomicViaRename` (cache seam) both fsync the temp file via a file handle before the rename, so power loss can never leave a torn live file. The cwd-app-map cache no longer writes with raw `writeFile`; both its write and delete-rewrite paths route through the atomic cache helper.
 - Both helpers gained an injectable `syncFile` seam; unit tests prove syscall ordering (sync fires while the live file does not yet exist, rename after) and that a flush failure rejects, skips the rename, and leaves no temp orphan.
