@@ -22,6 +22,7 @@ import { ConfigServiceLive } from "../../../services/config.ts";
 import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
+import { UrlScannerLive } from "../../../subsystems/scanner/live.ts";
 import { type BootstrapLayerInputs, runtimeProviderService } from "../../bootstrap-layer-support.ts";
 import { makePluginsBootstrapLayer } from "./plugins.ts";
 
@@ -34,15 +35,17 @@ export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     Layer.provide(Layer.mergeAll(pluginsRuntimeLive, eventServiceLive)),
   );
 
+  const runtimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
+  const urlScannerLive = UrlScannerLive.pipe(
+    Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive)),
+  );
+
   return Layer.mergeAll(
     pluginsRuntimeLive,
     eventServiceLive,
-    Layer.succeed(RuntimeProvider, runtimeProviderService),
-    DataMoverLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(Layer.succeed(RuntimeProvider, runtimeProviderService), pluginsRuntimeLive),
-      ),
-    ),
+    runtimeProviderLive,
+    urlScannerLive,
+    DataMoverLive.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );

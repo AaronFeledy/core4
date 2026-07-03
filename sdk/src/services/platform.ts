@@ -11,6 +11,7 @@ import type {
   SecretNotFoundError,
   SshError,
 } from "../errors/index.ts";
+import type { ProbeOutcome } from "../probe/index.ts";
 import type { AppId, HealthcheckPlan, RoutePlan, ServiceName } from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
 
@@ -99,6 +100,18 @@ export interface ScanEndpoint {
   readonly url: string;
   readonly reachable: boolean;
   readonly statusCode?: number;
+  /**
+   * Probe-primitive verdict for this URL: `green` (responded with an accepted
+   * status), `yellow` (responded, but outside the accepted set), or `red` (no
+   * HTTP response). Populated by probe-backed scanners.
+   */
+  readonly outcome?: ProbeOutcome;
+  /**
+   * Optional structured detail for non-`green` verdicts (e.g. the last
+   * transport error or `HTTP <code>`). Scanners MUST redact this through the
+   * canonical redaction primitive before returning it.
+   */
+  readonly detail?: string;
 }
 
 export interface ScanResult {

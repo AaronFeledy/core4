@@ -13,6 +13,31 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 00:42 CDT - US-375 Review
+- Review fixed the default scanner wiring so provider-and-above bootstrap layers now provide `UrlScannerLive` through the generated bootstrap source, backed by a generated-layer regression test. Review also corrected stale scanner API/guide guidance that still described the live scanner as unavailable, and split the oversized scanner test module into focused behavior/probe/live-layer files while preserving coverage.
+- Review notes (deferred/rejected): doctor-subsystems still using `UrlScannerUnavailableLive` is deferred to US-376, whose acceptance criteria explicitly migrate doctor wiring; redirect-follow SSRF risk is non-blocking because redirects default to manual and user scanner config is not exposed yet, but future config work should validate redirected hops before enabling bounded follow behavior.
+- Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; focused scanner/probe/sdk/doctor/generated-bootstrap spot checks passed (54 tests, 286 assertions); focused scanner guide pass, guide lint, and guide-drift gate passed/skipped cleanly; edited TypeScript files have clean LSP diagnostics and split scanner test files are under the 250 pure-LOC ceiling.
+---
+
+## 2026-07-03 - US-375
+- The scanner subsystem now ships a real default: `core/src/subsystems/scanner/live.ts` exports `makeUrlScanner` (id `http-probe`), `UrlScannerLive` (Layer requiring `RuntimeProvider` + `HttpClient`), and `UrlScannerDefaultLayer`. Scanning derives host-facing `http(s)://localhost:<port><path>` targets from the provider's host-reachable runtime endpoints (stopped services and non-HTTP/port-less endpoints skipped) and drives each URL through `runProbe`: `retry` -> `maxAttempts`, `delaySeconds` -> fixed `delay`, `timeoutSeconds` -> per-attempt cap via `Effect.timeoutTo` plus `HttpRequest.timeoutMs`. Verdicts are ProbeOutcome-shaped: 2xx-or-`okCodes` -> green, any other HTTP response -> yellow (`detail: "HTTP <code>"`), transport failure/timeout -> red; all outbound requests go through the `HttpClient` egress chokepoint (`callerId: "url-scanner"`, `maxRedirects` 0 -> `redirect: "manual"`, >0 -> `"follow"`). `detectCollisions` reports host ports claimed by two or more distinct apps. Probe/attempt machinery lives in `scan-target.ts` to respect the module size ceiling.
+- SDK additive change: `ScanEndpoint` gains optional `outcome` (`ProbeOutcome`) and `detail` (redacted structured detail) so scanners can report green/yellow/red without breaking the frozen shape; documented in `sdk/API_COMPATIBILITY.md` Compatibility notes. All endpoint detail and `ScannerError` messages are redacted through `RedactionService` (`forProfile("secrets")`, standalone-redactor fallback when absent) before leaving the scanner. The `unavailable` stub in `api.ts` remains the explicit degraded-mode layer; doctor wiring intentionally stays on the stub until the doctor migration story lands.
+- Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; focused suite (14 TestClock tests: exact 20s fixed-backoff timing, waits-only-between-attempts, per-attempt timeout detail, okCodes classification, redaction on/off, collisions, SDK `runScannerContract`, layer wiring incl. provider-failure redaction) green; probe, sdk url-scanner contract, sdk backward-compat, doctor-subsystems, healthcheck, and plugin-abstraction-coverage spot checks green; manual QA drove `UrlScannerLive` end-to-end through the real `HttpClientLive` against a live `Bun.serve` server (green 200, yellow 503 with `HTTP 503` detail, red connection-refused with redacted transport detail, cross-app collision report).
+- **Learnings for future iterations:**
+  - The scanner mirrors the healthcheck-runner probe idiom exactly (never-failing attempts via `Effect.either` + `Effect.timeoutTo`, `AttemptStatus` in a `Ref`, `Effect.serviceOption(RedactionService)` with standalone fallback); reuse it for the US-376 doctor/downloader/setup migrations.
+  - `HttpClientShape.request` requires `Scope`; wrap per-attempt calls in `Effect.scoped` to keep the service shape's `R = never`.
+  - `ServiceRuntimeInfo.endpoints` are host-reachable ports (`lando info` renders them as `localhost:<port>`), so they are the right source for both scan URLs and cross-app port-collision claims.
+  - `HttpRequest` has no redirect-count cap; `maxRedirects` maps binary (0 -> `"manual"`, >0 -> `"follow"`) — a follow-up config schema should keep that documented simplification.
+  - Additive optional fields on SDK service-layer interfaces (not `Schema.Struct`s) need only an API_COMPATIBILITY Compatibility-notes bullet — no schema snapshot regen, no backward-compat fixture change.
+---
+
+## 2026-07-02 23:59 CDT - Babysit
+- PR: #504 https://github.com/AaronFeledy/core4/pull/504
+- CI outcome: pass
+- Review feedback: fixed guide coverage drift for the runProbe-backed HealthcheckRunner documentation scenario
+- Merge: merged (squash)
+---
+
 ## 2026-07-02 23:02 CDT - US-374 Verify
 - Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync`, drove the provider-exec healthcheck runner through compiled `lando bun` with retry success, provider failure redaction, and timeout redaction, and smoke-tested adjacent compiled `version`, `doctor --help`, and live `doctor --format json` provider diagnostics.
 - Fixed a real redaction regression found by the compiled scenario: when `RedactionService` is absent, standalone redaction now treats common secret-bearing env keys as exact redaction values, so provider healthcheck status cannot leak env-sourced secrets.

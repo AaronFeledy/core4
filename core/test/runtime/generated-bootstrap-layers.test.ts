@@ -42,4 +42,12 @@ describe("generated bootstrap layers", () => {
       expect(source).not.toContain("makePluginRegistryLive");
     }
   });
+
+  test("provider bootstrap wires the default UrlScanner", async () => {
+    const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
+
+    expect(provider).toContain("UrlScannerLive");
+    expect(provider).toContain("Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))");
+    expect(provider).toContain("urlScannerLive");
+  });
 });

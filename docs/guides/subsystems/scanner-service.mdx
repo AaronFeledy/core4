@@ -30,11 +30,11 @@ tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
     </Step>
   </Scenario>
 
-  <Scenario id="scanner-probe-primitive" render={false} reason="Live UrlScanner is not implemented yet; documents the required probe primitive for future retry/delay/timeout URL probes">
+  <Scenario id="scanner-probe-primitive" render={false} reason="Live UrlScanner requires a running provider and host-reachable endpoints; unit coverage verifies the probe-backed implementation deterministically">
     <Step name="probe-primitive">
-      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Future scanner retry/delay/timeout-to-verdict loops must use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
-      <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
-      <Variable name="apiRef" value="core/src/subsystems/scanner/api.ts" display="UrlScannerUnavailableLive stub documents the contract until provider-inspect lands" />
+      <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="The default scanner maps retry/delay/timeout onto runProbe instead of a hand-rolled Effect.retry or Schedule loop" />
+      <Variable name="verdict" value="ScanEndpoint.outcome/detail" display="Probe-backed scans return green/yellow/red verdicts plus redacted detail for non-green results" />
+      <Variable name="apiRef" value="core/src/subsystems/scanner/live.ts" display="UrlScannerLive is the default runtime scanner; UrlScannerUnavailableLive remains only for explicit degraded/test wiring" />
     </Step>
   </Scenario>
 </Guide>
