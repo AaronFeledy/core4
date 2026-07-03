@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 
-import { StreamFrame } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 
-import { encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
+import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "../result-encode.ts";
 
 export type DoctorNdjsonStatus = "pass" | "warn" | "fail";
 
@@ -15,6 +15,8 @@ export interface DoctorNdjsonRenderOptions<Check extends DoctorNdjsonCheck> {
   readonly checks: ReadonlyArray<Check>;
   readonly now?: Date | undefined;
   readonly checkEventPayload: (check: Check) => Record<string, unknown>;
+  /** Defaults to {@link identityRedactor} to keep output byte-compatible; inject a `RedactionService` redactor to mask secret-bearing check results. */
+  readonly redactor?: Redactor;
 }
 
 export const DoctorNdjsonSummarySchema = Schema.Struct({
@@ -45,16 +47,17 @@ export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
   checks,
   now,
   checkEventPayload,
+  redactor = identityRedactor,
 }: DoctorNdjsonRenderOptions<Check>): string => {
   const timestamp = (now ?? new Date()).toISOString();
   const lines: string[] = [];
   for (const check of checks) {
     lines.push(
-      JSON.stringify(
-        Schema.encodeSync(StreamFrame)({
-          _tag: "event",
+      Effect.runSync(
+        encodeStreamEventFrame({
           event: "doctor.check",
           payload: checkEventPayload(check),
+          redactor,
         }),
       ),
     );
@@ -77,7 +80,7 @@ export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
         command,
         resultSchema: DoctorNdjsonSummarySchema,
         outcome: { _tag: "success", value: summary },
-        redactor: identityRedactor,
+        redactor,
       }),
     ),
   );

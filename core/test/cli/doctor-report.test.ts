@@ -28,6 +28,7 @@ import {
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 const decodeFrames = (ndjson: string) =>
@@ -182,6 +183,22 @@ describe("meta:doctor combined report", () => {
         warned: 5,
       },
     });
+  });
+
+  test("compiled doctor renderer dispatches ndjson format through the StreamFrame renderer", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await run(provider);
+    const ndjson = renderCompiledDoctorReport(report, {
+      mode: "lando",
+      format: "ndjson",
+      columns: 80,
+      isTTY: false,
+    });
+
+    if (ndjson === undefined) throw new Error("expected compiled doctor renderer output");
+    const firstFrame = decodeFrames(ndjson)[0];
+    expect(firstFrame).toMatchObject({ _tag: "event", event: "doctor.check" });
+    expect(ndjson).not.toContain("selected-provider: pass");
   });
 
   test("meta:doctor json renderer emits the schema-encoded command result envelope", async () => {

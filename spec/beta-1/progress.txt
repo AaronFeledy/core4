@@ -229,3 +229,23 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): compatibility re-export shims and plugin-owned fallback formatter helpers are accepted as deliberate zero-churn ownership seams documented in `core/AGENTS.md`; duplicated event-consumer/input wiring and the plugin `./runtime` export are non-blocking follow-ups, not story blockers.
 - Verification: typecheck, lint, check:renderer-boundary passed; focused bundled renderer/plugin tests passed; edited TypeScript file has clean LSP diagnostics.
 ---
+## [2026-07-03 12:05:09 CDT] - Babysit
+- PR: #512 https://github.com/AaronFeledy/core4/pull/512
+- CI outcome: pass
+- Review feedback: fixed (guide-drift failures resolved with documented Guide-Coverage-Skip for internal-only renderer DI refactor; Bugbot inline comments remained empty)
+- Merge: merged (squash)
+---
+## [2026-07-03 12:35 CDT] - US-383
+- Doctor NDJSON now emits every line through the central redaction-aware StreamFrame encode seam. `renderDoctorChecksAsNdjson` (the shared helper behind the provider/subsystem/global-app doctor renderers) and `doctor-report.ts`'s deprecation/app-config `doctor.check` lines both route through `encodeStreamEventFrame` instead of hand-rolled `JSON.stringify(Schema.encodeSync(StreamFrame)(...))`. Output is byte-identical to before because the sync renderers default to `identityRedactor`; the helper now accepts an optional `Redactor` so a caller with secret-bearing check results can mask them through the same seam.
+- The machine-output gate needed no change: it already treats `_tag:"event"` frames as compliant and had no allowlist entries for these two files (its only carve-out is `result-encode.ts`).
+- Verification: typecheck, lint, check:machine-output passed; doctor + machine-output-conformance test spot checks passed (52 doctor tests, 6 gate tests); new doctor-ndjson RED→GREEN redaction test proves a registered secret in a doctor check result is masked to `[redacted]`; a byte-compat characterization test plus a real-render QA confirmed all event lines stay byte-identical to the pre-change encoder.
+- **Learnings for future iterations:**
+  - The `secrets` redaction profile applies PATTERN-based masking (assignment/bearer/userinfo/signed-query), not just registered exact values. Wiring a live `forProfile("secrets")` redactor into a byte-frozen NDJSON/snapshot path would rewrite fixture bytes, so redaction-aware sync renderers must default to `identityRedactor` and only redact when a caller injects a real redactor.
+  - `encodeStreamEventFrame({ event, payload, redactor: identityRedactor })` is byte-for-byte equal to `JSON.stringify(Schema.encodeSync(StreamFrame)({ _tag:"event", event, payload }))`, so migrating one-off event-line renderers onto the seam is a safe no-diff refactor — verify with a characterization test that pins the first line.
+  - The doctor sync `render(value, ctx)` path has no `RedactionService` (RenderContext carries mode/format/columns/isTTY only), which is why doctor NDJSON uses injectable-redactor threading rather than the Effect-resolved redactor the streaming-JSON path uses.
+---
+## [2026-07-03 13:40 CDT] - US-383 Verify
+- Verified the freshly built compiled binary in `lando4-dev`: `setup` completed cleanly, then a throwaway app run of `lando --format=ndjson doctor` emitted StreamFrame NDJSON (`doctor.check` events plus terminal result), with adjacent `--format=json doctor` and `doctor --help` smoke checks green.
+- Fixed a compiled-dispatch regression where `runDoctor` ignored `ctx.format === "ndjson"` and rendered text instead of the shared doctor NDJSON StreamFrame renderer.
+- **Learnings for future iterations:** Source/OCLIF doctor render tests are not enough for this seam; compiled `core/src/cli/run.ts` has a separate `runDoctor` render branch that must explicitly preserve NDJSON.
+---
