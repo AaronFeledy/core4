@@ -24,6 +24,12 @@ const appRefFixture = {
   root: "/srv/apps/myapp",
 } as const;
 
+const otherAppRefFixture = {
+  kind: "user",
+  id: "otherapp",
+  root: "/srv/apps/otherapp",
+} as const;
+
 const preAppStartInput: unknown = {
   _tag: "pre-app-start",
   eventName: "pre-app-start",
@@ -40,28 +46,36 @@ const postAppStartInput: unknown = {
   timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
 };
 
+const filteredOutPreAppStartInput: unknown = {
+  _tag: "pre-app-start",
+  eventName: "pre-app-start",
+  appRef: otherAppRefFixture,
+  providerId: "lando",
+  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+};
+
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)(preAppStartInput);
 const postAppStartEvent = Schema.decodeUnknownSync(PostAppStartEvent)(postAppStartInput);
+const filteredOutPreAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)(filteredOutPreAppStartInput);
 
 describe("waitForEvent", () => {
   test("resolves with the typed payload when a matching event is published", async () => {
     const received = await Effect.runPromise(
       Effect.gen(function* () {
         const waiter = yield* waitForEvent("pre-app-start", {
-          filter: (event) => event._tag === "pre-app-start",
+          filter: (event) => event.appRef.id === "myapp",
         }).pipe(Effect.fork);
         yield* Effect.sleep("10 millis");
         yield* Effect.flatMap(EventService, (events) => events.publish(postAppStartEvent));
+        yield* Effect.flatMap(EventService, (events) => events.publish(filteredOutPreAppStartEvent));
         yield* Effect.flatMap(EventService, (events) => events.publish(preAppStartEvent));
         return yield* Fiber.join(waiter);
       }).pipe(Effect.provide(EventServiceLive)),
     );
 
-    // Delegation to EventService.waitFor: the first matching event resolves,
-    // as the exact typed payload placed on the bus (redacted at source).
     expect(received).toEqual(preAppStartEvent);
     expect(received._tag).toBe("pre-app-start");
-    expect(received.providerId).toBe("lando");
+    expect(String(received.providerId)).toBe("lando");
     expect(received.appRef.id).toBe("myapp");
   });
 
@@ -78,7 +92,6 @@ describe("waitForEvent", () => {
       }).pipe(Effect.provide(EventServiceLive)),
     );
 
-    // Parity with EventService.waitFor semantics: identical typed, redacted payload.
     expect(viaHelper).toEqual(viaService);
     expect(viaHelper).toEqual(preAppStartEvent);
   });

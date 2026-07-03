@@ -13,6 +13,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 03:57 CDT - US-377 Review
+- Review confirmed US-377 satisfies the source PRD and tightened the runtime test so `waitForEvent` proves `filter` pass-through with a same-name event filtered out before the accepted event resolves. Review also corrected a strict branded-type assertion in the new test.
+- Review notes (deferred/rejected): live-stream secret-redaction assertions remain rejected because `waitForEvent` intentionally has parity with `EventService.waitFor`, while `EventServiceLive` redacts only the history buffer returned by `query`.
+- Verification: typecheck, lint passed; focused `wait-for-event` story test and adjacent `events`/`event-service` spot checks passed; edited TypeScript file has clean LSP diagnostics.
+---
+
 ## 2026-07-03 03:49 CDT - US-377
 - `waitForEvent` from `@lando/core/testing` now has real runtime behavior coverage instead of only an export-existence assertion. New `core/test/testing/wait-for-event.test.ts` proves the helper delegates to `EventService.waitFor`: it resolves the first matching event as the exact typed payload (honoring `filter`), returns byte-identical results to a direct `EventService.waitFor` call (parity), fails with the `EventError` `reason: "timeout"` contract when an explicit deadline elapses (driven deterministically through `TestClock`), and — unlike `expectEvent` — waits indefinitely when no timeout is supplied (still pending after a one-hour virtual clock advance).
 - Verification: typecheck, lint passed; new suite green (4 tests) with a RED-integrity spot check confirming the payload assertions actually bite; adjacent `expectEvent` and `EventServiceLive` suites still green (7 tests). No CLI surface — the real-runtime surface is the test runner exercising `EventServiceLive`.
