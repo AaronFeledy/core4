@@ -1,167 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import {
-  Cause,
-  Clock,
-  type Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Option,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Effect, Exit, Fiber, Layer, Option, TestClock, TestContext } from "effect";
 
-import { HealthcheckError, HealthcheckTimeoutError, ServiceExecError } from "@lando/sdk/errors";
-import { AppId, type HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
-import {
-  type ExecResult,
-  type ExecTarget,
-  HealthcheckRunner,
-  type HealthcheckRunnerShape,
-  type CommandSpec as ProviderCommandSpec,
-  type ProviderError,
-  RuntimeProvider,
-  type RuntimeProviderShape,
-} from "@lando/sdk/services";
+import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
+import type { HealthcheckPlan } from "@lando/sdk/schema";
+import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
 
-import { RedactionService, type RedactionServiceShape } from "../../../src/redaction/service.ts";
 import * as liveModule from "../../../src/subsystems/healthcheck/live.ts";
+import {
+  appId,
+  commandPlan,
+  drive,
+  driveExit,
+  execFailing,
+  execSequence,
+  execSleepingExit,
+  failureOf,
+  marker,
+  nonePlan,
+  runExitUnderClock,
+  secret,
+  service,
+  successOf,
+  withFakeRedaction,
+} from "./support.ts";
 
-type HealthcheckExec = {
-  readonly exec: (
-    target: ExecTarget,
-    command: ProviderCommandSpec,
-  ) => Effect.Effect<ExecResult, ProviderError>;
-};
-type HealthcheckLiveModule = {
-  readonly makeHealthcheckRunner: (deps: HealthcheckExec) => HealthcheckRunnerShape;
-  readonly HealthcheckRunnerLive: Layer.Layer<HealthcheckRunner, never, RuntimeProvider>;
-  readonly HealthcheckRunnerDefaultLayer: Layer.Layer<HealthcheckRunner, never, RuntimeProvider>;
-};
-
-const { HealthcheckRunnerDefaultLayer, HealthcheckRunnerLive, makeHealthcheckRunner }: HealthcheckLiveModule =
-  liveModule;
-
-const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));
-
-const driveExit = <A, E>(effect: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>> =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(TestContext.TestContext)));
-
-type TimedExit<A, E> = { readonly exit: Exit.Exit<A, E>; readonly elapsedMs: number };
-
-const runExitUnderClock = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  advance: Duration.DurationInput,
-): Promise<TimedExit<A, E>> =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const measured = Effect.gen(function* () {
-        const started = yield* Clock.currentTimeMillis;
-        const exit = yield* Effect.exit(effect);
-        return { exit, elapsedMs: (yield* Clock.currentTimeMillis) - started };
-      });
-      const fiber = yield* Effect.fork(measured);
-      yield* TestClock.adjust(advance);
-      return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
-  );
-
-const successOf = <A, E>(exit: Exit.Exit<A, E>): A => {
-  if (Exit.isSuccess(exit)) return exit.value;
-  expect(Exit.isSuccess(exit)).toBe(true);
-  throw new Error("expected success");
-};
-
-const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
-  if (Option.isSome(failure)) return failure.value;
-  throw new Error("expected typed failure");
-};
-
-const appId = AppId.make("myapp");
-const service = ServiceName.make("web");
-
-type ExecCall = { readonly target: ExecTarget; readonly command: ProviderCommandSpec };
-type FakeExec = HealthcheckExec & { readonly calls: ExecCall[] };
-
-const execResult = (exitCode: number): ExecResult => ({ exitCode, stdout: "", stderr: "" });
-
-const makeExec = (execute: (call: ExecCall) => Effect.Effect<ExecResult, ProviderError>): FakeExec => {
-  const calls: ExecCall[] = [];
-  return {
-    calls,
-    exec: (target, command) => {
-      const call = { target, command };
-      calls.push(call);
-      return execute(call);
-    },
-  };
-};
-
-const execSequence = (exitCodes: readonly [number, ...number[]]): FakeExec => {
-  let attempt = 0;
-  return makeExec(() =>
-    Effect.sync(() => {
-      const exitCode = exitCodes[attempt] ?? exitCodes[0];
-      attempt += 1;
-      return execResult(exitCode);
-    }),
-  );
-};
-
-const providerFailure = (message: string): ServiceExecError =>
-  new ServiceExecError({ providerId: TestRuntimeProvider.id, operation: "exec", service, message });
-
-const execFailing = (message: string): FakeExec => makeExec(() => Effect.fail(providerFailure(message)));
-
-const execSleepingExit = (sleepFor: Duration.DurationInput, exitCode: number): FakeExec =>
-  makeExec(() => Effect.sleep(sleepFor).pipe(Effect.as(execResult(exitCode))));
-
-const commandPlan = (
-  command: NonNullable<HealthcheckPlan["command"]>,
-  overrides: Partial<
-    Pick<HealthcheckPlan, "intervalSeconds" | "timeoutSeconds" | "retries" | "startPeriodSeconds">
-  > = {},
-): HealthcheckPlan => ({
-  kind: "command",
-  command,
-  intervalSeconds: 1,
-  timeoutSeconds: 5,
-  retries: 1,
-  ...overrides,
-});
-
-const nonePlan = (): HealthcheckPlan => ({ kind: "none", intervalSeconds: 1, timeoutSeconds: 5, retries: 1 });
-
-const secret = "s3cr3t-token";
-const marker = "[REDACTED]";
-
-const fakeRedactString = (text: string): string => text.replaceAll(secret, marker);
-
-const fakeRedactValue = (value: unknown): unknown => {
-  if (typeof value === "string") return fakeRedactString(value);
-  if (Array.isArray(value)) return value.map(fakeRedactValue);
-  if (value instanceof Error) return { name: value.name, message: fakeRedactString(value.message) };
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fakeRedactValue(item)]));
-  }
-  return value;
-};
-
-const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fakeRedactValue };
-
-const fakeRedactionService = {
-  forProfile: () => Effect.succeed(fakeRedactor),
-} satisfies RedactionServiceShape;
-
-const withFakeRedaction = <A, E>(effect: Effect.Effect<A, E, never>): Effect.Effect<A, E, never> =>
-  effect.pipe(Effect.provide(Layer.succeed(RedactionService, fakeRedactionService)));
+const { HealthcheckRunnerDefaultLayer, HealthcheckRunnerLive, makeHealthcheckRunner } = liveModule;
 
 describe("makeHealthcheckRunner", () => {
   test("kind none resolves skipped without calling exec", async () => {
@@ -286,7 +150,7 @@ describe("makeHealthcheckRunner", () => {
     );
   });
 
-  test("redacts provider and timeout failures when RedactionService is present", async () => {
+  test("redacts provider and timeout failures", async () => {
     const redactedExec = execFailing(`provider saw ${secret}`);
     const redacted = await drive(
       withFakeRedaction(makeHealthcheckRunner(redactedExec).run(commandPlan("fail"), appId, service)),
@@ -315,9 +179,12 @@ describe("makeHealthcheckRunner", () => {
       expect(JSON.stringify(timeout.probe)).toContain(marker);
     }
 
-    const rawExec = execFailing(`provider saw ${secret}`);
-    const raw = await drive(makeHealthcheckRunner(rawExec).run(commandPlan("fail"), appId, service));
-    expect(raw.lastStatus).toContain(secret);
+    const fallbackExec = execFailing("provider saw MY_TOKEN=abc123");
+    const fallback = await drive(
+      makeHealthcheckRunner(fallbackExec).run(commandPlan("fail"), appId, service),
+    );
+    expect(fallback.lastStatus).not.toContain("abc123");
+    expect(fallback.lastStatus).toContain("[redacted]");
   });
 
   test("provider failures exhaust as unhealthy results, not timeout failures", async () => {

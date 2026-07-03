@@ -14,7 +14,7 @@ import {
   RuntimeProvider,
 } from "@lando/sdk/services";
 
-import { RedactionService } from "../../redaction/service.ts";
+import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
 
 export interface HealthcheckExec {
   readonly exec: (
@@ -47,8 +47,6 @@ interface TimeoutContext {
   readonly redactor: Redactor;
 }
 
-const identityRedactor: Redactor = { redactString: (text) => text, redactValue: (value) => value };
-
 const providerExecUnsupported = (plan: HealthcheckPlan, service: ServiceName): HealthcheckError =>
   new HealthcheckError({
     message: `The provider-exec healthcheck runner only supports command healthchecks. Configure service ${String(service)} with a command healthcheck, or disable the ${plan.kind} healthcheck for this provider.`,
@@ -70,7 +68,8 @@ const providerMessage = (error: ProviderError): string => error.message;
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);
-  if (redaction._tag === "None") return identityRedactor;
+  if (redaction._tag === "None")
+    return createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
   return yield* redaction.value.forProfile("secrets", { sourceEnv: { ...process.env } });
 });
 

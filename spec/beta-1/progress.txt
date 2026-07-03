@@ -58,3 +58,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (triage added retrying, fully-qualified CI provider image pre-pulls after linux-x64 provider integration hit registry pull failure)
 - Merge: merged (squash)
 ---
+
+## 2026-07-02 22:44 CDT - US-374 Review
+- Review fixed the healthcheck runner's absent-RedactionService path so provider/timeout details use the canonical standalone secrets redactor instead of an identity fallback; tests now prove fallback redacts secret-shaped provider output. Review also split reusable healthcheck test fixtures out of the oversized focused test module while preserving the same behavior coverage.
+- Review notes (deferred/rejected): `RetryPolicy.timeout` mapping was rejected because `HealthcheckPlan.timeoutSeconds` is the SDK schema's per-attempt timeout and wiring it as `RetryPolicy.timeout` would turn the shipped default interval/timeout combination into an overall deadline; doctor subsystem wiring and stale healthcheck guide prose are deferred to the US-376/guide-drift owners rather than folded into this story.
+- Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; focused healthcheck runner suite passed (12 tests, 47 assertions); adjacent probe suite passed (21 tests, 71 assertions); changed TypeScript files have clean LSP diagnostics and each remains under the 250 pure-LOC ceiling.
+- **Learnings for future iterations:** When a service intentionally keeps `R = never` by resolving `RedactionService` optionally, the absent-service branch must use `createStandaloneRedactor("secrets", ...)`, not identity redaction.
+---
