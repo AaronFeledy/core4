@@ -13,6 +13,16 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 07:01 CDT - US-380
+- The managed-file ledger path is now a first-class member of the paths surface: `LandoPaths` (SDK) and the pure `makeLandoPaths` peer gain `managedFileLedger(appId)` returning `<userDataRoot>/managed-files/<appId>/ledger.json`, built with the platform-aware `joinFor` so win32/darwin/linux separators are honored (matching spec §7.5.1, which already documented the member).
+- `core/src/config/roots.ts` no longer hand-rolls the `managed-files/`+`ledger.json` join; both `managedFileLedger` and `managedFilesRoot` (now `dirname` of the ledger file) delegate to the primitive. `core/src/managed-file/service.ts` migrated off the roots helper and resolves the ledger location through `makeLandoPaths({ userDataRoot }).managedFileLedger(appId)`, splitting it into the StateStore bucket's `root` dir + `key` filename via `dirname`/`basename` so the segment/filename live only in the primitive.
+- Verification: typecheck, lint, check:paths-boundary, check:managed-file-boundary, check:redaction-boundary passed; schema snapshot regenerated with zero drift. Cross-platform matrix tests (linux/win32/darwin + overridden roots) plus config-paths units, managed-file service/events/contract, and paths-export/paths-runtime/import-boundary spot checks green. Manual QA drove the real runtime: the pure primitive, the roots delegation, and the live Effect `PathsService` tag all produced the expected ledger path (linux forward-slash + win32 backslash).
+- **Learnings for future iterations:**
+  - `LandoPaths` is a plain TS interface, not a `Schema.Struct` in the public schema registry, so adding a member is a pure additive service-field change: interface + `makeLandoPaths` + an `API_COMPATIBILITY.md` "Additive Beta service fields" bullet. `bun run codegen:schema-snapshot` produces no diff — run it to confirm zero drift, do not expect a snapshot change.
+  - The StateStore ledger bucket needs a directory `root` + filename `key`, but the primitive exposes only the full ledger file path; derive `dir = dirname(file)` / `key = basename(file)` (neither is flagged by `check:paths-boundary`, which only catches `join(<root>, "plugins"|"scratch"|"bin")` literals).
+  - `check:paths-boundary` does NOT yet flag the `managed-files` segment, so the delegation is a discipline choice (spec §7.5.1) rather than a gate requirement; keep new root-relative joins inside `makeLandoPaths` regardless.
+---
+
 ## 2026-07-03 06:10 CDT - US-379 Review
 - Review fixed a managed-file event redaction parity gap: `ManagedFileServiceLive` now passes `sourceEnv` into both the canonical `RedactionService` branch and the standalone fallback, so secret-bearing env values outside the `LANDO_SECRET_` store prefix are exact-value masked before event publication.
 - Review notes (deferred/rejected): resolving the managed-file redactor at layer construction is accepted for current production contracts because `SecretStoreLive` is env-backed with no runtime registration API; if a mutable production secret store is introduced later, the event seam should resolve the redactor per operation.

@@ -158,7 +158,7 @@
         "Lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-18 ('PathsService / @lando/core/paths gain a managedFileLedger(appId) derived path'). Audit found the helper only in core/src/config/roots.ts:19."
     },
     {
