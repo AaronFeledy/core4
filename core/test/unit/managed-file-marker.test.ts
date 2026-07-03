@@ -32,7 +32,7 @@ describe("managed-file marker — commentPrefix", () => {
 });
 
 describe("managed-file marker — javascript/typescript ownership round-trip", () => {
-  test.each(["javascript", "typescript"] as ReadonlyArray<FileFormat>)(
+  test.each([["javascript"], ["typescript"]] as Array<[FileFormat]>)(
     "%s composes a // marker line above the verbatim body",
     (format) => {
       const body = "export const alpha = 1;\n";
@@ -44,7 +44,7 @@ describe("managed-file marker — javascript/typescript ownership round-trip", (
     },
   );
 
-  test.each(["javascript", "typescript"] as ReadonlyArray<FileFormat>)(
+  test.each([["javascript"], ["typescript"]] as Array<[FileFormat]>)(
     "%s strips the // marker so the file adopts back to the raw body",
     (format) => {
       const body = "const value: number = 1;\n";

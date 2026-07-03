@@ -205,3 +205,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - `bun run codegen:schema-snapshot` refreshes `sdk/test/fixtures/schema-snapshot.json`, `dist/schemas`, and `docs/reference/schemas` together; for an already-consistent enum it produces zero drift — run it to confirm agreement, don't expect a diff.
   - `commentPrefix(format)` (`core/src/managed-file/marker.ts`) is the single source of per-format ownership-comment syntax: `//` for javascript/typescript, `;` for ini, `null` for json (ledger/`x-lando-generated` key), `#` for everything else.
 ---
+
+## 2026-07-03 08:47 CDT - US-381 Review
+- Review fixed the new marker test's `test.each` rows so TypeScript/LSP diagnostics understand the javascript/typescript parameterized cases while preserving the same marker behavior coverage.
+- Review notes (deferred/rejected): archival `spec/alpha-4/prd.json` still mirrors the old 7-value Alpha PRD text, but it is not a named normative US-381 surface and no repo script consumes it; duplicate marker-prefix sentinel test is intentional as a regression pin for the js/ts corruption risk; marker-id control-character hardening is pre-existing trusted-plugin-surface work, not a blocker for this contract reconciliation.
+- Verification: typecheck, lint passed; focused marker, managed-file codec, and managed-file service spot checks passed; all five review-work lanes passed with no blocking findings.
+---
