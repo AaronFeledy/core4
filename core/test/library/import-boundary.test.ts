@@ -381,6 +381,15 @@ describe("import boundaries (basic importability)", () => {
     expect(mod.resolveLandoRoots).toBeDefined();
     expect(mod.makeLandoPaths).toBeDefined();
     expect(mod.normalizeHostPlatform).toBeDefined();
+    expect(
+      (
+        mod.makeLandoPaths as (overrides: { readonly userDataRoot: string }) => {
+          readonly managedFileLedger: (appId: string) => string;
+        }
+      )({
+        userDataRoot: "/tmp/lando-data",
+      }).managedFileLedger("app-one"),
+    ).toBe("/tmp/lando-data/managed-files/app-one/ledger.json");
   });
 
   test("can import @lando/core/schema standalone", async () => {

@@ -8,7 +8,7 @@
 // the in-memory `TestManagedFileStore` share one implementation. The ledger is
 // realized through a `StateStore` bucket (not a bespoke
 // registry/lock/quarantine); the ledger path is derived once by the paths
-// primitive (`managedFilesRoot`), never re-spelled here.
+// primitive (`makeLandoPaths().managedFileLedger`), never re-spelled here.
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
