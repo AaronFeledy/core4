@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
+import { ProxyError } from "@lando/sdk/errors";
 import {
   CertificateAuthority,
   HealthcheckRunner,
@@ -103,7 +104,8 @@ describe("each subsystem failure path produces a tagged error with severity + so
     for (const name of [...AUTOMATIC_SUBSYSTEMS, ...MANUAL_SUBSYSTEMS]) {
       const classified = classifySubsystemFailure(name);
       expect(classified).toBeDefined();
-      expect(["info", "warn", "error"]).toContain(classified?.severity);
+      if (classified === undefined) throw new Error(`missing classification for ${name}`);
+      expect(["info", "warn", "error"]).toContain(classified.severity);
       expect(classified?.solution.description.length).toBeGreaterThan(0);
     }
     expect(classifySubsystemFailure("nope")).toBeUndefined();
@@ -206,7 +208,13 @@ describe("doctor --fix recovery", () => {
   test("--fix redacts secret-like environment values from failed setup errors", async () => {
     const secretErrorProxy = Layer.succeed(ProxyService, {
       id: "unavailable",
-      setup: () => Effect.fail(new Error("setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2")),
+      setup: () =>
+        Effect.fail(
+          new ProxyError({
+            proxyId: "unavailable",
+            message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
+          }),
+        ),
       applyRoutes: () => Effect.void,
       removeRoutes: () => Effect.void,
     });
