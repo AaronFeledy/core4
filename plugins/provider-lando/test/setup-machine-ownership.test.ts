@@ -104,6 +104,36 @@ describe("provider-lando machine ownership recording", () => {
     }
   });
 
+  test("setup preserves recorded Lando-created ownership across reruns", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-rerun-owned-"));
+    try {
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanMachine: machineRunner("missing", []),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanMachine: machineRunner("running", []),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("setup omits the machine field on Linux where no VM is managed", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-linux-"));
     try {

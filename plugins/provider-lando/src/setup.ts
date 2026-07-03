@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { type Context, DateTime, Effect } from "effect";
 
@@ -128,8 +128,40 @@ export interface SetupResult {
   readonly statePath?: string;
 }
 
+type RecordedMachineOwnership = { readonly name: "lando"; readonly createdByLando: boolean };
+
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
+
+const readExistingMachineOwnership = (
+  stateDir: string,
+): Effect.Effect<RecordedMachineOwnership | undefined> =>
+  Effect.tryPromise(async () => {
+    const parsed: unknown = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+    if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
+    const machine = (parsed as { readonly machine: unknown }).machine;
+    if (typeof machine !== "object" || machine === null) return undefined;
+    const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
+    const createdByLando =
+      "createdByLando" in machine
+        ? (machine as { readonly createdByLando: unknown }).createdByLando
+        : undefined;
+    if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
+    const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
+    return ownership;
+  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+const preserveRecordedMachineOwnership = (
+  stateDir: string,
+  current: RecordedMachineOwnership,
+): Effect.Effect<RecordedMachineOwnership> =>
+  current.createdByLando
+    ? Effect.succeed(current)
+    : readExistingMachineOwnership(stateDir).pipe(
+        Effect.map((existing) =>
+          existing?.createdByLando === true ? { name: "lando", createdByLando: true } : current,
+        ),
+      );
 
 const readText = (stream: ReadableStream<Uint8Array> | null) =>
   stream === null ? Promise.resolve("") : new Response(stream).text();
@@ -512,7 +544,7 @@ export const setupProviderLando = (
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
       const runtimeConfigDir = options.runtimeConfigDir;
-      let machineOwnership: { readonly name: "lando"; readonly createdByLando: boolean } | undefined;
+      let machineOwnership: RecordedMachineOwnership | undefined;
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -589,6 +621,10 @@ export const setupProviderLando = (
       const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
       const readinessCheck = options.readinessCheck ?? Effect.void;
       yield* readinessCheck;
+      const recordedMachineOwnership =
+        machineOwnership === undefined || options.stateDir === undefined
+          ? machineOwnership
+          : yield* preserveRecordedMachineOwnership(options.stateDir, machineOwnership);
       const statePath =
         stateStep === undefined || options.stateDir === undefined
           ? undefined
@@ -603,7 +639,7 @@ export const setupProviderLando = (
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
                 ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
                 ...(socketPath === undefined ? {} : { socketPath }),
-                ...(machineOwnership === undefined ? {} : { machine: machineOwnership }),
+                ...(recordedMachineOwnership === undefined ? {} : { machine: recordedMachineOwnership }),
               }),
             );
 
