@@ -1,12 +1,13 @@
 import { expect } from "bun:test";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, TestClock, TestContext } from "effect";
 
-import { HttpRequestError } from "@lando/sdk/errors";
+import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
 import { AppId, type HttpRequest, type HttpResponse } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { HttpClientShape } from "../../../src/http-client/service.ts";
 import { RedactionService, type RedactionServiceShape } from "../../../src/redaction/service.ts";
+import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));
@@ -48,6 +49,23 @@ export const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
 };
 
 export const appId = AppId.make("myapp");
+
+export const endpointsOf = (
+  endpoints: ReadonlyArray<ScanSourceEndpoint>,
+): {
+  readonly calls: AppId[];
+  readonly listEndpoints: (app: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
+} => {
+  const calls: AppId[] = [];
+  return {
+    calls,
+    listEndpoints: (app) =>
+      Effect.sync(() => {
+        calls.push(app);
+        return endpoints;
+      }),
+  };
+};
 
 export type ScriptedRequestResult =
   | { readonly kind: "status"; readonly status: number }
