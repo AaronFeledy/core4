@@ -989,10 +989,11 @@ export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> = Layer.eff
     });
     const eventService = yield* Effect.serviceOption(EventService);
     const redaction = yield* Effect.serviceOption(RedactionService);
+    const redactorOptions = { sourceEnv: { ...process.env } };
     const redactor =
       redaction._tag === "None"
-        ? createStandaloneRedactor("secrets")
-        : yield* redaction.value.forProfile("secrets");
+        ? createStandaloneRedactor("secrets", redactorOptions)
+        : yield* redaction.value.forProfile("secrets", redactorOptions);
     return yield* makeManagedFileService(
       backend,
       makeLiveManagedFileEvents(eventService, redactor.redactString),
