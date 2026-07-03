@@ -49,6 +49,7 @@
     "check:guide-drift": "bun run scripts/check-guide-drift.ts",
     "codegen:bootstrap-layers": "bun run scripts/build-bootstrap-layers.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
+    "codegen:setup-plugin-flags": "bun run scripts/build-setup-plugin-flags.ts",
     "codegen:oclif-manifest": "bun run scripts/build-oclif-manifest.ts",
     "codegen:command-reference": "bun run scripts/build-command-reference.ts",
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",

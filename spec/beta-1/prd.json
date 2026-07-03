@@ -230,7 +230,7 @@
         "Lint passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-01 US-200 AC-4. Audit: sdk/src/schema/plugin.ts:153-202 declares setup.flags; meta/setup.ts:563-589 hardcodes built-in flags with no merge path."
     },
     {

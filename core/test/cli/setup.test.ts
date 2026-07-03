@@ -308,6 +308,36 @@ describe("meta:setup command", () => {
     ]);
   });
 
+  test("delivers contributed setup flag values to the provider setup handler via setupFlags", async () => {
+    const setupOptions: Array<{ readonly setupFlags?: Readonly<Record<string, unknown>> }> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: (options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
+        Effect.sync(() => {
+          setupOptions.push(options);
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          flags: { "runtime-bundle-url": "https://example.invalid/lando-runtime.zip" },
+        })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+
+    expect(setupOptions[0]?.setupFlags).toEqual({
+      "runtime-bundle-url": "https://example.invalid/lando-runtime.zip",
+    });
+  });
+
   test("provides resolved network trust to the provider setup fiber so downloads honor proxy/CA", async () => {
     const observed: Array<ResolvedNetworkTrust | undefined> = [];
     const provider = {

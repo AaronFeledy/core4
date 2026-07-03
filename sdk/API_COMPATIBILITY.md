@@ -293,6 +293,7 @@
 - `ProviderSetupOptions.runtimeBundleSha256`
 - `ProviderSetupOptions.network`
 - `ProviderSetupOptions.privilege`
+- `ProviderSetupOptions.setupFlags`
 - `LandoPaths.tunnelRegistryFile`
 - `LandoPaths.tunnelRunDir`
 - `LandoPaths.managedFileLedger`

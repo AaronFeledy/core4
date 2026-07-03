@@ -4349,6 +4349,16 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "host-proxy": {
+          description:
+            "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
+          name: "host-proxy",
+          default: "auto",
+          hasDynamicHelp: false,
+          multiple: false,
+          options: ["auto", "none"],
+          type: "option",
+        },
         "runtime-bundle-url": {
           description: "Override the Lando-managed runtime bundle URL for setup.",
           name: "runtime-bundle-url",
@@ -4361,16 +4371,6 @@ export const COMPILED_OCLIF_MANIFEST = {
           name: "runtime-bundle-sha256",
           hasDynamicHelp: false,
           multiple: false,
-          type: "option",
-        },
-        "host-proxy": {
-          description:
-            "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
-          name: "host-proxy",
-          default: "auto",
-          hasDynamicHelp: false,
-          multiple: false,
-          options: ["auto", "none"],
           type: "option",
         },
       },

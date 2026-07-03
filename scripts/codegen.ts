@@ -54,6 +54,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "setup-plugin-flags",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-setup-plugin-flags.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "oclif-manifest",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
     cwd: CORE_ROOT,
