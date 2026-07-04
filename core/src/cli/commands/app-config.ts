@@ -314,6 +314,16 @@ export const appConfig = (
     if (subcommand === "unset") return yield* appConfigUnset(options);
     if (subcommand === "edit") return yield* appConfigEdit(options);
     if (subcommand === "validate") return yield* appConfigValidate(options);
+    if (subcommand !== "view") {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: `Unknown \`app config\` subcommand: "${subcommand}".`,
+          file: "",
+          issues: [`Unsupported subcommand: "${subcommand}".`],
+          remediation: "Usage: `lando app config [view|set|unset|edit|validate]`.",
+        }),
+      );
+    }
 
     const landofileService = yield* LandofileService;
     const landofile = yield* loadUserLandofile(landofileService);

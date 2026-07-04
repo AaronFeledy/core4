@@ -4,15 +4,11 @@ import {
   type AppConfigOptions,
   type AppConfigResult,
   AppConfigResultSchema,
-  type AppConfigSubcommand,
   appConfig,
   renderAppConfigResult,
 } from "../../../../commands/app-config.ts";
 import type { ValueType } from "../../../../config-write/write-core.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
-
-const isSubcommand = (s: unknown): s is AppConfigSubcommand =>
-  s === "view" || s === "set" || s === "unset" || s === "edit" || s === "validate";
 
 const isValueType = (s: unknown): s is ValueType =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
@@ -21,7 +17,10 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
   const i = input as { args?: Record<string, unknown>; flags?: Record<string, unknown> };
   const opts: {
-    subcommand?: AppConfigSubcommand;
+    // Widened to `string` (not `AppConfigSubcommand`) so an unrecognized verb
+    // reaches `appConfig()` and fails there, instead of being dropped here
+    // and silently defaulting to the view path.
+    subcommand?: string;
     key?: string;
     value?: string;
     type?: ValueType;
@@ -37,7 +36,7 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   const format = i.flags?.format;
   const path = i.flags?.path;
   const editor = i.flags?.editor;
-  if (isSubcommand(subcommand)) opts.subcommand = subcommand;
+  if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
   if (typeof key === "string") opts.key = key;
   if (typeof value === "string") opts.value = value;
   if (isValueType(type)) opts.type = type;
