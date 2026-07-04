@@ -244,7 +244,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
   const externalSocketPath = options.socketPath;
   const managedSocketPath = options.providerSocketPath;
-  const socketPath = externalSocketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET ?? managedSocketPath;
+  const socketPath = externalSocketPath ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ??
     (socketPath === undefined ? undefined : (options.podmanApiFactory ?? makePodmanApiClient)(socketPath));
@@ -264,7 +264,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   }
   const machineRunner =
     options.podmanMachine ??
-    (platform === "linux" ? undefined : makeSystemPodmanMachineRunner(undefined, undefined, platform));
+    (platform === "linux" || runtimeBinDir === undefined
+      ? undefined
+      : makeSystemPodmanMachineRunner(managedRuntimePodmanArgv0(runtimeBinDir), "lando", platform));
   const artifactDownloadMissing = (): ProviderUnavailableError =>
     new ProviderUnavailableError({
       providerId: "lando",
@@ -413,7 +415,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               const result = yield* setupProviderLando({
                 ...(podmanApi === undefined ? {} : { podmanApi }),
                 ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
-                ...(machineRunner === undefined ? {} : { podmanMachine: machineRunner }),
+                ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
                 ...(options.artifactDownload === undefined
                   ? {}
                   : { artifactDownload: options.artifactDownload }),

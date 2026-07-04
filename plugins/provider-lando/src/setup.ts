@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { type Context, DateTime, Effect } from "effect";
+
+import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -119,6 +122,14 @@ export interface SetupOptions {
   readonly runtimeBinDir?: string;
   readonly runtimeConfigDir?: string;
   readonly eventService?: EventPublisher;
+  // Test-only seam (never set in production): overrides the bundled-tooling existence check.
+  readonly _machineToolingExists?: (podmanBin: string) => boolean;
+  // Test-only seam (never set in production): overrides construction of the bundled machine runner.
+  readonly _machineRunnerFactory?: (
+    command: string,
+    machineName: string,
+    platform: HostPlatform,
+  ) => PodmanMachineRunner;
 }
 
 export interface SetupResult {
@@ -316,6 +327,57 @@ export const makeSystemPodmanMachineRunner = (
     Effect.asVoid,
   ),
 });
+
+const MANAGED_MACHINE_NAME = "lando";
+
+const missingBundledMachineToolingError = (
+  platform: "darwin" | "win32",
+  podmanBin?: string,
+): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `The installed Lando runtime bundle does not provide Podman machine tooling for ${platform}.`,
+    remediation:
+      "Reinstall the managed runtime with `lando setup`; the bundled Podman machine tooling for this platform was not found in the runtime bundle.",
+    ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
+  });
+
+// Checks bundled-tooling existence before spawning it, so a missing bundle fails with
+// `missingBundledMachineToolingError` rather than the PATH-install-flavored `PodmanNotInstalledError`.
+const resolveSetupPodmanCommandRunner = (
+  platform: HostPlatform,
+  runtimeBinDir: string | undefined,
+  toolingExists: (podmanBin: string) => boolean,
+): Effect.Effect<PodmanCommandRunner, ProviderUnavailableError> => {
+  if ((platform !== "darwin" && platform !== "win32") || runtimeBinDir === undefined) {
+    return Effect.succeed(makeSystemPodmanCommandRunner());
+  }
+
+  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir);
+  if (!toolingExists(podmanBin)) {
+    return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
+  }
+
+  return Effect.succeed(makeSystemPodmanCommandRunner(podmanBin));
+};
+
+const resolveSetupMachineRunner = (
+  platform: "darwin" | "win32",
+  options: SetupOptions,
+): Effect.Effect<PodmanMachineRunner, ProviderUnavailableError> => {
+  if (options.podmanMachine !== undefined) return Effect.succeed(options.podmanMachine);
+
+  const runtimeBinDir = options.runtimeBinDir;
+  if (runtimeBinDir === undefined) return Effect.fail(missingBundledMachineToolingError(platform));
+
+  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir);
+  const toolingExists = (options._machineToolingExists ?? existsSync)(podmanBin);
+  if (!toolingExists) return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
+
+  const factory = options._machineRunnerFactory ?? makeSystemPodmanMachineRunner;
+  return Effect.succeed(factory(podmanBin, MANAGED_MACHINE_NAME, platform));
+};
 
 export const ensureMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
@@ -596,7 +658,13 @@ export const setupProviderLando = (
         options.eventService,
         podmanStep,
         counter,
-        (options.podmanCommand ?? makeSystemPodmanCommandRunner()).version,
+        options.podmanCommand !== undefined
+          ? options.podmanCommand.version
+          : resolveSetupPodmanCommandRunner(
+              platform,
+              options.runtimeBinDir,
+              options._machineToolingExists ?? existsSync,
+            ).pipe(Effect.flatMap((runner) => runner.version)),
       );
 
       if (platform === "darwin" && machineStep !== undefined) {
@@ -604,9 +672,7 @@ export const setupProviderLando = (
           options.eventService,
           machineStep,
           counter,
-          ensureMacOSPodmanMachine(
-            options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
-          ),
+          resolveSetupMachineRunner("darwin", options).pipe(Effect.flatMap(ensureMacOSPodmanMachine)),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
@@ -616,14 +682,12 @@ export const setupProviderLando = (
           options.eventService,
           machineStep,
           counter,
-          ensureWindowsPodmanMachine(
-            options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
-          ),
+          resolveSetupMachineRunner("win32", options).pipe(Effect.flatMap(ensureWindowsPodmanMachine)),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
-      const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
+      const socketPath = options.socketPath;
       const api =
         options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
