@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { type Context, DateTime, Effect } from "effect";
 
@@ -128,8 +128,61 @@ export interface SetupResult {
   readonly statePath?: string;
 }
 
+type RecordedMachineOwnership = { readonly name: "lando"; readonly createdByLando: boolean };
+
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
+
+const hasErrorCode = (cause: unknown, code: string): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+
+const readExistingMachineOwnership = (
+  stateDir: string,
+): Effect.Effect<RecordedMachineOwnership | undefined, ProviderUnavailableError> =>
+  Effect.tryPromise({
+    try: async () => {
+      let raw: string;
+      try {
+        raw = await readFile(providerStatePath(stateDir), "utf8");
+      } catch (cause) {
+        // No prior state file is a legitimate "nothing recorded yet" case, not a failure.
+        if (hasErrorCode(cause, "ENOENT")) return undefined;
+        throw cause;
+      }
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
+      const machine = (parsed as { readonly machine: unknown }).machine;
+      if (typeof machine !== "object" || machine === null) return undefined;
+      const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
+      const createdByLando =
+        "createdByLando" in machine
+          ? (machine as { readonly createdByLando: unknown }).createdByLando
+          : undefined;
+      if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
+      const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
+      return ownership;
+    },
+    catch: (cause) =>
+      new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation: "setup",
+        message: "Unable to read the existing provider-lando setup state.",
+        remediation: `Check permissions for ${providerStatePath(stateDir)} and rerun \`lando setup\`.`,
+        cause,
+      }),
+  });
+
+const preserveRecordedMachineOwnership = (
+  stateDir: string,
+  current: RecordedMachineOwnership,
+): Effect.Effect<RecordedMachineOwnership, ProviderUnavailableError> =>
+  current.createdByLando
+    ? Effect.succeed(current)
+    : readExistingMachineOwnership(stateDir).pipe(
+        Effect.map((existing) =>
+          existing?.createdByLando === true ? { name: "lando", createdByLando: true } : current,
+        ),
+      );
 
 const readText = (stream: ReadableStream<Uint8Array> | null) =>
   stream === null ? Promise.resolve("") : new Response(stream).text();
@@ -266,17 +319,18 @@ export const makeSystemPodmanMachineRunner = (
 
 export const ensureMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
-): Effect.Effect<void, ProviderUnavailableError> =>
+): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
       yield* machine.start;
-      return;
+      return { createdByLando: true };
     }
     if (status === "stopped") {
       yield* machine.start;
     }
+    return { createdByLando: false };
   });
 
 export const upgradeMacOSPodmanMachine = (
@@ -293,17 +347,18 @@ export const teardownMacOSPodmanMachine = (
 
 export const ensureWindowsPodmanMachine = (
   machine: PodmanMachineRunner,
-): Effect.Effect<void, ProviderUnavailableError> =>
+): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
       yield* machine.start;
-      return;
+      return { createdByLando: true };
     }
     if (status === "stopped") {
       yield* machine.start;
     }
+    return { createdByLando: false };
   });
 
 export const upgradeWindowsPodmanMachine = (
@@ -367,6 +422,7 @@ const persistSetupState = (
     readonly runtimeBundleSha256?: string;
     readonly runtimeBinDir?: string;
     readonly socketPath?: string;
+    readonly machine?: { readonly name: "lando"; readonly createdByLando: boolean };
   },
 ) =>
   Effect.tryPromise({
@@ -509,6 +565,7 @@ export const setupProviderLando = (
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
       const runtimeConfigDir = options.runtimeConfigDir;
+      let machineOwnership: RecordedMachineOwnership | undefined;
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -543,7 +600,7 @@ export const setupProviderLando = (
       );
 
       if (platform === "darwin" && machineStep !== undefined) {
-        yield* withStep(
+        const ensured = yield* withStep(
           options.eventService,
           machineStep,
           counter,
@@ -551,10 +608,11 @@ export const setupProviderLando = (
             options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
           ),
         );
+        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       if (platform === "win32" && machineStep !== undefined) {
-        yield* withStep(
+        const ensured = yield* withStep(
           options.eventService,
           machineStep,
           counter,
@@ -562,6 +620,7 @@ export const setupProviderLando = (
             options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
           ),
         );
+        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
@@ -583,6 +642,10 @@ export const setupProviderLando = (
       const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
       const readinessCheck = options.readinessCheck ?? Effect.void;
       yield* readinessCheck;
+      const recordedMachineOwnership =
+        machineOwnership === undefined || options.stateDir === undefined
+          ? machineOwnership
+          : yield* preserveRecordedMachineOwnership(options.stateDir, machineOwnership);
       const statePath =
         stateStep === undefined || options.stateDir === undefined
           ? undefined
@@ -597,6 +660,7 @@ export const setupProviderLando = (
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
                 ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
                 ...(socketPath === undefined ? {} : { socketPath }),
+                ...(recordedMachineOwnership === undefined ? {} : { machine: recordedMachineOwnership }),
               }),
             );
 

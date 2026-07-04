@@ -248,7 +248,7 @@
         "Lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-01 uninstall contract. Audit: core/src/cli/commands/uninstall.ts:193-197 marks managed-provider-machines as manual. Depends on machine-identity state recorded by US-387."
     },
     {
