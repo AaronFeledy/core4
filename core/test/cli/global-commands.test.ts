@@ -618,4 +618,16 @@ describe("meta:global command effects", () => {
       expect(result.landofile.services).toHaveProperty("proxy");
     });
   });
+
+  test("config rejects an unrecognized subcommand instead of silently validating", async () => {
+    await withHarness(async (harness) => {
+      const exit = await Effect.runPromiseExit(
+        globalConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(harness.layer)),
+      );
+
+      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
+      expect(error._tag).toBe("LandofileWriteValidationError");
+      expect(error.message).toContain("bogus");
+    });
+  });
 });

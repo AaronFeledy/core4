@@ -318,5 +318,13 @@ export const globalConfig = (
     if (subcommand === "set") return yield* globalConfigSet(options, filePath);
     if (subcommand === "unset") return yield* globalConfigUnset(options, filePath);
     if (subcommand === "edit") return yield* globalConfigEdit(options, filePath);
-    return yield* globalConfigValidate(filePath);
+    if (subcommand === "validate") return yield* globalConfigValidate(filePath);
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `Unknown \`meta global config\` subcommand: "${subcommand}".`,
+        file: filePath,
+        issues: [`Unsupported subcommand: "${subcommand}".`],
+        remediation: "Usage: `lando meta global config [view|set|unset|edit|validate]`.",
+      }),
+    );
   });
