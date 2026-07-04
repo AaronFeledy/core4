@@ -20,6 +20,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _remove?: unknown;
     readonly _readManagedProviderMachine?: unknown;
     readonly _teardownProviderMachines?: unknown;
+    readonly _reportFallbackDir?: unknown;
   };
   const purge = flags.purge === true;
   return {
@@ -48,6 +49,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
           >,
         }
       : {}),
+    ...(typeof extra._reportFallbackDir === "string" ? { reportFallbackDir: extra._reportFallbackDir } : {}),
   };
 };
 

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
@@ -63,6 +64,7 @@ export interface UninstallOptions {
   readonly teardownProviderMachines?: (
     userDataRoot: string,
   ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
+  readonly reportFallbackDir?: string;
 }
 
 export interface UninstallResult {
@@ -133,6 +135,11 @@ const installedBinaryStatus = (execPath: string, userDataRoot: string): Uninstal
 const keepDataProtectedStepIds = new Set(["global-app-state", "caches", "user-data-root", "user-cache-root"]);
 
 const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot, "uninstall", "report.json");
+
+const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<string> => {
+  const fallbackDir = reportFallbackDir ?? (await mkdtemp(join(tmpdir(), "lando-uninstall-")));
+  return join(fallbackDir, "lando-uninstall-report.json");
+};
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
@@ -316,11 +323,10 @@ export const buildUninstallPlan = (
 };
 
 const writeUninstallReport = async (
-  userDataRoot: string,
+  reportPath: string,
   mode: UninstallMode,
   steps: ReadonlyArray<UninstallPlanStep>,
 ): Promise<string> => {
-  const reportPath = uninstallReportPath(userDataRoot);
   const report: UninstallReport = {
     status: steps.some((step) => step.outcome === "failed") ? "failed" : "completed",
     mode,
@@ -368,9 +374,22 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   }
 
   const failed = executed.some((step) => step.outcome === "failed");
-  // Skip the report when the data root was purged: writing it would recreate the just-removed root.
-  const reportPath =
-    failed && existsSync(userDataRoot) ? await writeUninstallReport(userDataRoot, mode, executed) : undefined;
+  // Only resolve (and possibly mkdtemp) a report location when there is actually a
+  // failure report to write; a clean run must never allocate a fallback temp dir.
+  // Writing the report is best-effort: if it throws (e.g. the fallback dir itself is
+  // unwritable) the uninstall result still reports the real step outcomes instead of
+  // rejecting the whole promise.
+  let reportPath: string | undefined;
+  if (failed) {
+    const reportTarget = existsSync(userDataRoot)
+      ? uninstallReportPath(userDataRoot)
+      : await fallbackUninstallReportPath(options.reportFallbackDir);
+    try {
+      reportPath = await writeUninstallReport(reportTarget, mode, executed);
+    } catch {
+      reportPath = undefined;
+    }
+  }
   return {
     dryRun: false,
     refused: false,

@@ -265,7 +265,7 @@
         "Lint passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-01 US-206 ('Partial failures leave a resumable uninstall report'). Audit: uninstall.ts:320-322 skips the report when userDataRoot was purged."
     },
     {
