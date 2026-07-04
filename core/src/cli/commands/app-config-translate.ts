@@ -192,7 +192,7 @@ const distinctMatchIds = (matches: ReadonlyArray<ConfigTranslateMatch>): Readonl
  * Select the single translator to run. `--from` forces a translator by id;
  * otherwise the registered translators' `detect` surfaces are probed and the
  * lone `exact`/`likely` match wins. Zero or multiple matches fail with a
- * remediation enumerating the `--from` choices (spec §8.2.1).
+ * remediation enumerating the `--from` choices when detection is ambiguous.
  */
 const selectTranslator = (
   translators: ReadonlyArray<ConfigTranslatorShape>,
