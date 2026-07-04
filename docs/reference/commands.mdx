@@ -31,11 +31,59 @@ Rebuild the app plan, tooling graph, and command index without starting services
 
 ## `lando app:config`
 
-Read the current app's Landofile.
+Read or write the current app's Landofile.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key for set/unset. |
+| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `value` | Value for set. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+| `--editor` | Editor binary for edit. |
+| `--path` | Dot-path key selector. |
+| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando app:config:edit`
+
+Edit the app's Landofile in $EDITOR.
+
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--editor` | Editor binary for edit. |
 
 ## `lando app:config:lint`
 
 Validate the current app's Landofile against the canonical schema.
+
+## `lando app:config:set`
+
+Set a value in the app's Landofile.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key. |
+| `value` | Value to set. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:translate`
 
@@ -47,6 +95,27 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--write` | Overwrite the input Landofile in place (a .bak backup is kept). |
+
+## `lando app:config:unset`
+
+Remove a key from the app's Landofile.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+
+## `lando app:config:validate`
+
+Validate the app's Landofile against the schema.
 
 ## `lando app:destroy`
 
@@ -512,7 +581,7 @@ Aliases: `lando bun`
 
 ## `lando meta:config`
 
-Read or write the global Lando config (view/get; write ops are deferred to Beta).
+Read or write the global Lando config.
 
 Aliases: `lando config`
 
@@ -528,7 +597,10 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Report the change without writing. |
+| `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
+| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:doctor`
 
@@ -553,9 +625,82 @@ Aliases: `lando events`
 
 ## `lando meta:global:config`
 
-Read the host-level global Lando app Landofile stack.
+Read or write the host-level global Lando app Landofile stack.
 
 Aliases: `lando global:config`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key for set/unset. |
+| `subcommand` | Subcommand: view (default), set, unset, edit, validate. |
+| `value` | Value for set. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+| `--editor` | Editor binary for edit. |
+| `--path` | Dot-path key selector. |
+| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando meta:global:config:edit`
+
+Edit the global app's Landofile in $EDITOR.
+
+Aliases: `lando global:config:edit`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--editor` | Editor binary for edit. |
+
+## `lando meta:global:config:set`
+
+Set a value in the global app's Landofile.
+
+Aliases: `lando global:config:set`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key. |
+| `value` | Value to set. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+
+## `lando meta:global:config:unset`
+
+Remove a key from the global app's Landofile.
+
+Aliases: `lando global:config:unset`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `key` | Dot-path key. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Report the change without writing. |
+
+## `lando meta:global:config:validate`
+
+Validate the global app's Landofile against the schema.
+
+Aliases: `lando global:config:validate`
 
 ## `lando meta:global:destroy`
 
