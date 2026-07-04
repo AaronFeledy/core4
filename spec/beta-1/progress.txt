@@ -391,3 +391,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): `app config edit --target ...` / `meta global config edit --target dist` support remains deferred because it is a broader §8.2 target-selection extension rather than a regression in the shipped default write path; prototype-pollution, editor-injection, dry-run, schema-snapshot, and compiled-dispatch concerns from review-work were rejected as false positives after code/test inspection.
 - Verification: typecheck, lint passed; focused config-write and adjacent meta-config scenario spot checks passed; edited files have clean LSP diagnostics.
 ---
+## [2026-07-04 04:28:31 CDT] - Babysit
+- PR: #519 https://github.com/AaronFeledy/core4/pull/519
+- CI outcome: fail (static-checks-platform (linux-x64) still pending; Cursor Bugbot reported new current-head finding)
+- Review feedback: fixed (cwd for global config edit; --path write verbs; library/schema drift; invalid config subcommands; bracket-path get/view; meta global CLI typo forwarding; inline flow YAML scalars)
+- Merge: deferred (five triage rounds exhausted; latest Bugbot finding remains: Meta config typos fall through)
+---
