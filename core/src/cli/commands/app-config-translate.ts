@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
 import { Effect, Schema } from "effect";
@@ -169,7 +169,18 @@ const discoverSourceFiles = (
             await visit(absolute);
             continue;
           }
-          if (entry.isFile()) files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
+          if (entry.isFile()) {
+            files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
+            continue;
+          }
+          if (entry.isSymbolicLink()) {
+            // `Dirent.isFile()` is false for symlinks even when the link target is a
+            // regular file, so resolve the target explicitly before deciding to skip it.
+            const target = await stat(absolute).catch(() => undefined);
+            if (target?.isFile() === true) {
+              files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
+            }
+          }
         }
       };
       await visit(appRoot);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -145,6 +145,22 @@ describe("appConfigTranslate", () => {
     expect(result.matches).toEqual([{ translator: "v3", files: [], confidence: "likely" }]);
     expect(translated).toBe(false);
     expect(renderConfigTranslateResult(result, "table")).toContain("v3\tlikely");
+  });
+
+  test("autodetection discovers symlinked source files, not just regular files", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    const targetDir = await mkdtemp(join(tmpdir(), "lando-translate-symlink-target-"));
+    dirs.push(targetDir);
+    const targetFile = join(targetDir, "docker-compose.yml");
+    await Bun.write(targetFile, "services: {}\n");
+    await symlink(targetFile, join(cwd, "docker-compose.yml"));
+
+    const translators = [makeTranslator("compose", {})];
+    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
+
+    expect(result.mode).toBe("detect");
+    if (result.mode !== "detect") throw new Error("expected detect mode");
+    expect(result.files).toContain("docker-compose.yml");
   });
 
   test("--from forces a specific translator", async () => {
