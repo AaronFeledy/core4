@@ -10,16 +10,6 @@ import {
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-const isSubcommand = (s: unknown): s is ConfigOptions["subcommand"] =>
-  s === "view" ||
-  s === "get" ||
-  s === "set" ||
-  s === "unset" ||
-  s === "edit" ||
-  s === "validate" ||
-  s === "translate" ||
-  s === "telemetry";
-
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
 
@@ -34,7 +24,10 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
   const path = i.flags?.path;
   const editor = i.flags?.editor;
   const opts: {
-    subcommand?: ConfigOptions["subcommand"];
+    // Widened to `string` (not `ConfigOptions["subcommand"]`) so an
+    // unrecognized verb reaches `config()` and fails there, instead of being
+    // dropped here and silently defaulting to the view path.
+    subcommand?: string;
     key?: string;
     value?: string;
     type?: ConfigOptions["type"];
@@ -43,7 +36,7 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
     dryRun?: boolean;
     editor?: string;
   } = {};
-  if (isSubcommand(subcommand)) opts.subcommand = subcommand;
+  if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
   if (typeof key === "string") opts.key = key;
   if (typeof value === "string") opts.value = value;
   if (isValueType(type)) opts.type = type;

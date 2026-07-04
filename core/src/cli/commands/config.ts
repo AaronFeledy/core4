@@ -498,6 +498,17 @@ export const config = (
       );
     }
 
+    if (subcommand !== "view" && subcommand !== "get") {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
+          file: "",
+          issues: [`Unsupported subcommand: "${subcommand}".`],
+          remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
+        }),
+      );
+    }
+
     const configService = yield* ConfigService;
     const userDataRoot = yield* configService.get("userDataRoot");
     const userConfRoot = yield* configService.get("userConfRoot");
