@@ -5,11 +5,12 @@
  * Service mode runs `sh -l` in the requested service via provider execStream.
  * Host mode (`--host`) opens a host shell rooted at the app root.
  */
-import { Chunk, Effect, Stream } from "effect";
+import { Chunk, DateTime, Effect, Stream } from "effect";
 
 import {
   type AppIdReservedError,
   type CapabilityError,
+  type DeprecatedSurfaceError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
@@ -29,6 +30,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
+  DeprecationService,
   type ExecTarget,
   LandofileService,
   type ProviderError,
@@ -112,6 +114,7 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
+  | DeprecatedSurfaceError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -129,6 +132,29 @@ export type ShellAppError =
   | ToolingExecError;
 
 export type ShellAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry | ShellRunner;
+
+const HOST_FLAG_DEPRECATION_ID = "app:shell --host";
+
+const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, DeprecatedSurfaceError> => {
+  if (!enabled) return Effect.void;
+  return Effect.serviceOption(DeprecationService).pipe(
+    Effect.flatMap((deprecations) => {
+      if (deprecations._tag === "None") return Effect.void;
+      return deprecations.value.lookup("flag", HOST_FLAG_DEPRECATION_ID).pipe(
+        Effect.flatMap((notice) =>
+          notice._tag === "None"
+            ? Effect.void
+            : deprecations.value.use({
+                kind: "flag",
+                id: HOST_FLAG_DEPRECATION_ID,
+                notice: notice.value,
+                timestamp: DateTime.unsafeMake(new Date().toISOString()),
+              }),
+        ),
+      );
+    }),
+  );
+};
 
 const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   const out: Record<string, string> = {};
@@ -228,6 +254,8 @@ export const shellApp = (
   options: ShellAppOptions = {},
 ): Effect.Effect<ShellAppResult, ShellAppError, ShellAppServices> =>
   Effect.gen(function* () {
+    yield* recordHostFlagDeprecation(options.host === true);
+
     const landofileService = yield* LandofileService;
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;

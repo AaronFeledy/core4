@@ -25,6 +25,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-04 13:28:33 CDT - US-392 Review
+- Review fixed the deprecation-surface blocker for the host-default flip: passing the now-redundant `--host` flag records the registered `app:shell --host` deprecation use, so the existing renderer/doctor deprecation summary path can emit the runtime warning instead of only having a static registry entry.
+- Review notes (deferred/rejected): the full §8.2.3 `Bun.$` REPL with secret-redacted per-line history/events remains a documented Beta-1 gap rather than a US-392 acceptance blocker; the `--host` notice replacement text is a minor wording issue and was left unchanged to keep this review fix scoped to the inert-warning blocker.
+- Verification: typecheck, lint passed; focused shell scenario, shell-runner, deprecation service, dispatch-parity, OCLIF manifest, and renderer-boundary spot checks passed; renderer-boundary and paths-boundary gates passed; edited TypeScript files have clean LSP diagnostics.
+- **Learnings for future iterations:** Registering a deprecated built-in flag is not enough: command execution must also call `DeprecationService.use(...)` when the flag is parsed, or `renderDeprecationDiagnostics` and `doctor --deprecations` have no recorded use to surface.
+---
+
 ## 2026-07-04 11:10:42 CDT - US-391 Verify
 - Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync`, then drove a throwaway app through scoped `app includes update github:acme/one --no-network`, unknown-source failure with the known-source list, cold-cache `--no-network` remediation, scoped `--check` drift exiting 1 without writing, and unscoped warm-cache `--no-network` across both include entries.
 - Fixed real compiled-binary regressions at the root cause: space-separated `app includes update`/`app includes verify` now normalize to canonical include command ids, check-mode drift can set a successful command's exit code to 1 on both source and compiled paths, and compiled help renders OCLIF arg usage so `[SOURCE...]` appears with `--no-network`.

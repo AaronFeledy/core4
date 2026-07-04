@@ -17,6 +17,7 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  DeprecationService,
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -25,6 +26,8 @@ import {
 } from "@lando/core/services";
 
 import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
+import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
+import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const providerId = ProviderId.make("lando");
@@ -100,32 +103,43 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimeProviderShape => ({
-  id: providerId,
-  displayName: "Fake",
-  version: "0.0.0",
-  platform: "linux",
-  capabilities,
-  isAvailable: Effect.succeed(true),
-  setup: () => Effect.void,
-  getStatus: Effect.succeed({ running: true }),
-  getVersions: Effect.succeed({ provider: "0.0.0" }),
-  buildArtifact: () => Effect.die("not used"),
-  pullArtifact: () => Effect.die("not used"),
-  removeArtifact: () => Effect.void,
-  apply: () => Effect.succeed({ changed: false }),
-  start: () => Effect.void,
-  stop: () => Effect.void,
-  restart: () => Effect.void,
-  destroy: () => Effect.void,
-  exec: () => Effect.die("not used"),
-  execStream: () => Effect.die("not used") as never,
-  run: () => Effect.die("not used"),
-  logs: () => Effect.die("not used") as never,
-  inspect: () => Effect.die("not used"),
-  list: () => Effect.succeed([]),
-  ...overrides,
-});
+const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimeProviderShape => {
+  const base: RuntimeProviderShape = {
+    id: providerId,
+    displayName: "Fake",
+    version: "0.0.0",
+    platform: "linux",
+    capabilities,
+    isAvailable: Effect.succeed(true),
+    setup: () => Effect.void,
+    getStatus: Effect.succeed({ running: true }),
+    getVersions: Effect.succeed({ provider: "0.0.0" }),
+    buildArtifact: () => Effect.die("not used"),
+    pullArtifact: () => Effect.die("not used"),
+    removeArtifact: () => Effect.void,
+    apply: () => Effect.succeed({ changed: false }),
+    start: () => Effect.void,
+    stop: () => Effect.void,
+    restart: () => Effect.void,
+    destroy: () => Effect.void,
+    exec: () => Effect.die("not used"),
+    execStream: () => Effect.die("not used") as never,
+    run: () => Effect.die("not used"),
+    runStream: () => Effect.die("not used") as never,
+    logs: () => Effect.die("not used") as never,
+    inspect: () => Effect.die("not used"),
+    list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Effect.die("not used") as never,
+    exportArtifact: () => Effect.die("not used") as never,
+    importArtifact: () => Effect.die("not used"),
+  };
+  return Object.assign(base, overrides);
+};
 
 const shellRunnerLayer = (
   interactive: (spec: ShellInteractiveSpec) => Effect.Effect<{ readonly exitCode: number }, never> = () =>
@@ -164,8 +178,8 @@ describe("shellApp — shell modes", () => {
         calls.push({
           service: String(target.service),
           command: command.command,
-          tty: command.tty,
-          stdin: command.stdin,
+          ...(command.tty === undefined ? {} : { tty: command.tty }),
+          ...(command.stdin === undefined ? {} : { stdin: command.stdin }),
         });
         return Stream.make(
           { kind: "stdout" as const, chunk: new TextEncoder().encode("inside\n") },
@@ -276,23 +290,22 @@ describe("shellApp — shell modes", () => {
         ),
     });
 
-    await expect(
-      Effect.runPromise(
-        shellApp({
-          service: "web",
-          io: {
-            writeStdout: () => {},
-            writeStderr: () => {},
-            stdin: (async function* () {})(),
-            stdinIsTTY: () => true,
-            stdinIsRaw: () => raw,
-            setStdinRawMode: (nextRaw) => {
-              raw = nextRaw;
-            },
+    const error = await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+          stdin: (async function* () {})(),
+          stdinIsTTY: () => true,
+          stdinIsRaw: () => raw,
+          setStdinRawMode: (nextRaw) => {
+            raw = nextRaw;
           },
-        }).pipe(Effect.provide(layer(undefined, provider))),
-      ),
-    ).rejects.toThrow("boom");
+        },
+      }).pipe(Effect.provide(layer(undefined, provider)), Effect.flip),
+    );
+    expect(String(error)).toContain("boom");
 
     expect(raw).toBe(false);
   });
@@ -326,6 +339,37 @@ describe("shellApp — shell modes", () => {
     expect(specs[0]?.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
   });
 
+  test("records --host deprecation use through the deprecation service", async () => {
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* registerBuiltInContractDeprecations(deprecations);
+        yield* shellApp({
+          host: true,
+          isInteractive: () => true,
+          shellPath: "/bin/sh",
+        });
+        return yield* deprecations.summary();
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layer(
+              undefined,
+              undefined,
+              shellRunnerLayer(() => Effect.succeed({ exitCode: 0 })),
+            ),
+            DeprecationServiceLive,
+          ),
+        ),
+      ),
+    );
+
+    expect(summary).toHaveLength(1);
+    expect(summary[0]?.kind).toBe("flag");
+    expect(summary[0]?.id).toBe("app:shell --host");
+    expect(summary[0]?.count).toBe(1);
+  });
+
   test("--service <name> explicitly selects service mode", async () => {
     const calls: Array<{ service: string }> = [];
     const provider = fakeProvider({
@@ -353,7 +397,10 @@ describe("shellApp — shell modes", () => {
     const calls: Array<{ signal?: AbortSignal; terminalSize?: { columns: number; rows: number } }> = [];
     const provider = fakeProvider({
       execStream: (_target, command) => {
-        calls.push({ signal: command.signal, terminalSize: command.terminalSize });
+        calls.push({
+          ...(command.signal === undefined ? {} : { signal: command.signal }),
+          ...(command.terminalSize === undefined ? {} : { terminalSize: command.terminalSize }),
+        });
         return Stream.make({ exitCode: 0 });
       },
     });
