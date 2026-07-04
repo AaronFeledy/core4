@@ -21,6 +21,7 @@ import { LandofileService } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
 import { findDiscoveredLandofilePath } from "../../landofile/service.ts";
+import { renderLandofileTemplate } from "../../landofile/template-render.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import {
@@ -145,6 +146,15 @@ const readLandofileText = (inputPath: string): Effect.Effect<string, ConfigError
     catch: (cause) => new ConfigError({ message: `Failed to read ${inputPath}`, path: inputPath, cause }),
   });
 
+// Mirrors the `LandofileService.discover`/`app:config:lint` read step so `set`/`unset`/
+// `validate` parse the rendered tree, not raw unrendered template source.
+const readRenderedLandofileText = (
+  inputPath: string,
+): Effect.Effect<string, ConfigError | LandofileParseError> =>
+  readLandofileText(inputPath).pipe(
+    Effect.flatMap((content) => renderLandofileTemplate({ filePath: inputPath, content })),
+  );
+
 const writeLandofileText = (inputPath: string, content: string): Effect.Effect<void, ConfigError> =>
   Effect.tryPromise({
     try: () => writeFileAtomicViaRename(inputPath, content),
@@ -170,7 +180,7 @@ export const appConfigSet = (
     const raw = options.value;
     if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "set");
-    const content = yield* readLandofileText(inputPath);
+    const content = yield* readRenderedLandofileText(inputPath);
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
       unknown
@@ -214,7 +224,7 @@ export const appConfigUnset = (
       );
     }
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "unset");
-    const content = yield* readLandofileText(inputPath);
+    const content = yield* readRenderedLandofileText(inputPath);
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
       unknown
@@ -240,7 +250,7 @@ export const appConfigValidate = (
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
-    const content = yield* readLandofileText(inputPath);
+    const content = yield* readRenderedLandofileText(inputPath);
     const tree = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
     const issues = decodeIssues(decodeLandofile(tree));
     if (issues.length > 0) {
