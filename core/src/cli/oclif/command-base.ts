@@ -19,6 +19,7 @@ import {
   resolveCliRendererMode,
   runWithRendererHandling,
 } from "../renderer-boundary.ts";
+import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
@@ -80,6 +81,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly resultSchema: Schema.Schema.AnyNoContext;
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
+  readonly streamingMode?: "live";
   readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly successExitCode?: {
@@ -362,12 +364,13 @@ export abstract class LandoCommandBase extends Command {
     flags.format = resultFormat;
     if (resultFormat === "json") flags.json = true;
     await runWithRendererHandling(spec.run(input), {
-      runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
+      runtime: runtime as Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, LandoRuntimeBootstrapError>,
       rendererMode,
       resultFormat,
       command: spec.id,
       resultSchema: spec.resultSchema,
       ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
+      ...(spec.streamingMode === undefined ? {} : { streamingMode: spec.streamingMode }),
       ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,

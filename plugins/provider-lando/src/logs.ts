@@ -78,6 +78,9 @@ export const logs = (
   if (options.tail !== undefined) {
     query.set("tail", String(options.tail));
   }
+  if (options.since !== undefined) {
+    query.set("since", options.since);
+  }
 
   const podmanApi = runtime.podmanApi;
   return Stream.suspend(() => {

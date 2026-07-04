@@ -4,7 +4,7 @@ import {
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
 import type { ResultFormat } from "../../src/cli/format-flags.ts";
-import { logsDeferredErrorFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
+import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
 import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "../../src/cli/oclif/commands/apps/scratch/gc.ts";
@@ -83,13 +83,11 @@ describe("dual-dispatch argv parser parity", () => {
   });
 
   test("app:logs uses the same parsed input shape as the OCLIF helper", () => {
-    const input = compiledInput("app:logs", ["--service", "appserver", "--tail", "25"]);
+    const input = compiledInput("app:logs", ["--service", "appserver", "--tail", "25", "--since", "1h"]);
 
-    expect(logsOptionsFromInput(input)).toEqual({ service: "appserver", tail: 25 });
-    expect(logsDeferredErrorFromInput(input)).toBeUndefined();
-    expect(logsDeferredErrorFromInput(compiledInput("app:logs", ["--follow"]))).toMatchObject({
-      _tag: "NotImplementedError",
-    });
+    expect(logsOptionsFromInput(input)).toEqual({ service: "appserver", tail: 25, since: "1h" });
+    expect(logsFollowFromInput(input)).toBe(false);
+    expect(logsFollowFromInput(compiledInput("app:logs", ["--follow"]))).toBe(true);
   });
 
   test("app:logs drops a non-numeric --tail instead of forwarding a string", () => {

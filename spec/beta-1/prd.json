@@ -391,7 +391,7 @@
         "Lint passes"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.2.5. Audit: logs.ts honors only service/tail; the OCLIF wrapper marks follow/since as Beta-only — Beta is now."
     },
     {

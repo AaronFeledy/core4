@@ -838,7 +838,7 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         follow: {
           char: "f",
-          description: "Stream new log lines (deferred to Beta).",
+          description: "Stream new log lines until interrupted.",
           name: "follow",
           allowNo: false,
           type: "boolean",
@@ -851,7 +851,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           type: "option",
         },
         since: {
-          description: "Filter to lines since the given time (deferred to Beta).",
+          description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
           name: "since",
           hasDynamicHelp: false,
           multiple: false,

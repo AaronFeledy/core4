@@ -1241,6 +1241,9 @@ const logs = (
   if (options.tail !== undefined) {
     query.set("tail", String(options.tail));
   }
+  if (options.since !== undefined) {
+    query.set("since", options.since);
+  }
   return Stream.suspend(() => {
     const decodeChunk = makeLogsDecoder(service);
     return stream(api, "logs", {

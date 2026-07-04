@@ -31,6 +31,7 @@ import {
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
 } from "./result-encode.ts";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "./stream-frame-sink.ts";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -97,6 +98,42 @@ export const emitOptionalStderr = (chunk: string): Effect.Effect<void> =>
 export const writeResultLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(`${text}\n`)));
 
+const makeStreamFrameSinkLive = (
+  format: ResultFormat,
+): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
+  Layer.effect(
+    StreamFrameSink,
+    Effect.gen(function* () {
+      const renderer = yield* Renderer;
+      const redaction = yield* RedactionService;
+      const redactor =
+        format === "json" ? yield* redaction.forProfile("secrets", { sourceEnv: process.env }) : undefined;
+      const emit = (frame: StreamFrameSinkFrame): Effect.Effect<void> =>
+        Effect.gen(function* () {
+          if (redactor !== undefined) {
+            const line =
+              frame._tag === "stdout"
+                ? yield* encodeStreamStdoutFrame({
+                    chunk: frame.chunk,
+                    ...(frame.service === undefined ? {} : { service: frame.service }),
+                    redactor,
+                  })
+                : yield* encodeStreamStderrFrame({
+                    chunk: frame.chunk,
+                    ...(frame.service === undefined ? {} : { service: frame.service }),
+                    redactor,
+                  });
+            yield* renderer.output.stdout(`${line}\n`);
+            return;
+          }
+          const text =
+            frame.service === undefined ? frame.chunk : `${frame.service} ${frame._tag}: ${frame.chunk}`;
+          yield* renderer.output.stdout(`${text}\n`);
+        });
+      return { emit };
+    }),
+  );
+
 export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
@@ -112,12 +149,13 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
 
 export interface RunWithRendererHandlingOptions<A, R, RE> {
-  readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
+  readonly runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>;
   readonly rendererMode: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
   readonly resultSchema?: Schema.Schema.AnyNoContext;
   readonly streaming?: StreamFrameSchema;
+  readonly streamingMode?: "live";
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
@@ -267,21 +305,29 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
   );
   const streamingJson = options.streaming !== undefined && renderContext.format === "json";
+  const liveStreaming = options.streamingMode === "live";
+  const streamFrameSinkLayer = makeStreamFrameSinkLive(renderContext.format).pipe(
+    Layer.provide(Layer.merge(rendererLayer, RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)))),
+  );
   const commandLayer = (
-    options.renderEvents === true
-      ? Layer.mergeAll(
-          options.runtime,
-          Layer.provideMerge(
-            makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-              ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
-            }),
-            EventServiceLive,
-          ),
-          rendererLayer,
-        )
-      : streamingJson
-        ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer)
-        : Layer.merge(options.runtime, rendererLayer)
+    liveStreaming
+      ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer)
+      : options.renderEvents === true
+        ? Layer.mergeAll(
+            options.runtime,
+            Layer.provideMerge(
+              makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+                ...(options.plainTaskEvents === undefined
+                  ? {}
+                  : { plainTaskEvents: options.plainTaskEvents }),
+              }),
+              EventServiceLive,
+            ),
+            rendererLayer,
+          )
+        : streamingJson
+          ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer)
+          : Layer.merge(options.runtime, rendererLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
     const command = options.command ?? "cli:unknown";
@@ -384,6 +430,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           return { _tag: "handled-failure" } as const;
         }
         yield* applySuccessExitCode(commandExit.value);
+        if (liveStreaming) {
+          if (renderContext.format === "json") {
+            yield* emitStreamResult({ _tag: "success", value: commandExit.value });
+          }
+          return { _tag: "handled-success" } as const;
+        }
         if (streamingJson) {
           yield* emitStreamingSuccess(commandExit.value);
           return { _tag: "handled-success" } as const;
