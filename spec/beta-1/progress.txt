@@ -316,3 +316,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - `writeFileAtomicViaRename` mkdir-p's the report's parent dir, so the fallback dir need not pre-exist; a purge that removed `userDataRoot` still writes cleanly to `os.tmpdir()`.
   - The compiled binary path (`core/src/cli/run.ts` `runMetaUninstall`) shares `uninstall()`/`renderUninstallResult`, so report-path changes stay in source/compiled parity with no separate wiring.
 ---
+
+## 2026-07-03 19:51 CDT - US-386 Review
+- Review fixed the purge-failure fallback report path so production writes into a private `mkdtemp` directory under the OS temp root instead of a predictable shared temp filename, while preserving the deterministic `_reportFallbackDir` test seam. The uninstall guide now documents both the primary data-root report and the private fallback report path.
+- Review notes (deferred/rejected): the existing `reportPath ?? "unavailable"` render fallback is now defensive dead text but harmless; stale-report cleanup after later success is pre-existing hygiene and not required for US-386's resumability contract.
+- Verification: typecheck, lint, paths-boundary, guide lint/coverage/focused guide pass, focused uninstall suite, and adjacent uninstall/atomic spot checks passed; guide-drift skipped locally because PR context env vars are absent.
+- **Learnings for future iterations:** Fallback artifacts that outlive a purged Lando root should use `mkdtemp(join(tmpdir(), "lando-...-"))` and write inside that private directory, not a fixed filename directly under shared temp.
+---
