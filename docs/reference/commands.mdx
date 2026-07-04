@@ -158,14 +158,21 @@ Flags:
 
 ## `lando app:includes:update`
 
-Refresh every includes lockfile entry to its latest source-resolved version.
+Refresh includes lockfile entries; scope to named sources and run offline with --no-network.
 
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `source` | Include source to refresh (repeatable). Omit to refresh every source. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
 | `--check` | Report would-be lockfile drift without writing. |
+| `--no-network` | Update strictly from cache and lockfile state; never touch the network. |
 
 ## `lando app:includes:verify`
 

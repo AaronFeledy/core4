@@ -456,3 +456,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (bare compiled translate flags, symlink/pruned discovery, and regenerated command reference drift)
 - Merge: merged (squash)
 ---
+
+## 2026-07-04 10:15 CDT - US-391 Review
+- Review fixed a security blocker in offline include updates: `--no-network` now bounds git and npm cache directories against the true include-cache root before reading cached fragments, so a malicious lockfile `resolved` value cannot escape the cache and feed arbitrary host files into include parsing. Regression coverage locks both git and npm traversal attempts and proves no network seam is invoked.
+- Review also regenerated the generated command reference so `lando app:includes:update` documents `[SOURCE...]` and `--no-network`, matching the compiled manifest and avoiding CI command-reference drift.
+- Review notes (deferred/rejected): the pre-existing oversized include implementation/test modules remain a focused refactor concern outside this Review fix; an additional committed compiled-behavior parity test is deferred because hands-on QA exercised the real compiled binary for the new flag/positional path and existing dispatch/manifest gates passed.
+- Verification: typecheck, lint, machine-output gate passed; focused includes update/scenario, dispatch-parity/oclif-manifest, schema-snapshot/machine-output spot checks passed; edited TypeScript files have clean LSP diagnostics.
+---
