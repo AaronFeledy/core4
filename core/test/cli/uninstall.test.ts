@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
@@ -571,6 +571,42 @@ describe("meta:uninstall", () => {
       expect(rendered).not.toContain("Partial failure report: unavailable");
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("default fallback report uses a private temp directory", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    let fallbackDir: string | undefined;
+    try {
+      mkdirSync(join(userDataRoot, "global"), { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _remove: async (path: string) => {
+            if (path === userCacheRoot) throw new Error("locked cache root");
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(true);
+      const reportPath = result.reportPath;
+      if (reportPath === undefined) throw new Error("expected fallback report path");
+      fallbackDir = dirname(reportPath);
+      expect(fallbackDir.startsWith(join(tmpdir(), "lando-uninstall-"))).toBe(true);
+      expect(reportPath).toBe(join(fallbackDir, "lando-uninstall-report.json"));
+      expect(existsSync(reportPath)).toBe(true);
+      if (process.platform !== "win32") {
+        expect(statSync(fallbackDir).mode & 0o077).toBe(0);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      if (fallbackDir !== undefined) rmSync(fallbackDir, { recursive: true, force: true });
     }
   });
 

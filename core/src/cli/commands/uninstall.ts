@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -136,8 +136,10 @@ const keepDataProtectedStepIds = new Set(["global-app-state", "caches", "user-da
 
 const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot, "uninstall", "report.json");
 
-const fallbackUninstallReportPath = (reportFallbackDir: string): string =>
-  join(reportFallbackDir, "lando-uninstall-report.json");
+const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<string> => {
+  const fallbackDir = reportFallbackDir ?? (await mkdtemp(join(tmpdir(), "lando-uninstall-")));
+  return join(fallbackDir, "lando-uninstall-report.json");
+};
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
@@ -376,7 +378,7 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   // (OS temp dir) that survives the purge instead of recreating the just-removed root.
   const reportTarget = existsSync(userDataRoot)
     ? uninstallReportPath(userDataRoot)
-    : fallbackUninstallReportPath(options.reportFallbackDir ?? tmpdir());
+    : await fallbackUninstallReportPath(options.reportFallbackDir);
   const reportPath = failed ? await writeUninstallReport(reportTarget, mode, executed) : undefined;
   return {
     dryRun: false,
