@@ -64,6 +64,15 @@ describe("meta:config command", () => {
     });
   });
 
+  test("--path resolves bracket array indices the same way write paths do", async () => {
+    const result = await Effect.runPromise(
+      config({ path: "userDataRoot[1]", format: "json" }).pipe(
+        Effect.provide(fakeConfigService({ userDataRoot: ["a", "b"] as never })),
+      ),
+    );
+    expect(result.value).toBe("b");
+  });
+
   test("get subcommand reads a single key", async () => {
     const result = await Effect.runPromise(
       config({ subcommand: "get", key: "userConfRoot", format: "table" }).pipe(

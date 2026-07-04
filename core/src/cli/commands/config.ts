@@ -20,6 +20,7 @@ import { parseMinimalYaml } from "../../config/yaml-min.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../../runtime/cli-options.ts";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "../../telemetry/policy.ts";
+import { getAtPath } from "../config-write/dot-path.ts";
 import {
   type ValueType,
   applySetMutation,
@@ -121,16 +122,6 @@ const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
 
 const unsupportedSubcommands = new Set(["translate"]);
-
-const resolvePath = (root: unknown, path: string): unknown => {
-  const parts = path.split(".");
-  let cursor: unknown = root;
-  for (const part of parts) {
-    if (cursor === null || typeof cursor !== "object") return undefined;
-    cursor = (cursor as Record<string, unknown>)[part];
-  }
-  return cursor;
-};
 
 const formatYaml = (value: unknown, indent = 0): string => {
   const prefix = " ".repeat(indent);
@@ -518,7 +509,7 @@ export const config = (
     } as GlobalConfig;
 
     const key = options.key ?? options.path;
-    const value = key === undefined ? undefined : resolvePath(merged, key);
+    const value = key === undefined ? undefined : getAtPath(merged, key);
     return {
       config: merged,
       ...(key === undefined ? {} : { key }),
