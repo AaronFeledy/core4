@@ -20,26 +20,37 @@ const isSubcommand = (s: unknown): s is ConfigOptions["subcommand"] =>
   s === "translate" ||
   s === "telemetry";
 
-const extractOptions = (input: unknown): ConfigOptions => {
+const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
+  s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
+
+export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
   const i = input as { args?: Record<string, unknown>; flags?: Record<string, unknown> };
   const subcommand = i.args?.subcommand;
   const key = i.args?.key;
   const value = i.args?.value;
+  const type = i.flags?.type;
   const format = i.flags?.format;
   const path = i.flags?.path;
+  const editor = i.flags?.editor;
   const opts: {
     subcommand?: ConfigOptions["subcommand"];
     key?: string;
     value?: string;
+    type?: ConfigOptions["type"];
     format?: "json" | "yaml" | "table";
     path?: string;
+    dryRun?: boolean;
+    editor?: string;
   } = {};
   if (isSubcommand(subcommand)) opts.subcommand = subcommand;
   if (typeof key === "string") opts.key = key;
   if (typeof value === "string") opts.value = value;
+  if (isValueType(type)) opts.type = type;
   if (format === "json" || format === "yaml" || format === "table") opts.format = format;
   if (typeof path === "string") opts.path = path;
+  if (i.flags?.["dry-run"] === true) opts.dryRun = true;
+  if (typeof editor === "string") opts.editor = editor;
   return opts as ConfigOptions;
 };
 
@@ -50,7 +61,7 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   namespace: "meta",
   topLevelAlias: "config",
   bootstrap: "minimal",
-  run: (input) => config(extractOptions(input)),
+  run: (input) => config(metaConfigOptionsFromInput(input)),
   render: (result) => renderConfigResult(result as ConfigResult),
 };
 
@@ -72,7 +83,14 @@ export default class MetaConfigCommand extends LandoCommandBase {
       options: ["json", "yaml", "table"],
       default: "table",
     }),
+    type: Flags.string({
+      description: "Value type for set.",
+      options: ["string", "number", "boolean", "json", "yaml"],
+      default: "string",
+    }),
     path: Flags.string({ description: "Dot-path key selector." }),
+    editor: Flags.string({ description: "Editor binary for edit." }),
+    "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
   };
   static override landoSpec: LandoCommandSpec = metaConfigSpec;
   static override bootstrap = metaConfigSpec.bootstrap;

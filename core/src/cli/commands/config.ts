@@ -1,38 +1,62 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
-import { ConfigError, type LandoCommandError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  ConfigError,
+  type LandoCommandError,
+  LandofileWriteValidationError,
+  NotImplementedError,
+} from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import type { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { envOverlay, resolveConfigFileRoot } from "../../config/overlay.ts";
 import { resolveUserConfRoot } from "../../config/roots.ts";
 import { parseMinimalYaml } from "../../config/yaml-min.ts";
+import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../../runtime/cli-options.ts";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "../../telemetry/policy.ts";
+import {
+  type ValueType,
+  applySetMutation,
+  applyUnsetMutation,
+  decodeIssues,
+  writeValidationErrorFromIssues,
+} from "../config-write/write-core.ts";
 
 export interface ConfigOptions {
   readonly subcommand?: "view" | "get" | "set" | "unset" | "edit" | "validate" | "translate" | "telemetry";
   readonly key?: string;
   readonly value?: string;
+  readonly type?: ValueType;
   readonly format?: "json" | "yaml" | "table";
   readonly path?: string;
   readonly source?: "raw" | "resolved";
+  readonly dryRun?: boolean;
+  readonly editor?: string;
+  readonly configPath?: string;
+  readonly editorRunner?: EditorRunner;
 }
 
 export interface ConfigResult {
   readonly config?: GlobalConfig;
+  readonly subcommand?: string;
   readonly key?: string;
   readonly value?: unknown;
+  readonly path?: string;
   readonly format: "json" | "yaml" | "table";
   readonly telemetry?: {
     readonly enabled: boolean;
     readonly source: CliTelemetrySource;
   };
   readonly changed?: boolean;
+  readonly dryRun?: boolean;
+  readonly valid?: boolean;
+  readonly issues?: ReadonlyArray<string>;
   readonly configPath?: string;
 }
 
@@ -69,8 +93,10 @@ const ResultGlobalConfigSchema = Schema.Struct({
 
 export const ConfigResultSchema = Schema.Struct({
   config: Schema.optional(ResultGlobalConfigSchema),
+  subcommand: Schema.optional(Schema.String),
   key: Schema.optional(Schema.String),
   value: Schema.optional(Schema.Unknown),
+  path: Schema.optional(Schema.String),
   format: Schema.Union(Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")),
   telemetry: Schema.optional(
     Schema.Struct({
@@ -84,13 +110,16 @@ export const ConfigResultSchema = Schema.Struct({
     }),
   ),
   changed: Schema.optional(Schema.Boolean),
+  dryRun: Schema.optional(Schema.Boolean),
+  valid: Schema.optional(Schema.Boolean),
+  issues: Schema.optional(Schema.Array(Schema.String)),
   configPath: Schema.optional(Schema.String),
 });
 
-const writeRemediation =
-  "`lando config set/unset/edit/validate/translate` are deferred to Beta. Edit `<userConfRoot>/config.yml` directly in Alpha.";
+const translateRemediation =
+  "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
 
-const unsupportedSubcommands = new Set(["set", "unset", "edit", "validate", "translate"]);
+const unsupportedSubcommands = new Set(["translate"]);
 
 const resolvePath = (root: unknown, path: string): unknown => {
   const parts = path.split(".");
@@ -151,7 +180,36 @@ const formatTable = (value: unknown): string => {
   return lines.join("\n");
 };
 
+const renderWriteResult = (result: ConfigResult): string => {
+  const file = result.configPath ?? "";
+  switch (result.subcommand) {
+    case "set":
+      return result.dryRun === true
+        ? `${file}: would set ${result.key} (dry run).`
+        : `${file}: set ${result.key}.`;
+    case "unset":
+      if (result.changed !== true) return `${file}: ${result.key} was not present (no change).`;
+      return result.dryRun === true
+        ? `${file}: would unset ${result.key} (dry run).`
+        : `${file}: unset ${result.key}.`;
+    case "edit":
+      return `${file}: saved edited config.`;
+    case "validate":
+      return `${file}: valid.`;
+    default:
+      return file;
+  }
+};
+
 export const renderConfigResult = (result: ConfigResult): string => {
+  if (
+    result.subcommand === "set" ||
+    result.subcommand === "unset" ||
+    result.subcommand === "edit" ||
+    result.subcommand === "validate"
+  ) {
+    return renderWriteResult(result);
+  }
   const target =
     result.telemetry !== undefined
       ? {
@@ -243,19 +301,201 @@ const telemetryConfig = (
   });
 };
 
+const resolveConfigWritePath = (options: ConfigOptions): string =>
+  options.configPath ?? telemetryConfigPath();
+
+const readConfigTree = (path: string): Effect.Effect<Record<string, unknown>, ConfigError> =>
+  Effect.try({ try: () => readConfigObject(path), catch: (cause) => configReadError(path, cause) });
+
+const readConfigText = (path: string): Effect.Effect<string, ConfigError> =>
+  Effect.try({
+    try: () => (existsSync(path) ? readFileSync(path, "utf8") : ""),
+    catch: (cause) => configReadError(path, cause),
+  });
+
+const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, ConfigError> =>
+  Effect.tryPromise({
+    try: () => writeFileAtomicViaRename(path, content),
+    catch: (cause) => configWriteError(path, cause),
+  });
+
+const decodeGlobalConfig = Schema.decodeUnknownEither(GlobalConfig);
+
+const configValidationError = (
+  path: string,
+  issues: ReadonlyArray<string>,
+  key?: string,
+): LandofileWriteValidationError =>
+  writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
+
+const metaConfigSet = (
+  options: ConfigOptions,
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+  Effect.gen(function* () {
+    const key = options.key;
+    const raw = options.value;
+    if (key === undefined || raw === undefined) {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: "`meta config set` requires a <key.path> and a <value>.",
+          file: "",
+          issues: ["Missing key path or value."],
+          remediation:
+            "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
+        }),
+      );
+    }
+    const path = resolveConfigWritePath(options);
+    const tree = yield* readConfigTree(path);
+    const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
+    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
+    const next = mutation.right.next;
+    const issues = decodeIssues(decodeGlobalConfig(next));
+    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+    const dryRun = options.dryRun === true;
+    if (!dryRun) yield* writeConfigAtomic(path, emitLandofileYaml(next as Record<string, unknown>));
+    return {
+      subcommand: "set",
+      key,
+      value: mutation.right.value,
+      changed: true,
+      dryRun,
+      configPath: path,
+      format: options.format ?? "table",
+    };
+  });
+
+const metaConfigUnset = (
+  options: ConfigOptions,
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+  Effect.gen(function* () {
+    const key = options.key;
+    if (key === undefined) {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: "`meta config unset` requires a <key.path>.",
+          file: "",
+          issues: ["Missing key path."],
+          remediation: "Usage: `lando config unset <key.path>`.",
+        }),
+      );
+    }
+    const path = resolveConfigWritePath(options);
+    const tree = yield* readConfigTree(path);
+    const mutation = applyUnsetMutation({ tree, key, file: path });
+    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
+    const next = mutation.right.next;
+    const issues = decodeIssues(decodeGlobalConfig(next));
+    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+    const dryRun = options.dryRun === true;
+    if (!dryRun && mutation.right.changed) {
+      yield* writeConfigAtomic(path, emitLandofileYaml(next as Record<string, unknown>));
+    }
+    return {
+      subcommand: "unset",
+      key,
+      changed: mutation.right.changed,
+      dryRun,
+      configPath: path,
+      format: options.format ?? "table",
+    };
+  });
+
+const metaConfigValidate = (
+  options: ConfigOptions,
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+  Effect.gen(function* () {
+    const path = resolveConfigWritePath(options);
+    const tree = yield* readConfigTree(path);
+    const issues = decodeIssues(decodeGlobalConfig(tree));
+    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+    return {
+      subcommand: "validate",
+      valid: true,
+      issues: [],
+      configPath: path,
+      format: options.format ?? "table",
+    };
+  });
+
+const metaConfigEdit = (
+  options: ConfigOptions,
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+  Effect.gen(function* () {
+    const path = resolveConfigWritePath(options);
+    const content = yield* readConfigText(path);
+    const runner =
+      options.editorRunner ??
+      createDefaultEditorRunner(
+        options.editor === undefined
+          ? {}
+          : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
+      );
+    const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
+    if (edited.kind === "no-editor") {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: "No editor is configured.",
+          file: path,
+          issues: ["Neither $VISUAL nor $EDITOR is set."],
+          remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
+        }),
+      );
+    }
+    if (edited.kind === "failed") {
+      return yield* Effect.fail(
+        new LandofileWriteValidationError({
+          message: `The editor session failed: ${edited.reason}`,
+          file: path,
+          issues: [edited.reason],
+          remediation:
+            "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
+        }),
+      );
+    }
+    const parsed = yield* Effect.try({
+      try: () => parseMinimalYaml(edited.content),
+      catch: (cause) =>
+        new LandofileWriteValidationError({
+          message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
+          file: path,
+          issues: [cause instanceof Error ? cause.message : String(cause)],
+          remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
+        }),
+    });
+    const issues = decodeIssues(decodeGlobalConfig(parsed));
+    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+    yield* writeConfigAtomic(path, edited.content);
+    return {
+      subcommand: "edit",
+      changed: true,
+      valid: true,
+      configPath: path,
+      format: options.format ?? "table",
+    };
+  });
+
 export const config = (
   options: ConfigOptions = {},
-): Effect.Effect<ConfigResult, ConfigError | LandoCommandError | NotImplementedError, ConfigService> =>
+): Effect.Effect<
+  ConfigResult,
+  ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
+  ConfigService
+> =>
   Effect.gen(function* () {
     const subcommand = options.subcommand ?? "view";
     if (subcommand === "telemetry") return yield* telemetryConfig(options.key, options.format);
+    if (subcommand === "set") return yield* metaConfigSet(options);
+    if (subcommand === "unset") return yield* metaConfigUnset(options);
+    if (subcommand === "validate") return yield* metaConfigValidate(options);
+    if (subcommand === "edit") return yield* metaConfigEdit(options);
 
     if (unsupportedSubcommands.has(subcommand)) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `meta:config ${subcommand} is deferred to Beta.`,
+          message: `meta:config ${subcommand} is not available here.`,
           commandId: "meta:config",
-          remediation: writeRemediation,
+          remediation: translateRemediation,
         }),
       );
     }

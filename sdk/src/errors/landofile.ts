@@ -61,6 +61,24 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
 ) {}
 
 /**
+ * A config write (`app config set/unset/edit`, `meta config set/unset/edit`,
+ * `meta global config set/unset/edit`) was rejected because the resulting
+ * document failed schema validation or the target path was malformed. The
+ * write is aborted with no partial change; `path` names the offending key
+ * path (when known) and `remediation` explains how to fix it.
+ */
+export class LandofileWriteValidationError extends Schema.TaggedError<LandofileWriteValidationError>()(
+  "LandofileWriteValidationError",
+  {
+    message: Schema.String,
+    file: Schema.String,
+    path: Schema.optional(Schema.String),
+    issues: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
+/**
  * Programmatic `.lando.ts` Landofile violated the loader's sandbox policy
  * (forbidden module import, host shell-out, network fetch, or filesystem
  * access outside the app root).

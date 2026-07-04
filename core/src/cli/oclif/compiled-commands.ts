@@ -4,6 +4,12 @@ import AppCacheRefreshCommand from "./commands/app/cache/refresh.ts";
 import AppConfigCommand from "./commands/app/config/index.ts";
 import AppConfigLintCommand from "./commands/app/config/lint.ts";
 import AppConfigTranslateCommand from "./commands/app/config/translate.ts";
+import {
+  AppConfigEditCommand,
+  AppConfigSetCommand,
+  AppConfigUnsetCommand,
+  AppConfigValidateCommand,
+} from "./commands/app/config/verbs.ts";
 import DestroyCommand from "./commands/app/destroy.ts";
 import ExecCommand from "./commands/app/exec.ts";
 import AppIncludesUpdateCommand from "./commands/app/includes/update.ts";
@@ -41,6 +47,12 @@ import BunCommand from "./commands/meta/bun.ts";
 import MetaConfigCommand from "./commands/meta/config.ts";
 import DoctorCommand from "./commands/meta/doctor.ts";
 import EventsFollowCommand from "./commands/meta/events/follow.ts";
+import {
+  MetaGlobalConfigEditCommand,
+  MetaGlobalConfigSetCommand,
+  MetaGlobalConfigUnsetCommand,
+  MetaGlobalConfigValidateCommand,
+} from "./commands/meta/global/config-verbs.ts";
 import MetaGlobalConfigCommand from "./commands/meta/global/config.ts";
 import MetaGlobalDestroyCommand from "./commands/meta/global/destroy.ts";
 import MetaGlobalInfoCommand from "./commands/meta/global/info.ts";
@@ -78,6 +90,10 @@ export default {
   "app:config": AppConfigCommand,
   "app:config:lint": AppConfigLintCommand,
   "app:config:translate": AppConfigTranslateCommand,
+  "app:config:set": AppConfigSetCommand,
+  "app:config:unset": AppConfigUnsetCommand,
+  "app:config:edit": AppConfigEditCommand,
+  "app:config:validate": AppConfigValidateCommand,
   "app:destroy": DestroyCommand,
   "app:exec": ExecCommand,
   "app:includes:update": AppIncludesUpdateCommand,
@@ -116,6 +132,10 @@ export default {
   "meta:doctor": DoctorCommand,
   "meta:events:follow": EventsFollowCommand,
   "meta:global:config": MetaGlobalConfigCommand,
+  "meta:global:config:set": MetaGlobalConfigSetCommand,
+  "meta:global:config:unset": MetaGlobalConfigUnsetCommand,
+  "meta:global:config:edit": MetaGlobalConfigEditCommand,
+  "meta:global:config:validate": MetaGlobalConfigValidateCommand,
   "meta:global:destroy": MetaGlobalDestroyCommand,
   "meta:global:info": MetaGlobalInfoCommand,
   "meta:global:install": MetaGlobalInstallCommand,

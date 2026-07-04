@@ -73,16 +73,40 @@ describe("meta:config command", () => {
     expect(renderConfigResult(result)).toContain("/conf");
   });
 
-  test("write subcommands are deferred with structured remediation", async () => {
-    const result = await Effect.runPromiseExit(
-      config({ subcommand: "set", key: "foo", value: "bar" }).pipe(Effect.provide(fakeConfigService({}))),
-    );
-    expect(result._tag).toBe("Failure");
-    if (result._tag === "Failure") {
-      const cause = JSON.stringify(result.cause);
-      expect(cause).toContain("NotImplementedError");
-      expect(cause).toContain("meta:config");
-      expect(cause).toContain("Edit");
+  test("set writes the global config atomically and reports changed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-write-"));
+    try {
+      const path = join(dir, "config.yml");
+      const result = await Effect.runPromise(
+        config({ subcommand: "set", key: "renderer", value: "json", configPath: path }).pipe(
+          Effect.provide(fakeConfigService({})),
+        ),
+      );
+      expect(result.subcommand).toBe("set");
+      expect(result.changed).toBe(true);
+      expect(await readFile(path, "utf8")).toContain("renderer");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a malformed path is rejected with a tagged write-validation error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-reject-"));
+    try {
+      const path = join(dir, "config.yml");
+      const result = await Effect.runPromiseExit(
+        config({ subcommand: "set", key: "", value: "bar", configPath: path }).pipe(
+          Effect.provide(fakeConfigService({})),
+        ),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        const cause = JSON.stringify(result.cause);
+        expect(cause).toContain("LandofileWriteValidationError");
+        expect(cause).toContain("remediation");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
