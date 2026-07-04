@@ -168,6 +168,36 @@ describe("provider-lando bundled machine tooling resolution", () => {
     }
   });
 
+  test("darwin Detect Podman step fails with bundle remediation, not PATH wording, when the bundled binary is absent", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-detect-missing-"));
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "darwin",
+          runtimeBinDir,
+          skipSocketProbe: true,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          const error = failure.value as ProviderUnavailableError;
+          expect(error.constructor.name).not.toBe("PodmanNotInstalledError");
+          expect(error.message).toContain("darwin");
+          expect(
+            `${error.message} ${error.remediation ?? ""} ${JSON.stringify(error.details ?? {})}`,
+          ).toContain(`${runtimeBinDir}/podman`);
+        }
+      }
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
   test("an explicitly injected machine runner bypasses bundle resolution", async () => {
     const calls: string[] = [];
     const result = await Effect.runPromise(

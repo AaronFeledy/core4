@@ -330,14 +330,6 @@ export const makeSystemPodmanMachineRunner = (
 
 const MANAGED_MACHINE_NAME = "lando";
 
-const resolveSetupPodmanCommandRunner = (
-  platform: HostPlatform,
-  runtimeBinDir: string | undefined,
-): PodmanCommandRunner =>
-  (platform === "darwin" || platform === "win32") && runtimeBinDir !== undefined
-    ? makeSystemPodmanCommandRunner(managedRuntimePodmanArgv0(runtimeBinDir))
-    : makeSystemPodmanCommandRunner();
-
 const missingBundledMachineToolingError = (
   platform: "darwin" | "win32",
   podmanBin?: string,
@@ -350,6 +342,25 @@ const missingBundledMachineToolingError = (
       "Reinstall the managed runtime with `lando setup`; the bundled Podman machine tooling for this platform was not found in the runtime bundle.",
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
+
+// Checks bundled-tooling existence before spawning it, so a missing bundle fails with
+// `missingBundledMachineToolingError` rather than the PATH-install-flavored `PodmanNotInstalledError`.
+const resolveSetupPodmanCommandRunner = (
+  platform: HostPlatform,
+  runtimeBinDir: string | undefined,
+  toolingExists: (podmanBin: string) => boolean,
+): Effect.Effect<PodmanCommandRunner, ProviderUnavailableError> => {
+  if ((platform !== "darwin" && platform !== "win32") || runtimeBinDir === undefined) {
+    return Effect.succeed(makeSystemPodmanCommandRunner());
+  }
+
+  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir);
+  if (!toolingExists(podmanBin)) {
+    return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
+  }
+
+  return Effect.succeed(makeSystemPodmanCommandRunner(podmanBin));
+};
 
 const resolveSetupMachineRunner = (
   platform: "darwin" | "win32",
@@ -647,7 +658,13 @@ export const setupProviderLando = (
         options.eventService,
         podmanStep,
         counter,
-        (options.podmanCommand ?? resolveSetupPodmanCommandRunner(platform, options.runtimeBinDir)).version,
+        options.podmanCommand !== undefined
+          ? options.podmanCommand.version
+          : resolveSetupPodmanCommandRunner(
+              platform,
+              options.runtimeBinDir,
+              options._machineToolingExists ?? existsSync,
+            ).pipe(Effect.flatMap((runner) => runner.version)),
       );
 
       if (platform === "darwin" && machineStep !== undefined) {
