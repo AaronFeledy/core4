@@ -462,7 +462,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "states the dev-prerelease-only scope and manual-until-RC posture in the release workflow header",
+    "documents dev-prerelease scope and manual signed-pipeline posture in the release workflow header",
     async () => {
       await runCodegen();
 
@@ -471,8 +471,9 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("Scope: dev prerelease only");
       expect(workflow).toContain("scripts/release.ts");
-      expect(workflow).toContain("invoked MANUALLY until RC");
+      expect(workflow).toContain("invoked manually, not by this workflow");
       expect(workflow).toContain("docs/release-runbook.md");
+      expect(workflow).not.toContain("beta-1-decisions");
 
       expect(workflow.startsWith(`${generatedReleaseHeader}\n`)).toBe(true);
       expect(workflow.indexOf("Scope: dev prerelease only")).toBeLessThan(workflow.indexOf("name: release"));
