@@ -125,6 +125,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
+  readonly successExitCode?: (value: A) => number | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
 }
@@ -334,14 +335,22 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         }
         yield* emitStreamResult({ _tag: "success", value });
       });
-    const setFailureExitCode = Effect.sync(() => {
+    const setExitCode = (code: number): void => {
       (
         options.setExitCode ??
-        ((code) => {
-          process.exitCode = code;
+        ((exitCode) => {
+          process.exitCode = exitCode;
         })
-      )(1);
+      )(code);
+    };
+    const setFailureExitCode = Effect.sync(() => {
+      setExitCode(1);
     });
+    const applySuccessExitCode = (value: A) =>
+      Effect.sync(() => {
+        const code = options.successExitCode?.(value);
+        if (code !== undefined && code !== 0) setExitCode(code);
+      });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
         const failure = Cause.failureOption(cause);
@@ -374,6 +383,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           yield* renderFailure(commandExit.cause);
           return { _tag: "handled-failure" } as const;
         }
+        yield* applySuccessExitCode(commandExit.value);
         if (streamingJson) {
           yield* emitStreamingSuccess(commandExit.value);
           return { _tag: "handled-success" } as const;

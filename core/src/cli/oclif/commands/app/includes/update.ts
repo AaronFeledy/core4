@@ -36,6 +36,7 @@ export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
       noNetwork: noNetworkFromInput(input),
       sources: sourcesFromInput(input),
     }),
+  successExitCode: (result) => (result.checkMode && result.drift ? 1 : undefined),
   render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
 };
 
@@ -63,7 +64,7 @@ export default class AppIncludesUpdateCommand extends LandoCommandBase {
       default: "text",
     }),
   };
-  static override landoSpec: LandoCommandSpec = appIncludesUpdateSpec;
+  static override landoSpec: LandoCommandSpec<IncludeUpdateReport> = appIncludesUpdateSpec;
   static override bootstrap = appIncludesUpdateSpec.bootstrap;
 
   override async run(): Promise<void> {

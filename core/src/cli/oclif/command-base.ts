@@ -48,7 +48,7 @@ export type LandoTopLevelAlias = boolean | LandoAliasSpec | ReadonlyArray<LandoA
 const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAliasSpec> =>
   Array.isArray(value);
 
-export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
+export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   /**
    * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
    * `"meta:config"`). It starts with one of `LandoCommandNamespace` plus
@@ -82,6 +82,9 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly streaming?: StreamFrameSchema;
   readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
+  readonly successExitCode?: {
+    bivarianceHack(result: A, input?: unknown): number | undefined;
+  }["bivarianceHack"];
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
 
@@ -369,6 +372,9 @@ export abstract class LandoCommandBase extends Command {
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
       render: (value, ctx) => spec.render?.(value, input, ctx),
+      ...(spec.successExitCode === undefined
+        ? {}
+        : { successExitCode: (value) => spec.successExitCode?.(value, input) }),
       formatError: (error) =>
         formatCommandError({
           error,
