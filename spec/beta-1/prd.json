@@ -283,7 +283,7 @@
         "Lint passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-01 US-363..US-367 (runtime-socket autosetup). Audit: setup.ts:550-567 falls back to system machine runner + LANDO_TEST_PODMAN_SOCKET when no socket is injected. If partial mac/win scope is accepted for Beta 1, cut the scope in PRD text explicitly, not silently."
     },
     {

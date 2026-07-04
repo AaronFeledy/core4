@@ -323,3 +323,21 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Verification: typecheck, lint, paths-boundary, guide lint/coverage/focused guide pass, focused uninstall suite, and adjacent uninstall/atomic spot checks passed; guide-drift skipped locally because PR context env vars are absent.
 - **Learnings for future iterations:** Fallback artifacts that outlive a purged Lando root should use `mkdtemp(join(tmpdir(), "lando-...-"))` and write inside that private directory, not a fixed filename directly under shared temp.
 ---
+
+## [2026-07-03 20:31:57 CDT] - Babysit
+- PR: #516 https://github.com/AaronFeledy/core4/pull/516
+- CI outcome: pass
+- Review feedback: fixed (Bugbot temp-dir leak and fallback report write rejection)
+- Merge: merged (squash)
+---
+
+## 2026-07-03 20:50 CDT - US-387
+- macOS/Windows `lando setup` now stands up the managed Podman machine from the *bundled* runtime tooling instead of system Podman on PATH. The provider setup path resolves the machine runner from `${runtimeBinDir}/podman` (Paths-driven), and the "Detect Podman" version step on mac/win probes that same bundled binary rather than PATH `podman`. Removed the production fallbacks the audit flagged: the `makeSystemPodmanMachineRunner(undefined, …)` system-machine default (in both the provider factory's ensureRuntime wiring and `setupProviderLando`) and every `process.env.LANDO_TEST_PODMAN_SOCKET` read in production. Socket precedence now mirrors Linux: explicit option > injected managed paths > managed default; the test env var is honored only in `@lando/core/testing`'s `resolveLiveProviderSocket` and explicit test wiring.
+- When the installed bundle lacks machine tooling for the host platform, setup fails inside the "Ensure Podman machine" step with a tagged `ProviderUnavailableError` naming the platform and the missing bundled binary path (plus remediation), instead of silently shelling out to system Podman. Recorded setup state still carries the machine identity (`{name:"lando", createdByLando}`) and the managed socket path for idempotent re-detection and US-385 teardown.
+- Verification: typecheck, lint, paths-boundary passed; new bundled-machine-tooling suite (6) covers both platforms — bundle-missing tagged error, bundle-path runner resolution, bundled-binary version detection, injected-runner bypass — plus an env-ignored regression in runtime-path-resolution; full provider-lando unit suite (121) and adjacent core machine/socket suites green. Real-surface driver (no seams, real existsSync) confirmed the darwin tagged error names the bundle path and the resolved machine command is `${runtimeBinDir}/podman`. Live mac/win verification runs in the `provider-integration-darwin-*`/`provider-integration-windows-*` CI jobs.
+- **Learnings for future iterations:**
+  - The mac/win setup path has THREE system-Podman touch points, not one: the machine runner (setup.ts + index.ts), the socket env fallback, AND the `podman --version` "Detect Podman" step. Route all three through the bundled `managedRuntimePodmanArgv0(runtimeBinDir)` = `${runtimeBinDir}/podman`; the version step is the easy one to miss.
+  - `managedRuntimePodmanArgv0` lives in `@lando/core/managed-runtime-service` and is importable from provider-lando (import-boundary allows it).
+  - Test-only seams use an underscore prefix (`_machineToolingExists`, `_machineRunnerFactory`) mirroring US-386's `_reportFallbackDir`; they let unit tests prove the bundled command string and the missing-tooling gate without spawning real podman. A bundled-binary version proof can also use a real executable shell script at `${runtimeBinDir}/podman` (host-safe, no container).
+  - `LANDO_TEST_PODMAN_SOCKET` must be read only in `core/src/testing/live-provider-socket.ts` and test wiring; `grep -rn LANDO_TEST_PODMAN_SOCKET plugins/provider-lando/src` must return nothing.
+---
