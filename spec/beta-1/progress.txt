@@ -347,3 +347,22 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Test-only seams use an underscore prefix (`_machineToolingExists`, `_machineRunnerFactory`) mirroring US-386's `_reportFallbackDir`; they let unit tests prove the bundled command string and the missing-tooling gate without spawning real podman. A bundled-binary version proof can also use a real executable shell script at `${runtimeBinDir}/podman` (host-safe, no container).
   - `LANDO_TEST_PODMAN_SOCKET` must be read only in `core/src/testing/live-provider-socket.ts` and test wiring; `grep -rn LANDO_TEST_PODMAN_SOCKET plugins/provider-lando/src` must return nothing.
 ---
+
+## [2026-07-03 21:57 CDT] - Babysit
+- PR: #517 https://github.com/AaronFeledy/core4/pull/517
+- CI outcome: pass
+- Review feedback: fixed (Bugbot missing-bundled-tooling error path; guide drift skip added for failure-mode-only changes)
+- Merge: merged (squash)
+---
+
+## 2026-07-03 22:20 CDT - US-388
+- Decided the release-automation posture: full signed release runs **manually until RC**, not from CI. The 13-stage orchestrator (`scripts/release.ts`) is fully implemented and credential-gated, but signing-credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow — so wiring the pipeline into CI now would only produce warning-skipped signing stages, not a trustworthy signed artifact. The generated `release` workflow stays scoped to dev prereleases only.
+- Decision recorded in three places: the canonical `docs/beta-1-decisions.md`, the PRD-ALPHA4-08 open-questions section (credential-ownership question resolved-by-decision), and this progress note.
+- Added `docs/release-runbook.md`: the exact manual invocation surface (`bun run release -- --all|--binary|--library`, `--through-stage=<id>`, `LANDO_RELEASE_PLATFORM=windows-x64`, `LOCAL_REHEARSAL=1`), a per-stage required-credential table, and concrete verification steps (checksum verify, binary smoke, signing/notarization, SBOM+provenance, npm dist-tag, GitHub release), cross-linked to the existing release guides.
+- Stated the dev-prerelease-only scope in the generated workflow header: `scripts/build-release-workflow.ts` now emits a scope comment block (kept below the generated-file header line so the drift/idempotency contract holds) pointing at the runbook and decision doc.
+- Verification: typecheck, lint (biome + deprecations) passed; `codegen-ci.test.ts` (14) and adjacent `release.test.ts` (53) green; a RED→GREEN codegen test asserts the scope comment, manual-until-RC statement, runbook pointer, and absence of `win32-x64` in the release workflow/generator. `bun run codegen` is idempotent (no drift on re-run). Manual QA parsed every runbook invocation through `parseReleaseOptions` and confirmed each resolves as documented.
+- **Learnings for future iterations:**
+  - The generated release workflow drift test (`core/test/scripts/codegen-ci.test.ts`) asserts `release.yml` does NOT contain the substrings `cosign`, `gpg`, `sbom`, `installer`, or `update-manifest`, and that its first line is exactly the generated header. Any scope/comment text added to the release workflow must avoid those substrings and must sit below the header line ("signed release pipeline" / "credential-gated" are safe phrasings).
+  - Platform-id vocabulary is two domains: CI/release artifact ids are `windows-x64` (see `scripts/ci-platforms.ts` `CI_PLATFORMS`); the `win32-x64` runtime host key lives only in `scripts/build-runtime-bundle.ts` and `scripts/build-mutagen-versions.ts`. Never introduce `win32-x64` into `.github/workflows/*`.
+  - `scripts/release.ts` scopes a run to one platform via `LANDO_RELEASE_PLATFORM` (CI/release id) and warning-skips credential-gated stages under `LOCAL_REHEARSAL=1`; both are the sanctioned manual-invocation levers for the runbook.
+---

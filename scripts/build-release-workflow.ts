@@ -26,7 +26,14 @@ const publishLines = releasePackageNames
   )
   .join("\n");
 
+const SCOPE_COMMENT = `#
+# Scope: dev prerelease only. This workflow does not produce a signed release; it republishes the
+# ci-built linux-x64 binary as a v4.0.0-dev.N GitHub prerelease and publishes npm dev-tag packages.
+# The full 13-stage signed release pipeline (scripts/release.ts) is invoked MANUALLY until RC.
+# Runbook: docs/release-runbook.md. Posture decision: docs/beta-1-decisions.md.`;
+
 export const renderReleaseWorkflow = (): string => `${GENERATED_HEADER}
+${SCOPE_COMMENT}
 name: release
 
 on:

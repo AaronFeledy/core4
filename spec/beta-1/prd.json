@@ -300,7 +300,7 @@
         "Lint passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: PRD-ALPHA4-08. Audit: .github/workflows/release.yml runs only dev-prerelease-linux-x64 + npm-alpha-packages; nothing invokes the 13-stage pipeline. May be intentional — hence a decision story, not a blind implementation story."
     },
     {
