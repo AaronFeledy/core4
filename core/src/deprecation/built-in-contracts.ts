@@ -53,8 +53,7 @@ export const BUILT_IN_COMMAND_DEPRECATIONS: ReadonlyArray<DeprecationContractCom
         deprecated: {
           since: "4.2.0",
           severity: "warn",
-          replacement: "--service <name>",
-          note: "lando shell now opens a host shell by default; --host is redundant. Pass --service <name> to open a shell inside a service instead.",
+          note: "lando shell now opens a host shell by default; --host is redundant and can be omitted. Pass --service <name> only to open a shell inside a service instead.",
         },
       },
     },
