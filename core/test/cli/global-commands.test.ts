@@ -43,6 +43,7 @@ import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
+import { globalConfigOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
@@ -617,5 +618,23 @@ describe("meta:global command effects", () => {
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
       expect(result.landofile.services).toHaveProperty("proxy");
     });
+  });
+
+  test("config rejects an unrecognized subcommand instead of silently validating", async () => {
+    await withHarness(async (harness) => {
+      const exit = await Effect.runPromiseExit(
+        globalConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(harness.layer)),
+      );
+
+      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
+      expect(error._tag).toBe("LandofileWriteValidationError");
+      expect(error.message).toContain("bogus");
+    });
+  });
+
+  test("CLI wiring forwards a mistyped subcommand instead of dropping it to the view default", () => {
+    const options = globalConfigOptionsFromInput({ args: { subcommand: "bogus" }, flags: {} });
+
+    expect(options.subcommand).toBe("bogus");
   });
 });

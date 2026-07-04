@@ -320,7 +320,7 @@
         "Lint passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.2.1/§8.2.2/§8.4 — audit found all three config surfaces read-only (plus a telemetry toggle)."
     },
     {

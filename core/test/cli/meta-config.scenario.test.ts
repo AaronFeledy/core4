@@ -1,12 +1,32 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
 import { ConfigResultSchema, config, renderConfigResult } from "../../src/cli/commands/config.ts";
+
+const cliEntry = resolve(import.meta.dirname, "../../bin/lando.ts");
+
+const runCli = async (
+  args: ReadonlyArray<string>,
+  cwd: string,
+): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
+  const proc = Bun.spawn({
+    cmd: [process.execPath, cliEntry, ...args],
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+};
 
 const fakeConfigService = (overrides: Partial<{ userDataRoot: string; userConfRoot: string }>) =>
   Layer.succeed(ConfigService, {
@@ -64,6 +84,15 @@ describe("meta:config command", () => {
     });
   });
 
+  test("--path resolves bracket array indices the same way write paths do", async () => {
+    const result = await Effect.runPromise(
+      config({ path: "userDataRoot[1]", format: "json" }).pipe(
+        Effect.provide(fakeConfigService({ userDataRoot: ["a", "b"] as never })),
+      ),
+    );
+    expect(result.value).toBe("b");
+  });
+
   test("get subcommand reads a single key", async () => {
     const result = await Effect.runPromise(
       config({ subcommand: "get", key: "userConfRoot", format: "table" }).pipe(
@@ -73,16 +102,69 @@ describe("meta:config command", () => {
     expect(renderConfigResult(result)).toContain("/conf");
   });
 
-  test("write subcommands are deferred with structured remediation", async () => {
+  test("set writes the global config atomically and reports changed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-write-"));
+    try {
+      const path = join(dir, "config.yml");
+      const result = await Effect.runPromise(
+        config({ subcommand: "set", key: "renderer", value: "json", configPath: path }).pipe(
+          Effect.provide(fakeConfigService({})),
+        ),
+      );
+      expect(result.subcommand).toBe("set");
+      expect(result.changed).toBe(true);
+      expect(await readFile(path, "utf8")).toContain("renderer");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a malformed path is rejected with a tagged write-validation error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-reject-"));
+    try {
+      const path = join(dir, "config.yml");
+      const result = await Effect.runPromiseExit(
+        config({ subcommand: "set", key: "", value: "bar", configPath: path }).pipe(
+          Effect.provide(fakeConfigService({})),
+        ),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        const cause = JSON.stringify(result.cause);
+        expect(cause).toContain("LandofileWriteValidationError");
+        expect(cause).toContain("remediation");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {
     const result = await Effect.runPromiseExit(
-      config({ subcommand: "set", key: "foo", value: "bar" }).pipe(Effect.provide(fakeConfigService({}))),
+      config({ subcommand: "settt" as never }).pipe(Effect.provide(fakeConfigService({}))),
     );
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       const cause = JSON.stringify(result.cause);
-      expect(cause).toContain("NotImplementedError");
-      expect(cause).toContain("meta:config");
-      expect(cause).toContain("Edit");
+      expect(cause).toContain("LandofileWriteValidationError");
+      expect(cause).toContain("settt");
+      expect(cause).toContain("remediation");
+    }
+  });
+
+  test("CLI rejects a mistyped subcommand instead of succeeding as a view", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-cli-typo-"));
+    try {
+      const result = await runCli(["meta:config", "settt", "--format", "json"], dir);
+      expect(result.exitCode).not.toBe(0);
+      const envelope = JSON.parse(result.stdout) as {
+        readonly ok?: boolean;
+        readonly error?: { readonly message?: string };
+      };
+      expect(envelope.ok).toBe(false);
+      expect(envelope.error?.message).toContain("settt");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

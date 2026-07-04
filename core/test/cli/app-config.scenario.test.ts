@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Exit, Layer, Schema } from "effect";
 
 import { AppConfigResultSchema, appConfig, renderAppConfigResult } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
@@ -72,6 +72,36 @@ describe("lando app:config", () => {
       app: "test-app-config",
       source: "resolved",
       landofile: { name: "test-app-config", recipe: "node" },
+    });
+  });
+
+  test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {
+    const layer = Layer.succeed(LandofileService, {
+      discover: Effect.succeed({ name: "test-app-config", recipe: "node", services: {} }),
+    });
+
+    const exit = await Effect.runPromiseExit(
+      appConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  test("CLI rejects a mistyped subcommand instead of succeeding as a view", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: test-app-config-typo\nrecipe: node\nservices:\n  web:\n    type: node\n",
+      );
+      const result = await runCli(["app:config", "bogus", "--format", "json"], dir);
+
+      expect(result.exitCode).toBe(1);
+      const envelope = JSON.parse(result.stdout) as {
+        readonly ok?: boolean;
+        readonly error?: { readonly message?: string };
+      };
+      expect(envelope.ok).toBe(false);
+      expect(envelope.error?.message).toContain("bogus");
     });
   });
 

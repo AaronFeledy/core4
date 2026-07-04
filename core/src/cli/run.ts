@@ -144,6 +144,7 @@ import {
   type LandoCommandSpec,
   notImplementedErrorForCommand,
 } from "./oclif/command-base.ts";
+import { appConfigOptionsFromInput } from "./oclif/commands/app/config/index.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
 import {
   remoteAddOptionsFromInput,
@@ -162,7 +163,11 @@ import {
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
-import { globalConfigFormatFromInput } from "./oclif/commands/meta/global/config.ts";
+import { metaConfigOptionsFromInput } from "./oclif/commands/meta/config.ts";
+import {
+  globalConfigFormatFromInput,
+  globalConfigOptionsFromInput,
+} from "./oclif/commands/meta/global/config.ts";
 import { globalDestroyOptionsFromInput } from "./oclif/commands/meta/global/destroy.ts";
 import { globalInstallOptionsFromInput } from "./oclif/commands/meta/global/install.ts";
 import { globalStartOptionsFromInput } from "./oclif/commands/meta/global/start.ts";
@@ -815,10 +820,26 @@ const runRemoteEnvList = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const runAppConfig = (_argv: ReadonlyArray<string>): Promise<void> => {
-  const format = activeTableJsonFormat();
+const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = compiledCommandInputFromArgv("app:config", argv);
+  const options = appConfigOptionsFromInput(input);
+  const format = options.format ?? activeTableJsonFormat();
   return runCompiledCommand(
-    appConfig(),
+    appConfig(options),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    (value) => renderAppConfigResult(value, format),
+  );
+};
+
+const runAppConfigVerb = (
+  subcommand: "set" | "unset" | "edit" | "validate",
+  argv: ReadonlyArray<string>,
+): Promise<void> => {
+  const input = compiledCommandInputFromArgv(`app:config:${subcommand}`, argv);
+  const options = { ...appConfigOptionsFromInput(input), subcommand };
+  const format = options.format ?? activeTableJsonFormat();
+  return runCompiledCommand(
+    appConfig(options),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     (value) => renderAppConfigResult(value, format),
   );
@@ -1215,29 +1236,10 @@ const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const format: "json" | "yaml" | "table" =
-    activeResultFormat === "json" || activeResultFormat === "yaml" ? activeResultFormat : "table";
-  let path: string | undefined;
-  const positionals: string[] = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === undefined) continue;
-    const pathMatch = parseStringFlag(argv, i, "path");
-    if (pathMatch !== undefined) {
-      path = pathMatch.value;
-      i += pathMatch.consumed - 1;
-      continue;
-    }
-    if (!arg.startsWith("-")) positionals.push(arg);
-  }
-  const [subcommand, key] = positionals;
+  const input = compiledCommandInputFromArgv("meta:config", argv);
+  const options = metaConfigOptionsFromInput(input);
   return runCompiledCommand(
-    config({
-      ...(subcommand === "get" || subcommand === "view" || subcommand === "telemetry" ? { subcommand } : {}),
-      ...(key === undefined ? {} : { key }),
-      ...(path === undefined ? {} : { path }),
-      format,
-    } as Parameters<typeof config>[0]),
+    config(options),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderConfigResult,
   );
@@ -1360,7 +1362,20 @@ const runMetaGlobalDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
 
 const runMetaGlobalConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:config", argv);
-  return runCompiledCommand(globalConfig(), globalRuntimeLayer(), (value) =>
+  return runCompiledCommand(
+    globalConfig(globalConfigOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    (value) => renderGlobalConfigResult(value, globalConfigFormatFromInput(input)),
+  );
+};
+
+const runMetaGlobalConfigVerb = (
+  subcommand: "set" | "unset" | "edit" | "validate",
+  argv: ReadonlyArray<string>,
+): Promise<void> => {
+  const input = compiledCommandInputFromArgv(`meta:global:config:${subcommand}`, argv);
+  const options = { ...globalConfigOptionsFromInput(input), subcommand };
+  return runCompiledCommand(globalConfig(options), globalRuntimeLayer(), (value) =>
     renderGlobalConfigResult(value, globalConfigFormatFromInput(input)),
   );
 };
@@ -1987,6 +2002,26 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
+  if (argv[0] === "app:config:set") {
+    await runAppConfigVerb("set", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:config:unset") {
+    await runAppConfigVerb("unset", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:config:edit") {
+    await runAppConfigVerb("edit", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:config:validate") {
+    await runAppConfigVerb("validate", argv.slice(1));
+    return;
+  }
+
   if (argv[0] === "app:config") {
     await runAppConfig(argv.slice(1));
     return;
@@ -2095,6 +2130,26 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
       () => undefined,
     );
+    return;
+  }
+
+  if (argv[0] === "global:config:set" || argv[0] === "meta:global:config:set") {
+    await runMetaGlobalConfigVerb("set", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:config:unset" || argv[0] === "meta:global:config:unset") {
+    await runMetaGlobalConfigVerb("unset", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:config:edit" || argv[0] === "meta:global:config:edit") {
+    await runMetaGlobalConfigVerb("edit", argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:config:validate" || argv[0] === "meta:global:config:validate") {
+    await runMetaGlobalConfigVerb("validate", argv.slice(1));
     return;
   }
 
