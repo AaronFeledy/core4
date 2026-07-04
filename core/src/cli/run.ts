@@ -909,6 +909,7 @@ const parseAppConfigTranslateArgv = (
 };
 
 const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:config:translate", argv)) return Promise.resolve();
   const { write, list, detect, from, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
     appConfigTranslate({
