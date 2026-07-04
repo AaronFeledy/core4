@@ -504,8 +504,10 @@ describe("meta:uninstall", () => {
       );
 
       expect(result.failed).toBe(true);
-      expect(result.reportPath).toBe(join(userDataRoot, "uninstall", "report.json"));
-      const report = JSON.parse(readFileSync(result.reportPath, "utf-8"));
+      const reportPath = result.reportPath;
+      expect(reportPath).toBe(join(userDataRoot, "uninstall", "report.json"));
+      if (reportPath === undefined) throw new Error("expected uninstall report path");
+      const report = JSON.parse(readFileSync(reportPath, "utf-8"));
       expect(report.status).toBe("failed");
       expect(report.steps).toContainEqual(
         expect.objectContaining({ id: "managed-provider-runtime", outcome: "failed" }),
