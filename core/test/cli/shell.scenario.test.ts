@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Config } from "@oclif/core";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 
@@ -605,4 +607,71 @@ describe("lando shell — CLI surface", () => {
     expect(flags).toContain("no-history");
     expect(flags).toContain("no-interactive");
   });
+
+  test("is strict: bare positional service names are rejected, not silently ignored", () => {
+    expect(AppShellCommand.strict).toBe(true);
+  });
+});
+
+describe("lando shell — CLI argv parsing", () => {
+  const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+
+  const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-shell-argv-")));
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: shell-argv\nruntime: 4\n");
+      return await run(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+
+  const runCli = async (
+    args: ReadonlyArray<string>,
+    cwd: string,
+  ): Promise<{ readonly exitCode: number; readonly stderr: string }> => {
+    const proc = Bun.spawn({
+      cmd: [process.execPath, cliEntry, ...args],
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    return { exitCode, stderr };
+  };
+
+  test("rejects a bare positional service name instead of silently opening a host shell", async () => {
+    await withTempApp(async (dir) => {
+      const result = await runCli(["app:shell", "web"], dir);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("Unexpected argument: web");
+    });
+  }, 30_000);
+
+  test("rejects a positional after the top-level shell alias", async () => {
+    await withTempApp(async (dir) => {
+      const result = await runCli(["shell", "web"], dir);
+      expect(result.exitCode).toBe(2);
+      // Source-mode topic resolution rejects `shell web` as an unknown id
+      // before arg validation; either way the positional never silently
+      // opens a host shell.
+      expect(result.stderr).toContain("command shell:web not found");
+    });
+  }, 30_000);
+
+  test("rejects --service followed by another flag instead of eating it as the value", async () => {
+    await withTempApp(async (dir) => {
+      const result = await runCli(["shell", "--service", "--no-history"], dir);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Flag --service expects a value");
+    });
+  }, 30_000);
+
+  test("rejects a bare --service with no value", async () => {
+    await withTempApp(async (dir) => {
+      const result = await runCli(["shell", "--service"], dir);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Flag --service expects a value");
+    });
+  }, 30_000);
 });

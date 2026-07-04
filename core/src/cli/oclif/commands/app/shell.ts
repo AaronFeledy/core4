@@ -30,7 +30,6 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
 export default class AppShellCommand extends LandoCommandBase {
   static override description = appShellSpec.summary;
   static override aliases = [...resolveTopLevelAliases(appShellSpec)];
-  static override strict = false;
   static override flags = {
     service: Flags.string({
       char: "s",

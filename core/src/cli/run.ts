@@ -1276,6 +1276,7 @@ const runShell = (
   argv: ReadonlyArray<string>,
   options: { readonly signal?: AbortSignal } = {},
 ): Promise<void> => {
+  if (rejectInvalidInvocation("app:shell", argv)) return Promise.resolve();
   const parsed = parseShellArgv(argv);
   return runCompiledCommand(
     shellApp({

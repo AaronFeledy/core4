@@ -2084,7 +2084,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       pluginAlias: "@lando/core",
       pluginName: "@lando/core",
       pluginType: "core",
-      strict: false,
+      strict: true,
       enableJsonFlag: false,
       landoSpec: {
         id: "app:shell",
