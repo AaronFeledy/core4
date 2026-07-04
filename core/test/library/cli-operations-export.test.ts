@@ -61,7 +61,7 @@ describe("@lando/core/cli/operations package export", () => {
       });
 
       const failure = await Effect.runPromise(
-        invokeOperation(config({ subcommand: "set" }), {
+        invokeOperation(config({ subcommand: "translate" }), {
           render: renderConfigResult,
           renderError: (error) => error.message,
         }).pipe(Effect.provide(runtime)),
@@ -70,7 +70,7 @@ describe("@lando/core/cli/operations package export", () => {
       expect(failure.ok).toBe(false);
       if (!failure.ok) {
         expect(failure.error._tag).toBe("NotImplementedError");
-        expect(failure.output).toContain("deferred to Beta");
+        expect(failure.output).toContain("is not available here");
       }
     } finally {
       // biome-ignore lint/performance/noDelete: environment cleanup must remove variables when originally unset.
