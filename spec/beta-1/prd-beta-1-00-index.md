@@ -13,7 +13,7 @@ A post-Alpha-4 gap audit (2026-07-02) compared every Alpha 4 PRD acceptance crit
 - **Setup/uninstall/release acceptance residue.** Plugin `setup.flags` are declared in the SDK schema but never merged into `lando setup` metadata; uninstall marks managed provider machines `manual` and can drop the resumable report after a purge failure; macOS/Windows `ensureRuntime` still falls back to system Podman machine tooling and the `LANDO_TEST_PODMAN_SOCKET` test variable; the committed release workflow runs only the dev prerelease, not the 13-stage pipeline.
 - **Spec §8 CLI parity drift.** Config surfaces are read-only where §8.2 requires write; `app shell`, `app logs`, `app includes update`, the global-app commands, and `lando version` all diverge from their spec'd contracts; §12 cache writes bypass the atomic helper.
 
-This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-409**: US-372..US-395 are the remediation stories, US-396..US-409 are the feature-wave stories.
+This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-412**: US-372..US-395 are the remediation stories, US-396..US-409 are the feature-wave stories, and US-410..US-412 (PRD-10) close the runtime-bundle distribution gap — the committed `runtime-bundle-versions.json` is a placeholder pointing at a repository that will never exist, so no binary can complete `lando setup` without the `LANDO_RUNTIME_BUNDLE_MANIFEST` override. PRD-10 stands up the in-repo `runtime-v*` publishing pipeline and the §5.8.1 committed-manifest invariant so local builds, dev snapshots, and releases all resolve the runtime bundle with zero overrides.
 
 The feature wave is spec'd first, PRD'd second: the four features were worked into the normative spec parts before these PRDs were written — `McpService` (§10.14) + `meta:mcp` (§8.2.6) + `mcpAllowed:` (§8.3), agent-context env forwarding (§6.9.1, §7.4, §7.5), `app:open` (§8.2.5), the `lando:` version constraint (§7.4), and `apps:scratch:run` + the `toolbox` recipe (§21.10.3, §8.8.10). When a feature PRD and a spec part disagree, the spec part wins.
 
@@ -38,6 +38,7 @@ The feature wave is spec'd first, PRD'd second: the four features were worked in
 | 07 | [`lando open`](./prd-beta-1-07-app-open.md) | `app:open` target resolution, opener helper, headless degradation, host-proxy round-trip (§8.2.5) | US-402..US-403 | — |
 | 08 | [Landofile version constraint](./prd-beta-1-08-version-constraint.md) | top-level `lando:` key, accumulate-across-layers evaluation, `LandofileVersionConstraintError`, hot-path enforcement, doctor reporting (§7.4) | US-404..US-405 | — |
 | 09 | [Disposable tool runner](./prd-beta-1-09-disposable-tool-runner.md) | `apps:scratch:run` (`lando run`), bundled `toolbox` recipe, exit-code propagation, `--keep`, reserved `run` alias (§21.10.3, §8.8.10) | US-406..US-409 | PRD-06 (US-400 env forwarding) |
+| 10 | [Runtime-bundle publishing](./prd-beta-1-10-runtime-bundle-publishing.md) | in-repo `runtime-v*` release series, real pinned `runtime-bundle-versions.json` (local builds run `lando setup` with zero overrides), committed-manifest invariant gates (§5.8.1, §13.5, §17.8) | US-410..US-412 | — (US-387 adjacent, not blocking) |
 
 ## Verification contract (applies to every story)
 
@@ -73,3 +74,4 @@ The feature wave is spec'd first, PRD'd second: the four features were worked in
 | `app logs` missing `--follow` / `--since` | spec §8.2.5 | US-393 |
 | `meta global list/info/logs/restart` are deferred stubs | spec §8.4 / §18 (global app) | US-394 |
 | `lando version` / `CORE_VERSION` are `0.0.0` placeholders | spec §8.1 / §17 | US-395 |
+| `runtime-bundle-versions.json` is a placeholder (dead repo URLs, zero checksums); `lando setup` requires `LANDO_RUNTIME_BUNDLE_MANIFEST` | spec §5.8.1 / §13.5 / §17.8 | US-410, US-411, US-412 |

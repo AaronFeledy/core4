@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins.",
+  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked).",
   "userStories": [
     {
       "id": "US-372",
@@ -680,6 +680,59 @@
       "priority": 38,
       "passes": false,
       "notes": "Feature wave PRD-09 (spec 21.10.3, 21.11, 21.15 warm-pool non-goal)."
+    },
+    {
+      "id": "US-410",
+      "title": "Runtime-bundle publishing workflow (runtime-v* release series)",
+      "description": "As a maintainer, bumping plugins/provider-lando/runtime-bundle-version triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a runtime-v<version> GitHub Release in this repository.",
+      "acceptanceCriteria": [
+        "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by runtime host key: linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64 (the §13.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md).",
+        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): Podman + rootless helpers on Linux; the Podman remote client + machine/gvproxy helpers on macOS and Windows. Re-running against the same pins produces artifacts with identical SHA-256s.",
+        "The workflow uploads the platform tarballs/zips (per the existing RUNTIME_BUNDLE_TARGETS naming) as assets on a runtime-v<version> GitHub Release in this repository, and fails rather than re-uploads if the tag or any asset already exists (immutability).",
+        "scripts/build-runtime-bundle.ts release mode derives asset URLs from this repository's releases/download/runtime-v<version>/ path (the dead lando/runtime-bundles base URL is removed).",
+        "The workflow's final step regenerates runtime-bundle-versions.json against the published assets and surfaces the diff for landing (PR or same-change commit per §17.8), so a version bump and its manifest pin always travel together.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": "PRD-10 (spec §5.8.1 committed-manifest invariant, §13.5 in-repo hosting, §17.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
+    },
+    {
+      "id": "US-411",
+      "title": "Pin the committed manifest - local builds just work",
+      "description": "As a developer, I can compile the binary locally (or run from source) and complete lando setup's runtime-bundle resolution with no LANDO_RUNTIME_BUNDLE_MANIFEST, no override flags, and no special setup - because the committed manifest pins real published artifacts.",
+      "acceptanceCriteria": [
+        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all five host targets; the _comment placeholder disclaimer is gone.",
+        "The manifest's runtimeVersion equals the runtime-bundle-version file's content.",
+        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, and installs. This published-manifest smoke check does not replace the §13.5 current-commit override verification, which remains as-is.",
+        "Running from source (bun run path) resolves the identical manifest via the existing static JSON import - asserted by a test that the embedded/imported manifest passes the production schema (https-only, no placeholders).",
+        "No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to §5.8.1.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": "PRD-10. Depends on US-410 having published the first runtime-v release."
+    },
+    {
+      "id": "US-412",
+      "title": "Committed-manifest invariant gates",
+      "description": "As a maintainer, CI blocks any change that would regress the manifest to placeholders, off-repo URLs, or a version that drifts from the runtime-bundle-version file - so the local-builds-just-work property, once established, cannot silently rot.",
+      "acceptanceCriteria": [
+        "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, the platform key set is exactly the five runtime host keys (linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64 - not the §13.5 release id windows-x64), and runtimeVersion matches plugins/provider-lando/runtime-bundle-version.",
+        "The release pipeline (scripts/release.ts) gains a release-blocking stage gate that fails when the manifest violates the invariant, mirroring the placeholder-rejection pattern already used for update-manifest binaries (isPlaceholderBinary).",
+        "Per-PR CI runs only the offline invariant checks (no network); the live verification that each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length runs on the release path and a periodic job, per the §17.2 catalog row's offline/live gate split.",
+        "Placeholder-manifest regression is covered by a test fixture proving the check fails on the pre-US-411 placeholder manifest.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": "PRD-10. Mirrors the isPlaceholderBinary pattern from core/src/cli/commands/update.ts."
     }
   ]
 }
