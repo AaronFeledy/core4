@@ -3048,44 +3048,173 @@
     },
     "app:config:translate": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "additionalProperties": false,
-      "properties": {
-        "backupPath": {
-          "type": "string"
-        },
-        "diagnostics": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": ["generated", "unsupported", "non-portable", "needs-review"],
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "enum": ["list"],
+              "type": "string"
             },
-            "required": ["kind", "message"],
-            "type": "object"
+            "translators": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "inputKinds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id", "summary", "inputKinds"],
+                "type": "object"
+              },
+              "type": "array"
+            }
           },
-          "type": "array"
+          "required": ["mode", "translators"],
+          "type": "object"
         },
-        "inputPath": {
-          "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "inputPath": {
+              "type": "string"
+            },
+            "matches": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "confidence": {
+                    "enum": ["exact", "likely", "possible"],
+                    "type": "string"
+                  },
+                  "files": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "translator": {
+                    "type": "string"
+                  }
+                },
+                "required": ["translator", "files", "confidence"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["detect"],
+              "type": "string"
+            }
+          },
+          "required": ["mode", "inputPath", "files", "matches"],
+          "type": "object"
         },
-        "mode": {
-          "enum": ["canonical", "write"],
-          "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": ["generated", "unsupported", "non-portable", "needs-review"],
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "message"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "inputPath": {
+              "type": "string"
+            },
+            "mode": {
+              "enum": ["preview"],
+              "type": "string"
+            },
+            "translator": {
+              "type": "string"
+            }
+          },
+          "required": ["mode", "inputPath", "translator", "files", "content", "diagnostics"],
+          "type": "object"
         },
-        "outputPath": {
-          "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "backupPath": {
+              "type": "string"
+            },
+            "diagnostics": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": ["generated", "unsupported", "non-portable", "needs-review"],
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "message"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "inputPath": {
+              "type": "string"
+            },
+            "mode": {
+              "enum": ["write"],
+              "type": "string"
+            },
+            "outputPath": {
+              "type": "string"
+            }
+          },
+          "required": ["mode", "inputPath", "outputPath", "diagnostics"],
+          "type": "object"
         }
-      },
-      "required": ["inputPath", "outputPath", "mode", "diagnostics"],
-      "type": "object"
+      ]
     },
     "app:config:unset": {
       "$defs": {

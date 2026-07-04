@@ -333,10 +333,10 @@ export const COMPILED_OCLIF_MANIFEST = {
         format: {
           description: "Output format.",
           name: "format",
-          default: "text",
+          default: "yaml",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["text", "json"],
+          options: ["yaml", "table", "json"],
           type: "option",
         },
         json: {
@@ -345,6 +345,32 @@ export const COMPILED_OCLIF_MANIFEST = {
           name: "json",
           allowNo: false,
           type: "boolean",
+        },
+        list: {
+          description: "List installed config translators and their input kinds.",
+          name: "list",
+          allowNo: false,
+          type: "boolean",
+        },
+        detect: {
+          description: "Detect supported source files without generating a translated Landofile preview.",
+          name: "detect",
+          allowNo: false,
+          type: "boolean",
+        },
+        from: {
+          description: "Force a specific translator by id instead of autodetecting.",
+          name: "from",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
+        file: {
+          description: "Translate an explicit source file (repeatable). Scopes translator input.",
+          name: "file",
+          hasDynamicHelp: false,
+          multiple: true,
+          type: "option",
         },
         write: {
           description: "Overwrite the input Landofile in place (a .bak backup is kept).",
