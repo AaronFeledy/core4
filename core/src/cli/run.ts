@@ -926,8 +926,15 @@ const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
 
 const parseAppIncludesUpdateArgv = (
   argv: ReadonlyArray<string>,
-): { readonly check: boolean; readonly format: AppIncludesUpdateFormat } => {
+): {
+  readonly check: boolean;
+  readonly noNetwork: boolean;
+  readonly sources: ReadonlyArray<string>;
+  readonly format: AppIncludesUpdateFormat;
+} => {
   const check = argv.some((arg) => arg === "--check");
+  const noNetwork = argv.some((arg) => arg === "--no-network");
+  const sources: string[] = [];
   let format: AppIncludesUpdateFormat = "text";
   let i = 0;
   while (i < argv.length) {
@@ -939,16 +946,18 @@ const parseAppIncludesUpdateArgv = (
       i += match.consumed;
       continue;
     }
+    const arg = argv[i];
+    if (arg !== undefined && !arg.startsWith("-")) sources.push(arg);
     i += 1;
   }
-  return { check, format };
+  return { check, noNetwork, sources, format };
 };
 
 const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { check } = parseAppIncludesUpdateArgv(argv);
+  const { check, noNetwork, sources } = parseAppIncludesUpdateArgv(argv);
   const format = activeTextJsonFormat();
   return runCompiledCommand(
-    appIncludesUpdate({ check }),
+    appIncludesUpdate({ check, noNetwork, sources }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderIncludesUpdateResult(value, format),
   );

@@ -355,7 +355,7 @@
         "Lint passes"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.2.3. Audit: core/src/cli/commands/app-includes-update.ts always refreshes all includes; wrapper exposes only --check."
     },
     {

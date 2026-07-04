@@ -653,8 +653,15 @@ export const COMPILED_OCLIF_MANIFEST = {
     },
     "app:includes:update": {
       aliases: [],
-      args: {},
-      description: "Refresh every includes lockfile entry to its latest source-resolved version.",
+      args: {
+        source: {
+          description: "Include source to refresh (repeatable). Omit to refresh every source.",
+          name: "source",
+          required: false,
+        },
+      },
+      description:
+        "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
       flags: {
         format: {
           description: "Output format.",
@@ -678,6 +685,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "no-network": {
+          description: "Update strictly from cache and lockfile state; never touch the network.",
+          name: "no-network",
+          allowNo: false,
+          type: "boolean",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,
@@ -686,11 +699,12 @@ export const COMPILED_OCLIF_MANIFEST = {
       pluginAlias: "@lando/core",
       pluginName: "@lando/core",
       pluginType: "core",
-      strict: true,
+      strict: false,
       enableJsonFlag: false,
       landoSpec: {
         id: "app:includes:update",
-        summary: "Refresh every includes lockfile entry to its latest source-resolved version.",
+        summary:
+          "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
         namespace: "app",
         bootstrap: "minimal",
       },

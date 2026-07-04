@@ -5096,7 +5096,16 @@
         "lockfilePath": {
           "type": "string"
         },
+        "noNetwork": {
+          "type": "boolean"
+        },
         "removed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requestedSources": {
           "items": {
             "type": "string"
           },
@@ -5106,7 +5115,16 @@
           "type": "boolean"
         }
       },
-      "required": ["lockfilePath", "entries", "removed", "drift", "wrote", "checkMode"],
+      "required": [
+        "lockfilePath",
+        "entries",
+        "removed",
+        "drift",
+        "wrote",
+        "checkMode",
+        "noNetwork",
+        "requestedSources"
+      ],
       "type": "object"
     },
     "app:includes:verify": {

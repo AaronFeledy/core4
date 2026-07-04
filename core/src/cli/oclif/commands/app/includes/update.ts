@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
 
 import type { IncludeUpdateReport } from "../../../../../landofile/includes.ts";
 import {
@@ -8,26 +8,53 @@ import {
 } from "../../../../commands/app-includes-update.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
+const inputFlags = (input: unknown): Record<string, unknown> =>
+  typeof input === "object" && input !== null && "flags" in input
+    ? ((input as { flags?: Record<string, unknown> }).flags ?? {})
+    : {};
+
+const checkFromInput = (input: unknown): boolean => inputFlags(input).check === true;
+
+const noNetworkFromInput = (input: unknown): boolean => inputFlags(input)["no-network"] === true;
+
+const sourcesFromInput = (input: unknown): ReadonlyArray<string> => {
+  if (typeof input !== "object" || input === null || !("argv" in input)) return [];
+  const argv = (input as { argv: unknown }).argv;
+  if (!Array.isArray(argv)) return [];
+  return argv.filter((value): value is string => typeof value === "string" && !value.startsWith("-"));
+};
+
 export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
   resultSchema: AppIncludesUpdateResultSchema,
   id: "app:includes:update",
-  summary: "Refresh every includes lockfile entry to its latest source-resolved version.",
+  summary: "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",
   namespace: "app",
   bootstrap: "minimal",
-  run: (input) => appIncludesUpdate({ check: checkFromInput(input) }),
+  run: (input) =>
+    appIncludesUpdate({
+      check: checkFromInput(input),
+      noNetwork: noNetworkFromInput(input),
+      sources: sourcesFromInput(input),
+    }),
   render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, "text"),
 };
 
-const checkFromInput = (input: unknown): boolean =>
-  typeof input === "object" && input !== null && "flags" in input
-    ? (input as { flags?: { check?: boolean } }).flags?.check === true
-    : false;
-
 export default class AppIncludesUpdateCommand extends LandoCommandBase {
   static override description = appIncludesUpdateSpec.summary;
+  static override strict = false;
+  static override args = {
+    source: Args.string({
+      description: "Include source to refresh (repeatable). Omit to refresh every source.",
+      required: false,
+    }),
+  };
   static override flags = {
     check: Flags.boolean({
       description: "Report would-be lockfile drift without writing.",
+      default: false,
+    }),
+    "no-network": Flags.boolean({
+      description: "Update strictly from cache and lockfile state; never touch the network.",
       default: false,
     }),
     format: Flags.string({
@@ -40,13 +67,6 @@ export default class AppIncludesUpdateCommand extends LandoCommandBase {
   static override bootstrap = appIncludesUpdateSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppIncludesUpdateCommand)) as {
-      readonly flags: { readonly check?: boolean; readonly format?: string };
-    };
-    const check = parsed.flags.check === true;
-    await this.runEffect({
-      ...appIncludesUpdateSpec,
-      run: () => appIncludesUpdate({ check }),
-    });
+    await this.runEffect(appIncludesUpdateSpec);
   }
 }

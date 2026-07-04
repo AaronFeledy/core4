@@ -73,6 +73,8 @@ describe("renderIncludesUpdateResult", () => {
       drift: true,
       wrote: false,
       checkMode: true,
+      noNetwork: false,
+      requestedSources: [],
     };
 
     restoreExitCode(() => {
@@ -91,6 +93,8 @@ describe("renderIncludesUpdateResult", () => {
       drift: false,
       wrote: false,
       checkMode: false,
+      noNetwork: false,
+      requestedSources: [],
     };
 
     restoreExitCode(() => {
@@ -155,6 +159,32 @@ describe("lando app:includes:update (source dispatch)", () => {
       const parsed = parseEnvelopeResult<IncludeUpdateReport>(result.stdout);
       expect(parsed.drift).toBe(false);
       expect(parsed.entries).toEqual([]);
+      expect(parsed.noNetwork).toBe(false);
+      expect(parsed.requestedSources).toEqual([]);
+    });
+  });
+
+  test("an unknown positional source exits 1 and lists the known sources", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: demo\nincludes:\n  - source: github:acme/fragments\n    path: db.yml\n",
+      );
+      const result = await runCli(["app:includes:update", "bogus-source"], dir);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("bogus-source");
+      expect(result.stderr).toContain("github:acme/fragments");
+    });
+  });
+
+  test("--no-network --format=json runs offline and reports the flag", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: demo\nrecipe: lamp\n");
+      const result = await runCli(["app:includes:update", "--no-network", "--format=json"], dir);
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<IncludeUpdateReport>(result.stdout);
+      expect(parsed.noNetwork).toBe(true);
+      expect(parsed.drift).toBe(false);
     });
   });
 });
