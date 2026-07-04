@@ -24,6 +24,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-04 11:10:42 CDT - US-391 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: staged a local runtime bundle, ran `core/dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync`, then drove a throwaway app through scoped `app includes update github:acme/one --no-network`, unknown-source failure with the known-source list, cold-cache `--no-network` remediation, scoped `--check` drift exiting 1 without writing, and unscoped warm-cache `--no-network` across both include entries.
+- Fixed real compiled-binary regressions at the root cause: space-separated `app includes update`/`app includes verify` now normalize to canonical include command ids, check-mode drift can set a successful command's exit code to 1 on both source and compiled paths, and compiled help renders OCLIF arg usage so `[SOURCE...]` appears with `--no-network`.
+- Adjacent compiled smokes passed for `app includes update --help`, `app includes verify --help`, and `config --help`; temp apps/caches were removed and no containers were started.
+- **Learnings for future iterations:** Compiled help has its own lightweight renderer; when a story adds positional args, verify the compiled help usage as well as parsing and flags, or the command can accept a user-facing phrase while hiding its positional grammar.
+---
+
 ## 2026-07-04 09:34 CDT - US-391
 - `lando app includes update` gained a variadic `[<source>...]` positional and a `--no-network` flag, per spec §7.7.4/§8.2.3. Passing one or more sources refreshes only those includes and preserves every other lockfile entry untouched; an unknown source fails fast (before any resolution/network) with a `LandofileIncludeError` that lists the known sources. `--no-network` resolves each git/npm include strictly from the recorded lockfile ref plus its content-addressed cache under `<userCacheRoot>/includes/`, and fails with remediation when a required cached artifact is absent — never cloning or fetching. Default behavior (all sources, network allowed) is unchanged, and `--check` composes with both new options.
 - The result schema extended additively with `noNetwork: boolean` and `requestedSources: string[]` (the per-source scope), snapshot-frozen via the regenerated `sdk/test/fixtures/schema-snapshot.json` and the command's faithful-encode scenario test. Both dispatch paths were updated in parity: the OCLIF wrapper (variadic `Args` + `--no-network`, now `strict = false`) and the compiled `run.ts` argv parser; `compiled-manifest.ts` was regenerated.
