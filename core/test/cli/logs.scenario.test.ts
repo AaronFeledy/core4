@@ -136,6 +136,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 const makeLogsLayer = (
   overrides: {
     readonly serviceLogs?: boolean;
+    readonly defaultProviderServiceLogs?: boolean;
     readonly logs?: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, never>;
   } = {},
 ) => {
@@ -143,6 +144,12 @@ const makeLogsLayer = (
   const effectiveCapabilities: ProviderCapabilities = {
     ...capabilities,
     ...(overrides.serviceLogs === undefined ? {} : { serviceLogs: overrides.serviceLogs }),
+  };
+  const defaultProviderCapabilities: ProviderCapabilities = {
+    ...effectiveCapabilities,
+    ...(overrides.defaultProviderServiceLogs === undefined
+      ? {}
+      : { serviceLogs: overrides.defaultProviderServiceLogs }),
   };
   const provider: RuntimeProviderShape = {
     id: "lando",
@@ -205,7 +212,7 @@ const makeLogsLayer = (
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(effectiveCapabilities),
+      capabilities: Effect.succeed(defaultProviderCapabilities),
       select: () => Effect.succeed(provider),
     }),
     Layer.succeed(EventService, {
@@ -269,6 +276,32 @@ describe("lando logs", () => {
         const error = failure.value as { _tag: string; capability: string };
         expect(error._tag).toBe("CapabilityError");
         expect(error.capability).toBe("serviceLogs");
+      }
+    }
+  });
+
+  test("streams logs when the plan's provider supports serviceLogs even if the default provider does not", async () => {
+    const harness = makeLogsLayer({ serviceLogs: true, defaultProviderServiceLogs: false });
+    const result = await Effect.runPromise(logsApp().pipe(Effect.provide(harness.layer)));
+
+    expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web", "database"]);
+    expect(result.lines.length).toBeGreaterThan(0);
+  });
+
+  test("fails with CapabilityError from the plan's provider even when the default provider advertises serviceLogs", async () => {
+    const harness = makeLogsLayer({ serviceLogs: false, defaultProviderServiceLogs: true });
+    const exit = await Effect.runPromiseExit(logsApp().pipe(Effect.provide(harness.layer)));
+
+    expect(harness.logCalls).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const error = failure.value as { _tag: string; capability: string; providerId: string };
+        expect(error._tag).toBe("CapabilityError");
+        expect(error.capability).toBe("serviceLogs");
+        expect(error.providerId).toBe("lando");
       }
     }
   });

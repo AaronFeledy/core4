@@ -14,6 +14,7 @@ import {
   type LogChunk,
   type LogOptions,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
@@ -120,7 +121,11 @@ const resolvePlanServices = (
   options: LogsAppOptions,
   target: ResolvedAppTarget | undefined,
 ): Effect.Effect<
-  { readonly plan: AppPlan; readonly services: ReadonlyArray<ServicePlan> },
+  {
+    readonly plan: AppPlan;
+    readonly services: ReadonlyArray<ServicePlan>;
+    readonly provider: RuntimeProviderShape;
+  },
   LogsAppError,
   LogsAppServices
 > =>
@@ -129,29 +134,29 @@ const resolvePlanServices = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
-    const capabilities: ProviderCapabilities = yield* registry.capabilities;
-    if (capabilities.serviceLogs !== true) {
-      const providers = yield* registry.list;
-      const providerId = providers[0];
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities: ProviderCapabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
+
+    const provider = yield* registry.select(plan);
+    if (provider.capabilities.serviceLogs !== true) {
       return yield* Effect.fail(
         new CapabilityError({
-          message: "The active runtime provider cannot stream service logs.",
+          message: "The app's runtime provider cannot stream service logs.",
           capability: "serviceLogs",
-          providerId: providerId === undefined ? "unknown" : String(providerId),
+          providerId: provider.id,
           remediation:
             "Use a runtime provider whose capabilities advertise service log streaming (serviceLogs).",
         }),
       );
     }
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        return yield* planner.plan(landofile, capabilities);
-      }));
     const services = yield* selectServices(plan, options.service);
-    return { plan, services };
+    return { plan, services, provider };
   });
 
 const logOptionsFor = (
@@ -186,10 +191,8 @@ export const logsApp = (
   target?: ResolvedAppTarget,
 ): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices> =>
   Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
     const since = yield* validateSince(options.since);
-    const { plan, services } = yield* resolvePlanServices(options, target);
-    const provider = yield* registry.select(plan);
+    const { plan, services, provider } = yield* resolvePlanServices(options, target);
     const logOptions = logOptionsFor(options, options.follow ?? false, since);
 
     const perService = yield* Effect.forEach(services, (service) =>
@@ -216,11 +219,9 @@ export const followLogsApp = (
   target?: ResolvedAppTarget,
 ): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices | StreamFrameSink> =>
   Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
     const sink = yield* StreamFrameSink;
     const since = yield* validateSince(options.since);
-    const { plan, services } = yield* resolvePlanServices(options, target);
-    const provider = yield* registry.select(plan);
+    const { plan, services, provider } = yield* resolvePlanServices(options, target);
     const logOptions = logOptionsFor(options, true, since);
 
     const streams = services.map((service) =>
