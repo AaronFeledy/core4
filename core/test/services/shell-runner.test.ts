@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Queue, Stream } from "effect";
@@ -171,6 +171,31 @@ describe("ShellRunnerLive", () => {
 
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(root, "nested"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("interactive fails with ShellExecError when the HISTFILE directory cannot be created", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-history-"));
+    const blocker = join(root, "blocker");
+    await writeFile(blocker, "not a directory");
+    const historyFile = join(blocker, "history");
+    try {
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(ShellRunner, (shellRunner) =>
+          shellRunner.interactive({ shell: "/bin/sh", args: ["-c", "exit 0"], historyFile }),
+        ).pipe(Effect.provide(ShellRunnerLive)),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ShellExecError);
+        }
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

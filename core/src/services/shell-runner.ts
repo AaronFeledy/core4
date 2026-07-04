@@ -134,12 +134,12 @@ const interactiveShell = (
   Effect.async<ShellInteractiveResult, ShellExecError>((resume) => {
     const command = [spec.shell, ...(spec.args ?? [])];
     const env = { ...process.env, ...spec.env };
-    if (spec.historyFile !== undefined) {
-      mkdirSync(dirname(spec.historyFile), { recursive: true });
-      env.HISTFILE = spec.historyFile;
-    }
     let child: Bun.Subprocess;
     try {
+      if (spec.historyFile !== undefined) {
+        mkdirSync(dirname(spec.historyFile), { recursive: true });
+        env.HISTFILE = spec.historyFile;
+      }
       child = Bun.spawn(command, {
         stdin: "inherit",
         stdout: "inherit",
