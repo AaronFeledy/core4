@@ -439,4 +439,20 @@ describe("DeprecationServiceLive", () => {
     expect(Option.isSome(lookup.serviceFeature)).toBe(true);
     expect(Option.isSome(lookup.routeFilter)).toBe(true);
   });
+
+  test("registers the app:shell --host default-flip deprecation", async () => {
+    const notice = await Effect.runPromise(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* registerBuiltInContractDeprecations(deprecations);
+        return yield* deprecations.lookup("flag", "app:shell --host");
+      }).pipe(Effect.provide(DeprecationServiceWithEventsLive)),
+    );
+
+    expect(Option.isSome(notice)).toBe(true);
+    if (Option.isSome(notice)) {
+      expect(notice.value.severity).toBe("warn");
+      expect(notice.value.replacement).toBe("--service <name>");
+    }
+  });
 });

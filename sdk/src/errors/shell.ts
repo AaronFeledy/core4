@@ -10,6 +10,15 @@ export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellE
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class ShellRequiresTtyError extends Schema.TaggedError<ShellRequiresTtyError>()(
+  "ShellRequiresTtyError",
+  {
+    message: Schema.String,
+    remediation: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptOutsideRootError>()(
   "ShellScriptOutsideRootError",
   {

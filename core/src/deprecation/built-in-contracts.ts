@@ -45,7 +45,21 @@ export interface DeprecationBuiltInContracts {
   readonly routeFilters?: ReadonlyArray<DeprecationContractSurface>;
 }
 
-export const BUILT_IN_COMMAND_DEPRECATIONS: ReadonlyArray<DeprecationContractCommand> = [];
+export const BUILT_IN_COMMAND_DEPRECATIONS: ReadonlyArray<DeprecationContractCommand> = [
+  {
+    id: "app:shell",
+    flags: {
+      host: {
+        deprecated: {
+          since: "4.2.0",
+          severity: "warn",
+          replacement: "--service <name>",
+          note: "lando shell now opens a host shell by default; --host is redundant. Pass --service <name> to open a shell inside a service instead.",
+        },
+      },
+    },
+  },
+];
 export const BUILT_IN_CONTRACT_DEPRECATIONS: DeprecationBuiltInContracts = {
   commands: BUILT_IN_COMMAND_DEPRECATIONS,
 };

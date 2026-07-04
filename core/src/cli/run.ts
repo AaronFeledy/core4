@@ -1229,9 +1229,16 @@ const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
 
 const parseShellArgv = (
   argv: ReadonlyArray<string>,
-): { readonly service?: string; readonly host: boolean } => {
+): {
+  readonly service?: string;
+  readonly host: boolean;
+  readonly noHistory: boolean;
+  readonly noInteractive: boolean;
+} => {
   let service: string | undefined;
   let host = false;
+  let noHistory = false;
+  let noInteractive = false;
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
@@ -1244,18 +1251,25 @@ const parseShellArgv = (
       i += 1;
       continue;
     }
+    if (arg === "--no-history") {
+      noHistory = true;
+      i += 1;
+      continue;
+    }
+    if (arg === "--no-interactive") {
+      noInteractive = true;
+      i += 1;
+      continue;
+    }
     const match = parseStringFlag(argv, i, "service", "s");
     if (match !== undefined) {
       service = match.value;
       i += match.consumed;
       continue;
     }
-    if (!arg.startsWith("-") && service === undefined) {
-      service = arg;
-    }
     i += 1;
   }
-  return { ...(service === undefined ? {} : { service }), host };
+  return { ...(service === undefined ? {} : { service }), host, noHistory, noInteractive };
 };
 
 const runShell = (
@@ -1266,6 +1280,8 @@ const runShell = (
   return runCompiledCommand(
     shellApp({
       host: parsed.host,
+      noHistory: parsed.noHistory,
+      noInteractive: parsed.noInteractive,
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     }),

@@ -12,12 +12,14 @@ import {
 interface ShellFlags {
   readonly service?: string;
   readonly host?: boolean;
+  readonly "no-history"?: boolean;
+  readonly "no-interactive"?: boolean;
 }
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:shell",
-  summary: "Open an interactive shell in a Lando service.",
+  summary: "Open an interactive host shell for the current app, or a service shell with --service.",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
@@ -32,10 +34,16 @@ export default class AppShellCommand extends LandoCommandBase {
   static override flags = {
     service: Flags.string({
       char: "s",
-      description: "Service to open a shell in.",
+      description: "Open a shell inside this service instead of on the host.",
     }),
     host: Flags.boolean({
-      description: "Open a host shell scoped to the current app.",
+      description: "Deprecated: host is the default; --host is redundant.",
+    }),
+    "no-history": Flags.boolean({
+      description: "Do not persist host shell history for this session.",
+    }),
+    "no-interactive": Flags.boolean({
+      description: "Fail instead of opening an interactive shell (agents/CI).",
     }),
   };
   static override landoSpec: LandoCommandSpec = appShellSpec;
@@ -49,11 +57,10 @@ export default class AppShellCommand extends LandoCommandBase {
         const signal = extractSpecAbortSignal(input);
         return shellApp({
           host: parsed.flags.host === true,
+          noHistory: parsed.flags["no-history"] === true,
+          noInteractive: parsed.flags["no-interactive"] === true,
           ...(signal === undefined ? {} : { signal }),
           ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-          ...(parsed.flags.service !== undefined || parsed.flags.host === true || this.argv[0] === undefined
-            ? {}
-            : { service: this.argv[0] }),
         });
       },
     });

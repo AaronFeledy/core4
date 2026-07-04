@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -146,5 +147,32 @@ describe("ShellRunnerLive", () => {
 
     expect(result.stdout).toContain("topsecret");
     expect(events).toEqual([]);
+  });
+
+  test("interactive launches a shell and propagates its exit code", async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shellRunner) =>
+        shellRunner.interactive({ shell: "/bin/sh", args: ["-c", "exit 3"] }),
+      ).pipe(Effect.provide(ShellRunnerLive)),
+    );
+
+    expect(result).toEqual({ exitCode: 3 });
+  });
+
+  test("interactive creates the HISTFILE parent directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-shell-history-"));
+    const historyFile = join(root, "nested", "history");
+    try {
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shellRunner) =>
+          shellRunner.interactive({ shell: "/bin/sh", args: ["-c", "exit 0"], historyFile }),
+        ).pipe(Effect.provide(ShellRunnerLive)),
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(root, "nested"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

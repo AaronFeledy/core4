@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { $ } from "bun";
 import { type Context, Effect, Layer } from "effect";
 
@@ -8,6 +10,8 @@ import {
   type LandoEvent,
   type ProcessResult,
   type ShellCommandOptions,
+  type ShellInteractiveResult,
+  type ShellInteractiveSpec,
   ShellRunner,
 } from "@lando/sdk/services";
 
@@ -124,6 +128,57 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
   return result;
 };
 
+const interactiveShell = (
+  spec: ShellInteractiveSpec,
+): Effect.Effect<ShellInteractiveResult, ShellExecError> =>
+  Effect.async<ShellInteractiveResult, ShellExecError>((resume) => {
+    const command = [spec.shell, ...(spec.args ?? [])];
+    const env = { ...process.env, ...spec.env };
+    if (spec.historyFile !== undefined) {
+      mkdirSync(dirname(spec.historyFile), { recursive: true });
+      env.HISTFILE = spec.historyFile;
+    }
+    let child: Bun.Subprocess;
+    try {
+      child = Bun.spawn(command, {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+        env,
+      });
+    } catch (cause) {
+      resume(
+        Effect.fail(
+          shellError(command.join(" "), { ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }) }, cause),
+        ),
+      );
+      return;
+    }
+    const onAbort = (): void => {
+      child.kill();
+    };
+    spec.signal?.addEventListener("abort", onAbort, { once: true });
+    if (spec.signal?.aborted === true) child.kill();
+    child.exited
+      .then((code) => {
+        spec.signal?.removeEventListener("abort", onAbort);
+        resume(Effect.succeed({ exitCode: typeof code === "number" ? code : 1 }));
+      })
+      .catch((cause: unknown) => {
+        spec.signal?.removeEventListener("abort", onAbort);
+        resume(
+          Effect.fail(
+            shellError(command.join(" "), { ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }) }, cause),
+          ),
+        );
+      });
+    return Effect.sync(() => {
+      spec.signal?.removeEventListener("abort", onAbort);
+      child.kill();
+    });
+  });
+
 const shellRunnerService: Context.Tag.Service<typeof ShellRunner> = {
   exec: (command, options) =>
     Effect.gen(function* () {
@@ -146,6 +201,7 @@ const shellRunnerService: Context.Tag.Service<typeof ShellRunner> = {
     }),
   run: (command, options) => shellRunnerService.exec(command, options),
   runScript: (path, options) => shellRunnerService.exec(`bun ${quoteShellPath(path)}`, options),
+  interactive: (spec) => interactiveShell(spec),
 };
 
 export const ShellRunnerLive = Layer.succeed(ShellRunner, shellRunnerService);

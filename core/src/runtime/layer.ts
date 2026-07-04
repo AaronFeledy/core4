@@ -44,6 +44,7 @@ import type {
   RuntimeProvider,
   RuntimeProviderRegistry,
   ScratchAppService,
+  ShellRunner,
   StateStore,
   Telemetry,
   ToolingEngine,
@@ -167,6 +168,7 @@ export type AppRuntimeServices =
   | AppPlanner
   | EventService
   | ToolingEngine
+  | ShellRunner
   | RuntimeCwd;
 type RuntimeLayer =
   | Layer.Layer<never>

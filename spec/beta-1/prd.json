@@ -373,7 +373,7 @@
         "Lint passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.2.4. Audit: core/src/cli/commands/shell.ts defaults to service mode and spawns host shells via child_process; flags limited to service/host."
     },
     {
