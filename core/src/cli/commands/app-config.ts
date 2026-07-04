@@ -1,24 +1,26 @@
-import { dirname } from "node:path";
-
 import { Effect, Either, Schema } from "effect";
 
 import type {
   AppIdReservedError,
   LandofileIncludeError,
   LandofileLockMismatchError,
-  LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+} from "@lando/sdk/errors";
+import {
+  ConfigError,
+  LandofileNotFoundError,
+  LandofileParseError,
+  LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { ConfigError, LandofileNotFoundError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
-import { findLandofilePath } from "../../landofile/discovery.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
+import { findDiscoveredLandofilePath } from "../../landofile/service.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import {
@@ -93,21 +95,49 @@ const missingArgsError = (): LandofileWriteValidationError =>
     remediation: "Usage: `lando app config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
   });
 
+type WritableAppConfigSubcommand = Extract<AppConfigSubcommand, "set" | "unset" | "edit" | "validate">;
+
+const typeScriptWriteUnsupportedError = (
+  subcommand: WritableAppConfigSubcommand,
+  filePath: string,
+): NotImplementedError =>
+  new NotImplementedError({
+    message: `\`lando app config ${subcommand}\` does not support the TypeScript Landofile at ${filePath}.`,
+    commandId: "app:config",
+    remediation:
+      "Programmatic `.lando.ts` Landofiles are author-mode TypeScript modules; edit the file directly, or run `lando app config view --source resolved` to inspect resolved values.",
+  });
+
+// Discovers both `.lando.yml` and `.lando.ts` (matching `LandofileService.discover`),
+// then rejects `.lando.ts` with a `NotImplementedError` remediation instead of the
+// misleading `LandofileNotFoundError` `findLandofilePath` (.lando.yml-only) produced.
 const resolveLandofilePath = (
   cwd: string,
-): Effect.Effect<{ readonly inputPath: string; readonly appRoot: string }, LandofileNotFoundError> =>
-  Effect.gen(function* () {
-    const inputPath = yield* Effect.promise(() => findLandofilePath(cwd));
-    if (inputPath === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message: "No Landofile is in scope for this command.",
-          cwd,
-        }),
-      );
-    }
-    return { inputPath, appRoot: dirname(inputPath) };
-  });
+  subcommand: WritableAppConfigSubcommand,
+): Effect.Effect<
+  { readonly inputPath: string; readonly appRoot: string },
+  LandofileNotFoundError | LandofileParseError | NotImplementedError
+> =>
+  Effect.tryPromise({
+    try: () => findDiscoveredLandofilePath(cwd),
+    catch: (cause) => {
+      if (cause instanceof LandofileNotFoundError) return cause;
+      if (cause instanceof LandofileParseError) return cause;
+      return new LandofileParseError({
+        message: cause instanceof Error ? cause.message : `Failed to discover a Landofile from ${cwd}.`,
+        filePath: cwd,
+        line: undefined,
+        column: undefined,
+        cause,
+      });
+    },
+  }).pipe(
+    Effect.flatMap(({ filePath, appRoot }) =>
+      filePath.endsWith(".ts")
+        ? Effect.fail(typeScriptWriteUnsupportedError(subcommand, filePath))
+        : Effect.succeed({ inputPath: filePath, appRoot }),
+    ),
+  );
 
 const readLandofileText = (inputPath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
@@ -139,7 +169,7 @@ export const appConfigSet = (
     const key = options.key ?? options.path;
     const raw = options.value;
     if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
-    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
+    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "set");
     const content = yield* readLandofileText(inputPath);
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
@@ -183,7 +213,7 @@ export const appConfigUnset = (
         }),
       );
     }
-    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
+    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "unset");
     const content = yield* readLandofileText(inputPath);
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
@@ -209,7 +239,7 @@ export const appConfigValidate = (
   options: AppConfigOptions,
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
-    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
+    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
     const content = yield* readLandofileText(inputPath);
     const tree = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
     const issues = decodeIssues(decodeLandofile(tree));
@@ -223,7 +253,7 @@ export const appConfigEdit = (
   options: AppConfigOptions,
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
-    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
+    const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "edit");
     const content = yield* readLandofileText(inputPath);
     const runner =
       options.editorRunner ??
