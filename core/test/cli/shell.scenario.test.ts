@@ -575,11 +575,14 @@ describe("shellApp — shell modes", () => {
     ]);
   });
 
-  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError", async () => {
+  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError pointing at --no-interactive", async () => {
     const error = await Effect.runPromise(
       shellApp({ isInteractive: () => false }).pipe(Effect.provide(layer()), Effect.flip),
     );
     expect(error).toBeInstanceOf(ShellRequiresTtyError);
+    const ttyError = error as ShellRequiresTtyError;
+    expect(ttyError.remediation).toContain("lando shell --no-interactive");
+    expect(ttyError.remediation).toContain("app:exec --interactive --tty -- <command>");
   });
 });
 

@@ -328,7 +328,8 @@ export const shellApp = (
       return yield* Effect.fail(
         new ShellRequiresTtyError({
           message: "lando shell requires an interactive terminal (TTY).",
-          remediation: "Run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
+          remediation:
+            "Re-run with `lando shell --no-interactive` to execute the host shell without a TTY, or run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
         }),
       );
     }
