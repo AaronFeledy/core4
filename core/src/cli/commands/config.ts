@@ -25,6 +25,7 @@ import {
   applySetMutation,
   applyUnsetMutation,
   decodeIssues,
+  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "../config-write/write-core.ts";
 
@@ -353,7 +354,11 @@ const metaConfigSet = (
     const issues = decodeIssues(decodeGlobalConfig(next));
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
     const dryRun = options.dryRun === true;
-    if (!dryRun) yield* writeConfigAtomic(path, emitLandofileYaml(next as Record<string, unknown>));
+    if (!dryRun) {
+      const emitted = emitConfigYaml({ file: path, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeConfigAtomic(path, emitted.right);
+    }
     return {
       subcommand: "set",
       key,
@@ -389,7 +394,9 @@ const metaConfigUnset = (
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
     const dryRun = options.dryRun === true;
     if (!dryRun && mutation.right.changed) {
-      yield* writeConfigAtomic(path, emitLandofileYaml(next as Record<string, unknown>));
+      const emitted = emitConfigYaml({ file: path, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeConfigAtomic(path, emitted.right);
     }
     return {
       subcommand: "unset",

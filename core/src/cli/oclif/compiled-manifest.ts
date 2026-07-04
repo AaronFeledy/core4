@@ -2993,7 +2993,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           required: false,
         },
       },
-      description: "Read or write the global Lando config (view/get; write ops are deferred to Beta).",
+      description: "Read or write the global Lando config.",
       flags: {
         format: {
           description: "Output format.",
@@ -3052,7 +3052,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:config",
-        summary: "Read or write the global Lando config (view/get; write ops are deferred to Beta).",
+        summary: "Read or write the global Lando config.",
         namespace: "meta",
         topLevelAlias: "config",
         bootstrap: "minimal",

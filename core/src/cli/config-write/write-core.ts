@@ -1,6 +1,7 @@
 import { Either, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
+import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 
 import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path.ts";
 import { type ValueType, parseTypedValue } from "./value-parse.ts";
@@ -105,6 +106,34 @@ export const writeValidationErrorFromIssues = (input: {
     issues: input.issues,
     remediation: "Fix the reported issue(s), then retry the write. The file was left unchanged.",
   });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+export const emitConfigYaml = (input: {
+  readonly file: string;
+  readonly value: unknown;
+  readonly path?: string;
+}): Either.Either<string, LandofileWriteValidationError> => {
+  if (!isRecord(input.value)) {
+    return Either.left(
+      writeValidationErrorFromIssues({
+        file: input.file,
+        issues: ["The resulting config root must be a YAML map."],
+        ...(input.path === undefined ? {} : { path: input.path }),
+      }),
+    );
+  }
+  const emitted = emitLandofileYamlEither(input.value);
+  if (Either.isRight(emitted)) return Either.right(emitted.right);
+  return Either.left(
+    writeValidationErrorFromIssues({
+      file: input.file,
+      issues: [emitted.left.message],
+      ...(input.path === undefined ? {} : { path: input.path }),
+    }),
+  );
+};
 
 export const ConfigWriteResultFields = {
   subcommand: Schema.optional(Schema.String),

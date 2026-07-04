@@ -13,7 +13,6 @@ import type {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { ConfigError, LandofileNotFoundError, LandofileWriteValidationError } from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
@@ -28,6 +27,7 @@ import {
   applySetMutation,
   applyUnsetMutation,
   decodeIssues,
+  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "../config-write/write-core.ts";
 
@@ -132,7 +132,9 @@ const parseWriteValidationError = (
     remediation: "Fix the YAML syntax so the file parses, then retry. The file was left unchanged.",
   });
 
-const appConfigSet = (options: AppConfigOptions): Effect.Effect<AppConfigResult, AppConfigError, never> =>
+export const appConfigSet = (
+  options: AppConfigOptions,
+): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
     const key = options.key;
     const raw = options.value;
@@ -151,7 +153,11 @@ const appConfigSet = (options: AppConfigOptions): Effect.Effect<AppConfigResult,
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues, path: key }));
     }
     const dryRun = options.dryRun === true;
-    if (!dryRun) yield* writeLandofileText(inputPath, emitLandofileYaml(next as Record<string, unknown>));
+    if (!dryRun) {
+      const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeLandofileText(inputPath, emitted.right);
+    }
     return {
       subcommand: "set",
       key,
@@ -162,7 +168,9 @@ const appConfigSet = (options: AppConfigOptions): Effect.Effect<AppConfigResult,
     };
   });
 
-const appConfigUnset = (options: AppConfigOptions): Effect.Effect<AppConfigResult, AppConfigError, never> =>
+export const appConfigUnset = (
+  options: AppConfigOptions,
+): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
     const key = options.key;
     if (key === undefined) {
@@ -190,12 +198,14 @@ const appConfigUnset = (options: AppConfigOptions): Effect.Effect<AppConfigResul
     }
     const dryRun = options.dryRun === true;
     if (!dryRun && mutation.right.changed) {
-      yield* writeLandofileText(inputPath, emitLandofileYaml(next as Record<string, unknown>));
+      const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeLandofileText(inputPath, emitted.right);
     }
     return { subcommand: "unset", key, filePath: inputPath, changed: mutation.right.changed, dryRun };
   });
 
-const appConfigValidate = (
+export const appConfigValidate = (
   options: AppConfigOptions,
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
@@ -209,7 +219,9 @@ const appConfigValidate = (
     return { subcommand: "validate", filePath: inputPath, valid: true, issues: [] };
   });
 
-const appConfigEdit = (options: AppConfigOptions): Effect.Effect<AppConfigResult, AppConfigError, never> =>
+export const appConfigEdit = (
+  options: AppConfigOptions,
+): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
     const content = yield* readLandofileText(inputPath);

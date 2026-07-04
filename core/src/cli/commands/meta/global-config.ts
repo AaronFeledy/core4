@@ -2,7 +2,6 @@ import { Effect, Either, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
-import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
@@ -14,6 +13,7 @@ import {
   applySetMutation,
   applyUnsetMutation,
   decodeIssues,
+  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "../../config-write/write-core.ts";
 import { decodeGlobalLandofile } from "./global-plan.ts";
@@ -133,7 +133,11 @@ export const globalConfigSet = (
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
     }
     const dryRun = options.dryRun === true;
-    if (!dryRun) yield* writeGlobalText(filePath, emitLandofileYaml(next as Record<string, unknown>));
+    if (!dryRun) {
+      const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeGlobalText(filePath, emitted.right);
+    }
     return { subcommand: "set", key, value: mutation.right.value, changed: true, dryRun, filePath };
   });
 
@@ -163,7 +167,9 @@ export const globalConfigUnset = (
     }
     const dryRun = options.dryRun === true;
     if (!dryRun && mutation.right.changed) {
-      yield* writeGlobalText(filePath, emitLandofileYaml(next as Record<string, unknown>));
+      const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
+      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
+      yield* writeGlobalText(filePath, emitted.right);
     }
     return { subcommand: "unset", key, changed: mutation.right.changed, dryRun, filePath };
   });

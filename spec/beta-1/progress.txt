@@ -384,3 +384,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - The canonical serializer round-trips *values*, not comments (`parseLandofile` strips comments; `emitLandofileYaml` re-emits canonical block YAML). `edit` therefore writes the user's raw edited text (preserving their formatting) after validating it, while `set`/`unset` re-emit canonical YAML from the mutated tree.
   - `GlobalConfig` (config.yml) is a deliberately narrow struct — most global fields are "modeled elsewhere" — so config.yml writes must validate with default excess handling, not `onExcessProperty:"error"`, or legitimate keys (pluginConfig/providers/envPrefix) would be rejected. Landofile writes use `onExcessProperty:"error"` since `LandofileShape` is the full contract.
 ---
+
+## 2026-07-04 03:01 CDT - US-389 Review
+- Review fixed two config-write blockers: global `config.yml` can now read back canonical block-list YAML emitted by `meta config set`, so array-valued global config no longer bricks later config loads; all config write surfaces now map canonical serializer failures into `LandofileWriteValidationError` with remediation instead of leaking Effect defects/stack traces, leaving files untouched.
+- Review also refreshed stale `meta config` help text and regenerated the OCLIF manifest.
+- Review notes (deferred/rejected): `app config edit --target ...` / `meta global config edit --target dist` support remains deferred because it is a broader §8.2 target-selection extension rather than a regression in the shipped default write path; prototype-pollution, editor-injection, dry-run, schema-snapshot, and compiled-dispatch concerns from review-work were rejected as false positives after code/test inspection.
+- Verification: typecheck, lint passed; focused config-write and adjacent meta-config scenario spot checks passed; edited files have clean LSP diagnostics.
+---

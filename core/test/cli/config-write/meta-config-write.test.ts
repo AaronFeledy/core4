@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { ConfigService } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
 
 import { config } from "../../../src/cli/commands/config.ts";
@@ -21,7 +22,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
+const configService = {
+  load: Effect.die("unused"),
+  get: () => Effect.die("unused"),
+};
+const run = <A, E>(effect: Effect.Effect<A, E, ConfigService>): Promise<A> =>
+  Effect.runPromise(effect.pipe(Effect.provideService(ConfigService, configService)));
+const exit = <A, E>(effect: Effect.Effect<A, E, ConfigService>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provideService(ConfigService, configService)));
 
 describe("meta config set (S4)", () => {
   test("writes a scalar to config.yml", async () => {
@@ -44,7 +52,7 @@ describe("meta config set (S4)", () => {
   test("schema-violating value is rejected, file untouched", async () => {
     await seed("renderer: json\n");
     const before = await readConfig();
-    const exit = await Effect.runPromiseExit(
+    const result = await exit(
       config({
         subcommand: "set",
         key: "telemetry.enabled",
@@ -53,8 +61,40 @@ describe("meta config set (S4)", () => {
         configPath: configPath(),
       }),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("LandofileWriteValidationError");
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("LandofileWriteValidationError");
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("array values written by set can be validated by the global config reader", async () => {
+    await run(
+      config({
+        subcommand: "set",
+        key: "network.proxy.noProxy",
+        value: '["a.com","b.com"]',
+        type: "json",
+        configPath: configPath(),
+      }),
+    );
+    const result = await run(config({ subcommand: "validate", configPath: configPath() }));
+    expect(result.valid).toBe(true);
+    expect(await readConfig()).toContain("- a.com");
+  });
+
+  test("serializer rejections fail as LandofileWriteValidationError, file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "set",
+        key: "pluginConfig.badPlugin",
+        value: '{"bad key":"x"}',
+        type: "json",
+        configPath: configPath(),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("LandofileWriteValidationError");
     expect(await readConfig()).toBe(before);
   });
 });
@@ -77,8 +117,8 @@ describe("meta config validate", () => {
 
   test("invalid config fails with issues", async () => {
     await seed("telemetry:\n  enabled: notbool\n");
-    const exit = await Effect.runPromiseExit(config({ subcommand: "validate", configPath: configPath() }));
-    expect(Exit.isFailure(exit)).toBe(true);
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
   });
 });
 
@@ -103,14 +143,14 @@ describe("meta config edit via injected editor seam", () => {
   test("rejects an invalid edit, file untouched", async () => {
     await seed("renderer: json\n");
     const before = await readConfig();
-    const exit = await Effect.runPromiseExit(
+    const result = await exit(
       config({
         subcommand: "edit",
         configPath: configPath(),
         editorRunner: runner(() => "telemetry:\n  enabled: notbool\n"),
       }),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(Exit.isFailure(result)).toBe(true);
     expect(await readConfig()).toBe(before);
   });
 });

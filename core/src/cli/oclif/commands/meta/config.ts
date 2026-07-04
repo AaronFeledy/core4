@@ -57,7 +57,7 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
 export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   resultSchema: ConfigResultSchema,
   id: "meta:config",
-  summary: "Read or write the global Lando config (view/get; write ops are deferred to Beta).",
+  summary: "Read or write the global Lando config.",
   namespace: "meta",
   topLevelAlias: "config",
   bootstrap: "minimal",
