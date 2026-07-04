@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import type { HostPlatform } from "@lando/sdk/schema";
+
+import { normalizeHostPlatform } from "../config/paths.ts";
+
 // Ownership of the managed provider machine (the macOS/Windows Podman VM), derived
 // solely from the provider's recorded setup-state. This module deliberately does NOT
 // import @lando/provider-lando: it only mirrors the setup-state path convention and the
@@ -36,9 +40,15 @@ const readSetupState = (
   }
 };
 
+// Hosts where Lando setup can create/own a Podman machine (VM). Linux (and WSL, which
+// runs Podman natively inside the distro) never records one, so a missing "machine"
+// field there is unambiguously "no machine to manage" rather than legacy state.
+const machineManagingPlatforms: ReadonlySet<HostPlatform> = new Set(["darwin", "win32"]);
+
 export const classifyManagedProviderMachine = (
   userDataRoot: string,
   readFileSyncSeam: (path: string) => string = (path) => readFileSync(path, "utf8"),
+  platform: HostPlatform = normalizeHostPlatform(),
 ): ManagedProviderMachineClassification => {
   const state = readSetupState(userDataRoot, readFileSyncSeam);
   if (state.kind === "absent") return { ownership: "absent" };
@@ -51,11 +61,18 @@ export const classifyManagedProviderMachine = (
     return { ownership: "ambiguous" };
   }
 
-  if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) {
-    return { ownership: "absent" };
+  const machine =
+    typeof parsed === "object" && parsed !== null && "machine" in parsed
+      ? (parsed as { readonly machine: unknown }).machine
+      : undefined;
+
+  if (typeof machine !== "object" || machine === null) {
+    // Setup state exists but carries no recognizable machine record. On a platform
+    // that manages a Podman machine this can be legacy state recorded before
+    // ownership tracking existed, so guessing "absent" could silently skip uninstall
+    // guidance for a VM that is still on disk; require manual review instead.
+    return machineManagingPlatforms.has(platform) ? { ownership: "ambiguous" } : { ownership: "absent" };
   }
-  const machine = (parsed as { readonly machine: unknown }).machine;
-  if (typeof machine !== "object" || machine === null) return { ownership: "absent" };
 
   const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
   const createdByLando =
@@ -80,13 +97,20 @@ export interface MachineTeardownSeams {
   readonly classify?: (userDataRoot: string) => ManagedProviderMachineClassification;
 }
 
-// Podman returns exit code 125 when the target machine does not exist. Removing an
-// already-gone machine is the idempotent no-op that lets a rerun converge.
+// Podman returns exit code 125 when the target machine does not exist, but it also
+// uses 125 for other failures, so treat it as "already gone" only when stderr says so.
 const PODMAN_MACHINE_NOT_FOUND_EXIT = 125;
+const PODMAN_MACHINE_NOT_FOUND_PATTERN = /not\s*(exist|found)|no such|cannot find/i;
 
 const defaultSpawn = async (args: ReadonlyArray<string>): Promise<MachineSpawnResult> => {
   const proc = Bun.spawn(["podman", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  // Drain stdout alongside stderr: an unread stdout pipe can fill and block podman's
+  // write, hanging `proc.exited` forever once the child has enough output to write.
+  const [, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { exitCode, stderr };
 };
 
@@ -106,7 +130,12 @@ export const teardownManagedProviderMachine = async (
   const spawn = seams.spawn ?? defaultSpawn;
   const result = await spawn(["machine", "rm", "--force", name]);
   if (result.exitCode === 0) return { removed: true, name };
-  if (result.exitCode === PODMAN_MACHINE_NOT_FOUND_EXIT) return { removed: false, name };
+  if (
+    result.exitCode === PODMAN_MACHINE_NOT_FOUND_EXIT &&
+    PODMAN_MACHINE_NOT_FOUND_PATTERN.test(result.stderr)
+  ) {
+    return { removed: false, name };
+  }
 
   throw new Error(
     `Failed to remove the managed Podman machine "${name}". Run 'podman machine rm --force ${name}' manually. (exit ${result.exitCode}: ${result.stderr.trim()})`,
