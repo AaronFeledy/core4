@@ -286,7 +286,13 @@ const fetchGitFromCache = async (
       remediation: NO_NETWORK_REMEDIATION,
     });
   }
-  const publishedDir = join(ctx.cacheRoot, "includes", "git", locked.resolved);
+  const gitCacheRoot = join(ctx.cacheRoot, "includes", "git");
+  const publishedDir = await assertUnderRoot(
+    gitCacheRoot,
+    join(gitCacheRoot, locked.resolved),
+    entry.source,
+    "include cache",
+  );
   const filePath = join(publishedDir, parsed.path);
   if (!(await fileExists(filePath))) {
     throw includeError({
@@ -402,11 +408,12 @@ const fetchNpmFromCache = async (
       remediation: NO_NETWORK_REMEDIATION,
     });
   }
-  const publishedDir = join(
-    ctx.cacheRoot,
-    "includes",
-    "npm",
-    `${parsed.packageName.replace(/[^A-Za-z0-9._-]+/gu, "-")}-${locked.resolved}`,
+  const npmCacheRoot = join(ctx.cacheRoot, "includes", "npm");
+  const publishedDir = await assertUnderRoot(
+    npmCacheRoot,
+    join(npmCacheRoot, `${parsed.packageName.replace(/[^A-Za-z0-9._-]+/gu, "-")}-${locked.resolved}`),
+    entry.source,
+    "include cache",
   );
   const filePath = join(publishedDir, "package", parsed.path);
   if (!(await fileExists(filePath))) {

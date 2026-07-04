@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
@@ -312,6 +312,76 @@ describe("updateLandofileIncludes", () => {
     if (exit._tag === "Failure") {
       const message = JSON.stringify(exit.cause);
       expect(message).toContain("--no-network");
+    }
+  });
+
+  test("--no-network rejects lockfile resolved paths that escape the include cache", async () => {
+    const source = "github:acme/fragments/postgres.yml";
+    const outsideRoot = await mkdtemp(join(tmpdir(), "lando-includes-update-outside-"));
+    try {
+      const fragment = "services:\n  stolen:\n    type: postgres\n";
+      await writeFile(join(outsideRoot, "postgres.yml"), fragment, "utf8");
+      const gitCacheRoot = join(cacheRoot, "includes", "git");
+      const escapedResolved = relative(gitCacheRoot, outsideRoot);
+      await writeFile(
+        join(appRoot, ".lando.lock.yml"),
+        lockfile(source, escapedResolved, sha256(fragment)),
+        "utf8",
+      );
+      const calls: string[] = [];
+      const throwingCloner: GitIncludeCloner = {
+        clone: async ({ url }) => {
+          calls.push(url);
+          throw new Error("network access is forbidden in --no-network mode");
+        },
+      };
+
+      const exit = await Effect.runPromiseExit(
+        updateLandofileIncludes({
+          landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
+          appRoot,
+          cacheRoot,
+          noNetwork: true,
+          deps: { gitCloner: throwingCloner },
+        }),
+      );
+
+      expect(calls).toEqual([]);
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const message = JSON.stringify(exit.cause);
+        expect(message).toContain("outside the include cache");
+      }
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("--no-network rejects npm lockfile resolved paths that escape the include cache", async () => {
+    const source = "npm:@acme/fragments";
+    const fragment = "services:\n  stolen:\n    type: postgres\n";
+    const outsidePackage = join(cacheRoot, "includes", "outside-npm", "package");
+    await mkdir(outsidePackage, { recursive: true });
+    await writeFile(join(outsidePackage, "postgres.yml"), fragment, "utf8");
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      lockfile(source, "../../../outside-npm", sha256(fragment)),
+      "utf8",
+    );
+
+    const exit = await Effect.runPromiseExit(
+      updateLandofileIncludes({
+        landofile: { includes: [{ source, path: "postgres.yml" }] },
+        appRoot,
+        cacheRoot,
+        noNetwork: true,
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const message = JSON.stringify(exit.cause);
+      expect(message).toContain("outside the include cache");
     }
   });
 
