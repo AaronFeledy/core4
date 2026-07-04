@@ -724,7 +724,7 @@
       "acceptanceCriteria": [
         "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, platform set covers every §13.5 host target, and runtimeVersion matches plugins/provider-lando/runtime-bundle-version.",
         "The release pipeline (scripts/release.ts) gains a release-blocking stage gate that fails when the manifest violates the invariant, mirroring the placeholder-rejection pattern already used for update-manifest binaries (isPlaceholderBinary).",
-        "The periodic/release-path verification asserts each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length (per the §17.2 catalog row), without downloading full artifacts on every PR.",
+        "Per-PR CI runs only the offline invariant checks (no network); the live verification that each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length runs on the release path and a periodic job, per the §17.2 catalog row's offline/live gate split.",
         "Placeholder-manifest regression is covered by a test fixture proving the check fails on the pre-US-411 placeholder manifest.",
         "Tests pass",
         "Typecheck passes",
