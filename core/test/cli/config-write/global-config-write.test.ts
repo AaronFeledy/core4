@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
@@ -142,5 +142,23 @@ describe("meta global config edit via injected editor seam", () => {
     );
     expect(result.changed).toBe(true);
     expect(await readFileText()).toContain("php");
+  });
+
+  test("invokes the editor runner with the user Landofile's parent directory as cwd", async () => {
+    await seed("name: global\nruntime: 4\n");
+    let capturedCwd = "";
+    await run(
+      globalConfigEdit(
+        {
+          subcommand: "edit",
+          editorRunner: async ({ content, cwd }) => {
+            capturedCwd = cwd;
+            return { kind: "edited", content };
+          },
+        },
+        filePath(),
+      ),
+    );
+    expect(capturedCwd).toBe(dirname(filePath()));
   });
 });

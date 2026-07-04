@@ -1,3 +1,5 @@
+import { dirname } from "node:path";
+
 import { Effect, Either, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
@@ -200,7 +202,7 @@ export const globalConfigEdit = (
           : { env: { ...process.env, EDITOR: options.editor, VISUAL: options.editor } },
       );
     const edited = yield* Effect.promise(() =>
-      runner({ name: "lando-global-config", content: seeded, cwd: filePath }),
+      runner({ name: "lando-global-config", content: seeded, cwd: dirname(filePath) }),
     );
     if (edited.kind === "no-editor") {
       return yield* Effect.fail(
