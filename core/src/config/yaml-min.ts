@@ -35,8 +35,13 @@ export const parseScalar = (value: string): unknown => {
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed === "[]") return [];
   if (trimmed === "{}") return {};
-  if (trimmed.startsWith("[") || trimmed.startsWith("{"))
-    throw new MinimalYamlError(`Unsupported YAML value: ${trimmed}`);
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      throw new MinimalYamlError(`Unsupported YAML value: ${trimmed}`);
+    }
+  }
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
