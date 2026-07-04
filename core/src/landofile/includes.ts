@@ -67,6 +67,7 @@ interface ResolveContext {
   readonly mode: "pin" | "refresh";
   readonly lockEntries: ReadonlyMap<string, LockEntry>;
   readonly stagedLocks: Map<string, LockEntry>;
+  readonly noNetwork: boolean;
 }
 
 interface FragmentResult {
@@ -82,6 +83,8 @@ const LOCK_REMEDIATION =
   "Run lando app:includes:update to refresh .lando.lock.yml after reviewing the include change.";
 const INCLUDE_REMEDIATION =
   "Check the includes: entry and retry after the referenced Landofile fragment is available.";
+const NO_NETWORK_REMEDIATION =
+  "Run lando app:includes:update with network access to populate the include cache before retrying with --no-network.";
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -269,8 +272,50 @@ const fetchLocal = async (entry: NormalizedInclude, ctx: ResolveContext): Promis
   };
 };
 
+const fetchGitFromCache = async (
+  entry: NormalizedInclude,
+  parsed: ReturnType<typeof parseGitInclude>,
+  ctx: ResolveContext,
+): Promise<FragmentResult> => {
+  const locked = ctx.lockEntries.get(parsed.sourceId);
+  if (locked === undefined) {
+    throw includeError({
+      message: `--no-network: no lockfile entry for ${entry.source} to resolve from cache.`,
+      source: entry.source,
+      kind: "source-unresolved",
+      remediation: NO_NETWORK_REMEDIATION,
+    });
+  }
+  const gitCacheRoot = join(ctx.cacheRoot, "includes", "git");
+  const publishedDir = await assertUnderRoot(
+    gitCacheRoot,
+    join(gitCacheRoot, locked.resolved),
+    entry.source,
+    "include cache",
+  );
+  const filePath = join(publishedDir, parsed.path);
+  if (!(await fileExists(filePath))) {
+    throw includeError({
+      message: `--no-network: cached fragment for ${entry.source} is missing at ${filePath}.`,
+      source: entry.source,
+      kind: "fetch-failed",
+      remediation: NO_NETWORK_REMEDIATION,
+    });
+  }
+  const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "cloned repository");
+  return {
+    sourceId: parsed.sourceId,
+    resolved: locked.resolved,
+    content: await readText(safePath, entry.source),
+    filePath: safePath,
+    root: dirname(safePath),
+    locked: true,
+  };
+};
+
 const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const parsed = parseGitInclude(entry);
+  if (ctx.noNetwork) return fetchGitFromCache(entry, parsed, ctx);
   const gitRoot = join(ctx.cacheRoot, "includes", "git");
   await mkdir(gitRoot, { recursive: true });
   const stagingDir = await mkdtemp(join(gitRoot, ".staging-"));
@@ -349,8 +394,50 @@ const resolveNpmVersion = (
   });
 };
 
+const fetchNpmFromCache = async (
+  entry: NormalizedInclude,
+  parsed: ReturnType<typeof parseNpmInclude>,
+  ctx: ResolveContext,
+): Promise<FragmentResult> => {
+  const locked = ctx.lockEntries.get(parsed.sourceId);
+  if (locked === undefined) {
+    throw includeError({
+      message: `--no-network: no lockfile entry for ${entry.source} to resolve from cache.`,
+      source: entry.source,
+      kind: "source-unresolved",
+      remediation: NO_NETWORK_REMEDIATION,
+    });
+  }
+  const npmCacheRoot = join(ctx.cacheRoot, "includes", "npm");
+  const publishedDir = await assertUnderRoot(
+    npmCacheRoot,
+    join(npmCacheRoot, `${parsed.packageName.replace(/[^A-Za-z0-9._-]+/gu, "-")}-${locked.resolved}`),
+    entry.source,
+    "include cache",
+  );
+  const filePath = join(publishedDir, "package", parsed.path);
+  if (!(await fileExists(filePath))) {
+    throw includeError({
+      message: `--no-network: cached fragment for ${entry.source} is missing at ${filePath}.`,
+      source: entry.source,
+      kind: "fetch-failed",
+      remediation: NO_NETWORK_REMEDIATION,
+    });
+  }
+  const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "npm package");
+  return {
+    sourceId: parsed.sourceId,
+    resolved: locked.resolved,
+    content: await readText(safePath, entry.source),
+    filePath: safePath,
+    root: dirname(safePath),
+    locked: true,
+  };
+};
+
 const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const parsed = parseNpmInclude(entry);
+  if (ctx.noNetwork) return fetchNpmFromCache(entry, parsed, ctx);
   let packument: NpmPackument | undefined;
   try {
     packument = await (ctx.deps.npmRegistryClient ?? defaultNpmRegistryClient).fetchPackument(
@@ -786,6 +873,7 @@ export const resolveLandofileIncludes = (
       mode: "pin",
       lockEntries: yield* parseLockEntries(options.appRoot, lockfilePath),
       stagedLocks: new Map(),
+      noNetwork: false,
     };
     const resolved = yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
     yield* writeLockfileIfNeeded(ctx);
@@ -809,6 +897,8 @@ export interface IncludeUpdateReport {
   readonly drift: boolean;
   readonly wrote: boolean;
   readonly checkMode: boolean;
+  readonly noNetwork: boolean;
+  readonly requestedSources: ReadonlyArray<string>;
 }
 
 export interface UpdateLandofileIncludesOptions {
@@ -819,6 +909,8 @@ export interface UpdateLandofileIncludesOptions {
   readonly deps?: LandofileIncludeDeps;
   readonly maxDepth?: number;
   readonly check?: boolean;
+  readonly sources?: ReadonlyArray<string>;
+  readonly noNetwork?: boolean;
 }
 
 const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -833,8 +925,34 @@ export const updateLandofileIncludes = (
   Effect.gen(function* () {
     const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
     const checkMode = options.check === true;
+    const noNetwork = options.noNetwork === true;
+    const requestedSources = options.sources ?? [];
+    const scoped = requestedSources.length > 0;
     const existing = yield* parseLockEntries(options.appRoot, lockfilePath);
-    const includes = options.landofile.includes ?? [];
+    const allIncludes = options.landofile.includes ?? [];
+
+    if (scoped) {
+      const known = new Set(allIncludes.map((entry) => normalizeInclude(entry).source));
+      const unknown = requestedSources.filter((source) => !known.has(source));
+      if (unknown.length > 0) {
+        const knownList = [...known].sort(byCodepointString).join(", ") || "(none)";
+        return yield* Effect.fail(
+          includeError({
+            message: `Unknown include source${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}. Known sources: ${knownList}.`,
+            source: unknown.join(", "),
+            kind: "source-unresolved",
+            remediation:
+              "Pass a known include source, or run lando app:includes:update with no source to refresh every include.",
+          }),
+        );
+      }
+    }
+
+    const requested = new Set(requestedSources);
+    const includes = scoped
+      ? allIncludes.filter((entry) => requested.has(normalizeInclude(entry).source))
+      : allIncludes;
+    const landofile: LandofileShape = scoped ? { ...options.landofile, includes } : options.landofile;
 
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
@@ -845,10 +963,11 @@ export const updateLandofileIncludes = (
       mode: "refresh",
       lockEntries: existing,
       stagedLocks: new Map(),
+      noNetwork,
     };
 
     if (includes.length > 0) {
-      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
+      yield* resolveTree(landofile, ctx, 0, [options.appRoot]);
     }
 
     const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
@@ -863,18 +982,21 @@ export const updateLandofileIncludes = (
               : "unchanged";
         return { source: entry.source, resolved: entry.resolved, checksum: entry.checksum, status };
       });
-    const removed = [...existing.keys()]
-      .filter((source) => !ctx.stagedLocks.has(source))
-      .sort(byCodepointString);
+    const removed = scoped
+      ? []
+      : [...existing.keys()].filter((source) => !ctx.stagedLocks.has(source)).sort(byCodepointString);
     const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
 
     let wrote = false;
     if (!checkMode && drift) {
-      yield* writeLockEntries(options.appRoot, lockfilePath, [...ctx.stagedLocks.values()]);
+      const finalEntries = scoped
+        ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
+        : [...ctx.stagedLocks.values()];
+      yield* writeLockEntries(options.appRoot, lockfilePath, finalEntries);
       wrote = true;
     }
 
-    return { lockfilePath, entries, removed, drift, wrote, checkMode };
+    return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };
   });
 
 export type IncludeVerifyStatus = "ok" | "mismatch" | "missing" | "stale";
@@ -952,6 +1074,7 @@ export const verifyLandofileIncludes = (
       mode: "refresh",
       lockEntries: existing,
       stagedLocks: new Map(),
+      noNetwork: false,
     };
 
     if (includes.length > 0) {

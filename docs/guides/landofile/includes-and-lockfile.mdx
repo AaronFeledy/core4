@@ -25,11 +25,13 @@ tags: [beta, docs, landofile, includes, lockfile]
       <Variable name="npmLock" value="package version + sha256(fragment bytes)" display="npm includes record the resolved package version and fragment content hash" />
       <Variable name="remediation" value="lando app:includes:update" display="Lock drift fails closed with LandofileLockMismatchError and points at the update command" />
       <Variable name="refresh" value="lando app:includes:update" display="Re-resolves every remote include, recomputes SHA-256 checksums, rewrites .lando.lock.yml only when drift exists, and prunes stale lock entries" />
+      <Variable name="scopedRefresh" value="lando app:includes:update SOURCE..." display="Naming sources refreshes only those includes and merges the refreshed entries into the existing lockfile without pruning other sources; unknown sources fail closed listing the known sources" />
+      <Variable name="offline" value="lando app:includes:update --no-network" display="Resolves git and npm includes from lockfile and content-addressed cache state only; a missing lock entry or cached artifact fails closed and tells you to rerun app:includes:update with network access" />
       <Variable name="check" value="lando app:includes:update --check" display="Runs the same refresh comparison without writing; if drift is found, the rendered result sets exit code 1 and tells you to run app:includes:update" />
       <Variable name="verify" value="lando app:includes:verify" display="Runs the refresh comparison without writing so CI can fail when .lando.lock.yml is missing, stale, or mismatched" />
       <Variable name="corruptLock" value="discarded before comparison" display="If .lando.lock.yml cannot be decoded as Lando's lockfile shape, the StateStore-backed reader treats it as an empty lock so verify/update report missing remote entries instead of preserving corrupt bytes" />
       <Variable name="verifyReport" value="{ ok, entries, mismatches }" display="Text and JSON output report ok, mismatch, missing, and stale statuses; non-ok results set exit code 1" />
-      <Variable name="report" value="{ added, updated, unchanged, removed, drift, wrote, checkMode }" display="Text and JSON output report per-include added, updated, and unchanged statuses, removed stale sources, whether drift exists, whether the lockfile was written, and whether --check was used" />
+      <Variable name="report" value="{ added, updated, unchanged, removed, drift, wrote, checkMode, noNetwork, requestedSources }" display="Text and JSON output report per-include added, updated, and unchanged statuses, removed stale sources, whether drift exists, whether the lockfile was written, whether --check or --no-network was used, and which sources were requested" />
     </Step>
   </Scenario>
 

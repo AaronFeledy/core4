@@ -37,12 +37,16 @@ export const AppIncludesUpdateResultSchema = Schema.Struct({
   drift: Schema.Boolean,
   wrote: Schema.Boolean,
   checkMode: Schema.Boolean,
+  noNetwork: Schema.Boolean,
+  requestedSources: Schema.Array(Schema.String),
 });
 
 export interface AppIncludesUpdateOptions {
   readonly check?: boolean;
   readonly cwd?: string;
   readonly deps?: LandofileIncludeDeps;
+  readonly sources?: ReadonlyArray<string>;
+  readonly noNetwork?: boolean;
 }
 
 export type AppIncludesUpdateError =
@@ -105,6 +109,8 @@ export const appIncludesUpdate = (
       appRoot,
       ...(options.check === true ? { check: true } : {}),
       ...(options.deps === undefined ? {} : { deps: options.deps }),
+      ...(options.sources === undefined ? {} : { sources: options.sources }),
+      ...(options.noNetwork === true ? { noNetwork: true } : {}),
     });
   });
 
@@ -114,7 +120,9 @@ const summaryLine = (report: IncludeUpdateReport): string => {
   const verb = report.checkMode ? "would refresh" : report.wrote ? "refreshed" : "checked";
   const parts = [`${counts.added} added`, `${counts.updated} updated`, `${counts.unchanged} unchanged`];
   if (report.removed.length > 0) parts.push(`${report.removed.length} removed`);
-  return `${report.lockfilePath}: ${verb} ${report.entries.length} include${report.entries.length === 1 ? "" : "s"} (${parts.join(", ")}).`;
+  const scope = report.requestedSources.length > 0 ? ` for ${report.requestedSources.join(", ")}` : "";
+  const offline = report.noNetwork ? " [offline]" : "";
+  return `${report.lockfilePath}: ${verb} ${report.entries.length} include${report.entries.length === 1 ? "" : "s"}${scope}${offline} (${parts.join(", ")}).`;
 };
 
 const STATUS_GLYPH: Readonly<Record<string, string>> = { added: "+", updated: "~", unchanged: "=" };

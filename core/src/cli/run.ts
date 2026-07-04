@@ -229,7 +229,9 @@ type OclifFlagDefinition = {
   readonly options?: ReadonlyArray<string>;
 };
 
-type OclifArgDefinition = Record<string, unknown>;
+type OclifArgDefinition = {
+  readonly required?: boolean;
+};
 
 const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
   (compiledCommands as Readonly<Record<string, CompiledCommand>>)[commandId];
@@ -391,6 +393,19 @@ const helpFlagToken = (name: string, definition: OclifFlagDefinition): string =>
   return `--${definition.name ?? name}${short}`;
 };
 
+const helpArgToken = (name: string, definition: OclifArgDefinition, repeatable: boolean): string => {
+  const label = `${name.toUpperCase()}${repeatable ? "..." : ""}`;
+  return definition.required === true ? `<${label}>` : `[${label}]`;
+};
+
+const renderCommandUsage = (id: string, command: CompiledCommand): string => {
+  const definitions = Object.entries(argDefinitionsForCommand(command));
+  const repeatable = command.strict === false && definitions.length === 1;
+  const args = definitions.map(([name, definition]) => helpArgToken(name, definition, repeatable));
+  const name = commandName(id, command);
+  return args.length === 0 ? name : `${name} ${args.join(" ")}`;
+};
+
 const renderCommandHelpFlags = (command: CompiledCommand): ReadonlyArray<string> => {
   const entries = Object.entries(flagDefinitionsForCommand(command)).sort(([left], [right]) =>
     left.localeCompare(right),
@@ -411,7 +426,7 @@ const printCommandHelp = (id: string, command: CompiledCommand): void => {
     `${command.description ?? command.summary ?? id}
 
 USAGE
-  $ lando ${commandName(id, command)}
+  $ lando ${renderCommandUsage(id, command)}
 
 ALIASES
   ${[id, ...(command.aliases ?? [])].join(", ")}`,
@@ -541,6 +556,7 @@ const runCompiledCommand = <A, E, R, RE>(
     readonly plainTaskEvents?: "detail-only";
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
+    readonly successExitCode?: (value: A) => number | undefined;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -556,6 +572,7 @@ const runCompiledCommand = <A, E, R, RE>(
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+    ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
     render,
     formatError: (error: unknown) => commandErrorMessage(error),
   };
@@ -926,8 +943,15 @@ const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
 
 const parseAppIncludesUpdateArgv = (
   argv: ReadonlyArray<string>,
-): { readonly check: boolean; readonly format: AppIncludesUpdateFormat } => {
+): {
+  readonly check: boolean;
+  readonly noNetwork: boolean;
+  readonly sources: ReadonlyArray<string>;
+  readonly format: AppIncludesUpdateFormat;
+} => {
   const check = argv.some((arg) => arg === "--check");
+  const noNetwork = argv.some((arg) => arg === "--no-network");
+  const sources: string[] = [];
   let format: AppIncludesUpdateFormat = "text";
   let i = 0;
   while (i < argv.length) {
@@ -939,18 +963,21 @@ const parseAppIncludesUpdateArgv = (
       i += match.consumed;
       continue;
     }
+    const arg = argv[i];
+    if (arg !== undefined && !arg.startsWith("-")) sources.push(arg);
     i += 1;
   }
-  return { check, format };
+  return { check, noNetwork, sources, format };
 };
 
 const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { check } = parseAppIncludesUpdateArgv(argv);
+  const { check, noNetwork, sources } = parseAppIncludesUpdateArgv(argv);
   const format = activeTextJsonFormat();
   return runCompiledCommand(
-    appIncludesUpdate({ check }),
+    appIncludesUpdate({ check, noNetwork, sources }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderIncludesUpdateResult(value, format),
+    { successExitCode: (value) => (value.checkMode && value.drift ? 1 : undefined) },
   );
 };
 
@@ -1781,7 +1808,13 @@ const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> 
 };
 
 const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
-  if (argv[0] !== "app" || argv[1] !== "config") return argv;
+  if (argv[0] !== "app") return argv;
+  if (argv[1] === "includes") {
+    if (argv[2] === "update") return ["app:includes:update", ...argv.slice(3)];
+    if (argv[2] === "verify") return ["app:includes:verify", ...argv.slice(3)];
+    return argv;
+  }
+  if (argv[1] !== "config") return argv;
   if (argv[2] === "translate") return ["app:config:translate", ...argv.slice(3)];
   if (argv[2] === "lint") return ["app:config:lint", ...argv.slice(3)];
   if (argv[2] === "set") return ["app:config:set", ...argv.slice(3)];
