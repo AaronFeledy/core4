@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Config } from "@oclif/core";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
-import { ProviderUnavailableError, ShellRequiresTtyError } from "@lando/core/errors";
+import { ProviderUnavailableError, ShellExecError, ShellRequiresTtyError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -144,9 +144,10 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
 const shellRunnerLayer = (
   interactive: (spec: ShellInteractiveSpec) => Effect.Effect<{ readonly exitCode: number }, never> = () =>
     Effect.die("interactive not expected"),
+  exec: Context.Tag.Service<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
 ) =>
   Layer.succeed(ShellRunner, {
-    exec: () => Effect.die("not used"),
+    exec,
     run: () => Effect.die("not used"),
     runScript: () => Effect.die("not used"),
     interactive,
@@ -530,12 +531,48 @@ describe("shellApp — shell modes", () => {
     expect(spec.env?.HISTFILESIZE).toBe("0");
   });
 
-  test("--no-interactive fails fast with ShellRequiresTtyError and remediation", async () => {
-    const error = await Effect.runPromise(
-      shellApp({ isInteractive: () => true, noInteractive: true }).pipe(Effect.provide(layer()), Effect.flip),
+  test("--no-interactive runs host shell through ShellRunner.exec", async () => {
+    const calls: Array<{ command: string; cwd?: string; env?: Readonly<Record<string, string>> }> = [];
+    const result = await Effect.runPromise(
+      shellApp({
+        isInteractive: () => false,
+        noInteractive: true,
+        shellPath: "/bin/sh",
+        args: ["-lc", "exit 13"],
+      }).pipe(
+        Effect.provide(
+          layer(
+            undefined,
+            undefined,
+            shellRunnerLayer(undefined, (command, options) => {
+              calls.push({
+                command,
+                ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+                ...(options?.env === undefined ? {} : { env: options.env }),
+              });
+              return Effect.fail(
+                new ShellExecError({
+                  message: "Shell command exited with code 13",
+                  command,
+                  exitCode: 13,
+                  stdout: "",
+                  stderr: "",
+                }),
+              );
+            }),
+          ),
+        ),
+      ),
     );
-    expect(error).toBeInstanceOf(ShellRequiresTtyError);
-    expect((error as ShellRequiresTtyError).remediation).toContain("app:exec --interactive --tty");
+    expect(result.mode).toBe("host");
+    expect(result.exitCode).toBe(13);
+    expect(calls).toEqual([
+      {
+        command: "'/bin/sh' '-lc' 'exit 13'",
+        cwd: "/tmp/shell-scenario",
+        env: expect.objectContaining({ LANDO_APP_NAME: "shell-scenario" }),
+      },
+    ]);
   });
 
   test("a non-TTY stdin/stdout fails with ShellRequiresTtyError", async () => {

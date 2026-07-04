@@ -39,6 +39,7 @@ import {
 } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "../../config/paths.ts";
+import { quoteShellPath } from "../../services/shell-quote.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
 
@@ -321,9 +322,10 @@ export const shellApp = (
       };
     }
 
+    const shellRunner = yield* ShellRunner;
     const interactive =
       options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
-    if (options.noInteractive === true || !interactive) {
+    if (options.noInteractive !== true && !interactive) {
       return yield* Effect.fail(
         new ShellRequiresTtyError({
           message: "lando shell requires an interactive terminal (TTY).",
@@ -332,7 +334,6 @@ export const shellApp = (
       );
     }
 
-    const shellRunner = yield* ShellRunner;
     const cwd = options.cwd ?? String(plan.root);
     const env: Record<string, string> = {
       ...filterStringEnv(process.env),
@@ -349,6 +350,30 @@ export const shellApp = (
       env.HISTFILESIZE = "0";
     } else {
       historyFile = options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root));
+    }
+
+    if (options.noInteractive === true) {
+      const command = [shell, ...(options.args ?? [])].map(quoteShellPath).join(" ");
+      const result = yield* shellRunner.exec(command, { cwd, env }).pipe(
+        Effect.catchTag("ShellExecError", (error) => {
+          if (typeof error.exitCode === "number") {
+            return Effect.succeed({
+              exitCode: error.exitCode,
+              stdout: error.stdout ?? "",
+              stderr: error.stderr ?? "",
+            });
+          }
+          return Effect.fail(error);
+        }),
+      );
+      yield* Effect.all([emitOptionalStdout(result.stdout), emitOptionalStderr(result.stderr)]);
+      return {
+        mode: "host" as const,
+        app: plan.name,
+        shell,
+        cwd,
+        exitCode: result.exitCode,
+      };
     }
 
     const launched = yield* shellRunner.interactive({
