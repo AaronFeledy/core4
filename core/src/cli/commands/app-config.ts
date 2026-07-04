@@ -21,7 +21,7 @@ import { LandofileService } from "@lando/sdk/services";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
 import { findDiscoveredLandofilePath } from "../../landofile/service.ts";
-import { renderLandofileTemplate } from "../../landofile/template-render.ts";
+import { detectTemplateDirective, renderLandofileTemplate } from "../../landofile/template-render.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import {
@@ -109,9 +109,10 @@ const typeScriptWriteUnsupportedError = (
       "Programmatic `.lando.ts` Landofiles are author-mode TypeScript modules; edit the file directly, or run `lando app config view --source resolved` to inspect resolved values.",
   });
 
-// Discovers both `.lando.yml` and `.lando.ts` (matching `LandofileService.discover`),
-// then rejects `.lando.ts` with a `NotImplementedError` remediation instead of the
-// misleading `LandofileNotFoundError` `findLandofilePath` (.lando.yml-only) produced.
+// Discovers both `.lando.yml` and `.lando.ts` (matching the discovery flow
+// `LandofileService` runs), then rejects `.lando.ts` with a `NotImplementedError`
+// remediation instead of the misleading `LandofileNotFoundError` `findLandofilePath`
+// (.lando.yml-only) produced.
 const resolveLandofilePath = (
   cwd: string,
   subcommand: WritableAppConfigSubcommand,
@@ -146,13 +147,43 @@ const readLandofileText = (inputPath: string): Effect.Effect<string, ConfigError
     catch: (cause) => new ConfigError({ message: `Failed to read ${inputPath}`, path: inputPath, cause }),
   });
 
-// Mirrors the `LandofileService.discover`/`app:config:lint` read step so `set`/`unset`/
-// `validate` parse the rendered tree, not raw unrendered template source.
+// Mirrors the `LandofileService`/`app:config:lint` read step so `validate` parses
+// the rendered tree, not raw unrendered template source.
 const readRenderedLandofileText = (
   inputPath: string,
 ): Effect.Effect<string, ConfigError | LandofileParseError> =>
   readLandofileText(inputPath).pipe(
     Effect.flatMap((content) => renderLandofileTemplate({ filePath: inputPath, content })),
+  );
+
+const templatedLandofileWriteUnsupportedError = (
+  subcommand: WritableAppConfigSubcommand,
+  filePath: string,
+  engineId: string,
+): NotImplementedError =>
+  new NotImplementedError({
+    message: `\`lando app config ${subcommand}\` does not support the templated Landofile at ${filePath} (\`template: ${engineId}\`).`,
+    commandId: "app:config",
+    remediation:
+      "Writing a mutated tree back through the canonical serializer would discard the `template:` directive and the authored templated source. Run `lando app config edit` to edit the template source directly instead.",
+  });
+
+// `set`/`unset` mutate the parsed (rendered) tree and re-emit it through the
+// canonical serializer, which would silently discard a `template:` directive and
+// the authored templated source. Reject before that happens, matching the
+// `.lando.ts` write rejection above; `app config edit` (raw source, no re-emit)
+// remains the supported way to change a templated Landofile.
+const readWritableLandofileText = (
+  inputPath: string,
+  subcommand: WritableAppConfigSubcommand,
+): Effect.Effect<string, ConfigError | NotImplementedError> =>
+  readLandofileText(inputPath).pipe(
+    Effect.flatMap((content) => {
+      const directive = detectTemplateDirective(content);
+      return directive === undefined
+        ? Effect.succeed(content)
+        : Effect.fail(templatedLandofileWriteUnsupportedError(subcommand, inputPath, directive.engineId));
+    }),
   );
 
 const writeLandofileText = (inputPath: string, content: string): Effect.Effect<void, ConfigError> =>
@@ -180,7 +211,7 @@ export const appConfigSet = (
     const raw = options.value;
     if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "set");
-    const content = yield* readRenderedLandofileText(inputPath);
+    const content = yield* readWritableLandofileText(inputPath, "set");
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
       unknown
@@ -224,7 +255,7 @@ export const appConfigUnset = (
       );
     }
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "unset");
-    const content = yield* readRenderedLandofileText(inputPath);
+    const content = yield* readWritableLandofileText(inputPath, "unset");
     const tree = (yield* parseLandofile({ file: inputPath, content, cwd: appRoot })) as Record<
       string,
       unknown
@@ -294,7 +325,16 @@ export const appConfigEdit = (
         }),
       );
     }
-    const parsed = yield* parseLandofile({ file: inputPath, content: edited.content, cwd: appRoot }).pipe(
+    // Validate against the RENDERED tree (a `template:` directive is a synthetic
+    // key that must never reach the strict schema decode below), but persist the
+    // user's raw edited text so a template Landofile's directive and templated
+    // source survive the save.
+    const rendered = yield* renderLandofileTemplate({ filePath: inputPath, content: edited.content }).pipe(
+      Effect.catchTag("LandofileParseError", (error) =>
+        Effect.fail(parseWriteValidationError(inputPath, error)),
+      ),
+    );
+    const parsed = yield* parseLandofile({ file: inputPath, content: rendered, cwd: appRoot }).pipe(
       Effect.catchTag("LandofileParseError", (error) =>
         Effect.fail(parseWriteValidationError(inputPath, error)),
       ),

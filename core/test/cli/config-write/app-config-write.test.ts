@@ -154,6 +154,34 @@ describe("app config validate (S5)", () => {
   });
 });
 
+describe("app config write verbs reject templated Landofiles", () => {
+  test("set fails with NotImplementedError and leaves the file untouched", async () => {
+    await seed("template: none\nname: myapp\nruntime: 4\n");
+    const before = await readLandofile();
+    const exit = await runExit(
+      appConfigSet({ subcommand: "set", key: "services.web.type", value: "php:8.3", cwd: dir }),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("NotImplementedError");
+    expect(await readLandofile()).toBe(before);
+  });
+
+  test("unset fails with NotImplementedError and leaves the file untouched", async () => {
+    await seed("template: none\nname: myapp\nruntime: 4\n");
+    const before = await readLandofile();
+    const exit = await runExit(appConfigUnset({ subcommand: "unset", key: "name", cwd: dir }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("NotImplementedError");
+    expect(await readLandofile()).toBe(before);
+  });
+
+  test("validate still renders and validates a templated Landofile (read-only)", async () => {
+    await seed("template: none\nname: myapp\nruntime: 4\n");
+    const result = await run(appConfigValidate({ subcommand: "validate", cwd: dir }));
+    expect(result.valid).toBe(true);
+  });
+});
+
 describe("app config edit (S7) via injected editor seam", () => {
   const editorRunner =
     (transform: (content: string) => string): EditorRunner =>
@@ -190,5 +218,20 @@ describe("app config edit (S7) via injected editor seam", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("editor");
+  });
+
+  test("saves a templated Landofile without rejecting the synthetic `template:` key", async () => {
+    await seed("template: none\nname: myapp\nruntime: 4\n");
+    const result = await run(
+      appConfigEdit({
+        subcommand: "edit",
+        cwd: dir,
+        editorRunner: editorRunner((c) => `${c}services:\n  web:\n    type: php\n`),
+      }),
+    );
+    expect(result.changed).toBe(true);
+    const onDisk = await readLandofile();
+    expect(onDisk).toContain("template: none");
+    expect(onDisk).toContain("php");
   });
 });
