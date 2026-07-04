@@ -439,6 +439,39 @@ describe("lando logs", () => {
     expect(released).toBe(true);
   });
 
+  test("followLogsApp without options.signal stays cancellable via Effect interruption with Scope cleanup", async () => {
+    let released = false;
+    const infinite = (target: LogTarget): Stream.Stream<LogChunk, never> =>
+      Stream.repeatEffect(
+        Effect.succeed({ service: target.service, stream: "stdout" as const, line: "tick" }),
+      ).pipe(
+        Stream.ensuring(
+          Effect.sync(() => {
+            released = true;
+          }),
+        ),
+      );
+    const harness = makeLogsLayer({ serviceLogs: true, logs: infinite });
+    const controller = new AbortController();
+    let seen = 0;
+    const sink = Layer.succeed(StreamFrameSink, {
+      emit: () =>
+        Effect.sync(() => {
+          seen += 1;
+          if (seen === 3) controller.abort();
+        }),
+    });
+
+    const exit = await Effect.runPromiseExit(
+      followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
+      { signal: controller.signal },
+    );
+
+    expect(Exit.isInterrupted(exit)).toBe(true);
+    expect(seen).toBeGreaterThanOrEqual(3);
+    expect(released).toBe(true);
+  });
+
   test("follow mode streams human lines live to stdout under text format", async () => {
     const harness = makeLogsLayer();
     const io = createBufferedRendererIO({ isTTY: false });

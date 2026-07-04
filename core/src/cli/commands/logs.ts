@@ -25,6 +25,12 @@ export { StreamFrameSink } from "../stream-frame-sink.ts";
 export type { StreamFrameSinkFrame, StreamFrameSinkShape } from "../stream-frame-sink.ts";
 
 export interface FollowLogsAppOptions extends LogsAppOptions {
+  /**
+   * Optional abort hook for the follow drain. When omitted, follow streams
+   * until the running fiber is interrupted (promise callers pass a signal to
+   * `Effect.runPromise(effect, { signal })`); Scope cleanup releases the
+   * provider log streams on either cancellation path.
+   */
   readonly signal?: AbortSignal;
 }
 
