@@ -20,6 +20,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-03 21:08 CDT - US-387 Review
+- Review fixed a provider-layer regression coverage gap: the `makeRuntimeProvider` `ensureRuntime` path now has focused tests proving darwin fails without a bundled machine runner instead of falling back to system Podman, and proving the managed-runtime machine command targets `${runtimeBinDir}/podman` when a bundle path is available.
+- Review notes (deferred/rejected): the pre-fix audit wording in `prd.json.notes` is retained as story provenance because `passes: true` plus this progress log record the resolved state; Windows `.exe` suffix handling in `managedRuntimePodmanArgv0` remains deferred as pre-existing helper behavior covered by provider-integration Windows CI, not a US-387 review blocker.
+- Verification: typecheck, lint, `check:paths-boundary`, focused runtime-path/setup-machine/ownership/ensure-runtime spot checks, and edited-file LSP diagnostics passed.
+---
+
 ## 2026-07-03 16:58 CDT - US-385 Review
 - Review fixed a setup-state ownership regression: rerunning `lando setup` after Lando created the managed Podman machine no longer overwrites `machine.createdByLando: true` with `false` when the already-running VM is observed on the second setup pass, so a later `lando uninstall --purge` still tears down the Lando-owned machine automatically.
 - Review also tightened the `meta:uninstall` command spec environment type so scenario tests see the command as self-contained (`R = never`) instead of widened to `unknown`.
