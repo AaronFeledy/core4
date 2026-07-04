@@ -51,3 +51,15 @@ Beta 1 ships the plugin trust management surface now: `meta:plugin:trust list` p
 Trust scope is source-specific. npm/registry plugin installs are keyed to the requested package identity (for example `@lando/plugin-php` from `lando plugin:add @lando/plugin-php@1.2.3`), not to attacker-controlled package manifest or `landoPlugin.name` fields. Git plugin sources require explicit `--trust` for the install session until a future git-source identity policy ships. Local/linked plugin workflows use resolved absolute authoring roots: `meta:plugin:trust-authoring-root <abs>` applies only to plugin authoring roots resolved from local/link flows, never to npm registry packages unpacked into Lando's managed plugin cache.
 
 Flag model: `--trust` on `lando plugin:add` is an explicit one-shot install confirmation and persists the npm/registry package identity when persistent trust storage is available. non-interactive installs never prompt; an untrusted package with postinstall scripts is installed inertly with scripts disabled and remediation pointing at `lando plugin:trust <package>`. Interactive installs may prompt with the existing trusted-host-code wording for packages that need trust outside the postinstall-gated inert path; accepting that prompt trusts only the current Lando process session unless the user runs a persistent trust command.
+
+## Release-automation posture decision
+
+Beta 1 runs the full signed release **manually until RC**. The generated `release` workflow stays scoped to dev prereleases only: it republishes the ci-built `linux-x64` binary as a `v4.0.0-dev.N` GitHub prerelease and publishes npm `dev`-tag packages. Nothing in CI invokes the 13-stage signed release orchestrator (`scripts/release.ts`).
+
+Rationale: the orchestrator is fully implemented and credential-gated, but release signing credential ownership (Apple notarization, Windows certificate, cosign/OIDC identity) is unassigned and no signing secrets are wired into any workflow. Wiring the full pipeline into CI now would produce a job that warning-skips every signing stage — the appearance of an automated release without a trustworthy signed artifact. Keeping the pipeline manual means a run either produces a genuinely signed release or fails closed. Full-pipeline CI is an explicit RC gate, not a Beta 1 deliverable.
+
+Operational contract: maintainers cut `4.0.0-beta.N` by invoking `scripts/release.ts` by hand per `docs/release-runbook.md`, which documents the exact invocation, the required per-stage credentials, and the verification steps. Local rehearsal (`LOCAL_REHEARSAL=1`) exercises stage ordering without credentials.
+
+Platform vocabulary is preserved across domains: CI/release artifact ids use `windows-x64`; the `win32-x64` runtime host key stays confined to the runtime-bundle and mutagen host-key domain and never appears in the release workflow.
+
+Revisit at RC: assign credential owners, then decide whether to promote the full orchestrator into a credential-gated CI workflow.

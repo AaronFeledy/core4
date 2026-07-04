@@ -462,6 +462,31 @@ describe("ci workflow codegen", () => {
   );
 
   test(
+    "documents dev-prerelease scope and manual signed-pipeline posture in the release workflow header",
+    async () => {
+      await runCodegen();
+
+      const workflow = await readFile(releaseWorkflowPath, "utf8");
+      const generator = await readFile(releaseWorkflowGeneratorPath, "utf8");
+
+      expect(workflow).toContain("Scope: dev prerelease only");
+      expect(workflow).toContain("scripts/release.ts");
+      expect(workflow).toContain("invoked manually, not by this workflow");
+      expect(workflow).toContain("docs/release-runbook.md");
+      expect(workflow).not.toContain("beta-1-decisions");
+
+      expect(workflow.startsWith(`${generatedReleaseHeader}\n`)).toBe(true);
+      expect(workflow.indexOf("Scope: dev prerelease only")).toBeLessThan(workflow.indexOf("name: release"));
+
+      // windows-x64 is the CI/release platform id; win32-x64 is the runtime host key, a separate
+      // domain that must never leak into the release workflow or its generator.
+      expect(workflow).not.toContain("win32-x64");
+      expect(generator).not.toContain("win32-x64");
+    },
+    codegenTestTimeout,
+  );
+
+  test(
     "generates the five-platform PR CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
