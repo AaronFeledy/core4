@@ -353,6 +353,17 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
     }, 30_000);
 
+    test("app config translate: space-separated form dispatches like the canonical id", async () => {
+      const source = await runSourceCli(["app", "config", "translate", "--list", "--format=json"]);
+      const compiled = await runCompiledCli(["app", "config", "translate", "--list", "--format=json"]);
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+      const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout));
+      const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout));
+      expect(compiledEnvelope).toEqual(sourceEnvelope);
+      expect(compiledEnvelope.command).toBe("app:config:translate");
+    }, 30_000);
+
     test("meta:shellenv invalid --shell fails on both paths", async () => {
       const source = await runSourceCli(["meta:shellenv", "--shell=fish"]);
       const compiled = await runCompiledCli(["meta:shellenv", "--shell=fish"]);

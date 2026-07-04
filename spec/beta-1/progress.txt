@@ -22,6 +22,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-04 08:35:31 CDT - US-390 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync` completed with the local runtime-bundle manifest; a throwaway app exercised `lando app config translate --list`, `--detect`, no-arg autodetect, and `--from ... --file ...` through the compiled binary, confirming list JSON succeeds and the empty production translator registry returns the no-translators remediation without writing `.canonical` or `.bak` side-effect files.
+- Fixed a real compiled-binary dispatch regression at the root cause: the space-separated `lando app config translate ...` form was falling through to app tooling as `app:app`; compiled mode now normalizes the `app config ...` phrase family to the canonical app-config command ids after universal flag parsing, with parity coverage for `app config translate --list --format=json`.
+- Adjacent compiled smokes passed for `app config lint --format json`, `app config --format json`, `app config set --help`, and `config --help`; no containers were left running and scenario temp apps were removed.
+- **Learnings for future iterations:** Real compiled-binary verification must exercise the user-facing space-separated command phrase, not only the colon canonical id; the hand-rolled compiled dispatcher can otherwise pass canonical-id parity while failing the phrase users type from the spec.
+---
+
 ## 2026-07-04 08:04:12 CDT - US-390 Review
 - Review fixed four blockers in the config-translate flow: `--file` inputs are now parsed at the CLI boundary and rejected when absolute, empty, backslash-rooted, Windows-absolute, or `..`-traversing before any translator sees them; `lando app config translate --detect` now reports translator detection matches without generating a preview or running translation, on both source and compiled dispatch paths; no-arg autodetection now feeds translators the real app-root source file list instead of only `.lando.yml`; and the command result schema snapshot was regenerated for the new tagged-union result shapes.
 - Review notes (deferred/rejected): translator diagnostic newline sanitization is deferred as non-blocking because diagnostics are plugin-trust-bound preview text only and are never written by `--write`; the pre-existing oversized command/test modules remain a follow-up refactor concern, not widened during this focused Review repair.

@@ -1779,6 +1779,17 @@ const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> 
   );
 };
 
+const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] !== "app" || argv[1] !== "config") return argv;
+  if (argv[2] === "translate") return ["app:config:translate", ...argv.slice(3)];
+  if (argv[2] === "lint") return ["app:config:lint", ...argv.slice(3)];
+  if (argv[2] === "set") return ["app:config:set", ...argv.slice(3)];
+  if (argv[2] === "unset") return ["app:config:unset", ...argv.slice(3)];
+  if (argv[2] === "edit") return ["app:config:edit", ...argv.slice(3)];
+  if (argv[2] === "validate") return ["app:config:validate", ...argv.slice(3)];
+  return ["app:config", ...argv.slice(2)];
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
@@ -1818,6 +1829,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   } else {
     setActiveResultFormat(DEFAULT_RESULT_FORMAT);
   }
+
+  argv = normalizeCompiledCommandArgv(argv);
 
   setActiveCommandId(resolveCanonicalCommandId(argv[0]));
 
