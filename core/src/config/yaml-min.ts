@@ -121,9 +121,17 @@ const parseMap = (
   while (index < lines.length) {
     const line = lines[index];
     if (line === undefined || line.indent < indent) break;
-    if (line.indent > indent) throw new MinimalYamlError(`Malformed YAML indentation at line ${line.line}`);
-    if (line.text.startsWith("- ")) break;
+    if (line.text.startsWith("- ")) {
+      if (line.indent > indent) throw new MinimalYamlError(`Malformed YAML indentation at line ${line.line}`);
+      break;
+    }
 
+    // A `key: value` line indented deeper than this map's own level (e.g. a
+    // stray extra indent after a sibling scalar) has nowhere valid to nest —
+    // the preceding key already consumed a scalar value, so it cannot hold a
+    // child map. Record it on this map instead of hard-failing the whole
+    // file; `parseMinimalYaml` favors recovering a usable root object over
+    // rejecting a config.yml for a single misindented line.
     const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
     if (match === null) throw new MinimalYamlError(`Malformed YAML at line ${line.line}`);
 
