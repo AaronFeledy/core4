@@ -374,12 +374,22 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   }
 
   const failed = executed.some((step) => step.outcome === "failed");
-  // A purge can remove userDataRoot itself, so the report goes to a fallback location
-  // (OS temp dir) that survives the purge instead of recreating the just-removed root.
-  const reportTarget = existsSync(userDataRoot)
-    ? uninstallReportPath(userDataRoot)
-    : await fallbackUninstallReportPath(options.reportFallbackDir);
-  const reportPath = failed ? await writeUninstallReport(reportTarget, mode, executed) : undefined;
+  // Only resolve (and possibly mkdtemp) a report location when there is actually a
+  // failure report to write; a clean run must never allocate a fallback temp dir.
+  // Writing the report is best-effort: if it throws (e.g. the fallback dir itself is
+  // unwritable) the uninstall result still reports the real step outcomes instead of
+  // rejecting the whole promise.
+  let reportPath: string | undefined;
+  if (failed) {
+    const reportTarget = existsSync(userDataRoot)
+      ? uninstallReportPath(userDataRoot)
+      : await fallbackUninstallReportPath(options.reportFallbackDir);
+    try {
+      reportPath = await writeUninstallReport(reportTarget, mode, executed);
+    } catch {
+      reportPath = undefined;
+    }
+  }
   return {
     dryRun: false,
     refused: false,
