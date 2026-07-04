@@ -301,7 +301,7 @@
       ],
       "priority": 17,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-08. Audit: .github/workflows/release.yml runs only dev-prerelease-linux-x64 + npm-alpha-packages; nothing invokes the 13-stage pipeline. May be intentional — hence a decision story, not a blind implementation story."
+      "notes": "Origin: PRD-ALPHA4-08. Decision: Beta 1 runs the full signed 13-stage release manually until RC because signing credential ownership is unassigned and no signing secrets are wired into CI. The generated release workflow remains dev-prerelease-only; maintainers invoke scripts/release.ts per docs/release-runbook.md. Full-pipeline CI reopens at RC once credential owners are assigned."
     },
     {
       "id": "US-389",

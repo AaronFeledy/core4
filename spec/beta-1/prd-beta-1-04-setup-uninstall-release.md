@@ -135,4 +135,4 @@ PRD-ALPHA4-01 (setup & uninstall) and PRD-ALPHA4-08/-09/-10 (release, supply cha
 ## Open Questions
 
 - Is a partial mac/win managed-machine path acceptable for Beta 1 with full parity at RC? If so, US-387's scope must be cut down *in the PRD text*, not silently.
-- Who owns release credentials (Apple notarization, Windows cert, cosign identity) for CI, and are they available before RC? This gates the US-388 decision.
+- Who owns release credentials (Apple notarization, Windows cert, cosign identity) for CI, and are they available before RC? Resolved for US-388: credential ownership is unassigned for Beta 1, so the full signed release remains manual until RC; see `docs/beta-1-decisions.md` and `docs/release-runbook.md`.

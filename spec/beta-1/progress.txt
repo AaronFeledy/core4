@@ -366,3 +366,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Platform-id vocabulary is two domains: CI/release artifact ids are `windows-x64` (see `scripts/ci-platforms.ts` `CI_PLATFORMS`); the `win32-x64` runtime host key lives only in `scripts/build-runtime-bundle.ts` and `scripts/build-mutagen-versions.ts`. Never introduce `win32-x64` into `.github/workflows/*`.
   - `scripts/release.ts` scopes a run to one platform via `LANDO_RELEASE_PLATFORM` (CI/release id) and warning-skips credential-gated stages under `LOCAL_REHEARSAL=1`; both are the sanctioned manual-invocation levers for the runbook.
 ---
+
+## 2026-07-03 22:26 CDT - US-388 Review
+- Review fixed the remaining decision-record gap: `spec/beta-1/prd.json` now records the accepted manual-until-RC release posture in the US-388 story notes, and the Beta 1 source PRD open question now points at the resolved decision instead of reading as still-gating.
+- Review notes (deferred/rejected): workflow `contents: write`/`id-token: write` permissions are unchanged pre-existing dev-prerelease behavior, not a review blocker for this decision story; runbook secret environment variable names are operational documentation, not credential leakage.
+- Verification: typecheck, lint, focused release workflow/release orchestrator spot checks, PRD JSON validation, codegen idempotency, and edited-file diagnostics passed.
+---
