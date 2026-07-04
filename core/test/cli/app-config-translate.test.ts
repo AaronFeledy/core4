@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -161,6 +161,26 @@ describe("appConfigTranslate", () => {
     expect(result.mode).toBe("detect");
     if (result.mode !== "detect") throw new Error("expected detect mode");
     expect(result.files).toContain("docker-compose.yml");
+  });
+
+  test("autodetection prunes node_modules, .git, vendor and tmp trees", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    await mkdir(join(cwd, "node_modules", "some-dep"), { recursive: true });
+    await Bun.write(join(cwd, "node_modules", "some-dep", "docker-compose.yml"), "services: {}\n");
+    await mkdir(join(cwd, ".git", "objects"), { recursive: true });
+    await Bun.write(join(cwd, ".git", "objects", "compose.yml"), "services: {}\n");
+    await mkdir(join(cwd, "vendor", "pkg"), { recursive: true });
+    await Bun.write(join(cwd, "vendor", "pkg", "docker-compose.yml"), "services: {}\n");
+    await mkdir(join(cwd, "tmp"), { recursive: true });
+    await Bun.write(join(cwd, "tmp", "docker-compose.yml"), "services: {}\n");
+    await Bun.write(join(cwd, "docker-compose.yml"), "services: {}\n");
+
+    const translators = [makeTranslator("compose", {})];
+    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
+
+    expect(result.mode).toBe("detect");
+    if (result.mode !== "detect") throw new Error("expected detect mode");
+    expect(result.files).toEqual([".lando.yml", "docker-compose.yml"]);
   });
 
   test("--from forces a specific translator", async () => {

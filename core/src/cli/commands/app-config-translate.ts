@@ -155,6 +155,13 @@ const parseSourceFilePath = (file: string): Effect.Effect<PortablePath, ConfigTr
   return Effect.succeed(portable as PortablePath);
 };
 
+// Directories that never contain application config sources. Descending into
+// these makes default discovery slow (`node_modules` can hold thousands of
+// files) and feeds translators spurious paths, such as a nested dependency's
+// own `docker-compose.yml`. Mirrors the app-mount sync excludes convention
+// (`FILE_SYNC_DEFAULT_EXCLUDES` in `services/planner.ts`).
+const DISCOVERY_PRUNED_DIRECTORIES: ReadonlySet<string> = new Set(["node_modules", ".git", "vendor", "tmp"]);
+
 const discoverSourceFiles = (
   appRoot: string,
 ): Effect.Effect<ReadonlyArray<PortablePath>, ConfigTranslateError> =>
@@ -166,6 +173,7 @@ const discoverSourceFiles = (
         for (const entry of entries) {
           const absolute = join(dir, entry.name);
           if (entry.isDirectory()) {
+            if (DISCOVERY_PRUNED_DIRECTORIES.has(entry.name)) continue;
             await visit(absolute);
             continue;
           }
