@@ -2033,7 +2033,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "app:shell": {
       aliases: ["shell"],
       args: {},
-      description: "Open an interactive shell in a Lando service.",
+      description: "Open an interactive host shell for the current app, or a service shell with --service.",
       flags: {
         format: {
           description: "Output format.",
@@ -2052,15 +2052,27 @@ export const COMPILED_OCLIF_MANIFEST = {
         },
         service: {
           char: "s",
-          description: "Service to open a shell in.",
+          description: "Open a shell inside this service instead of on the host.",
           name: "service",
           hasDynamicHelp: false,
           multiple: false,
           type: "option",
         },
         host: {
-          description: "Open a host shell scoped to the current app.",
+          description: "Deprecated: host is the default; --host is redundant.",
           name: "host",
+          allowNo: false,
+          type: "boolean",
+        },
+        "no-history": {
+          description: "Do not persist host shell history for this session.",
+          name: "no-history",
+          allowNo: false,
+          type: "boolean",
+        },
+        "no-interactive": {
+          description: "Run the host shell without requiring a TTY (agents/CI).",
+          name: "no-interactive",
           allowNo: false,
           type: "boolean",
         },
@@ -2072,11 +2084,11 @@ export const COMPILED_OCLIF_MANIFEST = {
       pluginAlias: "@lando/core",
       pluginName: "@lando/core",
       pluginType: "core",
-      strict: false,
+      strict: true,
       enableJsonFlag: false,
       landoSpec: {
         id: "app:shell",
-        summary: "Open an interactive shell in a Lando service.",
+        summary: "Open an interactive host shell for the current app, or a service shell with --service.",
         namespace: "app",
         topLevelAlias: true,
         bootstrap: "app",

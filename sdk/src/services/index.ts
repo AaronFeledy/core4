@@ -138,6 +138,8 @@ import type {
   ProcessSpawnOptions,
   ProcessStreamChunk,
   ShellCommandOptions,
+  ShellInteractiveResult,
+  ShellInteractiveSpec,
 } from "./process.ts";
 import type {
   AppSelector,
@@ -581,6 +583,9 @@ export declare class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
       path: string,
       options?: ShellCommandOptions,
     ) => Effect.Effect<ProcessResult, ShellExecError>;
+    readonly interactive: (
+      spec: ShellInteractiveSpec,
+    ) => Effect.Effect<ShellInteractiveResult, ShellExecError>;
   }
 >() {}
 

@@ -1,16 +1,15 @@
 /**
- * `lando shell` — host-mode shell scoped to the current app or service-mode
- * shell inside a running service.
+ * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
  * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode (`--host`) opens a host shell rooted at the app root.
+ * Host mode uses `ShellRunner` for interactive or non-interactive execution on the host.
  */
-import { spawn as nodeSpawn } from "node:child_process";
-import { Chunk, Effect, Stream } from "effect";
+import { Chunk, DateTime, Effect, Stream } from "effect";
 
 import {
   type AppIdReservedError,
   type CapabilityError,
+  type DeprecatedSurfaceError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
@@ -22,25 +21,32 @@ import {
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
-  ShellExecError,
+  type ShellExecError,
+  ShellRequiresTtyError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
+  DeprecationService,
   type ExecTarget,
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
+  ShellRunner,
 } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../config/paths.ts";
+import { quoteShellPath } from "../../services/shell-quote.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
 
 export interface ShellAppOptions {
   readonly host?: boolean;
   readonly service?: string;
+  readonly noHistory?: boolean;
+  readonly noInteractive?: boolean;
   readonly user?: string;
   readonly signal?: AbortSignal;
   readonly shellPath?: string;
@@ -48,8 +54,8 @@ export interface ShellAppOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly io?: ShellIO;
-  /** Test seam: inject a child-process launcher. */
-  readonly launch?: ShellLauncher;
+  readonly isInteractive?: () => boolean;
+  readonly historyFile?: string;
 }
 
 export interface ShellTerminalSize {
@@ -96,15 +102,6 @@ const processShellIO: ShellIO = {
   },
 };
 
-export interface ShellLaunchSpec {
-  readonly shell: string;
-  readonly args: ReadonlyArray<string>;
-  readonly cwd: string;
-  readonly env: Readonly<Record<string, string>>;
-}
-
-export type ShellLauncher = (spec: ShellLaunchSpec) => Promise<{ readonly exitCode: number }>;
-
 export interface ShellAppResult {
   readonly mode: "host" | "service";
   readonly app: string;
@@ -117,6 +114,7 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
+  | DeprecatedSurfaceError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -130,28 +128,33 @@ export type ShellAppError =
   | ProviderError
   | ProviderUnavailableError
   | ShellExecError
+  | ShellRequiresTtyError
   | ToolingExecError;
 
-export type ShellAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+export type ShellAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry | ShellRunner;
 
-const defaultLauncher: ShellLauncher = (spec) =>
-  new Promise((resolve, reject) => {
-    const child = nodeSpawn(spec.shell, [...spec.args], {
-      cwd: spec.cwd,
-      env: { ...spec.env },
-      stdio: "inherit",
-    });
-    child.once("exit", (code, signal) => {
-      if (typeof code === "number") {
-        resolve({ exitCode: code });
-        return;
-      }
-      resolve({ exitCode: typeof signal === "string" ? 1 : 0 });
-    });
-    child.once("error", (cause) => {
-      reject(cause);
-    });
-  });
+const HOST_FLAG_DEPRECATION_ID = "app:shell --host";
+
+const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, DeprecatedSurfaceError> => {
+  if (!enabled) return Effect.void;
+  return Effect.serviceOption(DeprecationService).pipe(
+    Effect.flatMap((deprecations) => {
+      if (deprecations._tag === "None") return Effect.void;
+      return deprecations.value.lookup("flag", HOST_FLAG_DEPRECATION_ID).pipe(
+        Effect.flatMap((notice) =>
+          notice._tag === "None"
+            ? Effect.void
+            : deprecations.value.use({
+                kind: "flag",
+                id: HOST_FLAG_DEPRECATION_ID,
+                notice: notice.value,
+                timestamp: DateTime.unsafeMake(new Date().toISOString()),
+              }),
+        ),
+      );
+    }),
+  );
+};
 
 const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   const out: Record<string, string> = {};
@@ -251,6 +254,8 @@ export const shellApp = (
   options: ShellAppOptions = {},
 ): Effect.Effect<ShellAppResult, ShellAppError, ShellAppServices> =>
   Effect.gen(function* () {
+    yield* recordHostFlagDeprecation(options.host === true);
+
     const landofileService = yield* LandofileService;
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
@@ -260,7 +265,8 @@ export const shellApp = (
     const plan = yield* planner.plan(landofile, capabilities);
 
     const shell = options.shellPath ?? process.env.SHELL ?? "/bin/sh";
-    if (!options.host) {
+    const useServiceMode = options.service !== undefined && options.service.length > 0;
+    if (useServiceMode) {
       const io = options.io ?? processShellIO;
       const service = yield* resolveService(options.service, plan);
       const provider = yield* registry.select(plan);
@@ -315,6 +321,19 @@ export const shellApp = (
       };
     }
 
+    const shellRunner = yield* ShellRunner;
+    const interactive =
+      options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
+    if (options.noInteractive !== true && !interactive) {
+      return yield* Effect.fail(
+        new ShellRequiresTtyError({
+          message: "lando shell requires an interactive terminal (TTY).",
+          remediation:
+            "Re-run with `lando shell --no-interactive` to execute the host shell without a TTY, or run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
+        }),
+      );
+    }
+
     const cwd = options.cwd ?? String(plan.root);
     const env: Record<string, string> = {
       ...filterStringEnv(process.env),
@@ -324,19 +343,46 @@ export const shellApp = (
       LANDO_APP_ROOT: String(plan.root),
     };
 
-    const launch = options.launch ?? defaultLauncher;
-    const launched = yield* Effect.tryPromise({
-      try: () => launch({ shell, args: options.args ?? [], cwd, env }),
-      catch: (cause) =>
-        new ShellExecError({
-          message:
-            cause instanceof Error
-              ? `Failed to launch host shell ${shell}: ${cause.message}`
-              : `Failed to launch host shell ${shell}.`,
-          command: [shell, ...(options.args ?? [])].join(" "),
-          cwd,
-          cause,
+    let historyFile: string | undefined;
+    if (options.noHistory === true) {
+      env.HISTFILE = "/dev/null";
+      env.HISTSIZE = "0";
+      env.HISTFILESIZE = "0";
+    } else {
+      historyFile = options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root));
+    }
+
+    if (options.noInteractive === true) {
+      const command = [shell, ...(options.args ?? [])].map(quoteShellPath).join(" ");
+      const result = yield* shellRunner.exec(command, { cwd, env }).pipe(
+        Effect.catchTag("ShellExecError", (error) => {
+          if (typeof error.exitCode === "number") {
+            return Effect.succeed({
+              exitCode: error.exitCode,
+              stdout: error.stdout ?? "",
+              stderr: error.stderr ?? "",
+            });
+          }
+          return Effect.fail(error);
         }),
+      );
+      yield* Effect.all([emitOptionalStdout(result.stdout), emitOptionalStderr(result.stderr)]);
+      return {
+        mode: "host" as const,
+        app: plan.name,
+        shell,
+        cwd,
+        exitCode: result.exitCode,
+      };
+    }
+
+    const launched = yield* shellRunner.interactive({
+      shell,
+      args: options.args ?? [],
+      cwd,
+      env,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(historyFile === undefined ? {} : { historyFile }),
     });
 
     return {

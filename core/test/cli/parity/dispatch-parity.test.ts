@@ -502,6 +502,32 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Flag --shell expects one of these values: posix, powershell, pwsh");
     }, 30_000);
 
+    test("shell rejects a bare positional service name on both paths", async () => {
+      const source = await runSourceCli(["shell", "web"]);
+      const compiled = await runCompiledCli(["shell", "web"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      // Source-mode OCLIF topic resolution intercepts `shell web` as the id
+      // `shell:web` before arg validation; compiled dispatch reaches the
+      // command's argv validation. Both reject loudly with exit 2 instead of
+      // silently opening a host shell.
+      expect(source.stderr).toContain("command shell:web not found");
+      expect(compiled.stderr).toContain("Unexpected argument: web");
+    }, 30_000);
+
+    test("shell --service followed by another flag fails on both paths instead of eating it", async () => {
+      const source = await runSourceCli(["shell", "--service", "--no-history"]);
+      const compiled = await runCompiledCli(["shell", "--service", "--no-history"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(source.stderr).toContain("Flag --service expects a value");
+      expect(compiled.stderr).toContain("Flag --service expects a value");
+    }, 30_000);
+
     test("shellenv alias rejects unknown flags on both paths", async () => {
       const source = await runSourceCli(["shellenv", "--definitely-not-a-shellenv-flag"]);
       const compiled = await runCompiledCli(["shellenv", "--definitely-not-a-shellenv-flag"]);

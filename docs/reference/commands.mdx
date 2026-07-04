@@ -390,7 +390,7 @@ Flags:
 
 ## `lando app:shell`
 
-Open an interactive shell in a Lando service.
+Open an interactive host shell for the current app, or a service shell with --service.
 
 Aliases: `lando shell`
 
@@ -398,8 +398,10 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--host` | Open a host shell scoped to the current app. |
-| `--service, -s` | Service to open a shell in. |
+| `--host` | Deprecated: host is the default; --host is redundant. |
+| `--no-history` | Do not persist host shell history for this session. |
+| `--no-interactive` | Run the host shell without requiring a TTY (agents/CI). |
+| `--service, -s` | Open a shell inside this service instead of on the host. |
 
 ## `lando app:ssh`
 

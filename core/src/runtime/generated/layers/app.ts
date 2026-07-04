@@ -17,6 +17,7 @@ import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
 import { LandofileServiceLive } from "../../../landofile/service.ts";
 import { CommandRegistryLive } from "../../../services/command-registry.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
+import { ShellRunnerLive } from "../../../services/shell-runner.ts";
 import { ProviderExecToolingEngineLive } from "../../../services/tooling-engine.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeProviderBootstrapLayer } from "./provider.ts";
@@ -29,6 +30,7 @@ export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, providerBase))),
     AppPlannerLive.pipe(Layer.provide(providerBase)),
     ProviderExecToolingEngineLive,
+    ShellRunnerLive,
     FileSyncEngineLive.pipe(Layer.provide(providerBase)),
   );
 };

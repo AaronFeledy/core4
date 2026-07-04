@@ -22,6 +22,7 @@
 - `@lando/sdk` publishes an additive contract-only `HttpClient` surface for US-330: serializable request/response/upload schemas, HTTP call lifecycle events, tagged errors, the `HttpClient` service tag, and plugin manifest `contributes.httpClients[]`. Core runtime wiring lands in US-331 (`HttpClientLive` at bootstrap `minimal`). `HttpRequest` and `HttpUploadRequest` additively gain an optional `onBehalfOf?: string` correlation field (matching the existing `pre-http-call`/`post-http-call` event field) so a `Downloader`-issued call is tagged and not double-counted; `HttpRequest` additively gains `offline?: boolean` so callers can demand fail-fast/no-connect behavior. These fields are optional and decode verbatim, registering no new JSON Schema name.
 - The `ScanEndpoint` service-layer interface additively gains optional `outcome?: ProbeOutcome` and `detail?: string` fields so probe-backed `UrlScanner` implementations can report the §10.5 green/yellow/red verdict and a redacted structured detail per endpoint. Both fields are optional and type-only (plain interface, no JSON Schema artifact); existing scanners and the `runScannerContract` suite are unaffected.
 - The `ArtifactRef` service-layer interface additively gains an optional `digest?: string` so `RuntimeProvider.pullArtifact` can report the resolved image digest. `DataMover`'s generic-fallback `tar` helper image is pinned in a generated `{ image, digest }` manifest and resolved through `pullArtifact`, digest-verified before the helper container runs. The field is optional and type-only (no JSON Schema artifact).
+- `ShellRunner` additively gains `interactive(spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>` so the host-mode `lando shell` REPL launches an interactive inherited-stdio shell through the service instead of spawning `child_process` in the command body. New type-only exports from `@lando/sdk/services`: `ShellInteractiveSpec`, `ShellInteractiveResult`. The frozen `ShellRunner` method-signature fixture is updated to match. `@lando/sdk/errors` additively gains the `ShellRequiresTtyError` tagged error (raised when `app:shell` runs without a TTY, e.g. `--no-interactive`, redirected stdin, or CI); like `ProbeError`, it registers no JSON Schema and widens no frozen error union.
 
 ## Additive Alpha schema exports
 
@@ -297,6 +298,7 @@
 - `LandoPaths.tunnelRegistryFile`
 - `LandoPaths.tunnelRunDir`
 - `LandoPaths.managedFileLedger`
+- `LandoPaths.shellHistoryFile`
 
 ## Additive Beta schema fields
 

@@ -65,6 +65,7 @@ export interface LandoPaths {
   readonly tunnelRunDir: string;
   readonly appCacheDir: (appName: string, appRoot: string) => string;
   readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
+  readonly shellHistoryFile: (appName: string, appRoot: string) => string;
   readonly fileSyncSessionsDir: string;
   // userConf-scoped
   readonly configFile: string;

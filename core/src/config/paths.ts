@@ -295,6 +295,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     tunnelRunDir: j(userDataRoot, "run", "tunnels"),
     appCacheDir,
     appPlanCacheFile: (appName: string, appRoot: string) => j(appCacheDir(appName, appRoot), "plan.bin"),
+    shellHistoryFile: (appName: string, appRoot: string) =>
+      j(userCacheRoot, "shell", `${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}`, "history"),
     fileSyncSessionsDir: j(userCacheRoot, "file-sync", "sessions"),
     // userConf-scoped
     configFile: j(userConfRoot, "config.yml"),

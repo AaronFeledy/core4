@@ -23,6 +23,20 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+export interface ShellInteractiveSpec {
+  readonly shell: string;
+  readonly args?: ReadonlyArray<string>;
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly signal?: AbortSignal;
+  /** Ensures this file's parent dir exists and injects `HISTFILE` into the shell. */
+  readonly historyFile?: string;
+}
+
+export interface ShellInteractiveResult {
+  readonly exitCode: number;
+}
+
 export interface ProcessStreamChunk {
   readonly kind: "stdout" | "stderr";
   readonly chunk: Uint8Array;
@@ -55,6 +69,9 @@ export class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
       path: string,
       options?: ShellCommandOptions,
     ) => Effect.Effect<ProcessResult, ShellExecError>;
+    readonly interactive: (
+      spec: ShellInteractiveSpec,
+    ) => Effect.Effect<ShellInteractiveResult, ShellExecError>;
   }
 >() {}
 

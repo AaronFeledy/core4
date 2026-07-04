@@ -118,7 +118,8 @@
     "ShellRunner": [
       "exec: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
       "run: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
-      "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>"
+      "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
+      "interactive: (spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>"
     ]
   }
 }
