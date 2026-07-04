@@ -25,6 +25,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-04 14:00 CDT - US-392 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync` completed with the checksum-verified local runtime-bundle manifest; a throwaway app exercised default host `lando shell` cwd/env/exit-code behavior, `--no-history`, `--host` deprecation rendering, and the fixed `--no-interactive` non-TTY exit-code path.
+- Fixed a real compiled-binary acceptance blocker at the root cause: `--no-interactive` now routes host shell execution through `ShellRunner.exec` instead of failing with `ShellRequiresTtyError`, preserving deterministic exit-code propagation while leaving interactive TTY mode unchanged.
+- Adjacent compiled smokes passed for unknown `--service` failure, `app:shell --help`, `app:exec --help`, and `doctor --format=json`; the throwaway app was removed and no containers were started.
+- **Learnings for future iterations:** A shell command can pass unit tests through injected `shellApp` args while the real CLI exposes no pass-through args; Verify must drive interactive shell behavior through a real PTY/tmux pane and use user-controllable surfaces like `SHELL=/bin/false` to prove non-interactive exit propagation.
+---
+
 ## 2026-07-04 13:28:33 CDT - US-392 Review
 - Review fixed the deprecation-surface blocker for the host-default flip: passing the now-redundant `--host` flag records the registered `app:shell --host` deprecation use, so the existing renderer/doctor deprecation summary path can emit the runtime warning instead of only having a static registry entry.
 - Review notes (deferred/rejected): the full §8.2.3 `Bun.$` REPL with secret-redacted per-line history/events remains a documented Beta-1 gap rather than a US-392 acceptance blocker; the `--host` notice replacement text is a minor wording issue and was left unchanged to keep this review fix scoped to the inert-warning blocker.
