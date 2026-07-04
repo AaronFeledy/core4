@@ -43,6 +43,7 @@ import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
+import { globalConfigOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
@@ -629,5 +630,11 @@ describe("meta:global command effects", () => {
       expect(error._tag).toBe("LandofileWriteValidationError");
       expect(error.message).toContain("bogus");
     });
+  });
+
+  test("CLI wiring forwards a mistyped subcommand instead of dropping it to the view default", () => {
+    const options = globalConfigOptionsFromInput({ args: { subcommand: "bogus" }, flags: {} });
+
+    expect(options.subcommand).toBe("bogus");
   });
 });

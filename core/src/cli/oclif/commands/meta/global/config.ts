@@ -4,15 +4,11 @@ import {
   type GlobalConfigOptions,
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  type GlobalConfigSubcommand,
   globalConfig,
   renderGlobalConfigResult,
 } from "../../../../commands/meta/global-config.ts";
 import type { ValueType } from "../../../../config-write/write-core.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
-
-const isSubcommand = (s: unknown): s is GlobalConfigSubcommand =>
-  s === "view" || s === "set" || s === "unset" || s === "edit" || s === "validate";
 
 const isValueType = (s: unknown): s is ValueType =>
   s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
@@ -27,7 +23,10 @@ export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOption
   if (typeof input !== "object" || input === null) return {};
   const i = input as { args?: Record<string, unknown>; flags?: Record<string, unknown> };
   const opts: {
-    subcommand?: GlobalConfigSubcommand;
+    // Widened to `string` (not `GlobalConfigSubcommand`) so an unrecognized
+    // verb reaches `globalConfig()` and fails there, instead of being
+    // dropped here and silently defaulting to the view path.
+    subcommand?: string;
     key?: string;
     value?: string;
     type?: ValueType;
@@ -42,7 +41,7 @@ export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOption
   const type = i.flags?.type;
   const path = i.flags?.path;
   const editor = i.flags?.editor;
-  if (isSubcommand(subcommand)) opts.subcommand = subcommand;
+  if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
   if (typeof key === "string") opts.key = key;
   if (typeof value === "string") opts.value = value;
   if (isValueType(type)) opts.type = type;
