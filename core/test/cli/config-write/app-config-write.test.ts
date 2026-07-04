@@ -50,6 +50,14 @@ describe("app config set", () => {
     expect(await readLandofile()).toBe(before);
   });
 
+  test("--path is honored when no positional key is given", async () => {
+    const result = await run(
+      appConfigSet({ subcommand: "set", path: "services.web.type", value: "php:8.3", cwd: dir }),
+    );
+    expect(result.key).toBe("services.web.type");
+    expect(await readLandofile()).toContain("php:8.3");
+  });
+
   test("--type json parses structured values", async () => {
     await run(
       appConfigSet({
@@ -75,6 +83,13 @@ describe("app config unset", () => {
   test("missing key is a no-op change:false", async () => {
     const result = await run(appConfigUnset({ subcommand: "unset", key: "recipe", cwd: dir }));
     expect(result.changed).toBe(false);
+  });
+
+  test("--path is honored when no positional key is given", async () => {
+    await run(appConfigSet({ subcommand: "set", key: "services.web.type", value: "phpvalue", cwd: dir }));
+    const result = await run(appConfigUnset({ subcommand: "unset", path: "services.web.type", cwd: dir }));
+    expect(result.changed).toBe(true);
+    expect(await readLandofile()).not.toContain("phpvalue");
   });
 });
 

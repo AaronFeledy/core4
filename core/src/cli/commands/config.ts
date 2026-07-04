@@ -333,7 +333,7 @@ const metaConfigSet = (
   options: ConfigOptions,
 ): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     const raw = options.value;
     if (key === undefined || raw === undefined) {
       return yield* Effect.fail(
@@ -374,7 +374,7 @@ const metaConfigUnset = (
   options: ConfigOptions,
 ): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     if (key === undefined) {
       return yield* Effect.fail(
         new LandofileWriteValidationError({

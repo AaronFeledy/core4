@@ -45,6 +45,14 @@ describe("meta global config set", () => {
     expect(await readFileText()).toContain("php");
   });
 
+  test("--path is honored when no positional key is given", async () => {
+    const result = await run(
+      globalConfigSet({ subcommand: "set", path: "services.web.type", value: "php" }, filePath()),
+    );
+    expect(result.key).toBe("services.web.type");
+    expect(await readFileText()).toContain("php");
+  });
+
   test("--dry-run does not create the file", async () => {
     await run(
       globalConfigSet(
@@ -107,6 +115,15 @@ describe("meta global config unset", () => {
     );
     expect(result.changed).toBe(true);
     expect(await readFileText()).not.toContain("phpval");
+  });
+
+  test("--path is honored when no positional key is given", async () => {
+    await run(globalConfigSet({ subcommand: "set", key: "services.web.type", value: "phpval2" }, filePath()));
+    const result = await run(
+      globalConfigUnset({ subcommand: "unset", path: "services.web.type" }, filePath()),
+    );
+    expect(result.changed).toBe(true);
+    expect(await readFileText()).not.toContain("phpval2");
   });
 });
 

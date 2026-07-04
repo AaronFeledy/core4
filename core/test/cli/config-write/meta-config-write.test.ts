@@ -41,6 +41,14 @@ describe("meta config set (S4)", () => {
     expect(await readConfig()).toContain("renderer");
   });
 
+  test("--path is honored when no positional key is given", async () => {
+    const result = await run(
+      config({ subcommand: "set", path: "renderer", value: "json", configPath: configPath() }),
+    );
+    expect(result.key).toBe("renderer");
+    expect(await readConfig()).toContain("renderer");
+  });
+
   test("--dry-run does not create/modify the file", async () => {
     const result = await run(
       config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath(), dryRun: true }),
@@ -103,6 +111,13 @@ describe("meta config unset", () => {
   test("removes a key", async () => {
     await run(config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }));
     const result = await run(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
+    expect(result.changed).toBe(true);
+    expect(await readConfig()).not.toContain("renderer");
+  });
+
+  test("--path is honored when no positional key is given", async () => {
+    await run(config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }));
+    const result = await run(config({ subcommand: "unset", path: "renderer", configPath: configPath() }));
     expect(result.changed).toBe(true);
     expect(await readConfig()).not.toContain("renderer");
   });

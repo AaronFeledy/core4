@@ -114,7 +114,7 @@ export const globalConfigSet = (
   filePath: string,
 ): Effect.Effect<GlobalConfigResult, GlobalConfigWriteError, never> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     const raw = options.value;
     if (key === undefined || raw === undefined) {
       return yield* Effect.fail(
@@ -148,7 +148,7 @@ export const globalConfigUnset = (
   filePath: string,
 ): Effect.Effect<GlobalConfigResult, GlobalConfigWriteError, never> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     if (key === undefined) {
       return yield* Effect.fail(
         new LandofileWriteValidationError({

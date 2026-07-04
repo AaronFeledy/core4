@@ -136,7 +136,7 @@ export const appConfigSet = (
   options: AppConfigOptions,
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     const raw = options.value;
     if (key === undefined || raw === undefined) return yield* Effect.fail(missingArgsError());
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd());
@@ -172,7 +172,7 @@ export const appConfigUnset = (
   options: AppConfigOptions,
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
-    const key = options.key;
+    const key = options.key ?? options.path;
     if (key === undefined) {
       return yield* Effect.fail(
         new LandofileWriteValidationError({
