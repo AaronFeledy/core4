@@ -5,7 +5,7 @@
  *
  * This is the **single source of truth** for how `<userConfRoot>/config.yml` is
  * interpreted. `resolveUserDataRoot` runs on the `lando shellenv` fast path
- * (bootstrap `none`, no Effect runtime — spec §8.4 / PRD-02 US-004), so it
+ * (bootstrap `none`, no Effect runtime), so it
  * cannot import `ConfigService` (that module pulls in Effect). Previously
  * `roots.ts` hand-rolled its own line scanner, which diverged from
  * `parseConfigYaml` on duplicate keys, block-then-scalar, indented keys, and

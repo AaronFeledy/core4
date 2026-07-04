@@ -1,5 +1,5 @@
 /**
- * Pure `--type` value parser for config write verbs (§8.2.1). Parses a raw
+ * Pure `--type` value parser for config write verbs. Parses a raw
  * CLI string into an encoded value per the requested type. `string` is the
  * identity default; `number`/`boolean` are strict scalar parses; `json` is
  * `JSON.parse`; `yaml` handles YAML scalars and JSON-compatible flow

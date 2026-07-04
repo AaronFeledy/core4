@@ -1,5 +1,5 @@
 /**
- * Pure dot-path grammar for config write verbs (§8.2.1). Operates on plain
+ * Pure dot-path grammar for config write verbs. Operates on plain
  * encoded objects (records/arrays/scalars) — the wire form the canonical
  * Landofile serializer consumes. Supports dot separators and `[n]` bracket
  * array indexing, e.g. `services.appserver.environment.APP_ENV` and
