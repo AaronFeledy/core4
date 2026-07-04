@@ -1,9 +1,8 @@
 /**
- * `lando shell` — host-mode shell scoped to the current app or service-mode
- * shell inside a running service.
+ * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
  * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode (`--host`) opens a host shell rooted at the app root.
+ * Host mode uses `ShellRunner` for interactive or non-interactive execution on the host.
  */
 import { Chunk, DateTime, Effect, Stream } from "effect";
 
