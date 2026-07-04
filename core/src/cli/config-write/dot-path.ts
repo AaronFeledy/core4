@@ -73,11 +73,9 @@ const setRecursive = (
   const segment = segments[cursor];
   if (segment === undefined) return value;
   const isLast = cursor === segments.length - 1;
-  const nextWantsArray = !isLast && segments[cursor + 1]?.kind === "index";
   if (segment.kind === "key") {
     const clone = cloneContainer(container, false) as Record<string, unknown>;
     clone[segment.key] = isLast ? value : setRecursive(clone[segment.key], segments, cursor + 1, value);
-    void nextWantsArray;
     return clone;
   }
   const clone = cloneContainer(container, true) as unknown[];
