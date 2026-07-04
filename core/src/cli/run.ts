@@ -27,11 +27,7 @@ import { makeLandoRuntime } from "../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfigLint, renderConfigLintResult } from "./commands/app-config-lint.ts";
-import {
-  type AppConfigTranslateFormat,
-  appConfigTranslate,
-  renderConfigTranslateResult,
-} from "./commands/app-config-translate.ts";
+import { appConfigTranslate, renderConfigTranslateResult } from "./commands/app-config-translate.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import {
   type AppIncludesUpdateFormat,
@@ -856,9 +852,16 @@ const runAppConfigLint = (_argv: ReadonlyArray<string>): Promise<void> => {
 
 const parseAppConfigTranslateArgv = (
   argv: ReadonlyArray<string>,
-): { readonly write: boolean; readonly format: AppConfigTranslateFormat } => {
+): {
+  readonly write: boolean;
+  readonly list: boolean;
+  readonly from: string | undefined;
+  readonly files: ReadonlyArray<string>;
+} => {
   let write = false;
-  let format: AppConfigTranslateFormat = "text";
+  let list = false;
+  let from: string | undefined;
+  const files: Array<string> = [];
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
@@ -871,24 +874,44 @@ const parseAppConfigTranslateArgv = (
       i += 1;
       continue;
     }
+    if (arg === "--list") {
+      list = true;
+      i += 1;
+      continue;
+    }
+    const fromMatch = parseStringFlag(argv, i, "from");
+    if (fromMatch !== undefined) {
+      from = fromMatch.value;
+      i += fromMatch.consumed;
+      continue;
+    }
+    const fileMatch = parseStringFlag(argv, i, "file");
+    if (fileMatch !== undefined) {
+      files.push(fileMatch.value);
+      i += fileMatch.consumed;
+      continue;
+    }
     const formatMatch = parseStringFlag(argv, i, "format");
     if (formatMatch !== undefined) {
-      if (formatMatch.value === "json" || formatMatch.value === "text") format = formatMatch.value;
       i += formatMatch.consumed;
       continue;
     }
     i += 1;
   }
-  return { write, format };
+  return { write, list, from, files };
 };
 
 const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { write } = parseAppConfigTranslateArgv(argv);
-  const format = activeTextJsonFormat();
+  const { write, list, from, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
-    appConfigTranslate({ write }),
+    appConfigTranslate({
+      write,
+      list,
+      ...(from === undefined ? {} : { from }),
+      ...(files.length === 0 ? {} : { files }),
+    }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
-    (value) => renderConfigTranslateResult(value, format),
+    (value) => renderConfigTranslateResult(value),
   );
 };
 

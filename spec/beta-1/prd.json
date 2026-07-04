@@ -338,7 +338,7 @@
         "Lint passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.2.1 translate flow. Audit: core/src/cli/commands/app-config-translate.ts only supports cwd + --write."
     },
     {
