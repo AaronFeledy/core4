@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
@@ -63,6 +64,7 @@ export interface UninstallOptions {
   readonly teardownProviderMachines?: (
     userDataRoot: string,
   ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
+  readonly reportFallbackDir?: string;
 }
 
 export interface UninstallResult {
@@ -133,6 +135,9 @@ const installedBinaryStatus = (execPath: string, userDataRoot: string): Uninstal
 const keepDataProtectedStepIds = new Set(["global-app-state", "caches", "user-data-root", "user-cache-root"]);
 
 const uninstallReportPath = (userDataRoot: string): string => join(userDataRoot, "uninstall", "report.json");
+
+const fallbackUninstallReportPath = (reportFallbackDir: string): string =>
+  join(reportFallbackDir, "lando-uninstall-report.json");
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
 
@@ -316,11 +321,10 @@ export const buildUninstallPlan = (
 };
 
 const writeUninstallReport = async (
-  userDataRoot: string,
+  reportPath: string,
   mode: UninstallMode,
   steps: ReadonlyArray<UninstallPlanStep>,
 ): Promise<string> => {
-  const reportPath = uninstallReportPath(userDataRoot);
   const report: UninstallReport = {
     status: steps.some((step) => step.outcome === "failed") ? "failed" : "completed",
     mode,
@@ -368,9 +372,12 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   }
 
   const failed = executed.some((step) => step.outcome === "failed");
-  // Skip the report when the data root was purged: writing it would recreate the just-removed root.
-  const reportPath =
-    failed && existsSync(userDataRoot) ? await writeUninstallReport(userDataRoot, mode, executed) : undefined;
+  // A purge can remove userDataRoot itself, so the report goes to a fallback location
+  // (OS temp dir) that survives the purge instead of recreating the just-removed root.
+  const reportTarget = existsSync(userDataRoot)
+    ? uninstallReportPath(userDataRoot)
+    : fallbackUninstallReportPath(options.reportFallbackDir ?? tmpdir());
+  const reportPath = failed ? await writeUninstallReport(reportTarget, mode, executed) : undefined;
   return {
     dryRun: false,
     refused: false,

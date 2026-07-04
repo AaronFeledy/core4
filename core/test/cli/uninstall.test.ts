@@ -522,8 +522,9 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("purge failure after data-root removal does not recreate the data root for the report", async () => {
+  test("purge failure after data-root removal writes a resumable report to the fallback path", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const reportFallbackDir = join(root, "fallback");
     try {
       mkdirSync(join(userDataRoot, "global"), { recursive: true });
       mkdirSync(userCacheRoot, { recursive: true });
@@ -534,6 +535,7 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
+          _reportFallbackDir: reportFallbackDir,
           _remove: async (path: string) => {
             if (path === userCacheRoot) throw new Error("locked cache root");
             rmSync(path, { recursive: true, force: true });
@@ -542,16 +544,78 @@ describe("meta:uninstall", () => {
       );
 
       expect(result.failed).toBe(true);
-      expect(result.reportPath).toBeUndefined();
+      // The data root was purged; writing the report must never recreate it.
       expect(existsSync(userDataRoot)).toBe(false);
       expect(existsSync(join(userDataRoot, "uninstall"))).toBe(false);
+
+      // The resumable report survives at the fallback location and its path is reported.
+      const fallbackReportPath = join(reportFallbackDir, "lando-uninstall-report.json");
+      expect(result.reportPath).toBe(fallbackReportPath);
+      expect(existsSync(fallbackReportPath)).toBe(true);
+      const report = JSON.parse(readFileSync(fallbackReportPath, "utf-8"));
+      expect(report.status).toBe("failed");
+      expect(report.steps).toContainEqual(
+        expect.objectContaining({ id: "user-data-root", outcome: "completed" }),
+      );
+      expect(report.steps).toContainEqual(
+        expect.objectContaining({ id: "user-cache-root", outcome: "failed" }),
+      );
       expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
         outcome: "completed",
       });
       expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
         outcome: "failed",
       });
-      expect(formatUninstallResult(result)).toContain("Partial failure report: unavailable");
+      const rendered = formatUninstallResult(result);
+      expect(rendered).toContain(`Partial failure report: ${fallbackReportPath}`);
+      expect(rendered).not.toContain("Partial failure report: unavailable");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("re-run after a partial purge failure reconciles remaining steps from disk", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const reportFallbackDir = join(root, "fallback");
+    try {
+      mkdirSync(join(userDataRoot, "global"), { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+
+      const first = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _reportFallbackDir: reportFallbackDir,
+          _remove: async (path: string) => {
+            if (path === userCacheRoot) throw new Error("locked cache root");
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+      expect(first.failed).toBe(true);
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(true);
+
+      // Re-running the same command re-plans from live disk state: the already-removed
+      // data root is reconciled away and the still-present cache root is retried.
+      const second = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _reportFallbackDir: reportFallbackDir,
+          _remove: async (path: string) => {
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+      expect(second.failed).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(second.reportPath).toBeUndefined();
+      expect(second.steps.find((step) => step.id === "user-data-root")?.outcome).not.toBe("failed");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

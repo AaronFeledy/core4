@@ -298,3 +298,21 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Fixed a compiled-dispatch regression where `runDoctor` ignored `ctx.format === "ndjson"` and rendered text instead of the shared doctor NDJSON StreamFrame renderer.
 - **Learnings for future iterations:** Source/OCLIF doctor render tests are not enough for this seam; compiled `core/src/cli/run.ts` has a separate `runDoctor` render branch that must explicitly preserve NDJSON.
 ---
+
+## [2026-07-03 19:29:09 CDT] - Babysit
+- PR: #515 https://github.com/AaronFeledy/core4/pull/515
+- CI outcome: pass
+- Review feedback: fixed (guide drift skip added; Bugbot findings fixed for setup ownership read failures, legacy machine-state guidance, stdout draining, and Podman exit-125 handling)
+- Merge: merged (squash)
+---
+
+## 2026-07-03 19:45 CDT - US-386
+- `lando uninstall --purge` no longer loses its resumable failure report when the purge removes `userDataRoot` itself. `executeUninstall` now always writes the report on failure: to `<userDataRoot>/uninstall/report.json` when the data root survives, or to a fallback `<os-tmpdir>/lando-uninstall-report.json` when the data root is already gone — it never recreates the just-removed root. The chosen path is returned as `result.reportPath` and printed in the failure output (`Partial failure report: <path>`), so the "unavailable" dead-end is gone.
+- The report still enumerates every completed/failed/manual/skipped step with its remediation `detail`, and re-running the same command reconciles from live disk state (already-removed targets re-plan to skipped, still-present targets are retried) until it succeeds. Report writing continues to route through the sanctioned atomic helper `writeFileAtomicViaRename` (US-372), so the fallback write is fsync-before-rename durable too.
+- A new `_reportFallbackDir` test seam (mirrors the existing `_userDataRoot`/`_remove` seams) lets tests pin the fallback directory; production defaults to `os.tmpdir()`.
+- Verification: typecheck, lint, check:paths-boundary passed; uninstall suite green (20 tests) including the rewritten purge-after-removal test (report at fallback path, root not recreated, path printed) and a new re-run reconciliation test; adjacent uninstall-machines/runtime-service/provider-machines and both atomic-write suites green. Manual QA drove the real `uninstall()` on a real filesystem: purge removed the actual data root, the cache-root step failed, and a resumable report survived at the fallback tmp path with full step enumeration while the data root stayed removed.
+- **Learnings for future iterations:**
+  - The purge-failure report path is chosen by `existsSync(userDataRoot)`, not the injected `exists` seam, because it must reflect the REAL post-remove filesystem (the plan's `exists` seam is for planning, not the durability decision).
+  - `writeFileAtomicViaRename` mkdir-p's the report's parent dir, so the fallback dir need not pre-exist; a purge that removed `userDataRoot` still writes cleanly to `os.tmpdir()`.
+  - The compiled binary path (`core/src/cli/run.ts` `runMetaUninstall`) shares `uninstall()`/`renderUninstallResult`, so report-path changes stay in source/compiled parity with no separate wiring.
+---
