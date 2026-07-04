@@ -855,11 +855,13 @@ const parseAppConfigTranslateArgv = (
 ): {
   readonly write: boolean;
   readonly list: boolean;
+  readonly detect: boolean;
   readonly from: string | undefined;
   readonly files: ReadonlyArray<string>;
 } => {
   let write = false;
   let list = false;
+  let detect = false;
   let from: string | undefined;
   const files: Array<string> = [];
   let i = 0;
@@ -876,6 +878,11 @@ const parseAppConfigTranslateArgv = (
     }
     if (arg === "--list") {
       list = true;
+      i += 1;
+      continue;
+    }
+    if (arg === "--detect") {
+      detect = true;
       i += 1;
       continue;
     }
@@ -898,15 +905,16 @@ const parseAppConfigTranslateArgv = (
     }
     i += 1;
   }
-  return { write, list, from, files };
+  return { write, list, detect, from, files };
 };
 
 const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
-  const { write, list, from, files } = parseAppConfigTranslateArgv(argv);
+  const { write, list, detect, from, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
     appConfigTranslate({
       write,
       list,
+      detect,
       ...(from === undefined ? {} : { from }),
       ...(files.length === 0 ? {} : { files }),
     }),

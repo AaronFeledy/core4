@@ -27,6 +27,10 @@ export default class AppConfigTranslateCommand extends LandoCommandBase {
       description: "List installed config translators and their input kinds.",
       default: false,
     }),
+    detect: Flags.boolean({
+      description: "Detect supported source files without generating a translated Landofile preview.",
+      default: false,
+    }),
     from: Flags.string({
       description: "Force a specific translator by id instead of autodetecting.",
     }),
@@ -52,18 +56,20 @@ export default class AppConfigTranslateCommand extends LandoCommandBase {
       readonly flags: {
         readonly write?: boolean;
         readonly list?: boolean;
+        readonly detect?: boolean;
         readonly from?: string;
         readonly file?: ReadonlyArray<string>;
         readonly format?: string;
       };
     };
-    const { write, list, from, file } = parsed.flags;
+    const { write, list, detect, from, file } = parsed.flags;
     await this.runEffect({
       ...appConfigTranslateSpec,
       run: () =>
         appConfigTranslate({
           write: write === true,
           list: list === true,
+          detect: detect === true,
           ...(from === undefined ? {} : { from }),
           ...(file === undefined ? {} : { files: file }),
         }),

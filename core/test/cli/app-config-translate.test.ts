@@ -124,6 +124,29 @@ describe("appConfigTranslate", () => {
     expect(result.translators).toEqual([]);
   });
 
+  test("--detect reports translator matches without translating", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    let translated = false;
+    const translators: ReadonlyArray<ConfigTranslatorShape> = [
+      {
+        ...makeTranslator("v3", {}),
+        translate: () =>
+          Effect.sync(() => {
+            translated = true;
+            return { fragment: {}, diagnostics: [] };
+          }),
+      },
+    ];
+
+    const result = await Effect.runPromise(appConfigTranslate({ cwd, detect: true, translators }));
+
+    expect(result.mode).toBe("detect");
+    if (result.mode !== "detect") throw new Error("expected detect mode");
+    expect(result.matches).toEqual([{ translator: "v3", files: [], confidence: "likely" }]);
+    expect(translated).toBe(false);
+    expect(renderConfigTranslateResult(result, "table")).toContain("v3\tlikely");
+  });
+
   test("--from forces a specific translator", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const translators = [
@@ -158,6 +181,21 @@ describe("appConfigTranslate", () => {
     expect(result.mode).toBe("preview");
     if (result.mode !== "preview") throw new Error("expected preview mode");
     expect(result.files).toContain("docker-compose.yml");
+  });
+
+  test("--file rejects paths outside the app root", async () => {
+    const cwd = await makeAppDir("name: demo\nruntime: 4\n");
+    const translators = [makeTranslator("v3", {})];
+
+    const absoluteExit = await runExit(appConfigTranslate({ cwd, files: ["/tmp/compose.yml"], translators }));
+    expect(Exit.isFailure(absoluteExit)).toBe(true);
+    expect(failureTag(absoluteExit)).toBe("ConfigTranslateError");
+    expect(failureValue(absoluteExit)?.message ?? "").toContain("inside the app root");
+
+    const traversalExit = await runExit(appConfigTranslate({ cwd, files: ["../compose.yml"], translators }));
+    expect(Exit.isFailure(traversalExit)).toBe(true);
+    expect(failureTag(traversalExit)).toBe("ConfigTranslateError");
+    expect(failureValue(traversalExit)?.message ?? "").toContain("inside the app root");
   });
 
   test("ambiguous autodetection fails with remediation listing --from choices", async () => {
@@ -314,6 +352,23 @@ describe("appConfigTranslate contract-suite fixtures", () => {
     const listed = await Effect.runPromise(appConfigTranslate({ list: true, translators }));
     expect(listed.mode).toBe("list");
     if (listed.mode === "list") expect(listed.translators.map((t) => t.id)).toEqual(["compose"]);
+
+    const detectedMatches = await Effect.runPromise(
+      appConfigTranslate({ cwd, detect: true, files: ["docker-compose.yml"], translators }),
+    );
+    expect(detectedMatches.mode).toBe("detect");
+    if (detectedMatches.mode === "detect") {
+      expect(detectedMatches.matches).toEqual([
+        { translator: "compose", files: ["docker-compose.yml"], confidence: "likely" },
+      ]);
+    }
+
+    const autodetected = await Effect.runPromise(appConfigTranslate({ cwd, translators }));
+    expect(autodetected.mode).toBe("preview");
+    if (autodetected.mode === "preview") {
+      expect(autodetected.translator).toBe("compose");
+      expect(autodetected.files).toContain("docker-compose.yml");
+    }
 
     const detected = await Effect.runPromise(
       appConfigTranslate({ cwd, files: ["docker-compose.yml"], translators }),

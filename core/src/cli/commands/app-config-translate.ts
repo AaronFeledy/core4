@@ -1,4 +1,5 @@
-import { basename, dirname } from "node:path";
+import { readdir } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -32,6 +33,7 @@ export interface AppConfigTranslateOptions {
   readonly cwd?: string;
   readonly write?: boolean;
   readonly list?: boolean;
+  readonly detect?: boolean;
   readonly from?: string;
   readonly files?: ReadonlyArray<string>;
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
@@ -59,6 +61,20 @@ const ListResultSchema = Schema.Struct({
   translators: Schema.Array(TranslatorInfoSchema),
 });
 
+const ConfigTranslateMatchSchema = Schema.Struct({
+  translator: Schema.String,
+  files: Schema.Array(Schema.String),
+  confidence: Schema.Union(Schema.Literal("exact"), Schema.Literal("likely"), Schema.Literal("possible")),
+  summary: Schema.optional(Schema.String),
+});
+
+const DetectResultSchema = Schema.Struct({
+  mode: Schema.Literal("detect"),
+  inputPath: Schema.String,
+  files: Schema.Array(Schema.String),
+  matches: Schema.Array(ConfigTranslateMatchSchema),
+});
+
 const PreviewResultSchema = Schema.Struct({
   mode: Schema.Literal("preview"),
   inputPath: Schema.String,
@@ -78,6 +94,7 @@ const WriteResultSchema = Schema.Struct({
 
 export const AppConfigTranslateResultSchema = Schema.Union(
   ListResultSchema,
+  DetectResultSchema,
   PreviewResultSchema,
   WriteResultSchema,
 );
@@ -85,6 +102,7 @@ export const AppConfigTranslateResultSchema = Schema.Union(
 export type AppConfigTranslateResult = Schema.Schema.Type<typeof AppConfigTranslateResultSchema>;
 
 type TranslateDiagnostic = Schema.Schema.Type<typeof ConfigTranslateDiagnosticSchema>;
+type ConfigTranslateRenderedMatch = Schema.Schema.Type<typeof ConfigTranslateMatchSchema>;
 type TranslatorInfo = Schema.Schema.Type<typeof TranslatorInfoSchema>;
 type WriteResult = Schema.Schema.Type<typeof WriteResultSchema>;
 
@@ -112,6 +130,57 @@ const fromRemediation = (translators: ReadonlyArray<ConfigTranslatorShape>): str
   const choices = translators.map((translator) => `--from ${translator.id}`).join(", ");
   return `Choose an explicit translator with one of: ${choices}.`;
 };
+
+const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
+
+const sourceFilePathError = (file: string): ConfigTranslateError =>
+  new ConfigTranslateError({
+    message: `Config translator source file "${file}" must be a relative path inside the app root.`,
+    remediation:
+      "Pass a source file relative to the app root. Reading outside the app root requires an explicit outside-root opt-in before it can be supported.",
+  });
+
+const parseSourceFilePath = (file: string): Effect.Effect<PortablePath, ConfigTranslateError> => {
+  const portable = file.replace(/\\/gu, "/");
+  const segments = portable.split("/");
+  if (
+    portable.length === 0 ||
+    portable.startsWith("/") ||
+    file.startsWith("\\") ||
+    WINDOWS_ABSOLUTE_PATH.test(file) ||
+    segments.some((segment) => segment === "..")
+  ) {
+    return Effect.fail(sourceFilePathError(file));
+  }
+  return Effect.succeed(portable as PortablePath);
+};
+
+const discoverSourceFiles = (
+  appRoot: string,
+): Effect.Effect<ReadonlyArray<PortablePath>, ConfigTranslateError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const files: Array<PortablePath> = [];
+      const visit = async (dir: string): Promise<void> => {
+        const entries = await readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const absolute = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            await visit(absolute);
+            continue;
+          }
+          if (entry.isFile()) files.push(relative(appRoot, absolute).replace(/\\/gu, "/") as PortablePath);
+        }
+      };
+      await visit(appRoot);
+      return files.sort();
+    },
+    catch: (cause) =>
+      new ConfigTranslateError({
+        message: `Could not discover config translator source files: ${cause instanceof Error ? cause.message : String(cause)}`,
+        cause,
+      }),
+  });
 
 const distinctMatchIds = (matches: ReadonlyArray<ConfigTranslateMatch>): ReadonlyArray<string> => {
   const seen: Array<string> = [];
@@ -220,8 +289,26 @@ export const appConfigTranslate = (
     const appRoot = dirname(inputPath);
     const detectFiles: ReadonlyArray<PortablePath> =
       options.files !== undefined && options.files.length > 0
-        ? options.files.map((file) => file as PortablePath)
-        : [basename(inputPath) as PortablePath];
+        ? yield* Effect.all(options.files.map(parseSourceFilePath))
+        : yield* discoverSourceFiles(appRoot);
+
+    if (options.detect === true) {
+      const matches = yield* detectConfigTranslators(resolved, {
+        appRoot: appRoot as AbsolutePath,
+        files: detectFiles,
+      });
+      return {
+        mode: "detect",
+        inputPath,
+        files: detectFiles.map((file) => String(file)),
+        matches: matches.map((match) => ({
+          translator: match.translator,
+          files: match.files.map((file) => String(file)),
+          confidence: match.confidence,
+          ...(match.summary === undefined ? {} : { summary: match.summary }),
+        })),
+      };
+    }
 
     const selected = yield* selectTranslator(resolved, options.from, appRoot as AbsolutePath, detectFiles);
 
@@ -312,6 +399,13 @@ const renderList = (translators: ReadonlyArray<TranslatorInfo>): string => {
     .join("\n");
 };
 
+const renderDetect = (matches: ReadonlyArray<ConfigTranslateRenderedMatch>): string => {
+  if (matches.length === 0) return "No config translator matches detected.";
+  return matches
+    .map((match) => `${match.translator}\t${match.confidence}\t${match.files.join(", ")}`)
+    .join("\n");
+};
+
 const renderPreview = (content: string, diagnostics: ReadonlyArray<TranslateDiagnostic>): string => {
   if (diagnostics.length === 0) return content;
   const trimmed = content.endsWith("\n") ? content : `${content}\n`;
@@ -339,6 +433,8 @@ export const renderConfigTranslateResult = (
   switch (result.mode) {
     case "list":
       return renderList(result.translators);
+    case "detect":
+      return renderDetect(result.matches);
     case "preview":
       return renderPreview(result.content, result.diagnostics);
     case "write":

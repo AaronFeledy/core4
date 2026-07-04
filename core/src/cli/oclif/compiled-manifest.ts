@@ -352,6 +352,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        detect: {
+          description: "Detect supported source files without generating a translated Landofile preview.",
+          name: "detect",
+          allowNo: false,
+          type: "boolean",
+        },
         from: {
           description: "Force a specific translator by id instead of autodetecting.",
           name: "from",

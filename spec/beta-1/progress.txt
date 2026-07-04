@@ -22,6 +22,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-04 08:04:12 CDT - US-390 Review
+- Review fixed four blockers in the config-translate flow: `--file` inputs are now parsed at the CLI boundary and rejected when absolute, empty, backslash-rooted, Windows-absolute, or `..`-traversing before any translator sees them; `lando app config translate --detect` now reports translator detection matches without generating a preview or running translation, on both source and compiled dispatch paths; no-arg autodetection now feeds translators the real app-root source file list instead of only `.lando.yml`; and the command result schema snapshot was regenerated for the new tagged-union result shapes.
+- Review notes (deferred/rejected): translator diagnostic newline sanitization is deferred as non-blocking because diagnostics are plugin-trust-bound preview text only and are never written by `--write`; the pre-existing oversized command/test modules remain a follow-up refactor concern, not widened during this focused Review repair.
+- Verification: typecheck, lint passed; focused config-translate, landofile config-translator, SDK config-translator contract, schema-snapshot, OCLIF manifest, and dispatch-parity spot checks passed; edited TypeScript files have clean LSP diagnostics.
+- **Learnings for future iterations:** US-390's PRD criteria under-specified normative spec §8.2.1; review must check the source spec grammar as well as `prd.json`/source PRD bullets when closing CLI-spec-parity stories.
+---
+
 ## 2026-07-03 21:08 CDT - US-387 Review
 - Review fixed a provider-layer regression coverage gap: the `makeRuntimeProvider` `ensureRuntime` path now has focused tests proving darwin fails without a bundled machine runner instead of falling back to system Podman, and proving the managed-runtime machine command targets `${runtimeBinDir}/podman` when a bundle path is available.
 - Review notes (deferred/rejected): the pre-fix audit wording in `prd.json.notes` is retained as story provenance because `passes: true` plus this progress log record the resolved state; Windows `.exe` suffix handling in `managedRuntimePodmanArgv0` remains deferred as pre-existing helper behavior covered by provider-integration Windows CI, not a US-387 review blocker.
