@@ -137,12 +137,12 @@ const validateGroup = (
 
 const validateTopLevelInput = (toolId: string, input: McpToolInput | undefined): void => {
   for (const key of Object.keys(input ?? {})) {
-    if (key === "flags" || key === "args") continue;
+    if (key === "flags" || key === "args" || key === "appPath") continue;
     throw new McpToolInputError({
       message: `Unknown input property "${key}" for tool ${toolId}.`,
       toolId,
       path: key,
-      remediation: `Remove "${key}"; tool input accepts only "flags" and "args" groups.`,
+      remediation: `Remove "${key}"; tool input accepts only "flags", "args", and "appPath".`,
     });
   }
 };

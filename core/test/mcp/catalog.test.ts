@@ -94,7 +94,9 @@ describe("validateToolInput", () => {
   });
 
   test("accepts a valid input and returns normalized flags/args", () => {
-    expect(validateToolInput(withFlags, { flags: { format: "json", tail: 10 } })).toEqual({
+    expect(
+      validateToolInput(withFlags, { flags: { format: "json", tail: 10 }, appPath: "/tmp/app" }),
+    ).toEqual({
       flags: { format: "json", tail: 10 },
       args: {},
     });
