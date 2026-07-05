@@ -988,12 +988,13 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
   ];
 };
 
-const compileCommand = (platform: CiPlatform): ReadonlyArray<string> => [
+const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<string> => [
   "bun",
   "build",
   "./core/bin/lando.ts",
   "--compile",
   "--bytecode",
+  `--define=__LANDO_CORE_VERSION__=${JSON.stringify(version)}`,
   `--target=${platform.bunTarget}`,
   `--outfile=${releaseBinaryPath(platform)}`,
   "--sourcemap=external",
@@ -1008,6 +1009,7 @@ const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [
 
 const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<void> => {
   const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
+  const version = releaseVersion(context.env);
 
   for (const platform of releasePlatformsForContext(context)) {
     const startedAt = context.now();
@@ -1016,7 +1018,7 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
       artifactFamily,
       summary: "bun build --compile --bytecode ./core/bin/lando.ts",
       remediation: defaultRemediation,
-      cmd: compileCommand(platform),
+      cmd: compileCommand(platform, version),
     });
     const durationMs = context.now() - startedAt;
     context.logger(

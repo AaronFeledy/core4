@@ -24,6 +24,7 @@ import type {
 import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
+import { CORE_VERSION } from "../version.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfigLint, renderConfigLintResult } from "./commands/app-config-lint.ts";
@@ -196,7 +197,7 @@ import {
 } from "./renderer-boundary.ts";
 import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
-const version = "@lando/core/0.0.0";
+const version = `@lando/core/${CORE_VERSION}`;
 
 type CompiledCommand = Command.Class;
 

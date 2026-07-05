@@ -8,6 +8,8 @@
  */
 import { Effect, Schema } from "effect";
 
+import { CORE_VERSION } from "../../version.ts";
+
 export interface VersionResult {
   readonly core: string;
   readonly bun: string;
@@ -21,8 +23,7 @@ export const VersionResultSchema = Schema.Struct({
 });
 
 export const version: Effect.Effect<VersionResult, never, never> = Effect.sync(() => ({
-  // TODO: read from package.json at build time and embed.
-  core: "0.0.0",
+  core: CORE_VERSION,
   bun: Bun.version,
   platform: process.platform,
 }));
