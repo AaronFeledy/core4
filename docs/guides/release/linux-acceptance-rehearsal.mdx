@@ -24,6 +24,7 @@ tags: [beta, docs, release, acceptance]
     </Step>
     <Step name="criterion-16">
       <Variable name="bytecode" value="bun build ./core/bin/lando.ts --compile --bytecode" display="The canonical release and CI compile commands build the compiled binary with Bun bytecode enabled" />
+      <Variable name="versionStamp" value="--define=__LANDO_CORE_VERSION__=<release version>" display="The release compile stamps the real release version into the binary; unstamped builds report the @lando/core workspace package version" />
     </Step>
     <Step name="criterion-17">
       <Variable name="aotLayers" value="core/src/runtime/generated/layers/<level>.ts" display="AOT bootstrap layers are committed as generated per-level modules and consumed by the runtime layer factory" />

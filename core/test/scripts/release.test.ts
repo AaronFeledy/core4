@@ -2223,6 +2223,7 @@ describe("release orchestrator", () => {
       "./core/bin/lando.ts",
       "--compile",
       "--bytecode",
+      '--define=__LANDO_CORE_VERSION__="0.0.0"',
       "--target=bun-windows-x64",
       "--outfile=./dist/lando-windows-x64.exe",
       "--sourcemap=external",
@@ -2268,6 +2269,7 @@ describe("release orchestrator", () => {
             "./core/bin/lando.ts",
             "--compile",
             "--bytecode",
+            '--define=__LANDO_CORE_VERSION__="0.0.0"',
             `--target=${platform.bunTarget}`,
             `--outfile=${outfile}`,
             "--sourcemap=external",
@@ -2283,6 +2285,33 @@ describe("release orchestrator", () => {
       "linux-x64",
       "windows-x64",
     ]);
+  });
+
+  test("compile stage stamps LANDO_RELEASE_VERSION into the version define", async () => {
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      target: "binary",
+      throughStage: "7-compile",
+      env: {
+        ...localRehearsalEnv,
+        LANDO_RELEASE_PLATFORM: "linux-x64",
+        LANDO_RELEASE_VERSION: "4.1.0-beta.2",
+      },
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          spawnStages.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    const compileCmd = spawnStages.find(
+      ({ stageId, cmd }) => stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build",
+    );
+    expect(compileCmd?.cmd).toContain('--define=__LANDO_CORE_VERSION__="4.1.0-beta.2"');
   });
 
   test("compile stage reports duration and fails the linux-x64 cold-build budget", async () => {

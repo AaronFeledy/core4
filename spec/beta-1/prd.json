@@ -427,7 +427,7 @@
         "Lint passes"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec §8.1/§17. Audit: core/src/version.ts is `export const CORE_VERSION = \"0.0.0\"` and core/src/cli/commands/version.ts hardcodes core: \"0.0.0\" with a TODO. Compiled-mode constraint: no import.meta.url for package metadata (core/AGENTS.md)."
     },
     {
