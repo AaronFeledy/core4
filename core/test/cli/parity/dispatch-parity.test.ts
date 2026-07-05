@@ -395,6 +395,17 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
     }, 30_000);
 
+    test("version: top-level alias supports machine output in both dispatch paths", async () => {
+      const source = await runSourceCli(["version", "--format=json"]);
+      const compiled = await runCompiledCli(["version", "--format=json"]);
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+      const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout));
+      const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout));
+      expect(compiledEnvelope).toEqual(sourceEnvelope);
+      expect(compiledEnvelope.command).toBe("meta:version");
+    }, 30_000);
+
     test("meta:shellenv: both paths exit 0 with the same shell snippet", async () => {
       const source = await runSourceCli(["meta:shellenv"]);
       const compiled = await runCompiledCli(["meta:shellenv"]);

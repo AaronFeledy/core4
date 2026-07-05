@@ -29,6 +29,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-05 00:05:35 CDT - US-395 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup --provider podman --yes --no-interactive` completed cleanly; compiled `lando --version`, `lando version --format json`, a release-stamped compiled artifact, stamped help output, and adjacent `doctor --format json` all exited 0 after the fix.
+- Fixed a real compiled-dispatch blocker at the root cause: top-level `lando version --format json` resolved to canonical `meta:version` but the compiled dispatcher only routed the canonical token, so it fell through to the deferred-command `NotImplementedError`. The dispatcher now routes both `version` and `meta:version`, with parity coverage for the top-level machine-output alias.
+- **Learnings for future iterations:** A bare fast-path alias (`lando version`) can pass while the same alias plus universal flags (`--format json`, `--renderer json`) misses compiled dispatch routing after flag stripping. Verify user-facing aliases with at least one universal flag, not just their canonical ids.
+---
+
 ## 2026-07-04 23:40 CDT - US-395
 - `lando version` / `lando --version` now report the real build version instead of the `0.0.0` placeholder. `CORE_VERSION` (`core/src/version.ts`) derives from a build-time stamped token (`__LANDO_CORE_VERSION__`, injected via `bun build --define`) in compiled/bundled artifacts and falls back to the workspace `corePackage.version` in source mode. The `version` command result (`core` field) and the compiled `run.ts` help banner both read `CORE_VERSION`; the three former hardcoded `0.0.0` literals (version constant, command body, compiled banner) are gone.
 - `scripts/release.ts` `compileCommand` stamps `releaseVersion(env)` (`LANDO_RELEASE_VERSION`) into the `--define`, so release stamping and the embedded version share one source of truth. The `--version` fast path stays in `bin/lando.ts` reading only `CORE_VERSION` (no Effect/OCLIF import creep).

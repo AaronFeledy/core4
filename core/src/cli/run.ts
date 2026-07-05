@@ -2288,7 +2288,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (argv[0] === "meta:version") {
+  if (argv[0] === "version" || argv[0] === "meta:version") {
     await runMetaVersion();
     return;
   }
