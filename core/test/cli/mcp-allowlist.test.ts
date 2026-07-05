@@ -13,7 +13,6 @@ import {
 } from "../../src/cli/oclif/mcp-allowlist.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
-  "app:config",
   "app:exec",
   "app:info",
   "app:logs",
@@ -98,6 +97,11 @@ describe("MCP default allowlist derivation", () => {
     for (const id of EXPECTED_DEFAULT_ALLOWLIST) {
       expect(specFor(id).mcpAllowed).toBe(true);
     }
+  });
+
+  test("does not expose the app config umbrella until MCP can project read-only verbs", () => {
+    expect(specFor("app:config").mcpAllowed).toBeUndefined();
+    expect(MCP_DEFAULT_ALLOWLIST).not.toContain("app:config");
   });
 
   test("no destructive id is in the default allowlist", () => {

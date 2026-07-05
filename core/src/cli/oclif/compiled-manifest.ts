@@ -136,7 +136,6 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:config",
-        mcpAllowed: true,
         summary: "Read or write the current app's Landofile.",
         namespace: "app",
         topLevelAlias: false,

@@ -11,7 +11,6 @@
  */
 
 export const MCP_DEFAULT_ALLOWLIST: ReadonlyArray<string> = [
-  "app:config",
   "app:exec",
   "app:info",
   "app:logs",
