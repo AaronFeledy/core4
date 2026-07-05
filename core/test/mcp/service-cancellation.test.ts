@@ -107,6 +107,42 @@ describe("McpService.serve cancellation", () => {
     ]);
   });
 
+  test("does not send a cancellation reply after a completed request is cancelled", async () => {
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [
+        {
+          spec: spec("app:info", () => Effect.succeed({ finished: true })),
+        } satisfies McpCommandEntry,
+      ],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      const id = yield* inmem.push({ toolId: "app:info" });
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      yield* inmem.cancel(id);
+      yield* Effect.sleep("80 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return { id, replies };
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const { id, replies } = await Effect.runPromise(program);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      id,
+      ok: true,
+      result: { ok: true, envelope: { ok: true, result: { finished: true } } },
+    });
+  });
+
   test("does not start a request when cancellation arrives before request registration", async () => {
     let executed = false;
     const requestId = "cancel-before-start";

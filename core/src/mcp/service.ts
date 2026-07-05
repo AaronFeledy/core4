@@ -12,7 +12,7 @@
  * The Live layer is registered lazily (`Layer.suspend`, level `plugins`):
  * nothing constructs it unless `meta:mcp` or a library host requests it.
  */
-import { Cause, Context, Effect, type Exit, Fiber, Layer, Option, Ref } from "effect";
+import { Cause, Context, Deferred, Effect, type Exit, Fiber, Layer, Option, Ref } from "effect";
 
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -214,10 +214,17 @@ const makeService = (
                 yield* handleCanceledBeforeStart(incoming);
                 return;
               }
+              const start = yield* Deferred.make<void>();
               const fiber = yield* semaphore
-                .withPermits(1)(handleOne(incoming).pipe(Effect.ensuring(removeInFlight(incoming.id))))
+                .withPermits(1)(
+                  Deferred.await(start).pipe(
+                    Effect.zipRight(handleOne(incoming)),
+                    Effect.ensuring(removeInFlight(incoming.id)),
+                  ),
+                )
                 .pipe(Effect.forkScoped);
               yield* Ref.update(inFlight, (current) => new Map(current).set(incoming.id, fiber));
+              yield* Deferred.succeed(start, undefined);
             });
 
           const cancelRequest = (id: string): Effect.Effect<void> =>
