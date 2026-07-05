@@ -32,6 +32,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-05 01:51 CDT - US-396 Review
+- Review fixed the MCP default exposure blocker: `app:config` is an umbrella command with write subcommands (`set`/`unset`/`edit`/`validate`), so it is no longer default `mcpAllowed` until the MCP projection can expose only the read-only config verb(s). The generated allowlist and OCLIF manifest were refreshed, and the allowlist test now locks that `app:config` stays out of defaults until read-only verb projection exists.
+- Review notes (deferred/rejected): §8.3's `app:config get|view` default exposure remains deferred to the MCP dispatch/projection story because the current command registry is canonical-id scoped and cannot represent a subcommand-only allowlist without exposing writes.
+- Verification: focused mcp-allowlist test passed; typecheck, lint, and adjacent spot checks rerun after the review fix.
+- **Learnings for future iterations:** A command-level `mcpAllowed` boolean is unsafe for umbrella commands whose args select write modes; either add a read-only canonical command/tool projection or constrain MCP input schemas before default-allowing that surface.
+---
+
 ## 2026-07-05 01:35 CDT - US-396
 - Added the `mcpAllowed?: boolean` command flag to `LandoCommandSpec` and marked the shipped read-only/lateral + non-destructive-lifecycle opt-ins (`app:info`, `app:logs`, `app:config`, `apps:list`, `apps:scratch:list`, `meta:version`, `meta:doctor`, `app:start`, `app:stop`, `app:restart`, `app:exec`). Registration now rejects a destructive built-in (`app:destroy`, `apps:poweroff`, `meta:uninstall`, any `meta:plugin:*` mutation) that self-allows, throwing the new `McpAllowlistConflictError` from `validateCommandSpec`.
 - The default MCP allowlist ships as a generated literal-data module (`core/src/cli/oclif/generated/mcp-allowlist.ts`) derived from every `mcpAllowed: true` spec via `scripts/build-mcp-allowlist.ts` / `codegen:mcp-allowlist`; a unit-test drift gate re-derives it from the live command index and asserts no drift. The pure derivation + registration guard live in a cold-start-safe helper (`core/src/cli/oclif/mcp-allowlist.ts`).
