@@ -1,0 +1,19 @@
+---
+title: Mcp Tool Descriptor
+description: Public Lando schema contract for MCP Tool Descriptor.
+---
+
+# Mcp Tool Descriptor
+
+Public Lando schema contract for MCP Tool Descriptor.
+
+[JSON Schema artifact](../../../dist/schemas/mcp-tool-descriptor.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `toolId` | Yes | `string` | Canonical command id exposed as this tool (e.g. "app:info"). | — | — | — | — |
+| `commandId` | Yes | `string` | The canonical command id the tool dispatches to (equal to toolId). | — | — | — | — |
+| `title` | Yes | `string` | Human-readable tool title (the command summary). | — | — | — | — |
+| `description` | Yes | `string` | Longer tool description surfaced to the agent. | — | — | — | — |
+| `destructive` | Yes | `boolean` | Whether the tool performs a destructive operation; only true when a destructive id is explicitly enabled via mcp.allow. | — | — | — | — |
+| `inputSchema` | Yes | `object` | JSON-Schema-shaped object derived from the command's flags/args. | — | — | — | — |

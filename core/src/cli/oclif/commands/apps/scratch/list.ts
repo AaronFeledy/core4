@@ -12,6 +12,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
   resultSchema: ScratchListResultSchema,
   id: "apps:scratch:list",
+  mcpAllowed: true,
   summary: "List scratch Lando apps.",
   namespace: "apps",
   topLevelAlias: "scratch:list",

@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "allow": {
+      "description": "Additional canonical ids to allow beyond the defaults (--allow).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "cwd": {
+      "description": "Working directory used to resolve the app when a call omits a path.",
+      "type": "string"
+    },
+    "deny": {
+      "description": "Canonical ids to deny; deny wins over allow (--deny).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "maxConcurrent": {
+      "description": "Cap on concurrent in-flight tool calls (default 4).",
+      "type": "number"
+    },
+    "tooling": {
+      "description": "Whether to project tooling tasks as tools (--tooling).",
+      "type": "boolean"
+    },
+    "transport": {
+      "description": "Transport; stdio only in v4.0 (streamable-HTTP is deferred).",
+      "enum": [
+        "stdio"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "transport"
+  ],
+  "type": "object"
+}

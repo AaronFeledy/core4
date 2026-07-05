@@ -181,6 +181,7 @@ import {
 } from "./landofile.ts";
 import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
+import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } from "./mcp.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
 import {
   AppRef,
@@ -421,6 +422,10 @@ const rawPublicSchemaRegistry = {
   ManagedFileInfo,
   ManagedFilePlan,
   ManagedFileResult,
+  McpToolDescriptor,
+  McpCatalog,
+  McpCatalogOptions,
+  McpServeOptions,
   AppId,
   ServiceName,
   ProviderId,
@@ -668,6 +673,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ManagedFileInfo: "Public Lando schema contract for Managed File Info.",
   ManagedFilePlan: "Public Lando schema contract for Managed File Plan.",
   ManagedFileResult: "Public Lando schema contract for Managed File Result.",
+  McpToolDescriptor: "Public Lando schema contract for MCP Tool Descriptor.",
+  McpCatalog: "Public Lando schema contract for MCP Catalog.",
+  McpCatalogOptions: "Public Lando schema contract for MCP Catalog Options.",
+  McpServeOptions: "Public Lando schema contract for MCP Serve Options.",
   AppId: "Public Lando schema contract for App Id.",
   ServiceName: "Public Lando schema contract for Service Name.",
   ProviderId: "Public Lando schema contract for Provider Id.",

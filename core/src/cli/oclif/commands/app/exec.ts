@@ -18,6 +18,7 @@ interface ExecFlags {
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,
   id: "app:exec",
+  mcpAllowed: true,
   summary: "Run a command in a Lando service.",
   namespace: "app",
   topLevelAlias: true,

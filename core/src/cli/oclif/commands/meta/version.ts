@@ -11,6 +11,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   resultSchema: VersionResultSchema,
   id: "meta:version",
+  mcpAllowed: true,
   summary: "Show the Lando + Bun + plugin versions.",
   namespace: "meta",
   topLevelAlias: true,

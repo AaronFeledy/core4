@@ -1,0 +1,19 @@
+---
+title: Mcp Serve Options
+description: Public Lando schema contract for MCP Serve Options.
+---
+
+# Mcp Serve Options
+
+Public Lando schema contract for MCP Serve Options.
+
+[JSON Schema artifact](../../../dist/schemas/mcp-serve-options.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `transport` | Yes | `string` | Transport; stdio only in v4.0 (streamable-HTTP is deferred). | — | `stdio` | — | — |
+| `allow` | No | `array` | Additional canonical ids to allow beyond the defaults (--allow). | — | — | — | — |
+| `deny` | No | `array` | Canonical ids to deny; deny wins over allow (--deny). | — | — | — | — |
+| `tooling` | No | `boolean` | Whether to project tooling tasks as tools (--tooling). | — | — | — | — |
+| `maxConcurrent` | No | `number` | Cap on concurrent in-flight tool calls (default 4). | — | — | — | — |
+| `cwd` | No | `string` | Working directory used to resolve the app when a call omits a path. | — | — | — | — |

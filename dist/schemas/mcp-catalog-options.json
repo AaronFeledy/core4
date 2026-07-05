@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "allow": {
+      "description": "Additional canonical ids to allow beyond the defaults (--allow).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "deny": {
+      "description": "Canonical ids to deny; deny wins over allow (--deny).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "tooling": {
+      "description": "Whether to project tooling tasks as tools (--tooling).",
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "type": "object"
+}
