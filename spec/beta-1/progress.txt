@@ -34,6 +34,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-05 04:51 CDT - US-397 Verify
+- Verified the freshly rebuilt compiled binary in `lando4-dev`: `lando setup --provider podman --yes --no-interactive` completed cleanly; compiled `version --format json`, `doctor --format json`, and adjacent `app:logs --help` smokes exited 0.
+- Exercised `McpService` end-to-end through its real library-host seam: catalog projected an allowlisted command with derived required flag/arg schema, `serve` dispatched through the retained runtime, emitted a canonical success envelope, published pre/post MCP events, and forwarded one live progress notification.
+- Fixed a real verifier-found blocker at the root cause: live `StreamFrameSink` output was being forwarded as raw MCP notifications, bypassing the redacted StreamFrame encoder and leaking secret chunks. The service now encodes/redacts live stdout/stderr notifications before transport delivery, with focused regression coverage.
+- **Learnings for future iterations:** US-397 has no user-facing `lando mcp` command yet; Verify must drive the core service through the `McpService` library-host seam, while reserving stdio/list CLI verification for US-398.
+---
+
 ## 2026-07-05 04:28 CDT - US-397 Review
 - Review fixed the remaining MCP protocol-surface blockers: streaming command output now reaches MCP progress notifications through the same redacted StreamFrame encoder as CLI streaming, tooling entries are dispatchable only when MCP tooling is enabled, command defects return a standard failed `CommandResultEnvelope`, and client cancellation now interrupts the matching in-flight call even when the cancel signal wins the race before request registration.
 - Review notes (deferred/rejected): `meta:mcp` stdio wiring and user-facing `lando mcp --list` remain US-398 scope, not a US-397 core-service blocker; container/provider live verification was not run on the host per loop safety rules.
