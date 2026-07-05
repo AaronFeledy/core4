@@ -1,3 +1,5 @@
+import { describe, expect, test } from "bun:test";
+
 import {
   scratchIdFromInput,
   scratchListFormatFromInput,
@@ -19,7 +21,7 @@ import {
 import { globalUninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/uninstall.ts";
 import { shellenvShellFromInput } from "../../src/cli/oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/uninstall.ts";
-import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
+import { compiledCommandInputFromArgv, normalizeCompiledCommandArgv } from "../../src/cli/run.ts";
 
 const compiledInput = (
   commandId: string,
@@ -179,6 +181,22 @@ describe("dual-dispatch argv parser parity", () => {
       plugin: "proxy",
       purge: true,
     });
+  });
+
+  test("compiled argv normalization mirrors space-separated global command phrases", () => {
+    expect(normalizeCompiledCommandArgv(["global", "list", "--format=json"])).toEqual([
+      "global:list",
+      "--format=json",
+    ]);
+    expect(normalizeCompiledCommandArgv(["global", "logs", "--service", "proxy"])).toEqual([
+      "global:logs",
+      "--service",
+      "proxy",
+    ]);
+    expect(normalizeCompiledCommandArgv(["global", "config", "set", "services.proxy.type", "lando"])).toEqual(
+      ["global:config:set", "services.proxy.type", "lando"],
+    );
+    expect(normalizeCompiledCommandArgv(["meta", "global", "restart"])).toEqual(["meta:global:restart"]);
   });
 
   test("setup, shellenv, and uninstall helpers consume compiled argv input", () => {

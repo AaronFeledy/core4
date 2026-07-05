@@ -1869,7 +1869,47 @@ const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> 
   );
 };
 
-const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+const GLOBAL_COMMAND_VERBS = new Set([
+  "config",
+  "destroy",
+  "info",
+  "install",
+  "list",
+  "logs",
+  "restart",
+  "start",
+  "status",
+  "stop",
+  "uninstall",
+]);
+
+const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"]);
+
+export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "meta" && argv[1] === "global") {
+    const verb = argv[2];
+    if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
+    if (verb === "config") {
+      const configVerb = argv[3];
+      if (configVerb !== undefined && GLOBAL_CONFIG_VERBS.has(configVerb)) {
+        return [`meta:global:config:${configVerb}`, ...argv.slice(4)];
+      }
+    }
+    return [`meta:global:${verb}`, ...argv.slice(3)];
+  }
+
+  if (argv[0] === "global") {
+    const verb = argv[1];
+    if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
+    if (verb === "config") {
+      const configVerb = argv[2];
+      if (configVerb !== undefined && GLOBAL_CONFIG_VERBS.has(configVerb)) {
+        return [`global:config:${configVerb}`, ...argv.slice(3)];
+      }
+    }
+    return [`global:${verb}`, ...argv.slice(2)];
+  }
+
   if (argv[0] !== "app") return argv;
   if (argv[1] === "includes") {
     if (argv[2] === "update") return ["app:includes:update", ...argv.slice(3)];
