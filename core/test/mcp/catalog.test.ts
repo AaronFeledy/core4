@@ -55,7 +55,7 @@ describe("deriveToolInputSchema", () => {
         args: { type: "object", properties: {}, additionalProperties: false },
       },
     });
-    expect((schema.properties as Record<string, { required?: string[] }>).flags.required).toBeUndefined();
+    expect((schema.properties as Record<string, { required?: string[] }>).flags?.required).toBeUndefined();
   });
 });
 
@@ -98,6 +98,17 @@ describe("validateToolInput", () => {
       flags: { format: "json", tail: 10 },
       args: {},
     });
+  });
+
+  test("rejects unknown top-level input properties", () => {
+    const input = { flags: { format: "json" }, cwd: "/tmp/app" };
+    try {
+      validateToolInput(withFlags, input);
+      throw new Error("expected McpToolInputError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(McpToolInputError);
+      expect((error as McpToolInputError).path).toBe("cwd");
+    }
   });
 });
 
