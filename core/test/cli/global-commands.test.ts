@@ -769,6 +769,28 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("logs rejects an invalid --since even when the global app is not installed", async () => {
+    await withHarness(async (harness) => {
+      const exit = await Effect.runPromiseExit(
+        globalLogs({ since: "bogus" }).pipe(Effect.provide(harness.layer)),
+      );
+      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
+      expect(error._tag).toBe("ToolingExecError");
+      expect(error.message).toContain('invalid --since value "bogus"');
+
+      const followExit = await Effect.runPromiseExit(
+        followGlobalLogs({ since: "bogus" }).pipe(
+          Effect.provide(
+            Layer.mergeAll(harness.layer, Layer.succeed(StreamFrameSink, { emit: () => Effect.void })),
+          ),
+        ),
+      );
+      const followError = failureOf(followExit) as { readonly _tag: string; readonly message: string };
+      expect(followError._tag).toBe("ToolingExecError");
+      expect(followError.message).toContain('invalid --since value "bogus"');
+    });
+  });
+
   test("follow logs streams provider chunks through the StreamFrameSink", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, { proxy: { type: "lando" } });

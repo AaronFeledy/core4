@@ -10,6 +10,7 @@ import {
   type LogsAppResult,
   followLogsForPlan,
   logsForPlan,
+  validateSince,
 } from "../logs.ts";
 import { type LoadGlobalPlanError, type LoadGlobalPlanServices, loadGlobalPlan } from "./global-plan.ts";
 
@@ -25,7 +26,10 @@ export const globalLogs = (
 ): Effect.Effect<GlobalLogsResult, GlobalLogsError, GlobalLogsServices> =>
   Effect.gen(function* () {
     const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", lines: [] };
+    if (!loaded.materialized) {
+      yield* validateSince(options.since);
+      return { app: "global", lines: [] };
+    }
     return yield* logsForPlan(loaded.plan, options);
   });
 
@@ -34,6 +38,9 @@ export const followGlobalLogs = (
 ): Effect.Effect<GlobalLogsResult, GlobalLogsError, GlobalLogsServices | StreamFrameSink> =>
   Effect.gen(function* () {
     const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", lines: [] };
+    if (!loaded.materialized) {
+      yield* validateSince(options.since);
+      return { app: "global", lines: [] };
+    }
     return yield* followLogsForPlan(loaded.plan, options);
   });

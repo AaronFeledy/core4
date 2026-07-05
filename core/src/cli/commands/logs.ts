@@ -107,7 +107,7 @@ const rfc3339EpochSeconds = (raw: string): number | undefined => {
   return Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000);
 };
 
-const validateSince = (
+export const validateSince = (
   raw: string | undefined,
 ): Effect.Effect<{ readonly raw: string; readonly epochSeconds: number } | undefined, ToolingExecError> => {
   if (raw === undefined) return Effect.succeed(undefined);
