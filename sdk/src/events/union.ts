@@ -48,6 +48,7 @@ import {
   PostManagedFileWriteEvent,
   PreManagedFileWriteEvent,
 } from "./managed-file.ts";
+import { PostMcpCallEvent, PreMcpCallEvent } from "./mcp.ts";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "./message.ts";
 import {
   PostProviderApplyEvent,
@@ -127,6 +128,8 @@ export const LandoEvent = Schema.Union(
   PostDownloadEvent,
   PreHttpCallEvent,
   PostHttpCallEvent,
+  PreMcpCallEvent,
+  PostMcpCallEvent,
   PreDataTransferEvent,
   DataTransferProgressEvent,
   PostDataTransferEvent,
