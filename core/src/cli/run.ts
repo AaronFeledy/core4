@@ -52,7 +52,11 @@ import { listServices, renderAppsListResult } from "./commands/list.ts";
 import { followLogsApp, logsApp, renderLogsAppResult } from "./commands/logs.ts";
 import { globalConfig, renderGlobalConfigResult } from "./commands/meta/global-config.ts";
 import { globalDestroy, renderGlobalDestroyResult } from "./commands/meta/global-destroy.ts";
+import { globalInfo, renderGlobalInfoResult } from "./commands/meta/global-info.ts";
 import { globalInstall, renderGlobalInstallResult } from "./commands/meta/global-install.ts";
+import { DefaultGlobalListLayer, globalList, renderGlobalListResult } from "./commands/meta/global-list.ts";
+import { followGlobalLogs, globalLogs, renderGlobalLogsResult } from "./commands/meta/global-logs.ts";
+import { globalRestart, renderGlobalRestartResult } from "./commands/meta/global-restart.ts";
 import { globalStart, renderGlobalStartResult } from "./commands/meta/global-start.ts";
 import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-status.ts";
 import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
@@ -165,7 +169,9 @@ import {
   globalConfigOptionsFromInput,
 } from "./oclif/commands/meta/global/config.ts";
 import { globalDestroyOptionsFromInput } from "./oclif/commands/meta/global/destroy.ts";
+import { globalInfoOptionsFromInput } from "./oclif/commands/meta/global/info.ts";
 import { globalInstallOptionsFromInput } from "./oclif/commands/meta/global/install.ts";
+import { globalLogsFollowFromInput, globalLogsOptionsFromInput } from "./oclif/commands/meta/global/logs.ts";
 import { globalStartOptionsFromInput } from "./oclif/commands/meta/global/start.ts";
 import {
   globalStatusFormatFromInput,
@@ -1429,6 +1435,43 @@ const runMetaGlobalStatus = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
+const runMetaGlobalList = (): Promise<void> =>
+  runCompiledCommand(
+    globalList().pipe(Effect.provide(DefaultGlobalListLayer)),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    (value, ctx) => renderGlobalListResult(value, ctx),
+  );
+
+const runMetaGlobalInfo = (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = compiledCommandInputFromArgv("meta:global:info", argv);
+  return runCompiledCommand(
+    globalInfo(globalInfoOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    (value, ctx) => renderGlobalInfoResult(value, ctx),
+  );
+};
+
+const runMetaGlobalLogs = (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = compiledCommandInputFromArgv("meta:global:logs", argv);
+  const options = globalLogsOptionsFromInput(input);
+  if (globalLogsFollowFromInput(input)) {
+    return runWithProcessAbortSignal((signal) =>
+      runCompiledCommand(
+        followGlobalLogs({ ...options, follow: true, signal }),
+        globalRuntimeLayer(),
+        renderGlobalLogsResult,
+        { streamingMode: "live" },
+      ),
+    );
+  }
+  return runCompiledCommand(globalLogs(options), globalRuntimeLayer(), renderGlobalLogsResult);
+};
+
+const runMetaGlobalRestart = (): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(globalRestart({ signal }), globalRuntimeLayer(), renderGlobalRestartResult),
+  );
+
 const runMetaGlobalDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:destroy", argv);
   return runCompiledCommand(
@@ -2262,6 +2305,26 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "global:install" || argv[0] === "meta:global:install") {
     await runMetaGlobalInstall(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:info" || argv[0] === "meta:global:info") {
+    await runMetaGlobalInfo(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:list" || argv[0] === "meta:global:list") {
+    await runMetaGlobalList();
+    return;
+  }
+
+  if (argv[0] === "global:logs" || argv[0] === "meta:global:logs") {
+    await runMetaGlobalLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:restart" || argv[0] === "meta:global:restart") {
+    await runMetaGlobalRestart();
     return;
   }
 

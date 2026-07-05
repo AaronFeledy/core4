@@ -387,7 +387,7 @@ The global app gets its own CLI subtree under the `meta:` namespace. Default top
 | `meta:global:destroy` | `global:destroy` | `global` | Stop and tear down the global app's services and resources. Storage at `scope: global` survives unless `--purge` is passed. Requires confirmation unless `--yes`. |
 | `meta:global:info` | `global:info` | `global` | Print global service runtime information. Supports `--service`, `--format`. |
 | `meta:global:install` | `global:install` | `global` | Enable every `globalServices:` contribution from a named plugin (writes `global.config.yml`, regenerates `dist`, no service start). Pair with `meta:global:start` to bring up the new services. |
-| `meta:global:list` | `global:list` | `minimal` | List every contributed global service with its `enabled:` state, source plugin, current status, and the canonical ids of plugin-contributed commands that operate on it (declared via the `commands:` field on the `globalServices:` contribution; §20.4). Replaces the v3-style "is Traefik running?" question with a single source of truth and gives users a discoverability surface for per-service tooling without reading each plugin's README. |
+| `meta:global:list` | `global:list` | `minimal` | List every contributed global service with its `enabled:`/`blocked` catalog state, source plugin, and the canonical ids of plugin-contributed commands that operate on it (declared via the `commands:` field on the `globalServices:` contribution; §20.4). This is a discovery surface: it runs at `minimal` bootstrap and reports catalog availability (`enabled`/`disabled`/`blocked`), never a live container status — live per-service runtime status is `meta:global:status`. It gives users a discoverability surface for per-service tooling without reading each plugin's README. |
 | `meta:global:logs` | `global:logs` | `global` | Stream global service logs. Supports `--service`, `--follow`, `--tail`, `--since`. Mirrors `app:logs` (§8.2). |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Stop, rebuild artifacts, and restart global services. Same up-to-date-check semantics as `app:rebuild` (§6.13.5). |
 | `meta:global:restart` | `global:restart` | `global` | `meta:global:stop` + `meta:global:start`. |
@@ -398,12 +398,12 @@ The global app gets its own CLI subtree under the `meta:` namespace. Default top
 Example `meta:global:list` output:
 
 ```text
-SERVICE   PLUGIN                      STATUS    COMMANDS
-mailpit   @lando/service-mailpit      running   mail:open, mail:clear
-traefik   @lando/proxy-traefik        running   traefik:reload, traefik:logs
+SERVICE   STATE     PLUGIN                      COMMANDS
+mailpit   enabled   @lando/service-mailpit      mail:open, mail:clear
+traefik   enabled   @lando/proxy-traefik        traefik:reload, traefik:logs
 ```
 
-The COMMANDS column lists the top-level alias for each canonical id declared in the contribution's `commands:` field; `meta:global:list --format json` returns the canonical ids unchanged so embedding hosts and CI scripts get an unambiguous shape.
+The STATE column is the contribution's catalog availability (`enabled`/`disabled`/`blocked`), not a live container status; run `meta:global:status` for live per-service runtime state. The COMMANDS column lists the canonical id for each entry declared in the contribution's `commands:` field; `meta:global:list --format json` returns the canonical ids unchanged so embedding hosts and CI scripts get an unambiguous shape.
 
 Behavioral requirements:
 

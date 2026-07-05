@@ -158,22 +158,14 @@ const toServiceInfo = (
   endpoints,
 });
 
-export const infoApp = (
-  _options?: InfoAppOptions,
-  target?: ResolvedAppTarget,
-): Effect.Effect<InfoAppResult, InfoAppError, InfoAppServices> =>
+// Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
+// out-of-band plan resolvers (global-app commands) reuse this without pulling
+// user-Landofile resolution into their bootstrap layer.
+export const infoForPlan = (
+  plan: AppPlan,
+): Effect.Effect<InfoAppResult, InfoAppError, RuntimeProviderRegistry> =>
   Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
-
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
     const provider = yield* registry.select(plan);
 
     const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
@@ -195,4 +187,24 @@ export const infoApp = (
     );
 
     return { app: plan.name, services };
+  });
+
+export const infoApp = (
+  _options?: InfoAppOptions,
+  target?: ResolvedAppTarget,
+): Effect.Effect<InfoAppResult, InfoAppError, InfoAppServices> =>
+  Effect.gen(function* () {
+    const landofileService = yield* LandofileService;
+    const registry = yield* RuntimeProviderRegistry;
+    const planner = yield* AppPlanner;
+
+    const plan =
+      target?.plan ??
+      (yield* Effect.gen(function* () {
+        const landofile = yield* loadUserLandofile(landofileService);
+        const capabilities = yield* registry.capabilities;
+        return yield* planner.plan(landofile, capabilities);
+      }));
+
+    return yield* infoForPlan(plan);
   });

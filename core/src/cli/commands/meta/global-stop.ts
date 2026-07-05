@@ -41,7 +41,7 @@ export const GlobalStopResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-type GlobalStopError =
+export type GlobalStopError =
   | CapabilityError
   | EventError
   | FileSystemError
@@ -54,7 +54,12 @@ type GlobalStopError =
   | ProviderError
   | ProviderUnavailableError;
 
-type GlobalStopServices = AppPlanner | EventService | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+export type GlobalStopServices =
+  | AppPlanner
+  | EventService
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry;
 
 export const renderGlobalStopResult = (result: GlobalStopResult): string => {
   if (!result.materialized) return "Global app is not installed; nothing to stop.";

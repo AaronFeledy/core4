@@ -11905,16 +11905,54 @@
       "type": "object"
     },
     "meta:global:info": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "services": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "api": {
+                "enum": [4],
+                "type": "number"
+              },
+              "app": {
+                "type": "string"
+              },
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "primary": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"],
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": ["app", "service", "api", "type", "provider", "primary", "status", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "services"],
+      "type": "object"
     },
     "meta:global:install": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -11964,16 +12002,44 @@
       "type": "object"
     },
     "meta:global:list": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
-        },
-        {
+      "additionalProperties": false,
+      "properties": {
+        "services": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "commands": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "id": {
+                "type": "string"
+              },
+              "plugin": {
+                "type": "string"
+              },
+              "state": {
+                "enum": ["enabled", "disabled", "blocked"],
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "plugin", "enabled", "state", "commands"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["services"],
+      "type": "object"
     },
     "meta:global:logs": {
       "$id": "/schemas/%7B%7D",
@@ -12000,16 +12066,37 @@
       ]
     },
     "meta:global:restart": {
-      "$id": "/schemas/%7B%7D",
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
         },
-        {
+        "servicesStarted": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoints": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "state", "endpoints"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["app", "servicesStarted"],
+      "type": "object"
     },
     "meta:global:start": {
       "$schema": "http://json-schema.org/draft-07/schema#",
