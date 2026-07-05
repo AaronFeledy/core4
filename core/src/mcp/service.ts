@@ -44,7 +44,7 @@ export interface McpRuntimeConfigShape {
    * StreamFrameSink, app services). Built once per `serve` session — the single
    * retained runtime.
    */
-  readonly runtimeLayer: Layer.Layer<unknown>;
+  readonly runtimeLayer: Layer.Layer<unknown> | Layer.Layer<never>;
 }
 
 export class McpRuntimeConfig extends Context.Tag("@lando/core/McpRuntimeConfig")<
