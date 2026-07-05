@@ -164,18 +164,8 @@ export const dispatchTool = (
 
     yield* emit(deps, preEvent(deps, request, commandId));
 
-    const rejectNotAllowed = (): McpToolNotAllowedError =>
-      new McpToolNotAllowedError({
-        message: `Tool ${request.toolId} is not in the effective MCP allowlist.`,
-        toolId: request.toolId,
-        effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
-        source: deps.allowlistSource,
-        remediation: `Add ${request.toolId} to \`mcp.allow\` (or --allow) to expose it as an MCP tool.`,
-      });
-
-    if (entry === undefined || !deps.effective.has(request.toolId)) {
-      const error = rejectNotAllowed();
-      yield* emit(
+    const emitInterruptedPost = (): Effect.Effect<void> =>
+      emit(
         deps,
         postEvent(deps, {
           toolId: request.toolId,
@@ -183,25 +173,23 @@ export const dispatchTool = (
           appRef,
           outcome: "failure",
           durationMs: nowMs(deps) - startedAt,
-          failureDetail: error._tag,
+          failureDetail: "Interrupted",
         }),
       );
-      return yield* Effect.fail(error);
-    }
 
-    const validated = yield* Effect.try({
-      try: () => validateToolInput(entry.spec, request.input),
-      catch: (error) =>
-        error instanceof McpToolInputError
-          ? error
-          : new McpToolInputError({
-              message: `Invalid input for tool ${request.toolId}.`,
-              toolId: request.toolId,
-              remediation: "Provide input matching the tool's derived schema.",
-            }),
-    }).pipe(
-      Effect.tapError((error) =>
-        emit(
+    return yield* Effect.gen(function* () {
+      const rejectNotAllowed = (): McpToolNotAllowedError =>
+        new McpToolNotAllowedError({
+          message: `Tool ${request.toolId} is not in the effective MCP allowlist.`,
+          toolId: request.toolId,
+          effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
+          source: deps.allowlistSource,
+          remediation: `Add ${request.toolId} to \`mcp.allow\` (or --allow) to expose it as an MCP tool.`,
+        });
+
+      if (entry === undefined || !deps.effective.has(request.toolId)) {
+        const error = rejectNotAllowed();
+        yield* emit(
           deps,
           postEvent(deps, {
             toolId: request.toolId,
@@ -211,43 +199,70 @@ export const dispatchTool = (
             durationMs: nowMs(deps) - startedAt,
             failureDetail: error._tag,
           }),
-        ),
-      ),
-    );
-
-    const runInput: McpRunInput = {
-      argv: [],
-      flags: validated.flags,
-      args: validated.args,
-      ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
-    };
-
-    const outcome = yield* deps.execute(entry, runInput);
-    if (outcome._tag === "success") {
-      for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
-        yield* emitProgressFrame(deps, frame);
+        );
+        return yield* Effect.fail(error);
       }
-    }
-    const line = yield* encodeCommandResult({
-      command: entry.spec.id,
-      resultSchema: entry.spec.resultSchema,
-      outcome,
-      redactor: deps.redactor,
-    });
-    const envelope: unknown = JSON.parse(line);
-    const ok = (envelope as { readonly ok?: unknown }).ok === true;
 
-    yield* emit(
-      deps,
-      postEvent(deps, {
-        toolId: request.toolId,
-        commandId,
-        appRef,
-        outcome: ok ? "success" : "failure",
-        durationMs: nowMs(deps) - startedAt,
-        failureDetail: ok ? undefined : envelopeTag(envelope),
-      }),
-    );
+      const validated = yield* Effect.try({
+        try: () => validateToolInput(entry.spec, request.input),
+        catch: (error) =>
+          error instanceof McpToolInputError
+            ? error
+            : new McpToolInputError({
+                message: `Invalid input for tool ${request.toolId}.`,
+                toolId: request.toolId,
+                remediation: "Provide input matching the tool's derived schema.",
+              }),
+      }).pipe(
+        Effect.tapError((error) =>
+          emit(
+            deps,
+            postEvent(deps, {
+              toolId: request.toolId,
+              commandId,
+              appRef,
+              outcome: "failure",
+              durationMs: nowMs(deps) - startedAt,
+              failureDetail: error._tag,
+            }),
+          ),
+        ),
+      );
 
-    return { envelope, ok };
+      const runInput: McpRunInput = {
+        argv: [],
+        flags: validated.flags,
+        args: validated.args,
+        ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
+      };
+
+      const outcome = yield* deps.execute(entry, runInput);
+      if (outcome._tag === "success") {
+        for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
+          yield* emitProgressFrame(deps, frame);
+        }
+      }
+      const line = yield* encodeCommandResult({
+        command: entry.spec.id,
+        resultSchema: entry.spec.resultSchema,
+        outcome,
+        redactor: deps.redactor,
+      });
+      const envelope: unknown = JSON.parse(line);
+      const ok = (envelope as { readonly ok?: unknown }).ok === true;
+
+      yield* emit(
+        deps,
+        postEvent(deps, {
+          toolId: request.toolId,
+          commandId,
+          appRef,
+          outcome: ok ? "success" : "failure",
+          durationMs: nowMs(deps) - startedAt,
+          failureDetail: ok ? undefined : envelopeTag(envelope),
+        }),
+      );
+
+      return { envelope, ok };
+    }).pipe(Effect.onInterrupt(emitInterruptedPost));
   });

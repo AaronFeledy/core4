@@ -125,6 +125,23 @@ describe("dispatchTool", () => {
     }
   });
 
+  test("publishes post event when command execution is interrupted", async () => {
+    const entry: McpCommandEntry = { spec: spec("app:exec", () => Effect.never) };
+    const { deps, events } = harness([entry]);
+    const exit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:exec" },
+        {
+          ...deps,
+          execute: () => Effect.interrupt,
+        },
+      ),
+    );
+    expect(exit._tag).toBe("Failure");
+    expect(events.map((e) => e._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
+    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "Interrupted" });
+  });
+
   test("redacts secret values before the envelope crosses the transport", async () => {
     const secret = "sk-super-secret-token";
     const entry: McpCommandEntry = {
