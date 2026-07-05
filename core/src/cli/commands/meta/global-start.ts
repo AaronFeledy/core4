@@ -63,7 +63,7 @@ export const GlobalStartResultSchema = Schema.Struct({
   servicesStarted: Schema.Array(GlobalStartedServiceSchema),
 });
 
-type GlobalStartError =
+export type GlobalStartError =
   | CapabilityError
   | EventError
   | FileSystemError
@@ -81,7 +81,7 @@ type GlobalStartError =
   | ProviderUnavailableError
   | ToolingExecError;
 
-type GlobalStartServices =
+export type GlobalStartServices =
   | AppPlanner
   | EventService
   | FileSystem

@@ -175,8 +175,7 @@ describe("deferred command remediation contract", () => {
         .replace(/\s+/g, " ");
 
     const parityProbes: ReadonlyArray<FixtureEntry> = [
-      fixture.commands.find((entry) => entry.id === "meta:global:list") as FixtureEntry,
-      fixture.commands.find((entry) => entry.id === "meta:global:info") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:global:rebuild") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:plugin:login") as FixtureEntry,
     ];
 

@@ -107,7 +107,7 @@ const rfc3339EpochSeconds = (raw: string): number | undefined => {
   return Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000);
 };
 
-const validateSince = (
+export const validateSince = (
   raw: string | undefined,
 ): Effect.Effect<{ readonly raw: string; readonly epochSeconds: number } | undefined, ToolingExecError> => {
   if (raw === undefined) return Effect.succeed(undefined);
@@ -122,6 +122,36 @@ const validateSince = (
   if (timestampSeconds !== undefined) return Effect.succeed({ raw, epochSeconds: timestampSeconds });
   return Effect.fail(invalidSinceError(raw));
 };
+
+// Provider selection + serviceLogs capability gate + service filtering for an
+// already-resolved plan. Requires only RuntimeProviderRegistry so out-of-band
+// plan resolvers (global-app commands) reuse it without user-Landofile resolution.
+const servicesForPlan = (
+  plan: AppPlan,
+  options: LogsAppOptions,
+): Effect.Effect<
+  { readonly services: ReadonlyArray<ServicePlan>; readonly provider: RuntimeProviderShape },
+  LogsAppError,
+  RuntimeProviderRegistry
+> =>
+  Effect.gen(function* () {
+    const registry = yield* RuntimeProviderRegistry;
+    const provider = yield* registry.select(plan);
+    if (provider.capabilities.serviceLogs !== true) {
+      return yield* Effect.fail(
+        new CapabilityError({
+          message: "The app's runtime provider cannot stream service logs.",
+          capability: "serviceLogs",
+          providerId: provider.id,
+          remediation:
+            "Use a runtime provider whose capabilities advertise service log streaming (serviceLogs).",
+        }),
+      );
+    }
+
+    const services = yield* selectServices(plan, options.service);
+    return { services, provider };
+  });
 
 const resolvePlanServices = (
   options: LogsAppOptions,
@@ -148,20 +178,7 @@ const resolvePlanServices = (
         return yield* planner.plan(landofile, capabilities);
       }));
 
-    const provider = yield* registry.select(plan);
-    if (provider.capabilities.serviceLogs !== true) {
-      return yield* Effect.fail(
-        new CapabilityError({
-          message: "The app's runtime provider cannot stream service logs.",
-          capability: "serviceLogs",
-          providerId: provider.id,
-          remediation:
-            "Use a runtime provider whose capabilities advertise service log streaming (serviceLogs).",
-        }),
-      );
-    }
-
-    const services = yield* selectServices(plan, options.service);
+    const { services, provider } = yield* servicesForPlan(plan, options);
     return { plan, services, provider };
   });
 
@@ -192,15 +209,13 @@ const raceAbort = <E, R>(
 ): Effect.Effect<void, E, R> =>
   signal === undefined ? effect : Effect.raceFirst(effect, waitForAbort(signal));
 
-export const logsApp = (
-  options: LogsAppOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices> =>
+const collectLogLines = (
+  plan: AppPlan,
+  services: ReadonlyArray<ServicePlan>,
+  provider: RuntimeProviderShape,
+  logOptions: LogOptions,
+): Effect.Effect<LogsAppResult, LogsAppError, never> =>
   Effect.gen(function* () {
-    const since = yield* validateSince(options.since);
-    const { plan, services, provider } = yield* resolvePlanServices(options, target);
-    const logOptions = logOptionsFor(options, options.follow ?? false, since);
-
     const perService = yield* Effect.forEach(services, (service) =>
       provider.logs({ app: plan.id, service: service.name }, logOptions).pipe(Stream.runCollect),
     );
@@ -220,16 +235,15 @@ export const logsApp = (
     return { app: plan.name, lines };
   });
 
-export const followLogsApp = (
-  options: FollowLogsAppOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices | StreamFrameSink> =>
+const drainLogFollow = (
+  plan: AppPlan,
+  services: ReadonlyArray<ServicePlan>,
+  provider: RuntimeProviderShape,
+  logOptions: LogOptions,
+  signal: AbortSignal | undefined,
+): Effect.Effect<LogsAppResult, LogsAppError, StreamFrameSink> =>
   Effect.gen(function* () {
     const sink = yield* StreamFrameSink;
-    const since = yield* validateSince(options.since);
-    const { plan, services, provider } = yield* resolvePlanServices(options, target);
-    const logOptions = logOptionsFor(options, true, since);
-
     const streams = services.map((service) =>
       provider.logs({ app: plan.id, service: service.name }, logOptions),
     );
@@ -239,6 +253,63 @@ export const followLogsApp = (
         sink.emit({ _tag: chunk.stream, chunk: chunk.line, service: String(chunk.service) }),
     );
 
-    yield* raceAbort(options.signal, Effect.scoped(drain));
+    yield* raceAbort(signal, Effect.scoped(drain));
     return { app: plan.name, lines: [] };
+  });
+
+export const logsForPlan = (
+  plan: AppPlan,
+  options: LogsAppOptions = {},
+): Effect.Effect<LogsAppResult, LogsAppError, RuntimeProviderRegistry> =>
+  Effect.gen(function* () {
+    const since = yield* validateSince(options.since);
+    const { services, provider } = yield* servicesForPlan(plan, options);
+    return yield* collectLogLines(plan, services, provider, logOptionsFor(options, false, since));
+  });
+
+export const followLogsForPlan = (
+  plan: AppPlan,
+  options: FollowLogsAppOptions = {},
+): Effect.Effect<LogsAppResult, LogsAppError, RuntimeProviderRegistry | StreamFrameSink> =>
+  Effect.gen(function* () {
+    const since = yield* validateSince(options.since);
+    const { services, provider } = yield* servicesForPlan(plan, options);
+    return yield* drainLogFollow(
+      plan,
+      services,
+      provider,
+      logOptionsFor(options, true, since),
+      options.signal,
+    );
+  });
+
+export const logsApp = (
+  options: LogsAppOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices> =>
+  Effect.gen(function* () {
+    const since = yield* validateSince(options.since);
+    const { plan, services, provider } = yield* resolvePlanServices(options, target);
+    return yield* collectLogLines(
+      plan,
+      services,
+      provider,
+      logOptionsFor(options, options.follow ?? false, since),
+    );
+  });
+
+export const followLogsApp = (
+  options: FollowLogsAppOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<LogsAppResult, LogsAppError, LogsAppServices | StreamFrameSink> =>
+  Effect.gen(function* () {
+    const since = yield* validateSince(options.since);
+    const { plan, services, provider } = yield* resolvePlanServices(options, target);
+    return yield* drainLogFollow(
+      plan,
+      services,
+      provider,
+      logOptionsFor(options, true, since),
+      options.signal,
+    );
   });

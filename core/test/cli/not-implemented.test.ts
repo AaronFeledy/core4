@@ -74,7 +74,7 @@ describe("non-MVP OCLIF commands", () => {
   test("return structured remediation even when invoked with unknown flags", async () => {
     const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
       { args: ["meta:events:follow", "--detect"], commandId: "meta:events:follow" },
-      { args: ["meta:global:list", "--check"], commandId: "meta:global:list" },
+      { args: ["meta:global:rebuild", "--check"], commandId: "meta:global:rebuild" },
       { args: ["meta:recipes:list", "--format", "json"], commandId: "meta:recipes:list" },
     ];
 

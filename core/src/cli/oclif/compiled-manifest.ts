@@ -3726,16 +3726,17 @@ export const COMPILED_OCLIF_MANIFEST = {
       ],
     },
     "meta:global:info": {
-      aliases: [],
+      aliases: ["global:info"],
       args: {},
-      description: "Global-app `info` (deliverable).",
+      description: "Print runtime information for the host-level global Lando app.",
       flags: {
         format: {
           description: "Output format.",
           name: "format",
+          default: "table",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["text", "json", "table", "yaml", "ndjson"],
+          options: ["table", "json"],
           type: "option",
         },
         json: {
@@ -3744,6 +3745,14 @@ export const COMPILED_OCLIF_MANIFEST = {
           name: "json",
           allowNo: false,
           type: "boolean",
+        },
+        service: {
+          char: "s",
+          description: "Filter to a specific global service (repeatable).",
+          name: "service",
+          hasDynamicHelp: false,
+          multiple: true,
+          type: "option",
         },
       },
       hasDynamicHelp: false,
@@ -3757,12 +3766,13 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:info",
-        summary: "Global-app `info` (deliverable).",
+        summary: "Print runtime information for the host-level global Lando app.",
         namespace: "meta",
-        bootstrap: "minimal",
+        topLevelAlias: "global:info",
+        bootstrap: "global",
       },
-      bootstrap: "minimal",
-      aliasPermutations: [],
+      bootstrap: "global",
+      aliasPermutations: ["global:info", "info:global"],
       permutations: [
         "meta:global:info",
         "global:meta:info",
@@ -3827,16 +3837,18 @@ export const COMPILED_OCLIF_MANIFEST = {
       ],
     },
     "meta:global:list": {
-      aliases: [],
+      aliases: ["global:list"],
       args: {},
-      description: "Global-app `list` (deliverable).",
+      description:
+        "List every contributed global service, its source plugin, enabled state, and per-service commands.",
       flags: {
         format: {
           description: "Output format.",
           name: "format",
+          default: "table",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["text", "json", "table", "yaml", "ndjson"],
+          options: ["table", "json"],
           type: "option",
         },
         json: {
@@ -3858,12 +3870,14 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:list",
-        summary: "Global-app `list` (deliverable).",
+        summary:
+          "List every contributed global service, its source plugin, enabled state, and per-service commands.",
         namespace: "meta",
+        topLevelAlias: "global:list",
         bootstrap: "minimal",
       },
       bootstrap: "minimal",
-      aliasPermutations: [],
+      aliasPermutations: ["global:list", "list:global"],
       permutations: [
         "meta:global:list",
         "global:meta:list",
@@ -3874,9 +3888,9 @@ export const COMPILED_OCLIF_MANIFEST = {
       ],
     },
     "meta:global:logs": {
-      aliases: [],
+      aliases: ["global:logs"],
       args: {},
-      description: "Global-app `logs` (deliverable).",
+      description: "Stream logs from the host-level global Lando app.",
       flags: {
         format: {
           description: "Output format.",
@@ -3893,6 +3907,35 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        service: {
+          char: "s",
+          description: "Filter logs to a single global service.",
+          name: "service",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
+        follow: {
+          char: "f",
+          description: "Stream new log lines until interrupted.",
+          name: "follow",
+          allowNo: false,
+          type: "boolean",
+        },
+        tail: {
+          description: "Show last N lines per service.",
+          name: "tail",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
+        since: {
+          description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+          name: "since",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,
@@ -3905,12 +3948,13 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:logs",
-        summary: "Global-app `logs` (deliverable).",
+        summary: "Stream logs from the host-level global Lando app.",
         namespace: "meta",
-        bootstrap: "minimal",
+        topLevelAlias: "global:logs",
+        bootstrap: "global",
       },
-      bootstrap: "minimal",
-      aliasPermutations: [],
+      bootstrap: "global",
+      aliasPermutations: ["global:logs", "logs:global"],
       permutations: [
         "meta:global:logs",
         "global:meta:logs",
@@ -3968,9 +4012,9 @@ export const COMPILED_OCLIF_MANIFEST = {
       ],
     },
     "meta:global:restart": {
-      aliases: [],
+      aliases: ["global:restart"],
       args: {},
-      description: "Global-app `restart` (deliverable).",
+      description: "Restart the host-level global Lando app (stop + start).",
       flags: {
         format: {
           description: "Output format.",
@@ -3999,12 +4043,13 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:restart",
-        summary: "Global-app `restart` (deliverable).",
+        summary: "Restart the host-level global Lando app (stop + start).",
         namespace: "meta",
-        bootstrap: "minimal",
+        topLevelAlias: "global:restart",
+        bootstrap: "global",
       },
-      bootstrap: "minimal",
-      aliasPermutations: [],
+      bootstrap: "global",
+      aliasPermutations: ["global:restart", "restart:global"],
       permutations: [
         "meta:global:restart",
         "global:meta:restart",

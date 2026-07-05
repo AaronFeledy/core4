@@ -13,9 +13,9 @@ export interface DeferredCommandPlan {
 }
 
 const META_GLOBAL_PLAN: DeferredCommandPlan = {
-  summary:
-    "The global Lando app and the `globalServices:` plugin-contribution surface are not available yet.",
-  remediation: "The global app and `meta:global:*` commands are not available yet.",
+  summary: "Rebuilding the global Lando app through `meta:global:rebuild` is not available yet.",
+  remediation:
+    "`meta:global:rebuild` is not available yet. Use `lando global:restart` to stop and start the global app.",
 };
 
 const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
@@ -39,11 +39,7 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  ["meta:global:info", META_GLOBAL_PLAN],
-  ["meta:global:list", META_GLOBAL_PLAN],
-  ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
-  ["meta:global:restart", META_GLOBAL_PLAN],
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
   ["meta:recipes:list", META_RECIPES_LIST_PLAN],

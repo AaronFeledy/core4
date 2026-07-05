@@ -730,7 +730,15 @@ Flags:
 
 ## `lando meta:global:info`
 
-Global-app `info` (deliverable).
+Print runtime information for the host-level global Lando app.
+
+Aliases: `lando global:info`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Filter to a specific global service (repeatable). |
 
 ## `lando meta:global:install`
 
@@ -746,11 +754,24 @@ Arguments:
 
 ## `lando meta:global:list`
 
-Global-app `list` (deliverable).
+List every contributed global service, its source plugin, enabled state, and per-service commands.
+
+Aliases: `lando global:list`
 
 ## `lando meta:global:logs`
 
-Global-app `logs` (deliverable).
+Stream logs from the host-level global Lando app.
+
+Aliases: `lando global:logs`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--follow, -f` | Stream new log lines until interrupted. |
+| `--service, -s` | Filter logs to a single global service. |
+| `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
+| `--tail` | Show last N lines per service. |
 
 ## `lando meta:global:rebuild`
 
@@ -758,7 +779,9 @@ Global-app `rebuild` (deliverable).
 
 ## `lando meta:global:restart`
 
-Global-app `restart` (deliverable).
+Restart the host-level global Lando app (stop + start).
+
+Aliases: `lando global:restart`
 
 ## `lando meta:global:start`
 
