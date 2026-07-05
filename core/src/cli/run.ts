@@ -49,7 +49,7 @@ import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { listServices, renderAppsListResult } from "./commands/list.ts";
-import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
+import { followLogsApp, logsApp, renderLogsAppResult } from "./commands/logs.ts";
 import { globalConfig, renderGlobalConfigResult } from "./commands/meta/global-config.ts";
 import { globalDestroy, renderGlobalDestroyResult } from "./commands/meta/global-destroy.ts";
 import { globalInstall, renderGlobalInstallResult } from "./commands/meta/global-install.ts";
@@ -141,7 +141,7 @@ import {
   notImplementedErrorForCommand,
 } from "./oclif/command-base.ts";
 import { appConfigOptionsFromInput } from "./oclif/commands/app/config/index.ts";
-import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
+import { logsFollowFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
 import {
   remoteAddOptionsFromInput,
   remoteEnvListOptionsFromInput,
@@ -188,6 +188,7 @@ import {
   writeDiagnosticLine,
   writeResultLine,
 } from "./renderer-boundary.ts";
+import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
 const version = "@lando/core/0.0.0";
 
@@ -549,7 +550,7 @@ const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<string>)
 
 const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
-  runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
+  runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
     readonly renderEvents?: boolean;
@@ -557,6 +558,7 @@ const runCompiledCommand = <A, E, R, RE>(
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
+    readonly streamingMode?: "live";
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -567,6 +569,7 @@ const runCompiledCommand = <A, E, R, RE>(
     command: activeCommandId,
     resultSchema: spec?.resultSchema ?? EmptyResultSchema,
     ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+    ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),
     ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
@@ -707,17 +710,16 @@ const runRebuild = (): Promise<void> =>
 
 const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:logs", argv);
-  const deferredError = logsDeferredErrorFromInput(input);
-  if (deferredError !== undefined) {
-    emitDiagnosticLine(commandErrorMessage(deferredError));
-    process.exitCode = 1;
-    return Promise.resolve();
+  const options = logsOptionsFromInput(input);
+  const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
+  if (logsFollowFromInput(input)) {
+    return runWithProcessAbortSignal((signal) =>
+      runCompiledCommand(followLogsApp({ ...options, follow: true, signal }), runtime, renderLogsAppResult, {
+        streamingMode: "live",
+      }),
+    );
   }
-  return runCompiledCommand(
-    logsApp(logsOptionsFromInput(input)),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-    renderLogsAppResult,
-  );
+  return runCompiledCommand(logsApp(options), runtime, renderLogsAppResult);
 };
 
 const appRuntimeLayer = () =>

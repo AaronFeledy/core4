@@ -384,6 +384,7 @@ export interface LogsAppOptions {
   readonly service?: string;
   readonly follow?: boolean;
   readonly tail?: number;
+  readonly since?: string;
 }
 
 export type LogsAppError =

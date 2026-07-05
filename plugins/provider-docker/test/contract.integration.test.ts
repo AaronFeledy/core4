@@ -923,6 +923,23 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
   });
 
+  test("forwards the since cursor to the Docker logs query", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan();
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    await Effect.runPromise(
+      provider
+        .logs({ app: appId, service: serviceName }, { follow: false, since: "1778371200" })
+        .pipe(Stream.runCollect),
+    );
+
+    expect(fake.calls.find((call) => call.path.includes("/logs?"))?.path).toContain("since=1778371200");
+  });
+
   test("decodes raw Docker log bytes", async () => {
     const fake = makeFakeApi();
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (

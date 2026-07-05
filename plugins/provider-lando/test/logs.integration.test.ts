@@ -154,6 +154,21 @@ describe("provider-lando logs", () => {
     expect(fake.calls[0]?.path).toContain("follow=true");
   });
 
+  test("forwards the since cursor to the Podman logs query", async () => {
+    const fake = makeFakeApi(frame("stdout", "windowed\n"));
+
+    await Effect.runPromise(
+      logs(
+        plan,
+        { app: appId, service: node.name },
+        { follow: false, since: "1778371200" },
+        { podmanApi: fake.api },
+      ).pipe(Stream.runCollect),
+    );
+
+    expect(fake.calls[0]?.path).toContain("since=1778371200");
+  });
+
   test.skipIf(resolveLiveProviderSocket() === undefined)(
     "streams logs from a live Podman service",
     async () => {

@@ -145,6 +145,7 @@ export interface LogTarget extends ServiceSelector {}
 export interface LogOptions {
   readonly follow: boolean;
   readonly tail?: number;
+  readonly since?: string;
 }
 
 export interface LogChunk {

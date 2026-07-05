@@ -1,10 +1,8 @@
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
 
-import { NotImplementedError } from "@lando/sdk/errors";
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { type LogsAppResult, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
+import { type LogsAppResult, followLogsApp, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -19,45 +17,24 @@ export interface LogsFlags {
   readonly since?: string;
 }
 
-const deferredLogsError = (message: string, remediation: string): NotImplementedError =>
-  new NotImplementedError({
-    message,
-    commandId: "app:logs",
-    remediation,
-  });
-
-export const LOGS_FOLLOW_DEFERRED = deferredLogsError(
-  "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
-  "Drop --follow and rely on --tail <N> for a finite log snapshot.",
-);
-
-export const LOGS_SINCE_DEFERRED = deferredLogsError(
-  "`lando logs --since` is not available yet (provider LogOptions does not yet expose a since cursor).",
-  "Drop --since and use --tail <N> for a finite recent snapshot.",
-);
-
-export const logsDeferredErrorFromInput = (input: unknown): NotImplementedError | undefined => {
-  const flags =
-    typeof input === "object" && input !== null
-      ? ((input as { readonly flags?: LogsFlags }).flags ?? {})
-      : {};
-  return flags.follow === true
-    ? LOGS_FOLLOW_DEFERRED
-    : flags.since !== undefined
-      ? LOGS_SINCE_DEFERRED
-      : undefined;
-};
+const flagsFromInput = (input: unknown): LogsFlags =>
+  typeof input === "object" && input !== null ? ((input as { readonly flags?: LogsFlags }).flags ?? {}) : {};
 
 export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>[0] => {
-  const flags =
-    typeof input === "object" && input !== null
-      ? ((input as { readonly flags?: LogsFlags }).flags ?? {})
-      : {};
+  const flags = flagsFromInput(input);
   return {
     ...(flags.service === undefined ? {} : { service: flags.service }),
     ...(flags.tail === undefined ? {} : { tail: flags.tail }),
+    ...(flags.since === undefined ? {} : { since: flags.since }),
   };
 };
+
+export const logsFollowFromInput = (input: unknown): boolean => flagsFromInput(input).follow === true;
+
+const signalFromInput = (input: unknown): AbortSignal | undefined =>
+  typeof input === "object" && input !== null
+    ? (input as { readonly signal?: AbortSignal }).signal
+    : undefined;
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   resultSchema: EmptyResultSchema,
@@ -67,7 +44,12 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   streaming: StreamFrame,
-  run: () => logsApp(),
+  run: (input) => {
+    const options = logsOptionsFromInput(input);
+    if (!logsFollowFromInput(input)) return logsApp(options);
+    const signal = signalFromInput(input);
+    return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
+  },
   streamFrames: (value) => {
     const result = value as LogsAppResult;
     return result.lines.map((line) => ({
@@ -79,28 +61,26 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   render: (result) => renderLogsAppResult(result as LogsAppResult),
 };
 
+// Type intentionally left inferred: an explicit `LandoCommandSpec` annotation makes the
+// machine-output gate read this spread variant as a spec missing a literal `resultSchema`.
+const followLogsSpec = { ...logsSpec, streamingMode: "live" as const };
+
 export default class LogsCommand extends LandoCommandBase {
   static override description = logsSpec.summary;
   static override aliases = [...resolveTopLevelAliases(logsSpec)];
   static override flags = {
     service: Flags.string({ char: "s", description: "Filter logs to a single planned service." }),
-    follow: Flags.boolean({ char: "f", description: "Stream new log lines (deferred to Beta)." }),
+    follow: Flags.boolean({ char: "f", description: "Stream new log lines until interrupted." }),
     tail: Flags.integer({ description: "Show last N lines per service." }),
-    since: Flags.string({ description: "Filter to lines since the given time (deferred to Beta)." }),
+    since: Flags.string({
+      description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+    }),
   };
   static override landoSpec: LandoCommandSpec = logsSpec;
   static override bootstrap = logsSpec.bootstrap;
 
   override async run(): Promise<void> {
     const parsed = (await this.parse(LogsCommand)) as { readonly flags: LogsFlags };
-    const deferredError = logsDeferredErrorFromInput(parsed);
-    if (deferredError !== undefined) {
-      await this.runEffect({ ...logsSpec, run: () => Effect.fail(deferredError) });
-      return;
-    }
-    await this.runEffect({
-      ...logsSpec,
-      run: () => logsApp(logsOptionsFromInput(parsed)),
-    });
+    await this.runEffect(parsed.flags.follow === true ? followLogsSpec : logsSpec);
   }
 }
