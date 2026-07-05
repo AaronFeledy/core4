@@ -17,9 +17,11 @@ import { Cause, Context, Effect, type Exit, Fiber, Layer, Option, Ref } from "ef
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
+import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
@@ -122,8 +124,28 @@ const makeService = (
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>
               transport.notify({ id: incoming.id, frame });
-          const streamSinkFor = (notify: McpNotify): Context.Tag.Service<typeof StreamFrameSink> => ({
-            emit: (frame: StreamFrameSinkFrame) => notify(frame),
+          const encodeProgressFrame = (
+            frame: StreamFrameSinkFrame,
+            redactorForFrame: Redactor,
+          ): Effect.Effect<unknown> =>
+            (frame._tag === "stdout"
+              ? encodeStreamStdoutFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor: redactorForFrame,
+                })
+              : encodeStreamStderrFrame({
+                  chunk: frame.chunk,
+                  ...(frame.service === undefined ? {} : { service: frame.service }),
+                  redactor: redactorForFrame,
+                })
+            ).pipe(Effect.map((line) => JSON.parse(line) as unknown));
+          const streamSinkFor = (
+            notify: McpNotify,
+            redactorForFrame: Redactor,
+          ): Context.Tag.Service<typeof StreamFrameSink> => ({
+            emit: (frame: StreamFrameSinkFrame) =>
+              encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify)),
           });
           const outcomeFromExit = (
             exit: Exit.Exit<unknown, unknown>,
@@ -145,7 +167,7 @@ const makeService = (
             execute: (entry, runInput) =>
               (entry.spec.run(runInput) as Effect.Effect<unknown, unknown, unknown>).pipe(
                 Effect.provide(runtimeContext),
-                Effect.provideService(StreamFrameSink, streamSinkFor(notifyFor(incoming))),
+                Effect.provideService(StreamFrameSink, streamSinkFor(notifyFor(incoming), redactor)),
                 Effect.exit,
                 Effect.flatMap(outcomeFromExit),
               ) as Effect.Effect<CommandResultOutcome, never>,

@@ -29,14 +29,15 @@ const spec = (
   ...extra,
 });
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-});
+const redactionLayer = (values: ReadonlyArray<string> = []) =>
+  Layer.succeed(RedactionService, {
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+  });
 
 const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeConfig, config);
 
-const serviceLayer = (config: McpRuntimeConfigShape) =>
-  McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer)));
+const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
+  McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
 
 describe("McpService.catalog", () => {
   test("lists the effective allowlist as tools", async () => {
@@ -87,10 +88,11 @@ describe("McpService.serve", () => {
   });
 
   test("forwards live StreamFrameSink output as MCP notifications", async () => {
+    const secret = "stream-secret";
     const streaming = spec("app:logs", () =>
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: "line-one", service: "web" });
+        yield* sink.emit({ _tag: "stdout", chunk: `line-one ${secret}`, service: "web" });
         return {};
       }),
     );
@@ -112,11 +114,12 @@ describe("McpService.serve", () => {
       yield* inmem.close;
       yield* Fiber.join(fiber);
       return notifications;
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config, [secret])));
 
     const notifications = await Effect.runPromise(program);
     expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toMatchObject({ frame: { _tag: "stdout", chunk: "line-one", service: "web" } });
+    expect(JSON.stringify(notifications[0])).toContain("[redacted]");
+    expect(JSON.stringify(notifications[0])).not.toContain(secret);
   });
 
   test("returns a failure envelope when a command dies", async () => {
