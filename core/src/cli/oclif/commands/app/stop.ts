@@ -12,6 +12,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 export const stopSpec: LandoCommandSpec<StopAppResult> = {
   resultSchema: StopAppResultSchema,
   id: "app:stop",
+  mcpAllowed: true,
   summary: "Stop the current Lando app.",
   namespace: "app",
   topLevelAlias: true,

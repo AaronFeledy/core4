@@ -21,6 +21,7 @@ import {
 } from "../renderer-boundary.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
+import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
 
 /**
  * The three first-class command namespaces.
@@ -60,6 +61,8 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly description?: string;
   readonly namespace: LandoCommandNamespace;
   readonly deprecated?: DeprecationNotice;
+  /** True only for commands exposed as MCP tools by default; destructive surfaces must not set this. */
+  readonly mcpAllowed?: boolean;
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
@@ -104,7 +107,11 @@ export class CommandRegistrationError extends Schema.TaggedError<CommandRegistra
 ) {}
 
 /** Reject a command spec that does not declare the required `resultSchema`. */
-export const validateCommandSpec = (spec: { readonly id: string; readonly resultSchema?: unknown }): void => {
+export const validateCommandSpec = (spec: {
+  readonly id: string;
+  readonly resultSchema?: unknown;
+  readonly mcpAllowed?: boolean;
+}): void => {
   if (spec.resultSchema === undefined || spec.resultSchema === null) {
     throw new CommandRegistrationError({
       message: `Command ${spec.id} does not declare a resultSchema. Every command must declare the machine-readable shape of its result; use EmptyResultSchema for a command with no payload.`,
@@ -112,6 +119,7 @@ export const validateCommandSpec = (spec: { readonly id: string; readonly result
       remediation: "Add a `resultSchema` to the command spec.",
     });
   }
+  assertMcpAllowlistSafe(spec);
 };
 
 const MVP_COMMAND_IDS = new Set([

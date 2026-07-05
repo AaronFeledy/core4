@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "description": "Every tool the effective allowlist exposes, ordered by canonical id.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "description": "The canonical command id the tool dispatches to (equal to toolId).",
+            "type": "string"
+          },
+          "description": {
+            "description": "Longer tool description surfaced to the agent.",
+            "type": "string"
+          },
+          "destructive": {
+            "description": "Whether the tool performs a destructive operation; only true when a destructive id is explicitly enabled via mcp.allow.",
+            "type": "boolean"
+          },
+          "inputSchema": {
+            "additionalProperties": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            },
+            "description": "JSON-Schema-shaped object derived from the command's flags/args.",
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "title": {
+            "description": "Human-readable tool title (the command summary).",
+            "type": "string"
+          },
+          "toolId": {
+            "description": "Canonical command id exposed as this tool (e.g. \"app:info\").",
+            "type": "string"
+          }
+        },
+        "required": [
+          "toolId",
+          "commandId",
+          "title",
+          "description",
+          "destructive",
+          "inputSchema"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "tools"
+  ],
+  "type": "object"
+}

@@ -12,6 +12,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   resultSchema: AppInfoResultSchema,
   id: "app:info",
+  mcpAllowed: true,
   summary: "Print provider-neutral runtime info for the current app.",
   namespace: "app",
   topLevelAlias: true,

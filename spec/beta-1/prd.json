@@ -444,7 +444,7 @@
         "Lint passes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 10.14, 8.3). Mirror the hostProxyAllowed mechanics; do not invent a second allowlist shape."
     },
     {

@@ -59,6 +59,7 @@ export const metaDoctorSpec: LandoCommandSpec<
 > = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
+  mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",
   topLevelAlias: true,

@@ -14,6 +14,7 @@ import {
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   resultSchema: RestartAppResultSchema,
   id: "app:restart",
+  mcpAllowed: true,
   summary: "Restart the current app (stop + start).",
   namespace: "app",
   topLevelAlias: true,

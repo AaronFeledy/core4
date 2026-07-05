@@ -642,6 +642,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:exec",
+        mcpAllowed: true,
         summary: "Run a command in a Lando service.",
         namespace: "app",
         topLevelAlias: true,
@@ -799,6 +800,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:info",
+        mcpAllowed: true,
         summary: "Print provider-neutral runtime info for the current app.",
         namespace: "app",
         topLevelAlias: true,
@@ -869,6 +871,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:logs",
+        mcpAllowed: true,
         summary: "Stream logs from the current app.",
         namespace: "app",
         topLevelAlias: true,
@@ -1749,6 +1752,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:restart",
+        mcpAllowed: true,
         summary: "Restart the current app (stop + start).",
         namespace: "app",
         topLevelAlias: true,
@@ -2205,6 +2209,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:start",
+        mcpAllowed: true,
         summary: "Start the current Lando app.",
         namespace: "app",
         topLevelAlias: true,
@@ -2246,6 +2251,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:stop",
+        mcpAllowed: true,
         summary: "Stop the current Lando app.",
         namespace: "app",
         topLevelAlias: true,
@@ -2453,6 +2459,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "apps:list",
+        mcpAllowed: true,
         summary: "List Lando apps applied across discovered providers on this host.",
         namespace: "apps",
         topLevelAlias: true,
@@ -2724,6 +2731,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "apps:scratch:list",
+        mcpAllowed: true,
         summary: "List scratch Lando apps.",
         namespace: "apps",
         topLevelAlias: "scratch:list",
@@ -3172,6 +3180,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:doctor",
+        mcpAllowed: true,
         summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
         namespace: "meta",
         topLevelAlias: true,
@@ -5387,6 +5396,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:version",
+        mcpAllowed: true,
         summary: "Show the Lando + Bun + plugin versions.",
         namespace: "meta",
         topLevelAlias: true,

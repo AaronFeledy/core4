@@ -29,6 +29,7 @@ export * from "./json-schema.ts";
 export * from "./landofile.ts";
 export * from "./machine-output.ts";
 export * from "./managed-file.ts";
+export * from "./mcp.ts";
 export * from "./mounts.ts";
 export * from "./networking.ts";
 export * from "./plugin.ts";

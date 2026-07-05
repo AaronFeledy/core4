@@ -13799,6 +13799,42 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for MCP Tool Descriptor.",
+      "docsPath": "docs/reference/schemas/mcp-tool-descriptor.mdx",
+      "id": "McpToolDescriptor",
+      "jsonSchemaPath": "dist/schemas/mcp-tool-descriptor.json",
+      "packageExport": "@lando/sdk/schema#McpToolDescriptor",
+      "title": "Mcp Tool Descriptor"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for MCP Catalog.",
+      "docsPath": "docs/reference/schemas/mcp-catalog.mdx",
+      "id": "McpCatalog",
+      "jsonSchemaPath": "dist/schemas/mcp-catalog.json",
+      "packageExport": "@lando/sdk/schema#McpCatalog",
+      "title": "Mcp Catalog"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for MCP Catalog Options.",
+      "docsPath": "docs/reference/schemas/mcp-catalog-options.mdx",
+      "id": "McpCatalogOptions",
+      "jsonSchemaPath": "dist/schemas/mcp-catalog-options.json",
+      "packageExport": "@lando/sdk/schema#McpCatalogOptions",
+      "title": "Mcp Catalog Options"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for MCP Serve Options.",
+      "docsPath": "docs/reference/schemas/mcp-serve-options.mdx",
+      "id": "McpServeOptions",
+      "jsonSchemaPath": "dist/schemas/mcp-serve-options.json",
+      "packageExport": "@lando/sdk/schema#McpServeOptions",
+      "title": "Mcp Serve Options"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for App Id.",
       "docsPath": "docs/reference/schemas/app-id.mdx",
       "id": "AppId",
@@ -15131,6 +15167,10 @@
       "ManagedFileInfo",
       "ManagedFilePlan",
       "ManagedFileResult",
+      "McpToolDescriptor",
+      "McpCatalog",
+      "McpCatalogOptions",
+      "McpServeOptions",
       "AppId",
       "ServiceName",
       "ProviderId",
@@ -27108,6 +27148,158 @@
       },
       "$ref": "#/$defs/MatcherSchema",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "McpCatalog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "tools": {
+          "description": "Every tool the effective allowlist exposes, ordered by canonical id.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "commandId": {
+                "description": "The canonical command id the tool dispatches to (equal to toolId).",
+                "type": "string"
+              },
+              "description": {
+                "description": "Longer tool description surfaced to the agent.",
+                "type": "string"
+              },
+              "destructive": {
+                "description": "Whether the tool performs a destructive operation; only true when a destructive id is explicitly enabled via mcp.allow.",
+                "type": "boolean"
+              },
+              "inputSchema": {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "description": "JSON-Schema-shaped object derived from the command's flags/args.",
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "title": {
+                "description": "Human-readable tool title (the command summary).",
+                "type": "string"
+              },
+              "toolId": {
+                "description": "Canonical command id exposed as this tool (e.g. \"app:info\").",
+                "type": "string"
+              }
+            },
+            "required": ["toolId", "commandId", "title", "description", "destructive", "inputSchema"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["tools"],
+      "type": "object"
+    },
+    "McpCatalogOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Additional canonical ids to allow beyond the defaults (--allow).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "description": "Canonical ids to deny; deny wins over allow (--deny).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tooling": {
+          "description": "Whether to project tooling tasks as tools (--tooling).",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "McpServeOptions": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Additional canonical ids to allow beyond the defaults (--allow).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cwd": {
+          "description": "Working directory used to resolve the app when a call omits a path.",
+          "type": "string"
+        },
+        "deny": {
+          "description": "Canonical ids to deny; deny wins over allow (--deny).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxConcurrent": {
+          "description": "Cap on concurrent in-flight tool calls (default 4).",
+          "type": "number"
+        },
+        "tooling": {
+          "description": "Whether to project tooling tasks as tools (--tooling).",
+          "type": "boolean"
+        },
+        "transport": {
+          "description": "Transport; stdio only in v4.0 (streamable-HTTP is deferred).",
+          "enum": ["stdio"],
+          "type": "string"
+        }
+      },
+      "required": ["transport"],
+      "type": "object"
+    },
+    "McpToolDescriptor": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "commandId": {
+          "description": "The canonical command id the tool dispatches to (equal to toolId).",
+          "type": "string"
+        },
+        "description": {
+          "description": "Longer tool description surfaced to the agent.",
+          "type": "string"
+        },
+        "destructive": {
+          "description": "Whether the tool performs a destructive operation; only true when a destructive id is explicitly enabled via mcp.allow.",
+          "type": "boolean"
+        },
+        "inputSchema": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "description": "JSON-Schema-shaped object derived from the command's flags/args.",
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "title": {
+          "description": "Human-readable tool title (the command summary).",
+          "type": "string"
+        },
+        "toolId": {
+          "description": "Canonical command id exposed as this tool (e.g. \"app:info\").",
+          "type": "string"
+        }
+      },
+      "required": ["toolId", "commandId", "title", "description", "destructive", "inputSchema"],
+      "type": "object"
     },
     "MessageErrorEvent": {
       "$defs": {

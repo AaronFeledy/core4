@@ -1081,6 +1081,42 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for MCP Tool Descriptor.",
+    "docsPath": "docs/reference/schemas/mcp-tool-descriptor.mdx",
+    "id": "McpToolDescriptor",
+    "jsonSchemaPath": "dist/schemas/mcp-tool-descriptor.json",
+    "packageExport": "@lando/sdk/schema#McpToolDescriptor",
+    "title": "Mcp Tool Descriptor"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for MCP Catalog.",
+    "docsPath": "docs/reference/schemas/mcp-catalog.mdx",
+    "id": "McpCatalog",
+    "jsonSchemaPath": "dist/schemas/mcp-catalog.json",
+    "packageExport": "@lando/sdk/schema#McpCatalog",
+    "title": "Mcp Catalog"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for MCP Catalog Options.",
+    "docsPath": "docs/reference/schemas/mcp-catalog-options.mdx",
+    "id": "McpCatalogOptions",
+    "jsonSchemaPath": "dist/schemas/mcp-catalog-options.json",
+    "packageExport": "@lando/sdk/schema#McpCatalogOptions",
+    "title": "Mcp Catalog Options"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for MCP Serve Options.",
+    "docsPath": "docs/reference/schemas/mcp-serve-options.mdx",
+    "id": "McpServeOptions",
+    "jsonSchemaPath": "dist/schemas/mcp-serve-options.json",
+    "packageExport": "@lando/sdk/schema#McpServeOptions",
+    "title": "Mcp Serve Options"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for App Id.",
     "docsPath": "docs/reference/schemas/app-id.mdx",
     "id": "AppId",
