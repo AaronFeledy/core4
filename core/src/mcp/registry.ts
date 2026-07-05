@@ -1,8 +1,8 @@
 /**
  * MCP command-registry projection.
  *
- * The MCP catalog is a projection of the canonical `LandoCommandSpec` registry
- *: one tool per allowlisted command id, with an input schema derived
+ * The MCP catalog is a projection of the canonical `LandoCommandSpec` registry:
+ * one tool per allowlisted command id, with an input schema derived
  * from the command's declared `flags`/`args`. This module owns the pure
  * derivation and validation logic — no command graph, no Effect runtime — so a
  * consumer can build a catalog or validate a tool input without pulling the
