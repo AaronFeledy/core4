@@ -75,6 +75,13 @@ const makeService = (
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
     ? (event) => events.value.publish(event).pipe(Effect.catchAll(() => Effect.void))
     : undefined;
+  const allowWithTooling = (
+    allow: ReadonlyArray<string> | undefined,
+    tooling: boolean | undefined,
+  ): ReadonlyArray<string> | undefined =>
+    tooling === true
+      ? [...(allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
+      : allow;
 
   const catalog: McpServiceShape["catalog"] = (options) =>
     Effect.sync(() =>
@@ -83,7 +90,7 @@ const makeService = (
         ...(config.toolingEntries === undefined ? {} : { toolingEntries: config.toolingEntries }),
         effective: computeEffectiveAllowlist({
           defaults: config.defaultAllowlist,
-          allow: options?.allow,
+          allow: allowWithTooling(options?.allow, options?.tooling),
           deny: options?.deny,
         }),
         ...(options === undefined ? {} : { options }),
@@ -103,7 +110,7 @@ const makeService = (
           const semaphore = yield* Effect.makeSemaphore(maxConcurrent);
           const effective = computeEffectiveAllowlist({
             defaults: config.defaultAllowlist,
-            allow: options.allow,
+            allow: allowWithTooling(options.allow, options.tooling),
             deny: options.deny,
           });
           const effectiveIds = new Set(effective.ids);
@@ -114,9 +121,6 @@ const makeService = (
           const registry = new Map<string, McpCommandEntry>(
             sessionEntries.map((entry) => [entry.spec.id, entry] as const),
           );
-          if (options.tooling === true) {
-            for (const entry of config.toolingEntries ?? []) effectiveIds.add(entry.spec.id);
-          }
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, never>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());

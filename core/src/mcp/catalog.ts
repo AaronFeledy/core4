@@ -68,7 +68,9 @@ export const buildCatalog = (input: BuildCatalogInput): McpCatalog => {
     if (input.effective.ids.has(entry.spec.id)) tools.push(toDescriptor(entry.spec));
   }
   if (input.options?.tooling === true) {
-    for (const entry of input.toolingEntries ?? []) tools.push(toDescriptor(entry.spec));
+    for (const entry of input.toolingEntries ?? []) {
+      if (input.effective.ids.has(entry.spec.id)) tools.push(toDescriptor(entry.spec));
+    }
   }
   tools.sort((left, right) => left.toolId.localeCompare(right.toolId));
   return { tools };

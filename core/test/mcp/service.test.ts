@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber, Layer } from "effect";
 
+import type { McpServeOptions } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
@@ -39,6 +40,21 @@ const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeC
 const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
   McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
 
+const dispatchAndCollectReplies = (config: McpRuntimeConfigShape, options: McpServeOptions, toolId: string) =>
+  Effect.gen(function* () {
+    const inmem = yield* makeInMemoryTransport();
+    const service = yield* McpService;
+    const fiber = yield* service
+      .serve(options)
+      .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+    yield* inmem.push({ toolId });
+    while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+    const replies = yield* inmem.replies;
+    yield* inmem.close;
+    yield* Fiber.join(fiber);
+    return replies;
+  }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
 describe("McpService.catalog", () => {
   test("lists the effective allowlist as tools", async () => {
     const config: McpRuntimeConfigShape = {
@@ -57,6 +73,24 @@ describe("McpService.catalog", () => {
     );
     expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:info"]);
   });
+
+  test("lists tooling entries only when tooling is enabled and not denied", async () => {
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: spec("app:info", () => Effect.succeed({})) }],
+      toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const catalog = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        return yield* service.catalog({ tooling: true, deny: ["app:php"] });
+      }).pipe(Effect.provide(serviceLayer(config))),
+    );
+
+    expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:info"]);
+  });
 });
 
 describe("McpService.serve", () => {
@@ -68,23 +102,37 @@ describe("McpService.serve", () => {
       runtimeLayer: Layer.empty,
     };
 
-    const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
-      const service = yield* McpService;
-      const fiber = yield* service
-        .serve({ transport: "stdio", tooling: true })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
-      yield* inmem.push({ toolId: "app:php" });
-      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
-      const replies = yield* inmem.replies;
-      yield* inmem.close;
-      yield* Fiber.join(fiber);
-      return replies;
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
-
-    const replies = await Effect.runPromise(program);
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies(config, { transport: "stdio", tooling: true }, "app:php"),
+    );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: true });
+  });
+
+  test("rejects a denied tooling entry when tooling is enabled", async () => {
+    let executed = false;
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [],
+      toolingEntries: [
+        {
+          spec: spec("app:php", () =>
+            Effect.sync(() => {
+              executed = true;
+              return {};
+            }),
+          ),
+        },
+      ],
+      defaultAllowlist: [],
+      runtimeLayer: Layer.empty,
+    };
+
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies(config, { transport: "stdio", tooling: true, deny: ["app:php"] }, "app:php"),
+    );
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: false });
+    expect(executed).toBe(false);
   });
 
   test("forwards live StreamFrameSink output as MCP notifications", async () => {
@@ -130,21 +178,9 @@ describe("McpService.serve", () => {
       runtimeLayer: Layer.empty,
     };
 
-    const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
-      const service = yield* McpService;
-      const fiber = yield* service
-        .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
-      yield* inmem.push({ toolId: "app:info" });
-      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
-      const replies = yield* inmem.replies;
-      yield* inmem.close;
-      yield* Fiber.join(fiber);
-      return replies;
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
-
-    const replies = await Effect.runPromise(program);
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies(config, { transport: "stdio" }, "app:info"),
+    );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: true, result: { ok: false } });
   });

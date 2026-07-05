@@ -148,12 +148,22 @@ describe("buildCatalog", () => {
     const base = {
       commandEntries,
       toolingEntries: [entry("app:php")],
-      effective: computeEffectiveAllowlist({ defaults: ["app:info"] }),
+      effective: computeEffectiveAllowlist({ defaults: ["app:info"], allow: ["app:php"] }),
     };
     expect(buildCatalog(base).tools.map((t) => t.toolId)).toEqual(["app:info"]);
     expect(buildCatalog({ ...base, options: { tooling: true } }).tools.map((t) => t.toolId)).toEqual([
       "app:info",
       "app:php",
     ]);
+  });
+
+  test("filters tooling entries through the effective allowlist", () => {
+    const catalog = buildCatalog({
+      commandEntries,
+      toolingEntries: [entry("app:php")],
+      effective: computeEffectiveAllowlist({ defaults: ["app:info"], allow: ["app:php"], deny: ["app:php"] }),
+      options: { tooling: true },
+    });
+    expect(catalog.tools.map((t) => t.toolId)).toEqual(["app:info"]);
   });
 });
