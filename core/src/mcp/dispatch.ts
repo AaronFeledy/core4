@@ -19,7 +19,11 @@ import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/e
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { encodeCommandResult } from "../cli/result-encode.ts";
+import {
+  encodeCommandResult,
+  encodeStreamStderrFrame,
+  encodeStreamStdoutFrame,
+} from "../cli/result-encode.ts";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry.ts";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError;
@@ -35,6 +39,14 @@ export interface McpDispatchResult {
   /** `true` when the dispatched command succeeded (`envelope.ok === true`). */
   readonly ok: boolean;
 }
+
+export interface McpProgressFrame {
+  readonly _tag: "stdout" | "stderr";
+  readonly chunk: string;
+  readonly service?: string;
+}
+
+export type McpNotify = (frame: unknown) => Effect.Effect<void>;
 
 /**
  * Runs a resolved command against the retained runtime and returns a
@@ -59,6 +71,7 @@ export interface McpDispatchDeps {
   readonly allowlistSource: string;
   readonly redactor: Redactor;
   readonly execute: McpExecute;
+  readonly notify?: McpNotify;
   readonly publish?: (event: LandoEvent) => Effect.Effect<void, unknown>;
   readonly now?: () => number;
 }
@@ -112,6 +125,26 @@ const envelopeTag = (envelope: unknown): string | undefined => {
   const tag = (error as { readonly _tag?: unknown })._tag;
   return typeof tag === "string" ? tag : undefined;
 };
+
+const encodeProgressFrame = (frame: McpProgressFrame, deps: McpDispatchDeps): Effect.Effect<string> =>
+  frame._tag === "stdout"
+    ? encodeStreamStdoutFrame({
+        chunk: frame.chunk,
+        ...(frame.service === undefined ? {} : { service: frame.service }),
+        redactor: deps.redactor,
+      })
+    : encodeStreamStderrFrame({
+        chunk: frame.chunk,
+        ...(frame.service === undefined ? {} : { service: frame.service }),
+        redactor: deps.redactor,
+      });
+
+const emitProgressFrame = (deps: McpDispatchDeps, frame: McpProgressFrame): Effect.Effect<void> =>
+  deps.notify === undefined
+    ? Effect.void
+    : encodeProgressFrame(frame, deps).pipe(
+        Effect.flatMap((line) => deps.notify?.(JSON.parse(line)) ?? Effect.void),
+      );
 
 /**
  * Dispatch a single MCP tool call. Resolves to the redacted command envelope, or
@@ -190,6 +223,11 @@ export const dispatchTool = (
     };
 
     const outcome = yield* deps.execute(entry, runInput);
+    if (outcome._tag === "success") {
+      for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
+        yield* emitProgressFrame(deps, frame);
+      }
+    }
     const line = yield* encodeCommandResult({
       command: entry.spec.id,
       resultSchema: entry.spec.resultSchema,

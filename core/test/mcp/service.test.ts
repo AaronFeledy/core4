@@ -4,6 +4,7 @@ import { Effect, Fiber, Layer } from "effect";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
   McpRuntimeConfig,
@@ -58,6 +59,93 @@ describe("McpService.catalog", () => {
 });
 
 describe("McpService.serve", () => {
+  test("dispatches tooling entries when tooling is enabled", async () => {
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [],
+      toolingEntries: [{ spec: spec("app:php", () => Effect.succeed({})) } satisfies McpCommandEntry],
+      defaultAllowlist: [],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio", tooling: true })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      yield* inmem.push({ toolId: "app:php" });
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return replies;
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const replies = await Effect.runPromise(program);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: true });
+  });
+
+  test("forwards live StreamFrameSink output as MCP notifications", async () => {
+    const streaming = spec("app:logs", () =>
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: "line-one", service: "web" });
+        return {};
+      }),
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:logs"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      yield* inmem.push({ toolId: "app:logs" });
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const notifications = yield* inmem.notifications;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return notifications;
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const notifications = await Effect.runPromise(program);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ frame: { _tag: "stdout", chunk: "line-one", service: "web" } });
+  });
+
+  test("returns a failure envelope when a command dies", async () => {
+    const dying = spec("app:info", () => Effect.die(new Error("boom")));
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: dying } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      yield* inmem.push({ toolId: "app:info" });
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return replies;
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const replies = await Effect.runPromise(program);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: true, result: { ok: false } });
+  });
+
   test("caps concurrency at mcp.maxConcurrent", async () => {
     let active = 0;
     let maxActive = 0;

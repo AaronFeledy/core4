@@ -136,4 +136,37 @@ describe("dispatchTool", () => {
     const result = await Effect.runPromise(dispatchTool({ toolId: "app:info" }, deps));
     expect(JSON.stringify(result.envelope)).not.toContain(secret);
   });
+
+  test("emits redacted streamFrames as MCP progress notifications", async () => {
+    const secret = "stream-secret-token";
+    const notifications: unknown[] = [];
+    const entry: McpCommandEntry = {
+      spec: spec("app:logs", () => Effect.succeed({ chunk: `hello ${secret}` }), {
+        resultSchema: Schema.Struct({ chunk: Schema.String }),
+        streamFrames: (value) => {
+          const record = Schema.decodeUnknownSync(Schema.Struct({ chunk: Schema.String }))(value);
+          return [{ _tag: "stdout", chunk: record.chunk }];
+        },
+      }),
+    };
+    const { deps } = harness([entry], { secrets: [secret] });
+
+    const result = await Effect.runPromise(
+      dispatchTool(
+        { toolId: "app:logs" },
+        {
+          ...deps,
+          notify: (frame) =>
+            Effect.sync(() => {
+              notifications.push(frame);
+            }),
+        },
+      ),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(notifications).toHaveLength(1);
+    expect(JSON.stringify(notifications[0])).not.toContain(secret);
+    expect(notifications[0]).toMatchObject({ _tag: "stdout" });
+  });
 });

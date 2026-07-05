@@ -28,6 +28,8 @@ export interface McpTransportNotification {
 export interface McpTransportShape {
   /** Next inbound request, or `None` once the transport is closed. */
   readonly receive: Effect.Effect<Option.Option<McpTransportRequest>>;
+  /** Next request id cancelled by the MCP client, or `None` once the transport is closed. */
+  readonly receiveCancel: Effect.Effect<Option.Option<string>>;
   readonly reply: (reply: McpTransportReply) => Effect.Effect<void>;
   readonly notify: (notification: McpTransportNotification) => Effect.Effect<void>;
 }
@@ -41,6 +43,8 @@ export interface InMemoryTransport {
   readonly transport: McpTransportShape;
   /** Enqueue a request; resolves to the assigned request id. */
   readonly push: (request: McpToolCallRequest) => Effect.Effect<string>;
+  /** Cancel a request by id, interrupting the matching in-flight call if present. */
+  readonly cancel: (id: string) => Effect.Effect<void>;
   /** Close the transport so `serve` drains and returns. */
   readonly close: Effect.Effect<void>;
   /** Every reply pushed back through the transport, in order. */
@@ -55,6 +59,7 @@ export interface InMemoryTransport {
 export const makeInMemoryTransport = (): Effect.Effect<InMemoryTransport, never, Scope.Scope> =>
   Effect.gen(function* () {
     const queue = yield* Queue.unbounded<McpTransportRequest>();
+    const cancellations = yield* Queue.unbounded<string>();
     const closed = yield* Deferred.make<void>();
     const replies = yield* Ref.make<ReadonlyArray<McpTransportReply>>([]);
     const notifications = yield* Ref.make<ReadonlyArray<McpTransportNotification>>([]);
@@ -65,9 +70,14 @@ export const makeInMemoryTransport = (): Effect.Effect<InMemoryTransport, never,
       Queue.take(queue).pipe(Effect.map(Option.some)),
       Deferred.await(closed).pipe(Effect.as(Option.none<McpTransportRequest>())),
     );
+    const receiveCancel: McpTransportShape["receiveCancel"] = Effect.raceFirst(
+      Queue.take(cancellations).pipe(Effect.map(Option.some)),
+      Deferred.await(closed).pipe(Effect.as(Option.none<string>())),
+    );
 
     const transport: McpTransportShape = {
       receive,
+      receiveCancel,
       reply: (reply) => Ref.update(replies, (current) => [...current, reply]),
       notify: (notification) => Ref.update(notifications, (current) => [...current, notification]),
     };
@@ -81,6 +91,7 @@ export const makeInMemoryTransport = (): Effect.Effect<InMemoryTransport, never,
           yield* Queue.offer(queue, { id, request });
           return id;
         }),
+      cancel: (id) => Queue.offer(cancellations, id).pipe(Effect.asVoid),
       close: Deferred.succeed(closed, undefined).pipe(Effect.asVoid),
       replies: Ref.get(replies),
       notifications: Ref.get(notifications),
