@@ -24,6 +24,7 @@ import type { CommandResultOutcome } from "../cli/result-encode.ts";
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
+import { replyMcpCanceled } from "./cancellation.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
 import type { McpCommandEntry } from "./registry.ts";
@@ -75,10 +76,7 @@ const makeService = (
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
     ? (event) => events.value.publish(event).pipe(Effect.catchAll(() => Effect.void))
     : undefined;
-  const allowWithTooling = (
-    allow: ReadonlyArray<string> | undefined,
-    tooling: boolean | undefined,
-  ): ReadonlyArray<string> | undefined =>
+  const allowWithTooling = (allow: ReadonlyArray<string> | undefined, tooling: boolean | undefined) =>
     tooling === true
       ? [...(allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
       : allow;
@@ -106,20 +104,17 @@ const makeService = (
       yield* Effect.scoped(
         Effect.gen(function* () {
           const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-          const maxConcurrent = options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT;
-          const semaphore = yield* Effect.makeSemaphore(maxConcurrent);
+          const semaphore = yield* Effect.makeSemaphore(options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
           const effective = computeEffectiveAllowlist({
             defaults: config.defaultAllowlist,
             allow: allowWithTooling(options.allow, options.tooling),
             deny: options.deny,
           });
-          const effectiveIds = new Set(effective.ids);
-          const sessionEntries =
-            options.tooling === true
-              ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
-              : config.commandEntries;
           const registry = new Map<string, McpCommandEntry>(
-            sessionEntries.map((entry) => [entry.spec.id, entry] as const),
+            (options.tooling === true
+              ? [...config.commandEntries, ...(config.toolingEntries ?? [])]
+              : config.commandEntries
+            ).map((entry) => [entry.spec.id, entry]),
           );
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, never>>());
@@ -165,7 +160,7 @@ const makeService = (
           };
           const depsFor = (incoming: McpTransportRequest): McpDispatchDeps => ({
             registry,
-            effective: effectiveIds,
+            effective: effective.ids,
             allowlistSource: options.tooling === true ? `${effective.source}+tooling` : effective.source,
             redactor,
             execute: (entry, runInput) =>
@@ -201,15 +196,24 @@ const makeService = (
                   const failure = Cause.failureOption(cause);
                   return Option.isSome(failure)
                     ? transport.reply({ id: incoming.id, ok: false, error: failure.value })
-                    : Effect.void;
+                    : replyMcpCanceled(transport, incoming.id);
                 },
                 onSuccess: (result) => transport.reply({ id: incoming.id, ok: true, result }),
               }),
             );
 
+          const handleCanceledBeforeStart = (incoming: McpTransportRequest): Effect.Effect<void> =>
+            dispatchTool(incoming.request, { ...depsFor(incoming), execute: () => Effect.interrupt }).pipe(
+              Effect.ignore,
+              Effect.zipRight(replyMcpCanceled(transport, incoming.id)),
+            );
+
           const forkRequest = (incoming: McpTransportRequest) =>
             Effect.gen(function* () {
-              if (yield* takeCanceledBeforeStart(incoming.id)) return;
+              if (yield* takeCanceledBeforeStart(incoming.id)) {
+                yield* handleCanceledBeforeStart(incoming);
+                return;
+              }
               const fiber = yield* semaphore
                 .withPermits(1)(handleOne(incoming).pipe(Effect.ensuring(removeInFlight(incoming.id))))
                 .pipe(Effect.forkScoped);
@@ -222,7 +226,7 @@ const makeService = (
                 const fiber = current.get(id);
                 return fiber === undefined
                   ? Ref.update(canceledBeforeStart, (canceled) => new Set(canceled).add(id))
-                  : Fiber.interrupt(fiber).pipe(Effect.asVoid);
+                  : Fiber.interrupt(fiber).pipe(Effect.zipRight(replyMcpCanceled(transport, id)));
               }),
             );
 
