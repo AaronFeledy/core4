@@ -1,12 +1,3 @@
-/**
- * Version embedding contract.
- *
- * The reported core version must derive from a single source of truth: the
- * build-time stamped version (injected via `bun build --define`) in compiled
- * and bundled artifacts, falling back to the workspace package version when
- * running from source. A built artifact must never report the `0.0.0`
- * placeholder once a real version is stamped.
- */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";

@@ -1,9 +1,7 @@
 import corePackage from "../package.json";
 
-// `bun build --define=__LANDO_CORE_VERSION__='"x.y.z"'` replaces this token in
-// compiled/bundled artifacts (the release pipeline stamps LANDO_RELEASE_VERSION
-// through it). From source the token is undeclared, so `typeof` is "undefined"
-// and the workspace package version is used.
+// `bun build --define=__LANDO_CORE_VERSION__=...` substitutes this token in compiled
+// artifacts; undeclared in source, so the workspace package version is used.
 declare const __LANDO_CORE_VERSION__: string | undefined;
 
 const stampedVersion: string | undefined =
