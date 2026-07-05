@@ -74,6 +74,39 @@ describe("McpService.serve cancellation", () => {
     ]);
   });
 
+  test("sends one reply when cancelling an in-flight call", async () => {
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [
+        {
+          spec: spec("app:exec", () => Effect.never),
+        } satisfies McpCommandEntry,
+      ],
+      defaultAllowlist: ["app:exec"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      const id = yield* inmem.push({ toolId: "app:exec" });
+      yield* Effect.sleep("10 millis");
+      yield* inmem.cancel(id);
+      yield* Effect.sleep("80 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return { id, replies };
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const { id, replies } = await Effect.runPromise(program);
+    expect(replies).toEqual([
+      { id, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
+    ]);
+  });
+
   test("does not start a request when cancellation arrives before request registration", async () => {
     let executed = false;
     const requestId = "cancel-before-start";
