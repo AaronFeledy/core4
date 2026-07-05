@@ -65,6 +65,10 @@ describe("validateToolInput", () => {
     args: { service: { type: "string" } },
   });
 
+  const withMultipleFlag = spec("app:logs", {
+    flags: { service: { type: "string", multiple: true } },
+  });
+
   test("rejects a missing required flag with the flag path", () => {
     try {
       validateToolInput(withFlags, { flags: {} });
@@ -90,6 +94,16 @@ describe("validateToolInput", () => {
       throw new Error("expected McpToolInputError");
     } catch (error) {
       expect((error as McpToolInputError).path).toBe("args.service");
+    }
+  });
+
+  test("rejects wrong-typed multiple flag items with the flag path", () => {
+    try {
+      validateToolInput(withMultipleFlag, { flags: { service: ["appserver", 12] } });
+      throw new Error("expected McpToolInputError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(McpToolInputError);
+      expect((error as McpToolInputError).path).toBe("flags.service");
     }
   });
 

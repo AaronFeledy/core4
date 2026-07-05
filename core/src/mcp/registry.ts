@@ -83,8 +83,7 @@ export interface McpToolInput {
   readonly appPath?: string;
 }
 
-const typeMatches = (view: McpInputMemberView, value: unknown): boolean => {
-  if (view.multiple === true) return Array.isArray(value);
+const scalarTypeMatches = (view: McpInputMemberView, value: unknown): boolean => {
   switch (view.type ?? "string") {
     case "boolean":
       return typeof value === "boolean";
@@ -93,6 +92,12 @@ const typeMatches = (view: McpInputMemberView, value: unknown): boolean => {
     default:
       return typeof value === "string";
   }
+};
+
+const typeMatches = (view: McpInputMemberView, value: unknown): boolean => {
+  if (view.multiple === true)
+    return Array.isArray(value) && value.every((item) => scalarTypeMatches(view, item));
+  return scalarTypeMatches(view, value);
 };
 
 const validateGroup = (
