@@ -257,8 +257,6 @@ const drainLogFollow = (
     return { app: plan.name, lines: [] };
   });
 
-// Plan-based log collection: reuses the app-logs machinery for an
-// already-resolved plan (global-app commands), so R excludes LandofileService.
 export const logsForPlan = (
   plan: AppPlan,
   options: LogsAppOptions = {},
