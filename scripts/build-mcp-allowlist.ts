@@ -12,8 +12,8 @@
  *     `lando mcp` exposes as tools. Keeping it a literal-data module means a
  *     consumer never pulls the compiled CLI command graph into scope.
  *
- * Drift gate: `bun run codegen` re-runs this generator and
- * `git diff --exit-code` fails if the output drifts from the specs.
+ * Freshness: `core/test/cli/mcp-allowlist.test.ts` re-derives the list and
+ * asserts this module matches the live command specs.
  */
 import { resolve } from "node:path";
 

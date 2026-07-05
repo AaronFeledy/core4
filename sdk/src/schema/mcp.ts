@@ -1,19 +1,5 @@
 import { Schema } from "effect";
 
-// ====
-// MCP (Model Context Protocol) public schemas.
-// SPEC: §10.14 (McpService), §8.3 (mcpAllowed), §8.2.6 (`lando mcp`).
-// MCP is a projection of the command surface, not a parallel surface: a tool
-// is one allowlisted canonical command id, its input schema derives from the
-// command's flags/args, and its result is the command's `--format json`
-// envelope. These shapes describe the catalog (`--list`) and serve options.
-// ====
-
-/**
- * One MCP tool projected from an allowlisted `LandoCommandSpec`. The tool id is
- * the canonical command id; `inputSchema` is the JSON-Schema-shaped object the
- * client fills from the command's flags/args.
- */
 export const McpToolDescriptor = Schema.Struct({
   toolId: Schema.String.annotations({
     description: 'Canonical command id exposed as this tool (e.g. "app:info").',
