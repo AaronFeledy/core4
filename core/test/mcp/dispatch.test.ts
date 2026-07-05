@@ -83,6 +83,31 @@ describe("dispatchTool", () => {
     expect(events[1]).toMatchObject({ outcome: "success" });
   });
 
+  test("forces command execution to be non-interactive", async () => {
+    let observedInteraction: "non-interactive" | undefined;
+    const entry: McpCommandEntry = {
+      spec: spec("app:info", () => Effect.succeed({})),
+    };
+    const { deps } = harness([entry]);
+
+    const result = await Effect.runPromise(
+      dispatchTool(
+        { toolId: "app:info" },
+        {
+          ...deps,
+          execute: (_entry, runInput) =>
+            Effect.sync(() => {
+              observedInteraction = runInput.interaction;
+              return { _tag: "success", value: {} } satisfies CommandResultOutcome;
+            }),
+        },
+      ),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(observedInteraction).toBe("non-interactive");
+  });
+
   test("surfaces a command's tagged failure as an ok:false envelope, not an MCP error", async () => {
     const entry: McpCommandEntry = {
       spec: spec("app:start", () =>

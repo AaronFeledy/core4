@@ -62,6 +62,7 @@ export interface McpRunInput {
   readonly argv: ReadonlyArray<string>;
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
+  readonly interaction: "non-interactive";
   readonly appPath?: string;
 }
 
@@ -219,6 +220,7 @@ export const dispatchTool = (
           argv: [],
           flags: validated.flags,
           args: validated.args,
+          interaction: "non-interactive",
           ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
         };
 
