@@ -9,6 +9,8 @@
  */
 import { Context, Deferred, Effect, Option, Queue, Ref, Scope } from "effect";
 
+import type { McpTransportError } from "@lando/sdk/errors";
+
 import type { McpDispatchError, McpDispatchResult, McpToolCallRequest } from "./dispatch.ts";
 
 export interface McpTransportRequest {
@@ -18,7 +20,7 @@ export interface McpTransportRequest {
 
 export type McpTransportReply =
   | { readonly id: string; readonly ok: true; readonly result: McpDispatchResult }
-  | { readonly id: string; readonly ok: false; readonly error: McpDispatchError };
+  | { readonly id: string; readonly ok: false; readonly error: McpDispatchError | McpTransportError };
 
 export interface McpTransportNotification {
   readonly id: string;
