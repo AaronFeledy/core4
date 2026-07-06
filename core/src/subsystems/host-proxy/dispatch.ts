@@ -190,7 +190,7 @@ export const runOpenForHostProxy = (
     const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
     const encoded =
       parsed._tag === "failure"
-        ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: 1 }
+        ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
         : yield* Effect.gen(function* () {
             const outcome = yield* Effect.exit(openForPlan(plan, parsed.options));
             return Exit.isSuccess(outcome)

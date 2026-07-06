@@ -258,7 +258,7 @@ describe("in-container lando open host-proxy round-trip", () => {
     const result = await exit;
     if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
 
-    expect(result.value.exitCode).toBe(1);
+    expect(result.value.exitCode).toBe(2);
     expect(result.value.envelope.ok).toBe(false);
   });
 });
