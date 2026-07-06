@@ -44,6 +44,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 17:40 CDT - US-404 Review
+- Review fixed the accumulated-constraint blocker: include-layer `lando:` ranges now remain enforced with source provenance after scalar merge, so a looser root Landofile cannot erase a stricter included fragment.
+- Review notes (deferred/rejected): Bugbot's scalar-merge finding was confirmed and fixed; US-405 hot-path cache and doctor reporting remain the next story's scope, not a US-404 review blocker.
+- Verification: typecheck, lint, and focused version-constraint/app-resolution spot checks passed.
+---
+
 ## 2026-07-06 17:35 CDT - US-404
 - Shipped the top-level `lando: <semver-range>` Landofile version constraint. Added the optional public `lando:` schema field, the tagged `LandofileVersionConstraintError` (carrying `constraints[{range,source}]`, `runningVersion`, `remediation`), and an Effect-free semver primitive (`core/src/config/version-constraint.ts`) that evaluates ranges against the embedded `CORE_VERSION` with no provider contact. Range parsing supports comparators (`>=`/`<=`/`>`/`<`/`=`), caret, tilde, and `v`-prefixed/exact versions; unions (`||`) and hyphen ranges are intentionally rejected as parse failures. Evaluation is prerelease-inclusive (numeric `major.minor.patch` compare ignoring prerelease/build metadata), so `>=4.1` accepts `4.1.0-beta.2`.
 - Enforcement is a `tap` on `loadUserLandofile`/`loadUserLandofileFile` (`app-resolution.ts`), running after the six-file merge + include resolution and before planning. An unparseable range fails Landofile validation with `LandofileParseError` + range-syntax remediation; a valid-but-unsatisfied range fails closed with `LandofileVersionConstraintError`; `LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades the failure to a renderer warning (no-op when no Renderer is provided). The accumulation primitive (`evaluateVersionConstraints`) takes an array of `{range,source}` and reports every unsatisfied/invalid range with provenance; the current merged-shape wiring feeds the single accumulated `lando:` value (per-layer provenance through the app-plan cache is US-405's hot-path/reporting story).
