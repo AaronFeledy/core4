@@ -384,7 +384,7 @@ const metaConfigSet = (
 
 const metaConfigUnset = (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
   Effect.gen(function* () {
     const key = options.key ?? options.path;
     if (key === undefined) {
@@ -402,8 +402,11 @@ const metaConfigUnset = (
     const mutation = applyUnsetMutation({ tree, key, file: path });
     if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
     const next = mutation.right.next;
-    const issues = decodeIssues(decodeGlobalConfig(next));
+    const decoded = decodeGlobalConfig(next);
+    const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+    const patternError = agentEnvPatternError(decoded);
+    if (patternError !== undefined) return yield* Effect.fail(patternError);
     const dryRun = options.dryRun === true;
     if (!dryRun && mutation.right.changed) {
       const emitted = emitConfigYaml({ file: path, value: next, path: key });

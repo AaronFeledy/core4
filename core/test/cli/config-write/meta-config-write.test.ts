@@ -159,6 +159,19 @@ describe("meta config unset", () => {
     expect(await readConfig()).not.toContain("renderer");
   });
 
+  test("rejects a remaining wildcard agentEnv entry with AgentEnvPatternError, file untouched", async () => {
+    await seed("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\nrenderer: json\n");
+    const before = await readConfig();
+    const result = await exit(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const text = result.cause.toString();
+      expect(text).toContain("AgentEnvPatternError");
+      expect(text).toContain("CLAUDE_*");
+    }
+    expect(await readConfig()).toBe(before);
+  });
+
   test("--path is honored when no positional key is given", async () => {
     await run(config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }));
     const result = await run(config({ subcommand: "unset", path: "renderer", configPath: configPath() }));
