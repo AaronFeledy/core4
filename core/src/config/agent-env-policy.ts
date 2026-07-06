@@ -1,12 +1,3 @@
-/**
- * Effect-side resolution of the agent-context forwarding policy.
- *
- * Reads the global `agentEnv` policy from `ConfigService`, folds in the app's
- * Landofile opt-out and the per-invocation `LANDO_AGENT_ENV` switch, and exposes
- * both the resolved forwarding allowlist (for the per-invocation exec surfaces)
- * and an audit view (for `lando info --deep`). The pure resolution stays in
- * `agent-env.ts`.
- */
 import { Effect } from "effect";
 
 import type { ConfigError } from "@lando/sdk/errors";
