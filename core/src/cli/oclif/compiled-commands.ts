@@ -65,6 +65,7 @@ import MetaGlobalStartCommand from "./commands/meta/global/start.ts";
 import MetaGlobalStatusCommand from "./commands/meta/global/status.ts";
 import MetaGlobalStopCommand from "./commands/meta/global/stop.ts";
 import MetaGlobalUninstallCommand from "./commands/meta/global/uninstall.ts";
+import MetaMcpCommand from "./commands/meta/mcp.ts";
 import PluginAddCommand from "./commands/meta/plugin/add.ts";
 import PluginBuildCommand from "./commands/meta/plugin/build.ts";
 import PluginLinkCommand from "./commands/meta/plugin/link.ts";
@@ -147,6 +148,7 @@ export default {
   "meta:global:status": MetaGlobalStatusCommand,
   "meta:global:stop": MetaGlobalStopCommand,
   "meta:global:uninstall": MetaGlobalUninstallCommand,
+  "meta:mcp": MetaMcpCommand,
   "meta:plugin:add": PluginAddCommand,
   "meta:plugin:build": PluginBuildCommand,
   "meta:plugin:link": PluginLinkCommand,

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "allow": {
+      "description": "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "deny": {
+      "description": "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "tooling": {
+      "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import type {
   AppPlanner,
+  ConfigService,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -20,6 +21,7 @@ import type {
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
+import type { RedactionService } from "../redaction/service.ts";
 
 import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
@@ -62,6 +64,7 @@ import { globalStart, renderGlobalStartResult } from "./commands/meta/global-sta
 import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-status.ts";
 import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
 import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
+import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromCompiled } from "./commands/meta/mcp.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginBuild, renderPluginBuildResult } from "./commands/plugin-build.ts";
 import { pluginLink, renderPluginLinkResult } from "./commands/plugin-link.ts";
@@ -1524,6 +1527,30 @@ const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
+const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:mcp", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("meta:mcp", argv);
+  const registry = mcpRegistryFromCompiled(
+    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+  );
+  const flags = mcpFlagsFromParsed(input.flags);
+  const commandRuntime = makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } }),
+  ) as Layer.Layer<ConfigService | RedactionService, LandoRuntimeBootstrapError>;
+  const retainedRuntime = makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
+  ).pipe(Layer.orDie) as Layer.Layer<unknown>;
+  return dispatchMcpCommand({
+    registry,
+    flags,
+    commandRuntime,
+    retainedRuntime,
+    rendererMode: activeRendererMode,
+    resultFormat: activeResultFormat,
+    formatError: (error) => commandErrorMessage(error, "meta:mcp"),
+  });
+};
+
 const runMetaGlobalInstall = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:install", argv);
   return runCompiledCommand(
@@ -2300,6 +2327,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "uninstall" || argv[0] === "meta:uninstall") {
     await runMetaUninstall(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "mcp" || argv[0] === "meta:mcp") {
+    await runMetaMcp(argv.slice(1));
     return;
   }
 

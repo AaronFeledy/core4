@@ -870,6 +870,41 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }, 30_000);
   });
 
+  describe("meta:mcp dispatches identically on both paths", () => {
+    test("mcp --list projects the same effective catalog envelope on both paths", async () => {
+      const source = await runSourceCli(["mcp", "--list", "--format=json"]);
+      const compiled = await runCompiledCli(["mcp", "--list", "--format=json"]);
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+      expect(compiled.stderr).not.toContain("NotImplementedError");
+      const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout));
+      const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout));
+      expect(compiledEnvelope).toEqual(sourceEnvelope);
+      expect(compiledEnvelope.command).toBe("meta:mcp");
+    }, 30_000);
+
+    test("mcp serve without stdin closes on EOF and exits 0 with no protocol frame on both paths", async () => {
+      const source = await runSourceCli(["mcp"]);
+      const compiled = await runCompiledCli(["mcp"]);
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+      expect(compiled.stderr).not.toContain("NotImplementedError");
+      expect(source.stdout.trim()).toBe("");
+      expect(compiled.stdout.trim()).toBe("");
+    }, 30_000);
+
+    test("mcp --list rejects an unknown --allow id identically on both paths", async () => {
+      const source = await runSourceCli(["mcp", "--list", "--allow", "bogus:id", "--format=json"]);
+      const compiled = await runCompiledCli(["mcp", "--list", "--allow", "bogus:id", "--format=json"]);
+      expect(source.exitCode).not.toBe(0);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+      const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+      expect(compiledEnvelope).toEqual(sourceEnvelope);
+      expect(sourceEnvelope.code).toBe("McpToolInputError");
+    }, 30_000);
+  });
+
   describe("deferred canonical ids defer identically on both paths", () => {
     const probeIds = ["meta:recipes:list", "meta:events:follow", "meta:plugin:login"] as const;
     for (const id of probeIds) {

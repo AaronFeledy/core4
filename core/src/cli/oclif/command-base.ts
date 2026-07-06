@@ -182,6 +182,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:global:stop",
   "meta:global:uninstall",
   "meta:doctor",
+  "meta:mcp",
   "meta:plugin:add",
   "meta:plugin:build",
   "meta:plugin:link",
@@ -211,7 +212,7 @@ export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError =>
   deferredErrorForCommand(commandId);
 
-const formatCommandError = (input: {
+export const formatCommandError = (input: {
   readonly error: unknown;
   readonly commandId: string;
   readonly rendererMode: RendererMode;

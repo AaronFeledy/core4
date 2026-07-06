@@ -12247,6 +12247,33 @@
       "required": ["app", "materialized", "purged", "dist", "servicesRemoved"],
       "type": "object"
     },
+    "meta:mcp": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "tools": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "summary", "source"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["tools"],
+      "type": "object"
+    },
     "meta:plugin:add": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -13292,6 +13319,15 @@
       "jsonSchemaPath": "dist/schemas/include-entry.json",
       "packageExport": "@lando/sdk/schema#IncludeEntry",
       "title": "Include Entry"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Mcp Config.",
+      "docsPath": "docs/reference/schemas/mcp-config.mdx",
+      "id": "McpConfig",
+      "jsonSchemaPath": "dist/schemas/mcp-config.json",
+      "packageExport": "@lando/sdk/schema#McpConfig",
+      "title": "Mcp Config"
     },
     {
       "deprecated": false,
@@ -15025,6 +15061,7 @@
       "meta:global:status",
       "meta:global:stop",
       "meta:global:uninstall",
+      "meta:mcp",
       "meta:plugin:add",
       "meta:plugin:build",
       "meta:plugin:link",
@@ -15111,6 +15148,7 @@
       "ToolingArgShape",
       "ToolingTaskShape",
       "IncludeEntry",
+      "McpConfig",
       "TelemetryConfig",
       "NetworkProxyConfig",
       "NetworkCaConfig",
@@ -19765,6 +19803,31 @@
               "type": "null"
             }
           ]
+        },
+        "mcp": {
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "description": "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "deny": {
+              "description": "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "tooling": {
+              "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
         },
         "network": {
           "additionalProperties": false,
@@ -27282,6 +27345,32 @@
         },
         "tooling": {
           "description": "Whether to project tooling tasks as tools (--tooling).",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "McpConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "description": "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tooling": {
+          "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
           "type": "boolean"
         }
       },
@@ -37476,6 +37565,31 @@
                   "type": "null"
                 }
               ]
+            },
+            "mcp": {
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "description": "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "deny": {
+                  "description": "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "tooling": {
+                  "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
             },
             "network": {
               "additionalProperties": false,
