@@ -115,6 +115,13 @@ describe("resolveOpenTargets", () => {
     ]);
   });
 
+  test("S4 --all with --service resolves every route for the selected service", () => {
+    expect(resolveOpenTargets(p, { all: true, service: "web" }).map((r) => r.hostname)).toEqual([
+      "web.myapp.lndo.site",
+      "web-alt.myapp.lndo.site",
+    ]);
+  });
+
   test("S5 no routes resolves to an empty list", () => {
     expect(resolveOpenTargets(plan([], ["web"]), {})).toEqual([]);
     expect(resolveOpenTargets(p, { service: "missing" })).toEqual([]);
@@ -134,6 +141,10 @@ describe("resolveOpenTargets", () => {
     );
     expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://localhost:8443"]);
     expect(resolveOpenTargets(p, { service: "web" }).map((r) => r.url)).toEqual(["https://localhost:8443"]);
+    expect(resolveOpenTargets(p, { all: true, service: "web" }).map((r) => r.url)).toEqual([
+      "http://localhost:8080",
+      "https://localhost:8443",
+    ]);
     expect(resolveOpenTargets(p, { all: true }).map((r) => r.url)).toEqual([
       "http://localhost:8080",
       "https://localhost:8443",

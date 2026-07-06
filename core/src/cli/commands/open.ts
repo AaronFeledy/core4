@@ -5,13 +5,8 @@ import type { EventError, ShellExecError } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan, RoutePlan, ServicePlan } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  EventService,
-  LandofileService,
-  RuntimeProviderRegistry,
-  type ShellRunner,
-} from "@lando/sdk/services";
+import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService } from "../../redaction/service.ts";
 import { canOpenHost, openUrl } from "../../services/host-opener.ts";
@@ -102,17 +97,21 @@ export const resolveOpenTargets = (
     const match = plan.routes.find((route) => route.hostname === selection.route);
     return match === undefined ? [] : [buildOpenTarget(match)];
   }
+  if (selection.service !== undefined) {
+    const serviceRoutes = routesForService(plan, selection.service);
+    if (selection.all === true && serviceRoutes.length > 0) return serviceRoutes.map(buildOpenTarget);
+    const chosen = preferHttps(serviceRoutes);
+    if (chosen !== undefined) return [buildOpenTarget(chosen)];
+    const endpoints = endpointTargetsForService(plan, selection.service);
+    if (selection.all === true) return endpoints;
+    const endpoint = preferHttpsTarget(endpoints);
+    return endpoint === undefined ? [] : [endpoint];
+  }
   if (selection.all === true) {
     if (plan.routes.length > 0) return plan.routes.map(buildOpenTarget);
     return Object.values(plan.services).flatMap((service) =>
       endpointTargetsForService(plan, String(service.name)),
     );
-  }
-  if (selection.service !== undefined) {
-    const chosen = preferHttps(routesForService(plan, selection.service));
-    if (chosen !== undefined) return [buildOpenTarget(chosen)];
-    const endpoint = preferHttpsTarget(endpointTargetsForService(plan, selection.service));
-    return endpoint === undefined ? [] : [endpoint];
   }
   for (const service of Object.values(plan.services)) {
     const routes = routesForService(plan, String(service.name));
