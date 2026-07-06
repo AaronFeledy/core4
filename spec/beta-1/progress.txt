@@ -800,3 +800,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot findings for URL resolution priority, selection-miss messages, JSON headless behavior, Windows opener quoting, and open lifecycle events)
 - Merge: merged (squash)
 ---
+
+## 2026-07-06 13:49 CDT - US-403 Review
+- Review fixed host-proxy round-trip blockers: the shim now uses the shared env filter so agent-context markers survive forwarding; `app:open` runLando parsing handles equals-form flags and rejects unsupported positional/unknown arguments instead of silently opening the default route; failed host-proxy envelopes are redacted before crossing the boundary; container cwd parent-directory escapes collapse back to the host app root; and new SDK schema exports are documented for the compatibility gate.
+- Review notes (deferred/rejected): physical socket transport, compiled shim binary, token auth, concurrency cap, and recursion guard remain deferred to the later host-proxy subsystem wave because US-403’s source ACs require the logical in-process round-trip; `lando app open` multi-token forwarding was rejected as a blocker because the host-proxy wire contract carries canonical command id + args, while the shim/allowlist path canonicalizes `open`/`app:open` for this story.
+- Verification: typecheck, lint, check:redaction-boundary, lint:guides, check:guide-coverage, and check:public-transcripts passed; focused spot checks passed for host-proxy dispatch/shim/round-trip, SDK compatibility, host-proxy schema/events/errors, and host-proxy allowlist.
+- **Learnings for future iterations:** Host-proxy env filtering has one source of truth in `core/src/config/agent-env.ts`; new `@lando/sdk/schema` barrel exports must also be added to `sdk/API_COMPATIBILITY.md` or the SDK compatibility test fails.
+---

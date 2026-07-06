@@ -1,4 +1,4 @@
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema } from "effect";
 
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import type { EventError } from "@lando/sdk/errors";
@@ -7,15 +7,21 @@ import {
   PostHostProxyCallEvent,
   PreHostProxyCallEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, AppRef, CommandResultEnvelope, HostProxyRunLandoRequest } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type AppRef,
+  CommandResultEnvelope,
+  type HostProxyRunLandoRequest,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
-import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../cli/commands/open.ts";
+import { OpenAppResultSchema, openForPlan } from "../../cli/commands/open.ts";
 import { buildCommandResultEnvelope } from "../../cli/result-encode.ts";
 import { RedactionService } from "../../redaction/service.ts";
 import { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
+import { parseOpenOptionsFromRunLandoArgv } from "./open-argv.ts";
 import { filterHostProxyEnv } from "./shim.ts";
 
 /**
@@ -171,43 +177,8 @@ export const dispatchRunLando = (
 
 const OPEN_COMMAND = "app:open" as const;
 
-export const openOptionsFromRunLandoArgv = (
-  argv: ReadonlyArray<string>,
-  context: { readonly tty: boolean },
-): OpenAppOptions => {
-  const tokens = argv.slice(1);
-  let service: string | undefined;
-  let route: string | undefined;
-  let all = false;
-  let print = false;
-  let json = false;
-  let index = 0;
-  while (index < tokens.length) {
-    const token = tokens[index];
-    if (token === "--service" || token === "-s") {
-      index += 1;
-      service = tokens[index];
-    } else if (token === "--route") {
-      index += 1;
-      route = tokens[index];
-    } else if (token === "--all") all = true;
-    else if (token === "--print") print = true;
-    else if (token === "--json") json = true;
-    else if (token === "--format") {
-      index += 1;
-      json = tokens[index] === "json";
-    } else if (token === "--format=json") json = true;
-    index += 1;
-  }
-  return {
-    ...(service === undefined ? {} : { service }),
-    ...(route === undefined ? {} : { route }),
-    ...(all ? { all } : {}),
-    ...(print ? { print } : {}),
-    json,
-    ttyPresent: context.tty,
-  };
-};
+const redactCommandEnvelope = (envelope: CommandResultEnvelope, redactor: Redactor): CommandResultEnvelope =>
+  Schema.decodeUnknownSync(CommandResultEnvelope)(redactor.redactValue(envelope));
 
 export const runOpenForHostProxy = (
   plan: AppPlan,
@@ -216,26 +187,30 @@ export const runOpenForHostProxy = (
   Effect.gen(function* () {
     const redaction = yield* RedactionService;
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    const outcome = yield* Effect.exit(
-      openForPlan(plan, openOptionsFromRunLandoArgv(input.argv, { tty: input.tty })),
-    );
-    const encoded = Exit.isSuccess(outcome)
-      ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
-      : {
-          outcome: {
-            _tag: "failure" as const,
-            error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
-              _tag: "HostProxyDispatchError",
-              message: Cause.pretty(outcome.cause),
-            })),
-          },
-          exitCode: 1,
-        };
+    const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: input.tty });
+    const encoded =
+      parsed._tag === "failure"
+        ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: 1 }
+        : yield* Effect.gen(function* () {
+            const outcome = yield* Effect.exit(openForPlan(plan, parsed.options));
+            return Exit.isSuccess(outcome)
+              ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
+              : {
+                  outcome: {
+                    _tag: "failure" as const,
+                    error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
+                      _tag: "HostProxyDispatchError",
+                      message: Cause.pretty(outcome.cause),
+                    })),
+                  },
+                  exitCode: 1,
+                };
+          });
     const envelope = yield* buildCommandResultEnvelope({
       command: OPEN_COMMAND,
       resultSchema: OpenAppResultSchema,
       outcome: encoded.outcome,
       redactor,
     });
-    return { envelope, exitCode: encoded.exitCode };
+    return { envelope: redactCommandEnvelope(envelope, redactor), exitCode: encoded.exitCode };
   });

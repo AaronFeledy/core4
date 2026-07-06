@@ -30,9 +30,9 @@ export {
   type HostProxyRunLandoExecutorInput,
   type HostProxyRunLandoResult,
   dispatchRunLando,
-  openOptionsFromRunLandoArgv,
   runOpenForHostProxy,
 } from "./dispatch.ts";
 export { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../cli/oclif/generated/host-proxy-allowlist.ts";
 export { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
+export { openOptionsFromRunLandoArgv } from "./open-argv.ts";
 export { buildRunLandoRequest, filterHostProxyEnv } from "./shim.ts";

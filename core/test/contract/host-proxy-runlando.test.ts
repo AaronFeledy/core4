@@ -191,4 +191,23 @@ describe("in-container lando open host-proxy round-trip", () => {
     expect(tags).toContain("pre-host-proxy-call");
     expect(tags).toContain("post-host-proxy-call");
   });
+
+  test("failure envelope redacts secret-bearing route selections", async () => {
+    const { exit } = roundTrip(httpsPlan(), ["open", "--route", "https://user:s3cr3tpass@missing.example"]);
+    const result = await exit;
+    if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
+
+    expect(result.value.exitCode).toBe(1);
+    expect(result.value.envelope.ok).toBe(false);
+    expect(JSON.stringify(result.value.envelope)).not.toContain("s3cr3tpass");
+  });
+
+  test("unsupported app:open arguments return a failure envelope", async () => {
+    const { exit } = roundTrip(httpsPlan(), ["open", "https://example.com"]);
+    const result = await exit;
+    if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
+
+    expect(result.value.exitCode).toBe(1);
+    expect(result.value.envelope.ok).toBe(false);
+  });
 });

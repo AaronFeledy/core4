@@ -1,5 +1,7 @@
 import type { HostProxyRunLandoRequest } from "@lando/sdk/schema";
 
+import { filterHostProxyEnv as filterAllowedHostProxyEnv } from "../../config/agent-env.ts";
+
 /**
  * Pure, Effect-free helpers for the in-container host-proxy shim (§10.10.3).
  *
@@ -11,19 +13,11 @@ import type { HostProxyRunLandoRequest } from "@lando/sdk/schema";
 /**
  * Env keys the shim forwards to the host. Everything else is dropped so
  * container-leaked env (PATH, secrets, HOME, …) never poisons the host program
- * (§10.10.3). The allowlist is `LANDO_*`, `LC_*`, and the exact keys `LANG` and
- * `TERM`.
+ * (§10.10.3). The shared primitive also appends the agent-context allowlist from
+ * §6.9.1 so `runLando` re-entry preserves agent markers.
  */
-const isForwardableEnvKey = (key: string): boolean =>
-  key.startsWith("LANDO_") || key.startsWith("LC_") || key === "LANG" || key === "TERM";
-
-export const filterHostProxyEnv = (env: Readonly<Record<string, string>>): Record<string, string> => {
-  const filtered: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (isForwardableEnvKey(key)) filtered[key] = value;
-  }
-  return filtered;
-};
+export const filterHostProxyEnv = (env: Readonly<Record<string, string>>): Record<string, string> =>
+  filterAllowedHostProxyEnv(env);
 
 export interface BuildRunLandoRequestInput {
   readonly argv: ReadonlyArray<string>;

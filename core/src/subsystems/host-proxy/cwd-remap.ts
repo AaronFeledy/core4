@@ -1,3 +1,5 @@
+import { posix } from "node:path";
+
 /**
  * Pure container→host cwd remapping for the host-proxy `runLando` dispatcher
  * (§10.10.4). The dispatcher never trusts a container-provided path: it remaps
@@ -18,6 +20,13 @@ export interface HostProxyMountInfo {
 const stripTrailingSlash = (path: string): string =>
   path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 
+const safeRelativePath = (path: string): string | undefined => {
+  const normalized = posix.normalize(path);
+  if (normalized === ".") return "";
+  if (normalized === ".." || normalized.startsWith("../")) return undefined;
+  return normalized;
+};
+
 /**
  * Remap `containerCwd` to a host-side path under `mount.hostRoot`. A cwd equal
  * to or under `mount.containerRoot` is rebased onto `hostRoot`; anything else
@@ -32,8 +41,9 @@ export const remapContainerCwd = (containerCwd: string, mount: HostProxyMountInf
   if (cwd === containerRoot) return hostRoot;
   const prefix = `${containerRoot}/`;
   if (cwd.startsWith(prefix)) {
-    const relative = cwd.slice(prefix.length);
-    return `${hostRoot}/${relative}`;
+    const relative = safeRelativePath(cwd.slice(prefix.length));
+    if (relative === undefined) return hostRoot;
+    return relative.length === 0 ? hostRoot : `${hostRoot}/${relative}`;
   }
   return hostRoot;
 };

@@ -43,7 +43,7 @@ tags: [beta, docs, subsystems, host-proxy, dns, lndo-site]
 
   <Scenario id="host-proxy-open-round-trip" render={false} reason="The in-container `lando open` runLando round-trip is exercised by core/test/contract/host-proxy-runlando.test.ts through an in-process test dispatcher; a live socket round-trip requires a running container and the physical host-proxy socket/shim (a later wave)">
     <Step name="open-round-trip">
-      <Variable name="shimRequest" value="buildRunLandoRequest({ argv, cwd, tty, env })" display="In-container shim builds a runLando request; env is filtered to LANDO_*, LC_*, LANG, TERM before forwarding" />
+      <Variable name="shimRequest" value="buildRunLandoRequest({ argv, cwd, tty, env })" display="In-container shim builds a runLando request; env is filtered to LANDO_*, LC_*, LANG, TERM, and resolved agent-context names before forwarding" />
       <Variable name="allowlist" value="HOST_PROXY_RUNLANDO_ALLOWLIST" display="Generated cache of every command with hostProxyAllowed: true; app:open is on it, lifecycle/meta commands are rejected as HostProxyCommandNotAllowedError" />
       <Variable name="cwdRemap" value="remapContainerCwd(containerCwd, mountInfo)" display="Host dispatcher remaps the container cwd to the host app root; targets resolve against the retained runtime, never container-provided URLs" />
       <Variable name="envelopeParity" value="CommandResultEnvelope + exit code" display="Round-trip returns the same machine envelope and exit-code semantics as host-side `lando open`, including --print and headless degradation" />

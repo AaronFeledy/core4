@@ -10,6 +10,7 @@ import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
 } from "../../../src/subsystems/host-proxy/dispatch.ts";
+import { openOptionsFromRunLandoArgv } from "../../../src/subsystems/host-proxy/open-argv.ts";
 import { buildRunLandoRequest } from "../../../src/subsystems/host-proxy/shim.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: "/home/u/demo" };
@@ -45,6 +46,22 @@ const baseEnvelope = {
   warnings: [],
   deprecations: [],
 };
+
+describe("openOptionsFromRunLandoArgv", () => {
+  test("parses equals-form app:open flags", () => {
+    const options = openOptionsFromRunLandoArgv(
+      ["open", "--service=web", "--route=https://web.demo.lndo.site", "--format=json"],
+      { tty: false },
+    );
+
+    expect(options).toEqual({
+      service: "web",
+      route: "https://web.demo.lndo.site",
+      json: true,
+      ttyPresent: false,
+    });
+  });
+});
 
 describe("dispatchRunLando", () => {
   test("dispatches an allowed command and returns the executor envelope + exit code", async () => {

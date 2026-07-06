@@ -4,13 +4,15 @@ import { remapContainerCwd } from "../../../src/subsystems/host-proxy/cwd-remap.
 import { buildRunLandoRequest, filterHostProxyEnv } from "../../../src/subsystems/host-proxy/shim.ts";
 
 describe("filterHostProxyEnv", () => {
-  test("keeps only LANDO_*, LC_*, LANG, TERM", () => {
+  test("keeps host-proxy and agent-context env names", () => {
     const filtered = filterHostProxyEnv({
       LANDO_APP: "demo",
       LANDO_HOST_PROXY_DEPTH: "1",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
+      OPENCODE: "1",
+      AGENT: "true",
       PATH: "/usr/bin",
       SECRET_TOKEN: "s3cr3t",
       HOME: "/root",
@@ -21,6 +23,8 @@ describe("filterHostProxyEnv", () => {
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
+      OPENCODE: "1",
+      AGENT: "true",
     });
   });
 
@@ -40,13 +44,13 @@ describe("buildRunLandoRequest", () => {
       argv: ["open", "--print"],
       cwd: "/app",
       tty: false,
-      env: { LANDO_APP: "demo", SECRET: "x" },
+      env: { LANDO_APP: "demo", OPENCODE: "1", SECRET: "x" },
     });
     expect(request._tag).toBe("runLando");
     expect(request.argv).toEqual(["open", "--print"]);
     expect(request.cwd).toBe("/app");
     expect(request.tty).toBe(false);
-    expect(request.env).toEqual({ LANDO_APP: "demo" });
+    expect(request.env).toEqual({ LANDO_APP: "demo", OPENCODE: "1" });
   });
 
   test("omits env when the filtered set is empty", () => {
@@ -73,6 +77,10 @@ describe("remapContainerCwd", () => {
 
   test("falls back to the host root for a path outside the mount", () => {
     expect(remapContainerCwd("/var/tmp", mount)).toBe("/home/u/site");
+  });
+
+  test("collapses parent-directory escapes back to the host root", () => {
+    expect(remapContainerCwd("/app/../../.ssh", mount)).toBe("/home/u/site");
   });
 
   test("does not treat a sibling prefix as inside the mount", () => {
