@@ -108,6 +108,16 @@ export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect
     ),
   );
 
+export const buildCommandResultEnvelope = (
+  options: EncodeCommandResultOptions,
+): Effect.Effect<CommandResultEnvelope, never> =>
+  encodeCommandEnvelope(options).pipe(
+    Effect.map((envelope) => Schema.decodeSync(CommandResultEnvelope)(envelope as never)),
+    Effect.catchAll(() =>
+      Effect.succeed(Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never)),
+    ),
+  );
+
 const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<string, never> =>
   Effect.try({
     try: () => Schema.encodeSync(StreamFrame)(frame as never),

@@ -21,6 +21,7 @@ import {
 } from "../renderer-boundary.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
+import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
 
 /**
@@ -113,6 +114,7 @@ export const validateCommandSpec = (spec: {
   readonly id: string;
   readonly resultSchema?: unknown;
   readonly mcpAllowed?: boolean;
+  readonly hostProxyAllowed?: boolean;
 }): void => {
   if (spec.resultSchema === undefined || spec.resultSchema === null) {
     throw new CommandRegistrationError({
@@ -122,6 +124,7 @@ export const validateCommandSpec = (spec: {
     });
   }
   assertMcpAllowlistSafe(spec);
+  assertHostProxyAllowlistSafe(spec);
 };
 
 const MVP_COMMAND_IDS = new Set([

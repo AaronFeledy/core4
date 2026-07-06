@@ -25906,6 +25906,143 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["pre-host-proxy-call"],
+              "type": "string"
+            },
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "callerService": {
+              "type": "string"
+            },
+            "callId": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "number"
+            },
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "argvSummary": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "commandId": {
+                  "type": "string"
+                },
+                "cwd": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "app", "callId", "request", "callerService", "depth", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-host-proxy-call"],
+              "type": "string"
+            },
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "callerService": {
+              "type": "string"
+            },
+            "callId": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "number"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "failureDetail": {
+              "type": "string"
+            },
+            "outcome": {
+              "enum": ["success", "failure"],
+              "type": "string"
+            },
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "argvSummary": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "commandId": {
+                  "type": "string"
+                },
+                "cwd": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            "resultSummary": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "app", "callId", "request", "callerService", "depth", "outcome", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["cli-command-init"],
               "type": "string"
             },

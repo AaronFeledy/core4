@@ -28,6 +28,7 @@ export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./landofile.ts";
 export * from "./machine-output.ts";
+export * from "./host-proxy.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";

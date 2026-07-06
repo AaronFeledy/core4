@@ -23,3 +23,16 @@ export const HostProxyServiceDisabled: HostProxyServiceShape = {
 };
 
 export const HostProxyServiceDisabledLive = Layer.succeed(HostProxyService, HostProxyServiceDisabled);
+
+export {
+  type DispatchRunLandoDeps,
+  type HostProxyRunLandoExecutor,
+  type HostProxyRunLandoExecutorInput,
+  type HostProxyRunLandoResult,
+  dispatchRunLando,
+  openOptionsFromRunLandoArgv,
+  runOpenForHostProxy,
+} from "./dispatch.ts";
+export { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../cli/oclif/generated/host-proxy-allowlist.ts";
+export { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
+export { buildRunLandoRequest, filterHostProxyEnv } from "./shim.ts";
