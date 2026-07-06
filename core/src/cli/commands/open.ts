@@ -216,16 +216,17 @@ export const openForPlan = (
       }
     }
 
-    const explicitSelection = options.service !== undefined || options.route !== undefined;
-    const shouldPrint =
-      options.print === true ||
-      (options.json === true && !(explicitSelection && options.ttyPresent === true));
-    if (shouldPrint) return { app: plan.name, targets, launch: "printed" as const };
+    if (options.print === true) return { app: plan.name, targets, launch: "printed" as const };
 
     const platform = options.platform ?? process.platform;
     const env = options.env ?? process.env;
     if (!canOpenHost({ platform, env })) {
       return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
+    }
+
+    const explicitSelection = options.service !== undefined || options.route !== undefined;
+    if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
+      return { app: plan.name, targets, launch: "printed" as const };
     }
 
     const events = yield* EventService;

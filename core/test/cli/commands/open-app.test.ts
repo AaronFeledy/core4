@@ -145,6 +145,18 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
+  test("--json on a headless host reports headless degradation", async () => {
+    const rec = record();
+    const exit = await run(httpsPlan(), { json: true, platform: "linux", env: {} }, rec);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.launch).toBe("headless-degraded");
+      expect(exit.value.note).toContain("No display server detected");
+    }
+    expect(rec.commands).toEqual([]);
+    expect(rec.events).toEqual([]);
+  });
+
   test("--json WITH explicit --service selection + tty launches", async () => {
     const rec = record();
     const exit = await run(
