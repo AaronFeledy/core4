@@ -640,12 +640,14 @@ const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
     renderInfoAppResult,
   );
 
-const runOpen = (argv: ReadonlyArray<string>): Promise<void> =>
-  runCompiledCommand(
+const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("app:open", argv)) return Promise.resolve();
+  return runCompiledCommand(
     openApp(openOptionsFromInput(compiledCommandInputFromArgv("app:open", argv))),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderOpenAppResult,
   );
+};
 
 const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const volumes = argv.includes("--volumes") || argv.includes("--purge");

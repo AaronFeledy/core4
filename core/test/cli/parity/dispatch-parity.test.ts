@@ -528,6 +528,23 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Unexpected argument: web");
     }, 30_000);
 
+    test("open rejects unknown flags on both paths", async () => {
+      await expectUnknownFlagParity(
+        ["open", "--definitely-not-an-open-flag"],
+        "--definitely-not-an-open-flag",
+      );
+    }, 30_000);
+
+    test("open rejects arbitrary positional URLs on both paths", async () => {
+      const source = await runSourceCli(["open", "https://example.test"]);
+      const compiled = await runCompiledCli(["open", "https://example.test"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Unexpected argument: https://example.test");
+    }, 30_000);
+
     test("shell --service followed by another flag fails on both paths instead of eating it", async () => {
       const source = await runSourceCli(["shell", "--service", "--no-history"]);
       const compiled = await runCompiledCli(["shell", "--service", "--no-history"]);

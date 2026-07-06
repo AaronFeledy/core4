@@ -52,6 +52,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - A new lifecycle event that carries a URL/host summary routes the value through `RedactionService.forProfile("secrets", { sourceEnv: process.env }).redactString(url)` before publish: the `secrets` profile leaves a plain `https://host` intact but masks userinfo credentials and `?token=`-style query secrets, which is exactly the "redacted URL summary" the event contract wants — and it keeps `check:redaction-boundary` green (no ad-hoc regex/sentinel).
 ---
 
+## 2026-07-06 09:19 CDT - US-402 Review
+- Review fixed endpoint fallback and compiled-dispatch safety: `lando open` now falls back to HTTP/HTTPS service endpoints when no matching proxy route exists, and compiled `lando open` rejects unknown flags or arbitrary positional URLs before app resolution/browser launch.
+- Review notes (deferred/rejected): generic `cli-command-*` lifecycle publishing remains a pre-existing CLI hook TODO, not a focused `app:open` bug; `app:open` publishes the story-specific `pre-open-url`/`post-open-url` events. Guide coverage was rejected as a US-402 blocker because the source story acceptance criteria do not require a guide in this story; US-403 keeps the host-proxy guide/round-trip work separate.
+- Verification: typecheck, lint (biome + deprecations), focused open/error/event/host-opener tests, and dispatch-parity spot checks passed.
+---
+
 ## 2026-07-06 05:55 CDT - US-401 Review
 - Review fixed the remaining public-schema default gap: `AgentEnvConfig.enabled` now emits a machine-readable/generated-docs default of `true`, matching the source PRD while preserving the runtime policy behavior that treats omitted `enabled` as enabled.
 - Review notes (deferred/rejected): moving wildcard rejection into `ConfigService.load`/the base schema was rejected because US-401 deliberately localizes `AgentEnvPatternError` to the `lando config set`/`validate`/`edit` seam to avoid widening unrelated command error unions; runtime allowlist resolution still fails closed for invalid allow entries and config-command validation rejects patterns with remediation.
