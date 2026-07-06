@@ -81,6 +81,24 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
+  test("selection miss reports the bad selector instead of missing proxy config", async () => {
+    const rec = record();
+    const exit = await run(httpsPlan(), { service: "api", platform: "linux", env: { DISPLAY: ":0" } }, rec);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      const err = exit.cause.error as {
+        readonly _tag: string;
+        readonly message: string;
+        readonly remediation?: string;
+      };
+      expect(err._tag).toBe("OpenTargetUnresolvedError");
+      expect(err.message).toContain("No openable URL matched --service api");
+      expect(err.remediation).toContain("Choose one of the listed services");
+      expect(err.remediation).not.toContain("proxy");
+    }
+    expect(rec.commands).toEqual([]);
+  });
+
   test("S7 headless host degrades to printed with a note, no opener, no events", async () => {
     const rec = record();
     const exit = await run(httpsPlan(), { platform: "linux", env: {} }, rec);

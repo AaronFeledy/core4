@@ -181,6 +181,19 @@ export const openForPlan = (
     if (targets.length === 0) {
       const knownServices = Object.values(plan.services).map((service) => String(service.name));
       const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
+      if (
+        (options.service !== undefined || options.route !== undefined) &&
+        resolveOpenTargets(plan, { all: true }).length > 0
+      ) {
+        const selected =
+          options.service !== undefined ? `--service ${options.service}` : `--route ${options.route ?? ""}`;
+        return yield* Effect.fail(
+          new OpenTargetUnresolvedError({
+            message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
+            remediation: "Choose one of the listed services or routes, then rerun `lando open`.",
+          }),
+        );
+      }
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
           message: `No openable URL for ${plan.name}: the app declares no matching proxy route. Known services: ${knownServicesText}.`,
