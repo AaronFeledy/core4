@@ -37,6 +37,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
+import { withAgentContextEnv } from "../../config/agent-env.ts";
 import { makeLandoPaths } from "../../config/paths.ts";
 import { quoteShellPath } from "../../services/shell-quote.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
@@ -277,13 +278,14 @@ export const shellApp = (
         ...(options.user === undefined ? {} : { user: options.user }),
       };
       const terminalSize = currentTerminalSize(io);
+      const serviceEnv = withAgentContextEnv(options.env, process.env);
       const spec: CommandSpec = {
         command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
         stdin: "inherit",
         ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
         tty: true,
         ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        ...(options.env === undefined ? {} : { env: options.env }),
+        ...(serviceEnv === undefined ? {} : { env: serviceEnv }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(terminalSize === undefined ? {} : { terminalSize }),
         terminalResize: resizeStream(io),

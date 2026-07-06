@@ -9,6 +9,8 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { withAgentContextEnv } from "../config/agent-env.ts";
+
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
 
@@ -64,6 +66,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
+    const env = withAgentContextEnv(invocation.env, process.env);
     let exitCode = 0;
     let stdout = "";
     let stderr = "";
@@ -77,7 +80,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       const spec = {
         command,
         ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
-        ...(invocation.env === undefined ? {} : { env: invocation.env }),
+        ...(env === undefined ? {} : { env }),
       };
       const result = yield* provider.exec(target, spec);
       stdout += result.stdout;

@@ -518,7 +518,7 @@
         "Lint passes"
       ],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 6.9.1). Exact names only; wildcard handling is US-401."
     },
     {

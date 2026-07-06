@@ -146,6 +146,35 @@ const runEngine = (invocation: ToolingInvocation, plan: AppPlan, provider: Runti
     Effect.provide(ProviderExecToolingEngineLive),
   );
 
+const AGENT_ENV_NAMES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_AGENT",
+  "OPENCODE",
+  "COPILOT_CLI",
+  "GEMINI_CLI",
+  "AGENT",
+  "CI",
+] as const;
+
+const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
+  const saved = new Map<string, string | undefined>();
+  for (const key of AGENT_ENV_NAMES) saved.set(key, process.env[key]);
+  try {
+    for (const key of AGENT_ENV_NAMES) {
+      const value = env[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await run();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+};
+
 describe("ProviderExecToolingEngineLive", () => {
   test("Layer registers engine id 'providerExec'", async () => {
     const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(ProviderExecToolingEngineLive)));
@@ -285,7 +314,7 @@ describe("ProviderExecToolingEngineLive", () => {
       commands: [["composer", "install"]],
     };
 
-    await Effect.runPromise(runEngine(invocation, plan, provider));
+    await withHostEnv({}, () => Effect.runPromise(runEngine(invocation, plan, provider)));
 
     expect(provider.calls[0]?.target.user).toBe("www-data");
     expect(provider.calls[0]?.command.cwd).toBe("/app/sub");
@@ -329,5 +358,47 @@ describe("ProviderExecToolingEngineLive", () => {
     const exit = await Effect.runPromiseExit(runEngine(invocation, plan, provider));
 
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  describe("host agent-context env forwarding (US-400)", () => {
+    test("forwards present host agent markers into the provider exec spec", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
+
+      await withHostEnv({ CLAUDECODE: "1", OPENCODE: undefined, CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CLAUDECODE: "1", CI: "true" });
+    });
+
+    test("declared task env wins over a forwarded agent value (precedence)", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = {
+        tool: "composer",
+        commands: [["composer"]],
+        env: { CI: "task" },
+      };
+
+      await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CI: "task", CLAUDECODE: "1" });
+    });
+
+    test("omits the exec env when no host agent markers are present", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer"]] };
+
+      await withHostEnv({ CLAUDECODE: undefined, OPENCODE: undefined, CI: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toBeUndefined();
+    });
   });
 });
