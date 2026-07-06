@@ -347,6 +347,25 @@ describe("lando info --deep — agent-context env audit", () => {
     expect(renderInfoAppResult(result)).toContain("agent-env\tdisabled");
   });
 
+  test("deep resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+    const result = await withAgentEnvOff(undefined, () =>
+      Effect.runPromise(
+        infoApp(
+          { deep: true },
+          {
+            plan,
+            root: process.cwd(),
+            app: { kind: "user", id: plan.id, root: plan.root },
+            landofile: { name: "test-info" },
+          },
+        ).pipe(Effect.provide(makeInfoLayer("running", { landofile: { agentEnv: false } }))),
+      ),
+    );
+
+    expect(result.agentEnv?.enabled).toBe(false);
+    expect(result.agentEnv?.forwarded).toEqual([]);
+  });
+
   test("reports disabled when LANDO_AGENT_ENV=0", async () => {
     const result = await withAgentEnvOff("0", () =>
       Effect.runPromise(infoApp({ deep: true }).pipe(Effect.provide(makeInfoLayer("running")))),

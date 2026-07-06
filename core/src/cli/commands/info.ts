@@ -247,7 +247,7 @@ export const infoApp = (
     if (target?.plan !== undefined) {
       plan = target.plan;
       if (options?.deep === true) {
-        landofile = target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root));
+        landofile = yield* loadUserLandofileAt(landofileService, target.root);
       }
     } else {
       landofile = yield* loadUserLandofile(landofileService);
