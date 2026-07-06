@@ -20,6 +20,7 @@ import {
 import { PluginRegistryLive } from "../../../core/src/plugins/registry.ts";
 import { AppPlannerLive } from "../../../core/src/services/planner.ts";
 import { ProviderExecToolingEngineLive } from "../../../core/src/services/tooling-engine.ts";
+import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
 import { services } from "../src/index.ts";
 
 const providerId = ProviderId.make("lando");
@@ -128,7 +129,13 @@ const makeToolingLayer = (options: {
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(options.provider),
   });
-  return Layer.mergeAll(landofileLayer, plannerLayer, registryLayer, ProviderExecToolingEngineLive);
+  return Layer.mergeAll(
+    landofileLayer,
+    plannerLayer,
+    registryLayer,
+    ProviderExecToolingEngineLive,
+    emptyConfigServiceLayer,
+  );
 };
 
 describe("go service type — scenario: minimal HTTP server + lando go version tooling", () => {
