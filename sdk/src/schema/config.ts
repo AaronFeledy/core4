@@ -32,6 +32,20 @@ export const NetworkConfig = Schema.Struct({
 });
 export type NetworkConfig = typeof NetworkConfig.Type;
 
+export const McpConfig = Schema.Struct({
+  allow: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description:
+      "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
+  }),
+  deny: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
+  }),
+  tooling: Schema.optional(Schema.Boolean).annotations({
+    description: "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
+  }),
+});
+export type McpConfig = typeof McpConfig.Type;
+
 /**
  * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
  * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
@@ -52,5 +66,8 @@ export const GlobalConfig = Schema.Struct({
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),
   network: Schema.optional(NetworkConfig),
+  mcp: Schema.optional(McpConfig).annotations({
+    description: "Global MCP command exposure policy (global mcp).",
+  }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

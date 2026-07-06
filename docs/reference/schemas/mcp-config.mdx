@@ -1,0 +1,16 @@
+---
+title: Mcp Config
+description: Public Lando schema contract for Mcp Config.
+---
+
+# Mcp Config
+
+Public Lando schema contract for Mcp Config.
+
+[JSON Schema artifact](../../../dist/schemas/mcp-config.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `allow` | No | `array` | Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow). | — | — | — | — |
+| `deny` | No | `array` | Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny). | — | — | — | — |
+| `tooling` | No | `boolean` | Project resolved app tooling tasks as MCP tools by default (global mcp.tooling). | — | — | — | — |

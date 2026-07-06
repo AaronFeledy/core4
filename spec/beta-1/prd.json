@@ -484,7 +484,7 @@
         "Lint passes"
       ],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 8.2.6). stdio only in v4.0; HTTP transport is deferred and must not be precluded."
     },
     {

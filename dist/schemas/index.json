@@ -577,6 +577,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Mcp Config.",
+    "docsPath": "docs/reference/schemas/mcp-config.mdx",
+    "id": "McpConfig",
+    "jsonSchemaPath": "dist/schemas/mcp-config.json",
+    "packageExport": "@lando/sdk/schema#McpConfig",
+    "title": "Mcp Config"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Telemetry Config.",
     "docsPath": "docs/reference/schemas/telemetry-config.mdx",
     "id": "TelemetryConfig",

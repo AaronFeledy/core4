@@ -82,6 +82,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ToolingArgShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ToolingTaskShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   IncludeEntry: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  McpConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   TelemetryConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   NetworkProxyConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   NetworkCaConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -446,8 +447,8 @@ export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknow
 export const assertPublicSchemaContractCoverage = (
   repoRoot = resolve(import.meta.dirname, "../../.."),
 ): void => {
-  const fixtureNames = Object.keys(PUBLIC_SCHEMA_CONTRACT_FIXTURES).sort();
-  const registryNames = [...JSON_SCHEMA_NAMES].sort();
+  const fixtureNames: string[] = Object.keys(PUBLIC_SCHEMA_CONTRACT_FIXTURES).sort();
+  const registryNames: string[] = [...JSON_SCHEMA_NAMES].sort();
   if (JSON.stringify(fixtureNames) !== JSON.stringify(registryNames)) {
     throw new Error(
       `Public schema contract fixture list does not match JSON_SCHEMA_NAMES. Missing/extra: ${registryNames
@@ -466,7 +467,7 @@ export const assertPublicSchemaContractCoverage = (
 
   const failingSchemas: string[] = [];
   for (const schemaName of JSON_SCHEMA_NAMES) {
-    const schema = publicSchemaRegistry[schemaName];
+    const schema: Schema.Schema.AnyNoContext = publicSchemaRegistry[schemaName];
     const happy = Schema.decodeUnknownEither(schema)(publicSchemaHappyPathFixture(schemaName), {
       onExcessProperty: "error",
     });

@@ -6,4 +6,5 @@ export * from "./registry.ts";
 export * from "./catalog.ts";
 export * from "./dispatch.ts";
 export * from "./transport.ts";
+export * from "./stdio-transport.ts";
 export * from "./service.ts";

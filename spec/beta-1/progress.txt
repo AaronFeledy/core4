@@ -650,3 +650,22 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (guide-drift failures addressed with PR-body Guide-Coverage-Skip declaration; rerun checks passed)
 - Merge: merged (squash)
 ---
+## [2026-07-05T21:13:41-05:00] - Babysit
+- PR: #528 https://github.com/AaronFeledy/core4/pull/528
+- CI outcome: pass
+- Review feedback: fixed (Bugbot MCP cancellation/input/appPath/tooling findings were stale against current HEAD; focused MCP tests, typecheck, and lint passed)
+- Merge: merged (squash)
+---
+
+## 2026-07-05 22:55 CDT - US-398
+- Shipped the user-facing `lando mcp` (`meta:mcp`) command that turns US-397's core `McpService` into a real stdio MCP server plus a `--list` audit surface. The command shares one option/validation core between modes: `--list` projects the effective tool catalog (id, summary, allowance source) as a normal machine-output result and exits; serve mode runs the long-running stdio JSON-RPC loop and emits NO command-result envelope so it never corrupts the protocol stream (§8.11.4 carve-out).
+- Built the hand-rolled stdio transport (`core/src/mcp/stdio-transport.ts` + `stdio-rpc.ts`): a line-delimited JSON-RPC 2.0 reader/writer over `Bun.stdin`/`Bun.stdout` that handles `initialize`, `ping`, `tools/list`, `tools/call`, and `notifications/cancelled`, correlates internal request ids to JSON-RPC ids + progress tokens, forwards redacted StreamFrame progress notifications, and collapses stdin EOF to scope finalization so serve exits cleanly with no protocol frame.
+- Effective set composes `--allow`/`--deny`/`--tooling` with global `mcp.allow`/`mcp.deny`/`mcp.tooling` (deny wins); unknown ids fail up front with `McpToolInputError` (flag path) before the transport opens; requests outside the allowlist return `McpToolNotAllowedError`. `meta:mcp` bootstraps at `plugins`, constructs `McpServiceLive` lazily, and sets neither `hostProxyAllowed` nor `recipePostInitAllowed`.
+- Wired dual dispatch: OCLIF command class (`core/src/cli/oclif/commands/meta/mcp.ts`) and the compiled `runCompiledCli` `meta:mcp`/`mcp` branch (`runMetaMcp` in `core/src/cli/run.ts`), both calling the shared `dispatchMcpCommand`. Regenerated `compiled-manifest.ts` for the new flags.
+- Verification: typecheck, lint (incl. deprecations), and renderer-boundary passed. Test spot checks green — mcp command/list unit tests (16), stdio-transport + full mcp subsystem (39), machine-output conformance (auto-covers `meta:mcp --list` success/failure envelopes), mcp-allowlist freshness, sdk schema contracts + snapshot (423), and the new dual-dispatch parity cases (`mcp --list` envelope parity, serve-without-stdin EOF exit 0 with no frame, unknown `--allow` rejection parity). Manual QA against the source CLI: `mcp --list` (text + JSON machine envelope), `--allow`/`--deny` mutate the catalog, serve EOF exits 0, a real JSON-RPC session drives `initialize` -> `tools/list` -> `tools/call meta:version` (success envelope) and rejects `app:config` with `McpToolNotAllowedError`.
+- **Learnings for future iterations:**
+  - A command whose real behavior lives in a custom OCLIF `run()` override (not `spec.run(input)`) needs a bespoke `runMeta...` branch in `core/src/cli/run.ts` for the compiled path — the generic `runCompiledCommand` would call the placeholder `spec.run` (here `Effect.succeed({ tools: [] })`) and silently produce wrong output. The §13.1 dispatch-parity structural test (`argv[0] === "<id>"` regex on run.ts source) catches a missing branch for any MVP id.
+  - `getCommandRuntimeLayer(...)` / `makeLandoRuntime(...)` return the wide `RuntimeLayer`/`AppRuntimeServices` union, so a helper that needs a specific `Layer.Layer<ConfigService | RedactionService, ...>` must cast at the call site exactly like `command-base.ts` does (`runtime as Layer.Layer<...>`); the union includes `Layer.Layer<never>` which is otherwise unassignable.
+  - The stdio MCP transport writes raw JSON-RPC frames straight to `Bun.stdout` — that is a legitimate protocol stream, not renderer output, and passes `check:renderer-boundary`. Serve mode must emit zero command-result envelopes; only `--list` goes through `runWithRendererHandling`.
+  - Machine-output conformance and the dispatch-parity structural suite auto-iterate every registered command id, so a newly graduated command is covered for success/failure envelopes and branch existence the moment it lands in `compiled-commands.ts` + `MVP_COMMAND_IDS` — no per-command conformance edit needed.
+---

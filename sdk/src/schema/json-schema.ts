@@ -117,6 +117,7 @@ import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import {
   GlobalConfig,
+  McpConfig,
   NetworkCaConfig,
   NetworkConfig,
   NetworkProxyConfig,
@@ -366,6 +367,7 @@ const rawPublicSchemaRegistry = {
   ToolingArgShape,
   ToolingTaskShape,
   IncludeEntry,
+  McpConfig,
   TelemetryConfig,
   NetworkProxyConfig,
   NetworkCaConfig,
@@ -617,6 +619,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
+  McpConfig: "Public Lando schema contract for Mcp Config.",
   TelemetryConfig: "Public Lando schema contract for Telemetry Config.",
   NetworkProxyConfig: "Public Lando schema contract for Network Proxy Config.",
   NetworkCaConfig: "Public Lando schema contract for Network Ca Config.",
@@ -1250,6 +1253,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "FileSyncSessionSpec.source",
   "FileSyncSessionSpec.target",
   "GlobalConfig.defaultProviderId",
+  "GlobalConfig.mcp",
   "GlobalConfig.network",
   "GlobalConfig.renderer",
   "GlobalConfig.systemPluginRoot",
