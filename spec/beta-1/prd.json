@@ -465,7 +465,7 @@
         "Lint passes"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 10.14). Core-owned, not plugin-replaceable in v4.0."
     },
     {

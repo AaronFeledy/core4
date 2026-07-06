@@ -4885,6 +4885,94 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-mcp-call"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "eventName": {
+          "enum": [
+            "pre-mcp-call"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "toolId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "toolId",
+        "commandId",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-mcp-call"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "eventName": {
+          "enum": [
+            "post-mcp-call"
+          ],
+          "type": "string"
+        },
+        "failureDetail": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "toolId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "toolId",
+        "commandId",
+        "outcome",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-data-transfer"
           ],
           "type": "string"

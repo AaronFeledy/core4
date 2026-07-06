@@ -8,6 +8,7 @@ export * from "./global.ts";
 export * from "./http-call.ts";
 export * from "./lifecycle.ts";
 export * from "./managed-file.ts";
+export * from "./mcp.ts";
 export * from "./message.ts";
 export * from "./provider.ts";
 export * from "./renderer.ts";
