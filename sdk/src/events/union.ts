@@ -50,6 +50,7 @@ import {
 } from "./managed-file.ts";
 import { PostMcpCallEvent, PreMcpCallEvent } from "./mcp.ts";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "./message.ts";
+import { PostOpenUrlEvent, PreOpenUrlEvent } from "./open.ts";
 import {
   PostProviderApplyEvent,
   PostProviderExecEvent,
@@ -157,6 +158,8 @@ export const LandoEvent = Schema.Union(
   PostProviderApplyEvent,
   PreProviderExecEvent,
   PostProviderExecEvent,
+  PreOpenUrlEvent,
+  PostOpenUrlEvent,
   CliCommandInitEvent,
   CliCommandRunEvent,
   CliCommandErrorEvent,

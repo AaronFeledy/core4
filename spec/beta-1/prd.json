@@ -556,7 +556,7 @@
         "Lint passes"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-07 (spec 8.2.5)."
     },
     {

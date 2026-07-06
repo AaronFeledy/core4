@@ -10,6 +10,7 @@ export * from "./lifecycle.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./message.ts";
+export * from "./open.ts";
 export * from "./provider.ts";
 export * from "./renderer.ts";
 export * from "./sync.ts";

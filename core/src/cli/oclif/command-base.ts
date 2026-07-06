@@ -63,6 +63,8 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly deprecated?: DeprecationNotice;
   /** True only for commands exposed as MCP tools by default; destructive surfaces must not set this. */
   readonly mcpAllowed?: boolean;
+  /** True only for commands safe to forward from inside a container via the in-container `lando` shim. */
+  readonly hostProxyAllowed?: boolean;
   readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
@@ -137,6 +139,7 @@ const MVP_COMMAND_IDS = new Set([
   "app:includes:verify",
   "app:info",
   "app:logs",
+  "app:open",
   "app:pull",
   "app:push",
   "app:remote:add",

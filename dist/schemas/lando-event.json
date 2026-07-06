@@ -6407,6 +6407,104 @@
       "properties": {
         "_tag": {
           "enum": [
+            "pre-open-url"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "url",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "post-open-url"
+          ],
+          "type": "string"
+        },
+        "app": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "user",
+                "global",
+                "scratch"
+              ],
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "root"
+          ],
+          "type": "object"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "app",
+        "url",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "cli-command-init"
           ],
           "type": "string"

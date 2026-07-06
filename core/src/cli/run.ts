@@ -65,6 +65,7 @@ import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-s
 import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
 import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
 import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromCompiled } from "./commands/meta/mcp.ts";
+import { openApp, openOptionsFromInput, renderOpenAppResult } from "./commands/open.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginBuild, renderPluginBuildResult } from "./commands/plugin-build.ts";
 import { pluginLink, renderPluginLinkResult } from "./commands/plugin-link.ts";
@@ -637,6 +638,13 @@ const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
     infoApp({ deep: argv.includes("--deep") }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderInfoAppResult,
+  );
+
+const runOpen = (argv: ReadonlyArray<string>): Promise<void> =>
+  runCompiledCommand(
+    openApp(openOptionsFromInput(compiledCommandInputFromArgv("app:open", argv))),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    renderOpenAppResult,
   );
 
 const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
@@ -2051,6 +2059,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "info" || argv[0] === "app:info") {
     await runInfo(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "open" || argv[0] === "app:open") {
+    await runOpen(argv.slice(1));
     return;
   }
 
