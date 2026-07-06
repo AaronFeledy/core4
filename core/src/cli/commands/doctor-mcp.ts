@@ -8,8 +8,9 @@
  * the selected provider and needs only `RedactionService`.
  *
  * Three sub-checks compose the single `mcp` check:
- *   1. allowlist cache freshness — the committed default allowlist matches the
- *      generated OCLIF manifest metadata and contains no destructive id.
+ *   1. allowlist cache integrity — the committed default allowlist is sorted and
+ *      contains no destructive id. Drift from the compiled command index is
+ *      covered by the generated-cache contract test, not by runtime doctor.
  *   2. catalog generation — the catalog projects cleanly and yields a tool with
  *      a derived input schema.
  *   3. canary round-trip — a canary tool dispatches to an `ok:true` envelope and
@@ -27,7 +28,6 @@ import type { McpCommandEntry } from "../../mcp/registry.ts";
 import { RedactionService, RedactionServiceLive } from "../../redaction/service.ts";
 import { SecretStoreLive } from "../../services/secret-store.ts";
 import type { LandoCommandSpec } from "../oclif/command-base.ts";
-import { COMPILED_OCLIF_MANIFEST } from "../oclif/compiled-manifest.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../oclif/generated/mcp-allowlist.ts";
 import { computeMcpDefaultAllowlist } from "../oclif/mcp-allowlist.ts";
 import type { CommandResultOutcome } from "../result-encode.ts";
@@ -79,31 +79,46 @@ type McpExecute = (
   runInput: McpRunInput,
 ) => Effect.Effect<CommandResultOutcome, never>;
 
-interface McpAllowlistSpecView {
-  readonly id: string;
-  readonly mcpAllowed?: boolean;
-}
-
-const manifestMcpAllowlistSpecs = (): ReadonlyArray<McpAllowlistSpecView> =>
-  Object.values(COMPILED_OCLIF_MANIFEST.commands).map(({ landoSpec }) => {
-    const mcpAllowed = "mcpAllowed" in landoSpec ? landoSpec.mcpAllowed : undefined;
-    return {
-      id: landoSpec.id,
-      ...(mcpAllowed === undefined ? {} : { mcpAllowed }),
-    };
-  });
-
 export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
-  const expected = computeMcpDefaultAllowlist(manifestMcpAllowlistSpecs());
+  const expected = computeMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST.map((id) => ({ id, mcpAllowed: true })));
   if (ids.length !== expected.length) return false;
   return ids.every((id, index) => id === expected[index]);
 };
 
-const MCP_DEGRADED_SOLUTION: DoctorSolution = {
+interface McpDoctorSignals {
+  readonly allowlistFresh: boolean;
+  readonly catalogGenerated: boolean;
+  readonly canaryRoundTrip: boolean;
+  readonly canaryRedacted: boolean;
+}
+
+const MCP_ALLOWLIST_STALE_SOLUTION: DoctorSolution = {
   kind: "manual",
   description:
-    "The MCP surface failed a self-check. Review `mcp.allow`/`mcp.deny` config and rerun `lando doctor`; if it persists this is a regression in the MCP projection.",
+    "The committed MCP default allowlist is stale. Regenerate `core/src/cli/oclif/generated/mcp-allowlist.ts` from the compiled command index.",
+  command: "bun run scripts/build-mcp-allowlist.ts",
+};
+
+const MCP_CATALOG_DEGRADED_SOLUTION: DoctorSolution = {
+  kind: "manual",
+  description:
+    "The MCP catalog failed to project command metadata. Rerun `lando doctor`; if it persists this is a regression in the MCP projection.",
   command: "lando doctor",
+};
+
+const MCP_CANARY_DEGRADED_SOLUTION: DoctorSolution = {
+  kind: "manual",
+  description:
+    "The MCP canary round-trip or redaction self-check failed. Rerun `lando doctor`; if it persists this is a regression in MCP dispatch or redaction.",
+  command: "lando doctor",
+};
+
+const mcpDoctorSolutions = (signals: McpDoctorSignals): ReadonlyArray<DoctorSolution> => {
+  const solutions: DoctorSolution[] = [];
+  if (!signals.allowlistFresh) solutions.push(MCP_ALLOWLIST_STALE_SOLUTION);
+  if (!signals.catalogGenerated) solutions.push(MCP_CATALOG_DEGRADED_SOLUTION);
+  if (!signals.canaryRoundTrip || !signals.canaryRedacted) solutions.push(MCP_CANARY_DEGRADED_SOLUTION);
+  return solutions;
 };
 
 /**
@@ -175,7 +190,9 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       status: passed ? "pass" : "fail",
       severity: passed ? "info" : "error",
       context,
-      solutions: passed ? [] : [MCP_DEGRADED_SOLUTION],
+      solutions: passed
+        ? []
+        : mcpDoctorSolutions({ allowlistFresh, catalogGenerated, canaryRoundTrip, canaryRedacted }),
     };
     return { checks: [check] };
   });

@@ -10,6 +10,7 @@ import {
   renderMcpDoctorResult,
   renderMcpDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor-mcp.ts";
+import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
 import { identityRedactor } from "../../src/cli/result-encode.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 
@@ -39,9 +40,11 @@ describe("mcpDoctor", () => {
     expect(Number(check.context.catalogTools)).toBeGreaterThan(0);
   });
 
-  test("detects generated default allowlist drift against the OCLIF manifest", () => {
+  test("detects generated default allowlist cache integrity drift", () => {
+    expect(isMcpDefaultAllowlistFresh(MCP_DEFAULT_ALLOWLIST)).toBe(true);
     expect(isMcpDefaultAllowlistFresh([])).toBe(false);
     expect(isMcpDefaultAllowlistFresh(["app:exec"])).toBe(false);
+    expect(isMcpDefaultAllowlistFresh([...MCP_DEFAULT_ALLOWLIST].reverse())).toBe(false);
   });
 
   test("never leaks the canary secret into the check output", async () => {
@@ -58,6 +61,7 @@ describe("mcpDoctor", () => {
     expect(check.severity).toBe("error");
     expect(check.context.canaryRedacted).toBe("false");
     expect(check.solutions.length).toBeGreaterThan(0);
+    expect(check.solutions.map((solution) => solution.description).join("\n")).not.toContain("mcp.allow");
     // Even on a redaction failure, the check must not echo the raw secret.
     expect(JSON.stringify(result)).not.toContain(MCP_DOCTOR_CANARY_SECRET);
   });
