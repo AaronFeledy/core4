@@ -7,11 +7,11 @@ import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
-import type { LandofileService } from "@lando/sdk/services";
-import { Renderer } from "@lando/sdk/services";
+import { LandofileService, Renderer } from "@lando/sdk/services";
 
 import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/cli/app-resolution.ts";
 import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
+import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
 const landofile = (lando?: string): LandofileShape =>
   (lando === undefined ? {} : { lando }) as unknown as LandofileShape;
@@ -155,6 +155,29 @@ describe("loadUserLandofile version-constraint enforcement", () => {
       if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
       expect(error.constraints).toEqual([{ range: ">=4.5", source: fragmentPath }]);
     } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("uses the discovered .lando.ts source path for direct constraints", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-version-constraint-ts-app-"));
+    const previousCwd = process.cwd();
+    try {
+      const filePath = join(appRoot, ".lando.ts");
+      await writeFile(filePath, 'export default { name: "ts-app", lando: ">=99" };\n', "utf8");
+      process.chdir(appRoot);
+
+      const error = await Effect.runPromise(
+        Effect.flatMap(LandofileService, (service) => Effect.flip(loadUserLandofile(service))).pipe(
+          Effect.provide(LandofileServiceLive),
+        ),
+      );
+
+      expect(error._tag).toBe("LandofileVersionConstraintError");
+      if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
+      expect(error.constraints).toEqual([{ range: ">=99", source: filePath }]);
+    } finally {
+      process.chdir(previousCwd);
       await rm(appRoot, { recursive: true, force: true });
     }
   });
