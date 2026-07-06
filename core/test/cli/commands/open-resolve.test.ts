@@ -1,17 +1,53 @@
 import { describe, expect, test } from "bun:test";
+import { DateTime } from "effect";
 
-import type { AppPlan, RoutePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type EndpointPlan,
+  ProviderId,
+  type RoutePlan,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 
 import { buildOpenTarget, isOpenableScheme, resolveOpenTargets } from "../../../src/cli/commands/open.ts";
 
-const route = (over: Partial<RoutePlan> & Pick<RoutePlan, "hostname" | "scheme" | "service">): RoutePlan =>
-  ({ ...over }) as RoutePlan;
+const route = (
+  over: Partial<Omit<RoutePlan, "service">> &
+    Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string },
+): RoutePlan => ({ ...over, service: ServiceName.make(over.service) });
 
-const svc = (name: string) => ({ name, routes: [] }) as unknown;
+const endpoint = (over: EndpointPlan): EndpointPlan => over;
 
-const plan = (routes: RoutePlan[], serviceNames: string[]): Pick<AppPlan, "services" | "routes"> => {
-  const services: Record<string, unknown> = {};
-  for (const name of serviceNames) services[name] = svc(name);
+const svc = (name: string, endpoints: ReadonlyArray<EndpointPlan> = []): ServicePlan => ({
+  name: ServiceName.make(name),
+  type: "generic",
+  provider: ProviderId.make("test"),
+  primary: false,
+  environment: {},
+  mounts: [],
+  storage: [],
+  endpoints: [...endpoints],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-07-06T00:00:00Z"),
+    source: "open-resolve.test",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
+const plan = (
+  routes: RoutePlan[],
+  serviceNames: ReadonlyArray<string | ServicePlan>,
+): Pick<AppPlan, "services" | "routes"> => {
+  const services: Record<string, ServicePlan> = {};
+  for (const service of serviceNames) {
+    const resolved = typeof service === "string" ? svc(service) : service;
+    services[resolved.name] = resolved;
+  }
   return { services, routes } as Pick<AppPlan, "services" | "routes">;
 };
 
@@ -83,6 +119,25 @@ describe("resolveOpenTargets", () => {
     expect(resolveOpenTargets(plan([], ["web"]), {})).toEqual([]);
     expect(resolveOpenTargets(p, { service: "missing" })).toEqual([]);
     expect(resolveOpenTargets(p, { route: "nope.lndo.site" })).toEqual([]);
+  });
+
+  test("S5 falls back to http endpoints when no matching route exists", () => {
+    const p = plan(
+      [],
+      [
+        svc("web", [
+          endpoint({ protocol: "tcp", port: 3306 }),
+          endpoint({ protocol: "http", port: 8080 }),
+          endpoint({ protocol: "https", port: 8443 }),
+        ]),
+      ],
+    );
+    expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://localhost:8443"]);
+    expect(resolveOpenTargets(p, { service: "web" }).map((r) => r.url)).toEqual(["https://localhost:8443"]);
+    expect(resolveOpenTargets(p, { all: true }).map((r) => r.url)).toEqual([
+      "http://localhost:8080",
+      "https://localhost:8443",
+    ]);
   });
 });
 

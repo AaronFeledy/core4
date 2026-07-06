@@ -4,7 +4,7 @@ import type { InfoAppError } from "@lando/sdk/app";
 import type { EventError, ShellExecError } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, RoutePlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, EndpointPlan, RoutePlan, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -65,29 +65,61 @@ export const buildOpenTarget = (route: RoutePlan): OpenTarget => {
   };
 };
 
+const endpointOpenTarget = (service: ServicePlan, endpoint: EndpointPlan): OpenTarget | undefined => {
+  if ((endpoint.protocol !== "http" && endpoint.protocol !== "https") || endpoint.port === undefined)
+    return undefined;
+  return {
+    service: String(service.name),
+    hostname: "localhost",
+    scheme: endpoint.protocol,
+    url: `${endpoint.protocol}://localhost:${endpoint.port}`,
+  };
+};
+
 const routesForService = (plan: ResolvablePlan, service: string): RoutePlan[] =>
   plan.routes.filter((route) => String(route.service) === service);
 
 const preferHttps = (routes: ReadonlyArray<RoutePlan>): RoutePlan | undefined =>
   routes.find((route) => route.scheme === "https" || route.scheme === "both") ?? routes[0];
 
+const endpointTargetsForService = (plan: ResolvablePlan, serviceName: string): OpenTarget[] => {
+  const service = Object.values(plan.services).find((candidate) => String(candidate.name) === serviceName);
+  if (service === undefined) return [];
+  return service.endpoints.flatMap((endpoint) => {
+    const target = endpointOpenTarget(service, endpoint);
+    return target === undefined ? [] : [target];
+  });
+};
+
+const preferHttpsTarget = (targets: ReadonlyArray<OpenTarget>): OpenTarget | undefined =>
+  targets.find((target) => target.scheme === "https") ?? targets[0];
+
 export const resolveOpenTargets = (
   plan: ResolvablePlan,
   selection: OpenTargetSelection,
-): ReadonlyArray<RoutePlan> => {
+): ReadonlyArray<OpenTarget> => {
   if (selection.route !== undefined) {
     const match = plan.routes.find((route) => route.hostname === selection.route);
-    return match === undefined ? [] : [match];
+    return match === undefined ? [] : [buildOpenTarget(match)];
   }
-  if (selection.all === true) return [...plan.routes];
+  if (selection.all === true) {
+    if (plan.routes.length > 0) return plan.routes.map(buildOpenTarget);
+    return Object.values(plan.services).flatMap((service) =>
+      endpointTargetsForService(plan, String(service.name)),
+    );
+  }
   if (selection.service !== undefined) {
     const chosen = preferHttps(routesForService(plan, selection.service));
-    return chosen === undefined ? [] : [chosen];
+    if (chosen !== undefined) return [buildOpenTarget(chosen)];
+    const endpoint = preferHttpsTarget(endpointTargetsForService(plan, selection.service));
+    return endpoint === undefined ? [] : [endpoint];
   }
   for (const service of Object.values(plan.services)) {
     const routes = routesForService(plan, String(service.name));
     const chosen = preferHttps(routes);
-    if (chosen !== undefined) return [chosen];
+    if (chosen !== undefined) return [buildOpenTarget(chosen)];
+    const endpoint = preferHttpsTarget(endpointTargetsForService(plan, String(service.name)));
+    if (endpoint !== undefined) return [endpoint];
   }
   return [];
 };
@@ -143,8 +175,8 @@ export const openForPlan = (
   options: OpenAppOptions = {},
 ): Effect.Effect<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> =>
   Effect.gen(function* () {
-    const routes = resolveOpenTargets(plan, options);
-    if (routes.length === 0) {
+    const targets = resolveOpenTargets(plan, options);
+    if (targets.length === 0) {
       const knownServices = Object.values(plan.services).map((service) => String(service.name));
       const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
       return yield* Effect.fail(
@@ -157,7 +189,6 @@ export const openForPlan = (
       );
     }
 
-    const targets = routes.map(buildOpenTarget);
     for (const target of targets) {
       if (!isOpenableScheme(target.url)) {
         return yield* Effect.fail(

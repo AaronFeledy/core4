@@ -2,19 +2,21 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Exit, Layer } from "effect";
 
-import type { AppPlan, RoutePlan } from "@lando/sdk/schema";
+import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService } from "../../../src/redaction/service.ts";
 
 import { type OpenAppOptions, openForPlan, renderOpenAppResult } from "../../../src/cli/commands/open.ts";
 
-const route = (over: Pick<RoutePlan, "hostname" | "scheme" | "service">): RoutePlan =>
-  ({ ...over }) as RoutePlan;
+const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
+  ...over,
+  service: ServiceName.make(over.service),
+});
 
 const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
   const services: Record<string, unknown> = {};
-  for (const name of serviceNames) services[name] = { name, routes: [] };
+  for (const name of serviceNames) services[name] = { name, routes: [], endpoints: [] };
   return {
     id: "myapp",
     name: "myapp",
