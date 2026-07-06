@@ -500,7 +500,7 @@
         "Lint passes"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 10.14 contract-suite bullet list)."
     },
     {
