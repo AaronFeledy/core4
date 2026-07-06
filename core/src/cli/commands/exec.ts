@@ -11,6 +11,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { withAgentContextEnv } from "../../config/agent-env.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
 
@@ -101,10 +102,11 @@ export const execApp = (
       plan,
       ...(options.user === undefined ? {} : { user: options.user }),
     };
+    const env = withAgentContextEnv(options.env, process.env, { lowerThanEnv: service.environment });
     const spec: CommandSpec = {
       command: options.command,
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      ...(options.env === undefined ? {} : { env: options.env }),
+      ...(env === undefined ? {} : { env }),
     };
 
     const result = yield* provider.exec(target, spec);

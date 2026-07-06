@@ -60,7 +60,11 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const makeService = (name: string, primary = false): ServicePlan => ({
+const makeService = (
+  name: string,
+  primary = false,
+  environment: Readonly<Record<string, string>> = {},
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "node",
   provider: providerId,
@@ -68,7 +72,7 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: undefined,
   entrypoint: undefined,
-  environment: {},
+  environment,
   user: undefined,
   workingDirectory: undefined,
   appMount: undefined,
@@ -106,6 +110,7 @@ interface ExecRecord {
   readonly command: ReadonlyArray<string>;
   readonly user?: string;
   readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 const makeProvider = (
@@ -139,6 +144,7 @@ const makeProvider = (
         command: spec.command,
         ...(target.user === undefined ? {} : { user: target.user }),
         ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+        ...(spec.env === undefined ? {} : { env: spec.env }),
       });
       const response = responses[i] ?? { exitCode: 0 };
       i += 1;
@@ -150,10 +156,19 @@ const makeProvider = (
     },
     execStream: () => Stream.empty,
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () =>
       Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.empty,
+    exportArtifact: () => Stream.empty,
+    importArtifact: () => Effect.die("not used"),
   };
   return { provider, calls };
 };
@@ -344,5 +359,99 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(flat).toContain("missing");
     expect(flat).not.toContain("ProviderUnavailableError");
     void provider;
+  });
+});
+
+describe("execApp — host agent-context env forwarding", () => {
+  const AGENT_KEYS = [
+    "CLAUDECODE",
+    "CLAUDE_CODE",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "COPILOT_CLI",
+    "GEMINI_CLI",
+    "AGENT",
+    "CI",
+  ] as const;
+
+  const withHostEnv = async <A>(
+    env: Record<string, string | undefined>,
+    run: () => Promise<A>,
+  ): Promise<A> => {
+    const saved = new Map<string, string | undefined>();
+    for (const key of AGENT_KEYS) saved.set(key, process.env[key]);
+    try {
+      for (const key of AGENT_KEYS) {
+        const value = env[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      return await run();
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+
+  test("forwards present agent markers from the host env into the exec request", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CLAUDECODE: "1", OPENCODE: undefined, CI: "true", AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1", CI: "true" });
+  });
+
+  test("omits the env entirely when no agent markers are present", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CLAUDECODE: undefined, OPENCODE: undefined, CI: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toBeUndefined();
+  });
+
+  test("explicit exec env wins over a forwarded agent value (precedence)", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"], env: { CI: "explicit" } }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({ CI: "explicit", CLAUDECODE: "1" });
+  });
+
+  test("service env wins over a forwarded agent value (precedence)", async () => {
+    const plan = makePlan([makeService("appserver", true, { CI: "service" })]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1" });
   });
 });

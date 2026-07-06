@@ -30,6 +30,14 @@ tags: [beta, docs, tooling, shell]
     </Step>
   </Scenario>
 
+  <Scenario id="agent-context-env-forwarding" render={false} reason="Documents env forwarding behavior covered by shell and exec scenario tests without depending on a live agent process">
+    <Step name="allowlisted-markers">
+      <Variable name="surface" value="lando exec and lando shell --service" display="Provider exec surfaces forward host agent-context markers into the target service" />
+      <Variable name="allowlist" value="CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI" display="Only the built-in agent marker allowlist is copied from the host environment" />
+      <Variable name="precedence" value="service env and explicit command env win" display="Forwarded markers are the lowest-precedence layer, so configured service env is preserved" />
+    </Step>
+  </Scenario>
+
   <Scenario id="interactive-contract">
     <Step name="terminal-forwarding">
       <Variable name="stdin" value="attached" display="stdin is forwarded to the provider exec stream" />

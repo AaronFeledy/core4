@@ -171,6 +171,47 @@ const layer = (
     shellRunner,
   );
 
+const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
+  Layer.mergeAll(
+    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "shell-scenario" }) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(appPlan) }),
+    Layer.succeed(RuntimeProviderRegistry, {
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+    shellRunnerLayer(),
+  );
+
+const AGENT_ENV_NAMES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_AGENT",
+  "OPENCODE",
+  "COPILOT_CLI",
+  "GEMINI_CLI",
+  "AGENT",
+  "CI",
+] as const;
+
+const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
+  const saved = new Map<string, string | undefined>();
+  for (const key of AGENT_ENV_NAMES) saved.set(key, process.env[key]);
+  try {
+    for (const key of AGENT_ENV_NAMES) {
+      const value = env[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await run();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+};
+
 describe("shellApp — shell modes", () => {
   test("service mode defaults to provider execStream for a requested service", async () => {
     const calls: Array<{ service: string; command: ReadonlyArray<string>; tty?: boolean; stdin?: string }> =
@@ -208,6 +249,72 @@ describe("shellApp — shell modes", () => {
     expect(result.exitCode).toBe(0);
     expect(stdout).toBe("inside\n");
     expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
+  });
+
+  test("service mode forwards present host agent markers into the service shell", async () => {
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await withHostEnv({ CLAUDECODE: "1", OPENCODE: undefined, CI: "true", AGENT: undefined }, () =>
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layer(undefined, provider))),
+      ),
+    );
+
+    expect(captured).toEqual({ CLAUDECODE: "1", CI: "true" });
+  });
+
+  test("service mode lets explicit exec env win over a forwarded agent value", async () => {
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          env: { CI: "explicit" },
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layer(undefined, provider))),
+      ),
+    );
+
+    expect(captured).toEqual({ CI: "explicit", CLAUDECODE: "1" });
+  });
+
+  test("service mode lets service env win over a forwarded agent value", async () => {
+    const webWithEnv = { ...web, environment: { CI: "service" } };
+    const appPlan = { ...plan, services: { [webWithEnv.name]: webWithEnv } };
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      ),
+    );
+
+    expect(captured).toEqual({ CLAUDECODE: "1" });
   });
 
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {

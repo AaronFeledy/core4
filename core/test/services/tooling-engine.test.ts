@@ -43,8 +43,8 @@ const stubCapabilities = {
   bindMountPerformance: "none" as const,
   copyMounts: false,
   copyOnWriteAppRoot: false,
-  volumeSnapshot: "none",
-  serviceFileCopy: "none",
+  volumeSnapshot: "none" as const,
+  serviceFileCopy: "none" as const,
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
@@ -57,12 +57,16 @@ const stubCapabilities = {
   providerExtensions: [],
 };
 
-const baseServicePlan = (name: string, primary = false): ServicePlan => ({
+const baseServicePlan = (
+  name: string,
+  primary = false,
+  environment: Readonly<Record<string, string>> = {},
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "node",
   provider: providerId,
   primary,
-  environment: {},
+  environment,
   mounts: [],
   storage: [],
   endpoints: [],
@@ -85,6 +89,7 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     services: map as AppPlan["services"],
     routes: [],
     networks: [],
+    fileSync: [],
     stores: [],
     metadata,
     extensions: {},
@@ -133,9 +138,18 @@ const makeFakeProvider = (
     },
     execStream: () => Stream.empty,
     run: () => Effect.die("not used"),
+    runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.empty,
+    exportArtifact: () => Stream.empty,
+    importArtifact: () => Effect.die("not used"),
   };
   Object.defineProperty(provider, "calls", { get: () => calls });
   return provider as FakeProvider;
@@ -145,6 +159,35 @@ const runEngine = (invocation: ToolingInvocation, plan: AppPlan, provider: Runti
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider)).pipe(
     Effect.provide(ProviderExecToolingEngineLive),
   );
+
+const AGENT_ENV_NAMES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE",
+  "CURSOR_AGENT",
+  "OPENCODE",
+  "COPILOT_CLI",
+  "GEMINI_CLI",
+  "AGENT",
+  "CI",
+] as const;
+
+const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
+  const saved = new Map<string, string | undefined>();
+  for (const key of AGENT_ENV_NAMES) saved.set(key, process.env[key]);
+  try {
+    for (const key of AGENT_ENV_NAMES) {
+      const value = env[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    return await run();
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+};
 
 describe("ProviderExecToolingEngineLive", () => {
   test("Layer registers engine id 'providerExec'", async () => {
@@ -285,7 +328,7 @@ describe("ProviderExecToolingEngineLive", () => {
       commands: [["composer", "install"]],
     };
 
-    await Effect.runPromise(runEngine(invocation, plan, provider));
+    await withHostEnv({}, () => Effect.runPromise(runEngine(invocation, plan, provider)));
 
     expect(provider.calls[0]?.target.user).toBe("www-data");
     expect(provider.calls[0]?.command.cwd).toBe("/app/sub");
@@ -329,5 +372,59 @@ describe("ProviderExecToolingEngineLive", () => {
     const exit = await Effect.runPromiseExit(runEngine(invocation, plan, provider));
 
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  describe("host agent-context env forwarding", () => {
+    test("forwards present host agent markers into the provider exec spec", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
+
+      await withHostEnv({ CLAUDECODE: "1", OPENCODE: undefined, CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CLAUDECODE: "1", CI: "true" });
+    });
+
+    test("declared task env wins over a forwarded agent value (precedence)", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = {
+        tool: "composer",
+        commands: [["composer"]],
+        env: { CI: "task" },
+      };
+
+      await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CI: "task", CLAUDECODE: "1" });
+    });
+
+    test("declared service env wins over a forwarded agent value (precedence)", async () => {
+      const plan = makePlan([baseServicePlan("web", true, { CI: "service" })]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer"]] };
+
+      await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CLAUDECODE: "1" });
+    });
+
+    test("omits the exec env when no host agent markers are present", async () => {
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer"]] };
+
+      await withHostEnv({ CLAUDECODE: undefined, OPENCODE: undefined, CI: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toBeUndefined();
+    });
   });
 });
