@@ -187,7 +187,7 @@ export const runOpenForHostProxy = (
   Effect.gen(function* () {
     const redaction = yield* RedactionService;
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: input.tty });
+    const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
     const encoded =
       parsed._tag === "failure"
         ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: 1 }
