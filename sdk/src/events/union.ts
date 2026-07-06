@@ -29,6 +29,7 @@ import {
   PreGlobalStartEvent,
   PreGlobalStopEvent,
 } from "./global.ts";
+import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "./host-proxy.ts";
 import { PostHttpCallEvent, PreHttpCallEvent } from "./http-call.ts";
 import {
   PostDestroyEvent,
@@ -160,6 +161,8 @@ export const LandoEvent = Schema.Union(
   PostProviderExecEvent,
   PreOpenUrlEvent,
   PostOpenUrlEvent,
+  PreHostProxyCallEvent,
+  PostHostProxyCallEvent,
   CliCommandInitEvent,
   CliCommandRunEvent,
   CliCommandErrorEvent,

@@ -116,6 +116,10 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostProxyErrorCode`
+- `HostProxyRequest`
+- `HostProxyResponse`
+- `HostProxyRunLandoRequest`
 - `HttpClientCapabilities`
 - `HttpClientContribution`
 - `HttpRequest`

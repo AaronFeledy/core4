@@ -64,6 +64,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "host-proxy-allowlist",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-host-proxy-allowlist.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "oclif-manifest",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
     cwd: CORE_ROOT,
