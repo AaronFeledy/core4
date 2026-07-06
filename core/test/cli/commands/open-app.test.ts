@@ -99,6 +99,26 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
+  test("selection miss reports --route when both --route and --service are set", async () => {
+    const rec = record();
+    const exit = await run(
+      httpsPlan(),
+      { route: "missing.myapp.lndo.site", service: "web", platform: "linux", env: { DISPLAY: ":0" } },
+      rec,
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      const err = exit.cause.error as {
+        readonly _tag: string;
+        readonly message: string;
+      };
+      expect(err._tag).toBe("OpenTargetUnresolvedError");
+      expect(err.message).toContain("No openable URL matched --route missing.myapp.lndo.site");
+      expect(err.message).not.toContain("--service web");
+    }
+    expect(rec.commands).toEqual([]);
+  });
+
   test("S7 headless host degrades to printed with a note, no opener, no events", async () => {
     const rec = record();
     const exit = await run(httpsPlan(), { platform: "linux", env: {} }, rec);

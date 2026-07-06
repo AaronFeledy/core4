@@ -185,7 +185,7 @@ export const openForPlan = (
         resolveOpenTargets(plan, { all: true }).length > 0
       ) {
         const selected =
-          options.service !== undefined ? `--service ${options.service}` : `--route ${options.route ?? ""}`;
+          options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
         return yield* Effect.fail(
           new OpenTargetUnresolvedError({
             message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
