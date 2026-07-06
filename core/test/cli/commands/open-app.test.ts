@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Exit, Layer } from "effect";
 
+import { ShellExecError } from "@lando/sdk/errors";
 import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
@@ -26,13 +27,20 @@ const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {
   } as unknown as AppPlan;
 };
 
-const record = () => ({ commands: [] as string[], events: [] as { tag: string; url: string }[] });
+const record = (failOnCommand?: string) => ({
+  commands: [] as string[],
+  events: [] as { tag: string; url: string }[],
+  failOnCommand,
+});
 
 const layers = (rec: ReturnType<typeof record>) =>
   Layer.mergeAll(
     Layer.succeed(ShellRunner, {
       exec: (command: string) => {
         rec.commands.push(command);
+        if (rec.failOnCommand === command) {
+          return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
+        }
         return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
       },
       run: () => Effect.die("nu"),
@@ -141,6 +149,31 @@ describe("openForPlan", () => {
     expect(rec.events).toEqual([
       { tag: "pre-open-url", url: "RED(https://web.myapp.lndo.site)" },
       { tag: "post-open-url", url: "RED(https://web.myapp.lndo.site)" },
+    ]);
+  });
+
+  test("failed later opens still publish a matching post-open-url event", async () => {
+    const secondCommand = "xdg-open 'https://api.myapp.lndo.site'";
+    const rec = record(secondCommand);
+    const exit = await run(
+      makePlan(
+        [
+          route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" }),
+          route({ hostname: "api.myapp.lndo.site", scheme: "https", service: "api" }),
+        ],
+        ["web", "api"],
+      ),
+      { all: true, platform: "linux", env: { DISPLAY: ":0" } },
+      rec,
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(rec.commands).toEqual(["xdg-open 'https://web.myapp.lndo.site'", secondCommand]);
+    expect(rec.events).toEqual([
+      { tag: "pre-open-url", url: "RED(https://web.myapp.lndo.site)" },
+      { tag: "post-open-url", url: "RED(https://web.myapp.lndo.site)" },
+      { tag: "pre-open-url", url: "RED(https://api.myapp.lndo.site)" },
+      { tag: "post-open-url", url: "RED(https://api.myapp.lndo.site)" },
     ]);
   });
 

@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Exit, Schema } from "effect";
 
 import type { InfoAppError } from "@lando/sdk/app";
 import type { EventError, ShellExecError } from "@lando/sdk/errors";
@@ -236,8 +236,9 @@ export const openForPlan = (
     for (const target of targets) {
       const summary = redactor.redactString(target.url);
       yield* events.publish(PreOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
-      yield* openUrl(target.url, { platform });
+      const openExit = yield* Effect.exit(openUrl(target.url, { platform }));
       yield* events.publish(PostOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
+      if (Exit.isFailure(openExit)) return yield* Effect.failCause(openExit.cause);
     }
     return { app: plan.name, targets, launch: "opened" as const };
   });
