@@ -120,6 +120,7 @@ const makeService = (
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, never>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
+          const completed = yield* Ref.make(new Set<string>());
           const notifyFor =
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>
@@ -181,9 +182,16 @@ const makeService = (
             ...(publish === undefined ? {} : { publish }),
           });
 
-          const removeInFlight = (id: string): Effect.Effect<void> =>
+          const completeInFlight = (id: string): Effect.Effect<void> =>
             Ref.update(inFlight, (current) => {
               const next = new Map(current);
+              next.delete(id);
+              return next;
+            }).pipe(Effect.zipRight(Ref.update(completed, (current) => new Set(current).add(id))));
+
+          const clearCompleted = (id: string): Effect.Effect<void> =>
+            Ref.update(completed, (current) => {
+              const next = new Set(current);
               next.delete(id);
               return next;
             });
@@ -213,10 +221,12 @@ const makeService = (
             dispatchTool(incoming.request, { ...depsFor(incoming), execute: () => Effect.interrupt }).pipe(
               Effect.ignore,
               Effect.zipRight(replyMcpCanceled(transport, incoming.id)),
+              Effect.zipRight(Ref.update(completed, (current) => new Set(current).add(incoming.id))),
             );
 
           const forkRequest = (incoming: McpTransportRequest) =>
             Effect.gen(function* () {
+              yield* clearCompleted(incoming.id);
               if (yield* takeCanceledBeforeStart(incoming.id)) {
                 yield* handleCanceledBeforeStart(incoming);
                 return;
@@ -226,7 +236,7 @@ const makeService = (
                 .withPermits(1)(
                   Deferred.await(start).pipe(
                     Effect.zipRight(handleOne(incoming)),
-                    Effect.ensuring(removeInFlight(incoming.id)),
+                    Effect.ensuring(completeInFlight(incoming.id)),
                   ),
                 )
                 .pipe(Effect.forkScoped);
@@ -238,9 +248,15 @@ const makeService = (
             Ref.get(inFlight).pipe(
               Effect.flatMap((current) => {
                 const fiber = current.get(id);
-                return fiber === undefined
-                  ? Ref.update(canceledBeforeStart, (canceled) => new Set(canceled).add(id))
-                  : Fiber.interrupt(fiber).pipe(Effect.zipRight(replyMcpCanceled(transport, id)));
+                if (fiber !== undefined)
+                  return Fiber.interrupt(fiber).pipe(Effect.zipRight(replyMcpCanceled(transport, id)));
+                return Ref.get(completed).pipe(
+                  Effect.flatMap((done) =>
+                    done.has(id)
+                      ? Effect.void
+                      : Ref.update(canceledBeforeStart, (canceled) => new Set(canceled).add(id)),
+                  ),
+                );
               }),
             );
 

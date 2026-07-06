@@ -143,6 +143,76 @@ describe("McpService.serve cancellation", () => {
     });
   });
 
+  test("does not poison a reused request id when a late cancellation arrives", async () => {
+    let executions = 0;
+    const requestId = "reused-after-late-cancel";
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [
+        {
+          spec: spec("app:info", () =>
+            Effect.sync(() => {
+              executions += 1;
+              return { executions };
+            }),
+          ),
+        } satisfies McpCommandEntry,
+      ],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    const program = Effect.gen(function* () {
+      let deliveredRequests = 0;
+      let deliveredCancel = false;
+      const replies: McpTransportReply[] = [];
+      const firstReply = yield* Deferred.make<void>();
+      const secondReply = yield* Deferred.make<void>();
+      const service = yield* McpService;
+      const transport = {
+        receive: Effect.gen(function* () {
+          if (deliveredRequests === 0) {
+            deliveredRequests = 1;
+            return Option.some({ id: requestId, request: { toolId: "app:info" } });
+          }
+          if (deliveredRequests === 1) {
+            yield* Deferred.await(firstReply);
+            yield* Effect.sleep("20 millis");
+            deliveredRequests = 2;
+            return Option.some({ id: requestId, request: { toolId: "app:info" } });
+          }
+          yield* Deferred.await(secondReply);
+          return Option.none();
+        }),
+        receiveCancel: Effect.gen(function* () {
+          if (!deliveredCancel) {
+            yield* Deferred.await(firstReply);
+            deliveredCancel = true;
+            return Option.some(requestId);
+          }
+          yield* Deferred.await(secondReply);
+          return Option.none<string>();
+        }),
+        reply: (reply: McpTransportReply) =>
+          Effect.sync(() => replies.push(reply)).pipe(
+            Effect.zipRight(
+              replies.length === 0
+                ? Deferred.succeed(firstReply, undefined)
+                : Deferred.succeed(secondReply, undefined),
+            ),
+          ),
+        notify: () => Effect.void,
+      };
+
+      yield* service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, transport));
+      return replies;
+    }).pipe(Effect.provide(serviceLayer(config)));
+
+    const replies = await Effect.runPromise(program);
+    expect(executions).toBe(2);
+    expect(replies).toHaveLength(2);
+    expect(replies.every((reply) => reply.ok)).toBe(true);
+  });
+
   test("does not start a request when cancellation arrives before request registration", async () => {
     let executed = false;
     const requestId = "cancel-before-start";
