@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer } from "effect";
@@ -7,6 +11,7 @@ import type { LandofileService } from "@lando/sdk/services";
 import { Renderer } from "@lando/sdk/services";
 
 import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/cli/app-resolution.ts";
+import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
 
 const landofile = (lando?: string): LandofileShape =>
   (lando === undefined ? {} : { lando }) as unknown as LandofileShape;
@@ -125,5 +130,32 @@ describe("loadUserLandofile version-constraint enforcement", () => {
     const result = await Effect.runPromise(loadUserLandofile(fakeLandofileService(landofile(">=0.0.0"))));
 
     expect(result.lando).toBe(">=0.0.0");
+  });
+
+  test("enforces included lando constraints even when the root layer is looser", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-version-constraint-app-"));
+    try {
+      const rootPath = join(appRoot, ".lando.yml");
+      const fragmentPath = join(appRoot, "fragment.yml");
+      await writeFile(fragmentPath, "lando: >=4.5\n", "utf8");
+
+      const resolved = await Effect.runPromise(
+        resolveLandofileIncludes({
+          landofile: { lando: ">=4.1", includes: ["fragment.yml"] },
+          appRoot,
+          sourcePath: rootPath,
+        }),
+      );
+      const error = await Effect.runPromise(
+        Effect.flip(assertLandoVersionConstraint(resolved, { runningVersion: "4.2.0" })),
+      );
+
+      expect(resolved.lando).toBe(">=4.1");
+      expect(error._tag).toBe("LandofileVersionConstraintError");
+      if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
+      expect(error.constraints).toEqual([{ range: ">=4.5", source: fragmentPath }]);
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 });

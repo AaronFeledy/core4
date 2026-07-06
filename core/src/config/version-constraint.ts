@@ -19,6 +19,25 @@ export interface VersionConstraintEntry {
   readonly source: string;
 }
 
+const landofileVersionConstraintEntries = new WeakMap<object, ReadonlyArray<VersionConstraintEntry>>();
+
+export const rememberVersionConstraintEntries = <T extends object>(
+  landofile: T,
+  entries: ReadonlyArray<VersionConstraintEntry>,
+): T => {
+  landofileVersionConstraintEntries.set(landofile, entries);
+  return landofile;
+};
+
+export const getVersionConstraintEntries = (
+  landofile: { readonly lando?: string | undefined },
+  fallbackSource: string,
+): ReadonlyArray<VersionConstraintEntry> => {
+  const remembered = landofileVersionConstraintEntries.get(landofile);
+  if (remembered !== undefined) return remembered;
+  return landofile.lando === undefined ? [] : [{ range: landofile.lando, source: fallbackSource }];
+};
+
 /** Result of accumulating a set of constraint entries against a version. */
 export interface ConstraintEvaluation {
   /** Entries whose `range` is not valid semver-range syntax. */

@@ -20,6 +20,7 @@ import { type LandofileService, Renderer } from "@lando/sdk/services";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
+  getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
 import { LANDOFILE_NAME } from "../landofile/discovery.ts";
@@ -96,15 +97,12 @@ export const assertLandoVersionConstraint = (
   landofile: LandofileShape,
   options?: LandoVersionConstraintOptions,
 ): Effect.Effect<void, LandofileParseError | LandofileVersionConstraintError> => {
-  const range = landofile.lando;
-  if (range === undefined) return Effect.void;
+  const constraints = getVersionConstraintEntries(landofile, LANDOFILE_NAME);
+  if (constraints.length === 0) return Effect.void;
 
   const runningVersion = options?.runningVersion ?? CORE_VERSION;
   const env = options?.env ?? process.env;
-  const { invalid, unsatisfied } = evaluateVersionConstraints(
-    [{ range, source: LANDOFILE_NAME }],
-    runningVersion,
-  );
+  const { invalid, unsatisfied } = evaluateVersionConstraints(constraints, runningVersion);
 
   const bad = invalid[0];
   if (bad !== undefined)
@@ -152,7 +150,11 @@ export const loadUserLandofile = (
                 column: undefined,
                 cause,
               }),
-      }).pipe(Effect.flatMap(({ appRoot }) => resolveLandofileIncludes({ landofile, appRoot })));
+      }).pipe(
+        Effect.flatMap(({ appRoot, filePath }) =>
+          resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
+        ),
+      );
     }),
     Effect.tap(assertUserAppIdNotReserved),
     Effect.tap((landofile) => assertLandoVersionConstraint(landofile)),
@@ -163,7 +165,7 @@ export const loadUserLandofileFile = (filePath: string): Effect.Effect<Landofile
     Effect.flatMap((landofile) => {
       if (landofile.includes === undefined || landofile.includes.length === 0)
         return Effect.succeed(landofile);
-      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath) });
+      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath), sourcePath: filePath });
     }),
     Effect.tap(assertUserAppIdNotReserved),
     Effect.tap((landofile) => assertLandoVersionConstraint(landofile)),
