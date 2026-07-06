@@ -149,9 +149,9 @@ const emitProgressFrame = (deps: McpDispatchDeps, frame: McpProgressFrame): Effe
 
 /**
  * Dispatch a single MCP tool call. Resolves to the redacted command envelope, or
- * fails with an MCP-level error (`McpToolNotAllowedError` / `McpToolInputError`)
- * for calls that never reach the command. Publishes `pre-mcp-call` before the
- * decision and `post-mcp-call` after — for every call, including rejected ones.
+ * fails with an MCP-level error for calls that never reach the command.
+ * Publishes `pre-mcp-call` before the decision and `post-mcp-call` after — for
+ * every call, including rejected ones.
  */
 export const dispatchTool = (
   request: McpToolCallRequest,
@@ -187,63 +187,72 @@ export const dispatchTool = (
         remediation: "Retry the MCP tool call if the cancellation was unintended.",
       });
 
-    const run: Effect.Effect<McpDispatchResult, McpToolNotAllowedError | McpToolInputError> = Effect.gen(
-      function* () {
-        const rejectNotAllowed = (): McpToolNotAllowedError =>
-          new McpToolNotAllowedError({
-            message: `Tool ${request.toolId} is not in the effective MCP allowlist.`,
-            toolId: request.toolId,
-            effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
-            source: deps.allowlistSource,
-            remediation: `Add ${request.toolId} to \`mcp.allow\` (or --allow) to expose it as an MCP tool.`,
-          });
-
-        if (entry === undefined || !deps.effective.has(request.toolId)) {
-          const error = rejectNotAllowed();
-          yield* emitPost("failure", error._tag);
-          return yield* Effect.fail(error);
-        }
-
-        const validated = yield* Effect.try({
-          try: () => validateToolInput(entry.spec, request.input),
-          catch: (error) =>
-            error instanceof McpToolInputError
-              ? error
-              : new McpToolInputError({
-                  message: `Invalid input for tool ${request.toolId}.`,
-                  toolId: request.toolId,
-                  remediation: "Provide input matching the tool's derived schema.",
-                }),
-        }).pipe(Effect.tapError((error) => emitPost("failure", error._tag)));
-
-        const runInput: McpRunInput = {
-          argv: [],
-          flags: validated.flags,
-          args: validated.args,
-          interaction: "non-interactive",
-          ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
-        };
-
-        const outcome = yield* deps.execute(entry, runInput);
-        if (outcome._tag === "success") {
-          for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
-            yield* emitProgressFrame(deps, frame);
-          }
-        }
-        const line = yield* encodeCommandResult({
-          command: entry.spec.id,
-          resultSchema: entry.spec.resultSchema,
-          outcome,
-          redactor: deps.redactor,
+    const run: Effect.Effect<McpDispatchResult, McpDispatchError> = Effect.gen(function* () {
+      const rejectNotAllowed = (): McpToolNotAllowedError =>
+        new McpToolNotAllowedError({
+          message: `Tool ${request.toolId} is not in the effective MCP allowlist.`,
+          toolId: request.toolId,
+          effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
+          source: deps.allowlistSource,
+          remediation: `Add ${request.toolId} to \`mcp.allow\` (or --allow) to expose it as an MCP tool.`,
         });
-        const envelope: unknown = JSON.parse(line);
-        const ok = (envelope as { readonly ok?: unknown }).ok === true;
+      const unavailable = (): McpTransportError =>
+        new McpTransportError({
+          message: `Tool ${request.toolId} is not available in the active MCP registry.`,
+          remediation:
+            "Enable MCP tooling for tooling-backed ids, or remove the id from mcp.allow/--allow for this session.",
+        });
 
-        yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));
+      if (!deps.effective.has(request.toolId)) {
+        const error = rejectNotAllowed();
+        yield* emitPost("failure", error._tag);
+        return yield* Effect.fail(error);
+      }
+      if (entry === undefined) {
+        const error = unavailable();
+        yield* emitPost("failure", error._tag);
+        return yield* Effect.fail(error);
+      }
 
-        return { envelope, ok };
-      },
-    );
+      const validated = yield* Effect.try({
+        try: () => validateToolInput(entry.spec, request.input),
+        catch: (error) =>
+          error instanceof McpToolInputError
+            ? error
+            : new McpToolInputError({
+                message: `Invalid input for tool ${request.toolId}.`,
+                toolId: request.toolId,
+                remediation: "Provide input matching the tool's derived schema.",
+              }),
+      }).pipe(Effect.tapError((error) => emitPost("failure", error._tag)));
+
+      const runInput: McpRunInput = {
+        argv: [],
+        flags: validated.flags,
+        args: validated.args,
+        interaction: "non-interactive",
+        ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
+      };
+
+      const outcome = yield* deps.execute(entry, runInput);
+      if (outcome._tag === "success") {
+        for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
+          yield* emitProgressFrame(deps, frame);
+        }
+      }
+      const line = yield* encodeCommandResult({
+        command: entry.spec.id,
+        resultSchema: entry.spec.resultSchema,
+        outcome,
+        redactor: deps.redactor,
+      });
+      const envelope: unknown = JSON.parse(line);
+      const ok = (envelope as { readonly ok?: unknown }).ok === true;
+
+      yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));
+
+      return { envelope, ok };
+    });
 
     const exit = yield* Effect.exit(run);
     if (exit._tag === "Success") return exit.value;

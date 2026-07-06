@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { McpToolInputError, McpToolNotAllowedError } from "@lando/sdk/errors";
+import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -129,6 +129,21 @@ describe("dispatchTool", () => {
     if (exit._tag === "Failure") {
       const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
       expect(error).toBeInstanceOf(McpToolNotAllowedError);
+    }
+    expect(events.map((e) => e._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
+  });
+
+  test("reports an allowed tool missing from the registry as unavailable", async () => {
+    const { deps, events } = harness([], { allow: ["app:php"] });
+    const exit = await Effect.runPromiseExit(dispatchTool({ toolId: "app:php" }, deps));
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      expect(error).toBeInstanceOf(McpTransportError);
+      expect(error).toMatchObject({
+        message: expect.stringContaining("is not available"),
+        remediation: expect.stringContaining("tooling"),
+      });
     }
     expect(events.map((e) => e._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
   });
