@@ -278,7 +278,7 @@ export const shellApp = (
         ...(options.user === undefined ? {} : { user: options.user }),
       };
       const terminalSize = currentTerminalSize(io);
-      const serviceEnv = withAgentContextEnv(options.env, process.env);
+      const serviceEnv = withAgentContextEnv(options.env, process.env, { lowerThanEnv: service.environment });
       const spec: CommandSpec = {
         command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
         stdin: "inherit",

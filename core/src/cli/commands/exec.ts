@@ -102,7 +102,7 @@ export const execApp = (
       plan,
       ...(options.user === undefined ? {} : { user: options.user }),
     };
-    const env = withAgentContextEnv(options.env, process.env);
+    const env = withAgentContextEnv(options.env, process.env, { lowerThanEnv: service.environment });
     const spec: CommandSpec = {
       command: options.command,
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),

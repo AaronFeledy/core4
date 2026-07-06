@@ -36,6 +36,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 03:30 CDT - US-400 Review
+- Review fixed the env-precedence blocker: forwarded agent-context markers now sit below service-declared environment as well as explicit exec/task env, so a host marker such as `CI=host` no longer overrides a service's planned `CI=service` during `app:exec`, service shell, or providerExec tooling.
+- Review notes (deferred/rejected): host-proxy production wiring finding rejected as out of scope for this story because the in-container shim binary does not exist yet; the pure `filterHostProxyEnv` primitive and regression test remain the single source of truth for the future shim. Test-helper allowlist duplication noted as non-blocking because the branch already neutralizes all current built-ins and pure allowlist tests lock drift.
+- Verification: typecheck, lint, check:redaction-boundary, and focused US-400 spot checks passed (71 tests, 172 assertions, 0 failures). LSP diagnostics were clean on changed source and test files after the provider fakes were completed.
+---
+
 ## 2026-07-06 03:10 CDT - US-400
 - Shipped host agent-context env forwarding into the per-invocation exec surfaces. A new pure primitive `core/src/config/agent-env.ts` owns the built-in allowlist (CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI, GEMINI_CLI, AGENT, CI), a presence-gated resolver, the lowest-precedence merge helper, and the host-proxy shim env filter.
 - Wired the forwarding into `app:exec` and `app:ssh` (`core/src/cli/commands/exec.ts`, since `ssh` delegates to `execApp`), `app:shell --service` (the service-mode branch of `core/src/cli/commands/shell.ts`, host mode untouched), and the `providerExec` tooling engine (`core/src/services/tooling-engine.ts`). Each reads `process.env` fresh per invocation and merges markers beneath the caller's explicit env, so nothing is cached and explicit service/task/exec env always wins.

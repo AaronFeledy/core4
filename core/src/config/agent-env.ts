@@ -29,6 +29,11 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
 
 export type HostEnv = Record<string, string | undefined>;
 
+interface AgentContextEnvMergeOptions {
+  readonly allowlist?: ReadonlyArray<string>;
+  readonly lowerThanEnv?: Readonly<Record<string, string>>;
+}
+
 /**
  * Presence-gated resolution: returns the allowlisted names that are set in the
  * host env (value is not `undefined`). Unset names inject nothing — no
@@ -55,9 +60,11 @@ export const resolveAgentContextEnv = (
 export const withAgentContextEnv = (
   explicitEnv: Readonly<Record<string, string>> | undefined,
   hostEnv: HostEnv,
-  allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
+  options: AgentContextEnvMergeOptions = {},
 ): Record<string, string> | undefined => {
-  const merged = { ...resolveAgentContextEnv(hostEnv, allowlist), ...(explicitEnv ?? {}) };
+  const forwarded = resolveAgentContextEnv(hostEnv, options.allowlist ?? AGENT_CONTEXT_ENV_ALLOWLIST);
+  for (const name of Object.keys(options.lowerThanEnv ?? {})) delete forwarded[name];
+  const merged = { ...forwarded, ...(explicitEnv ?? {}) };
   return Object.keys(merged).length === 0 ? undefined : merged;
 };
 

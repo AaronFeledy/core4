@@ -171,6 +171,18 @@ const layer = (
     shellRunner,
   );
 
+const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
+  Layer.mergeAll(
+    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "shell-scenario" }) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(appPlan) }),
+    Layer.succeed(RuntimeProviderRegistry, {
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+    shellRunnerLayer(),
+  );
+
 const AGENT_ENV_NAMES = [
   "CLAUDECODE",
   "CLAUDE_CODE",
@@ -280,6 +292,29 @@ describe("shellApp — shell modes", () => {
     );
 
     expect(captured).toEqual({ CI: "explicit", CLAUDECODE: "1" });
+  });
+
+  test("service mode lets service env win over a forwarded agent value (US-400)", async () => {
+    const webWithEnv = { ...web, environment: { CI: "service" } };
+    const appPlan = { ...plan, services: { [webWithEnv.name]: webWithEnv } };
+    let captured: Readonly<Record<string, string>> | undefined;
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        captured = command.env;
+        return Stream.make({ exitCode: 0 as const });
+      },
+    });
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      ),
+    );
+
+    expect(captured).toEqual({ CLAUDECODE: "1" });
   });
 
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {

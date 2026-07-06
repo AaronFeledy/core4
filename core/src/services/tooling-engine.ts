@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 
 import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type RuntimeProviderShape,
   ToolingEngine,
@@ -45,19 +45,19 @@ const unknownServiceError = (tool: string, requested: string, services: AppPlan[
 const resolveService = (
   invocation: ToolingInvocation,
   plan: AppPlan,
-): Effect.Effect<ServiceName, ToolingExecError> => {
+): Effect.Effect<ServicePlan, ToolingExecError> => {
   if (invocation.service !== undefined) {
     const matching = Object.values(plan.services).find((service) => service.name === invocation.service);
     if (matching === undefined) {
       return Effect.fail(unknownServiceError(invocation.tool, invocation.service, plan.services));
     }
-    return Effect.succeed(matching.name);
+    return Effect.succeed(matching);
   }
   const [primary] = findPrimary(plan.services);
   if (primary === undefined) {
     return Effect.fail(noPrimaryServiceError(invocation.tool, plan.services));
   }
-  return Effect.succeed(primary.name);
+  return Effect.succeed(primary);
 };
 
 const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
@@ -66,14 +66,14 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
-    const env = withAgentContextEnv(invocation.env, process.env);
+    const env = withAgentContextEnv(invocation.env, process.env, { lowerThanEnv: service.environment });
     let exitCode = 0;
     let stdout = "";
     let stderr = "";
     for (const command of invocation.commands) {
       const target = {
         app: plan.id,
-        service,
+        service: service.name,
         plan,
         ...(invocation.user === undefined ? {} : { user: invocation.user }),
       };
@@ -90,7 +90,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
     }
     const out: ToolingEngineResult = {
       tool: invocation.tool,
-      service,
+      service: service.name,
       exitCode,
       stdout,
       stderr,

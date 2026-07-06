@@ -62,6 +62,24 @@ describe("withAgentContextEnv — lowest-precedence merge", () => {
     expect(merged).toEqual({ CI: "explicit", CLAUDECODE: "1" });
   });
 
+  test("service-declared env wins over a forwarded agent value", () => {
+    const merged = withAgentContextEnv(
+      undefined,
+      { CI: "host", CLAUDECODE: "1" },
+      { lowerThanEnv: { CI: "service" } },
+    );
+    expect(merged).toEqual({ CLAUDECODE: "1" });
+  });
+
+  test("explicit env still wins when service env also declares the marker", () => {
+    const merged = withAgentContextEnv(
+      { CI: "explicit" },
+      { CI: "host", CLAUDECODE: "1" },
+      { lowerThanEnv: { CI: "service" } },
+    );
+    expect(merged).toEqual({ CI: "explicit", CLAUDECODE: "1" });
+  });
+
   test("forwarded markers fill in where explicit env is silent", () => {
     const merged = withAgentContextEnv({ APP_ENV: "dev" }, { AGENT: "codex" });
     expect(merged).toEqual({ APP_ENV: "dev", AGENT: "codex" });

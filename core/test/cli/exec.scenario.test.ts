@@ -60,7 +60,11 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const makeService = (name: string, primary = false): ServicePlan => ({
+const makeService = (
+  name: string,
+  primary = false,
+  environment: Readonly<Record<string, string>> = {},
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "node",
   provider: providerId,
@@ -68,7 +72,7 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: undefined,
   entrypoint: undefined,
-  environment: {},
+  environment,
   user: undefined,
   workingDirectory: undefined,
   appMount: undefined,
@@ -152,10 +156,19 @@ const makeProvider = (
     },
     execStream: () => Stream.empty,
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () =>
       Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.empty,
+    exportArtifact: () => Stream.empty,
+    importArtifact: () => Effect.die("not used"),
   };
   return { provider, calls };
 };
@@ -425,5 +438,20 @@ describe("execApp — host agent-context env forwarding (US-400)", () => {
     );
 
     expect(calls[0]?.env).toEqual({ CI: "explicit", CLAUDECODE: "1" });
+  });
+
+  test("service env wins over a forwarded agent value (precedence)", async () => {
+    const plan = makePlan([makeService("appserver", true, { CI: "service" })]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1" });
   });
 });

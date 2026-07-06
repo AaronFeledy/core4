@@ -43,8 +43,8 @@ const stubCapabilities = {
   bindMountPerformance: "none" as const,
   copyMounts: false,
   copyOnWriteAppRoot: false,
-  volumeSnapshot: "none",
-  serviceFileCopy: "none",
+  volumeSnapshot: "none" as const,
+  serviceFileCopy: "none" as const,
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
@@ -57,12 +57,16 @@ const stubCapabilities = {
   providerExtensions: [],
 };
 
-const baseServicePlan = (name: string, primary = false): ServicePlan => ({
+const baseServicePlan = (
+  name: string,
+  primary = false,
+  environment: Readonly<Record<string, string>> = {},
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "node",
   provider: providerId,
   primary,
-  environment: {},
+  environment,
   mounts: [],
   storage: [],
   endpoints: [],
@@ -85,6 +89,7 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     services: map as AppPlan["services"],
     routes: [],
     networks: [],
+    fileSync: [],
     stores: [],
     metadata,
     extensions: {},
@@ -133,9 +138,18 @@ const makeFakeProvider = (
     },
     execStream: () => Stream.empty,
     run: () => Effect.die("not used"),
+    runStream: () => Stream.empty,
     logs: () => Stream.empty,
     inspect: () => Effect.die("not used"),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.empty,
+    exportArtifact: () => Stream.empty,
+    importArtifact: () => Effect.die("not used"),
   };
   Object.defineProperty(provider, "calls", { get: () => calls });
   return provider as FakeProvider;
@@ -387,6 +401,18 @@ describe("ProviderExecToolingEngineLive", () => {
       );
 
       expect(provider.calls[0]?.command.env).toEqual({ CI: "task", CLAUDECODE: "1" });
+    });
+
+    test("declared service env wins over a forwarded agent value (precedence)", async () => {
+      const plan = makePlan([baseServicePlan("web", true, { CI: "service" })]);
+      const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+      const invocation: ToolingInvocation = { tool: "composer", commands: [["composer"]] };
+
+      await withHostEnv({ CI: "host", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+        Effect.runPromise(runEngine(invocation, plan, provider)),
+      );
+
+      expect(provider.calls[0]?.command.env).toEqual({ CLAUDECODE: "1" });
     });
 
     test("omits the exec env when no host agent markers are present", async () => {
