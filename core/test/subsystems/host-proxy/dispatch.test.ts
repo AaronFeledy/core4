@@ -3,9 +3,14 @@ import { Effect, Exit, Layer } from "effect";
 
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "../../../src/redaction/service.ts";
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  createStandaloneRedactor,
+} from "../../../src/redaction/service.ts";
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
@@ -13,12 +18,16 @@ import {
 import { openOptionsFromRunLandoArgv } from "../../../src/subsystems/host-proxy/open-argv.ts";
 import { buildRunLandoRequest } from "../../../src/subsystems/host-proxy/shim.ts";
 
-const appRef = { kind: "user" as const, id: "demo", root: "/home/u/demo" };
+const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };
 
+const standaloneRedactionService: RedactionServiceShape = {
+  forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
+};
+
 const standaloneRedactionLayer = Layer.succeed(RedactionService, {
-  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-} as never);
+  ...standaloneRedactionService,
+});
 
 const recordingEvents = () => {
   const events: LandoEvent[] = [];
@@ -60,6 +69,22 @@ describe("openOptionsFromRunLandoArgv", () => {
       json: true,
       ttyPresent: false,
     });
+  });
+
+  test("parses -j as the universal JSON format shortcut", () => {
+    const options = openOptionsFromRunLandoArgv(["open", "-j", "--print"], { tty: false });
+
+    expect(options).toEqual({
+      print: true,
+      json: true,
+      ttyPresent: false,
+    });
+  });
+
+  test("rejects unsupported --format values", () => {
+    expect(() => openOptionsFromRunLandoArgv(["open", "--format=xml"], { tty: false })).toThrow(
+      'Unsupported result format value "xml" from flag.',
+    );
   });
 });
 
