@@ -7,6 +7,7 @@ import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import {
   AppPlanner,
+  type ConfigService,
   EventService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -14,6 +15,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import {
   type ProgressEmitter,
@@ -47,6 +49,7 @@ type RunToolingError = ToolingError;
 
 type RunToolingServices =
   | AppPlanner
+  | ConfigService
   | EventService
   | LandofileService
   | RuntimeProviderRegistry
@@ -83,7 +86,9 @@ const normalizeCommands = (
 export const buildToolingInvocation = (
   name: string,
   task: ToolingTaskShape,
-  options: Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> = {},
+  options: Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> & {
+    readonly agentEnvAllowlist?: ReadonlyArray<string>;
+  } = {},
 ): ToolingInvocation => {
   const commands = normalizeCommands(task, options.args ?? []);
   return {
@@ -92,6 +97,7 @@ export const buildToolingInvocation = (
     ...(options.user === undefined ? {} : { user: options.user }),
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(options.env === undefined ? {} : { env: options.env }),
+    ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
     commands,
   };
 };
@@ -318,11 +324,13 @@ export const runTooling = (
     const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
     const provider = yield* registry.select(plan);
 
+    const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
     const invocation = buildToolingInvocation(options.name, task, {
       ...(options.args === undefined ? {} : { args: options.args }),
       ...(options.user === undefined ? {} : { user: options.user }),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env === undefined ? {} : { env: options.env }),
+      agentEnvAllowlist,
     });
 
     const startedAt = Date.now();

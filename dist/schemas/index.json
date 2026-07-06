@@ -586,6 +586,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Agent Env Config.",
+    "docsPath": "docs/reference/schemas/agent-env-config.mdx",
+    "id": "AgentEnvConfig",
+    "jsonSchemaPath": "dist/schemas/agent-env-config.json",
+    "packageExport": "@lando/sdk/schema#AgentEnvConfig",
+    "title": "Agent Env Config"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Telemetry Config.",
     "docsPath": "docs/reference/schemas/telemetry-config.mdx",
     "id": "TelemetryConfig",

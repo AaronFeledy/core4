@@ -52,6 +52,9 @@
     }
   },
   "properties": {
+    "agentEnv": {
+      "type": "boolean"
+    },
     "configs": {
       "additionalProperties": {
         "additionalProperties": false,

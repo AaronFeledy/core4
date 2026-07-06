@@ -356,6 +356,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -1262,6 +1265,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -2210,6 +2216,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -3286,6 +3295,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -4192,6 +4204,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -5214,6 +5229,22 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "agentEnv": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "forwarded": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["enabled", "forwarded"],
+          "type": "object"
+        },
         "app": {
           "type": "string"
         },
@@ -7366,6 +7397,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -8295,6 +8329,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -9224,6 +9261,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -10153,6 +10193,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -11082,6 +11125,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,
@@ -11965,6 +12011,22 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "agentEnv": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "forwarded": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["enabled", "forwarded"],
+          "type": "object"
+        },
         "app": {
           "type": "string"
         },
@@ -13385,6 +13447,15 @@
       "jsonSchemaPath": "dist/schemas/mcp-config.json",
       "packageExport": "@lando/sdk/schema#McpConfig",
       "title": "Mcp Config"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Agent Env Config.",
+      "docsPath": "docs/reference/schemas/agent-env-config.mdx",
+      "id": "AgentEnvConfig",
+      "jsonSchemaPath": "dist/schemas/agent-env-config.json",
+      "packageExport": "@lando/sdk/schema#AgentEnvConfig",
+      "title": "Agent Env Config"
     },
     {
       "deprecated": false,
@@ -15206,6 +15277,7 @@
       "ToolingTaskShape",
       "IncludeEntry",
       "McpConfig",
+      "AgentEnvConfig",
       "TelemetryConfig",
       "NetworkProxyConfig",
       "NetworkCaConfig",
@@ -15393,6 +15465,32 @@
     ]
   },
   "sdkSchemas": {
+    "AgentEnvConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "description": "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "description": "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "AppId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "string"
@@ -19851,6 +19949,31 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "agentEnv": {
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "description": "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "deny": {
+              "description": "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "enabled": {
+              "description": "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
         "defaultProviderId": {
           "anyOf": [
             {
@@ -26141,6 +26264,9 @@
         }
       },
       "properties": {
+        "agentEnv": {
+          "type": "boolean"
+        },
         "configs": {
           "additionalProperties": {
             "additionalProperties": false,
@@ -37613,6 +37739,31 @@
         "global": {
           "additionalProperties": false,
           "properties": {
+            "agentEnv": {
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "description": "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "deny": {
+                  "description": "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enabled": {
+                  "description": "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
             "defaultProviderId": {
               "anyOf": [
                 {
@@ -37741,6 +37892,9 @@
             }
           },
           "properties": {
+            "agentEnv": {
+              "type": "boolean"
+            },
             "configs": {
               "additionalProperties": {
                 "additionalProperties": false,

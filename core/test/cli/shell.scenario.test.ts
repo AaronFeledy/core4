@@ -30,6 +30,7 @@ import {
 import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
 import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
 import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
+import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const providerId = ProviderId.make("lando");
@@ -169,6 +170,7 @@ const layer = (
       select: () => Effect.succeed(provider),
     }),
     shellRunner,
+    emptyConfigServiceLayer,
   );
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
@@ -181,6 +183,7 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
       select: () => Effect.succeed(provider),
     }),
     shellRunnerLayer(),
+    emptyConfigServiceLayer,
   );
 
 const AGENT_ENV_NAMES = [

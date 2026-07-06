@@ -25,6 +25,7 @@
 - `ShellRunner` additively gains `interactive(spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>` so the host-mode `lando shell` REPL launches an interactive inherited-stdio shell through the service instead of spawning `child_process` in the command body. New type-only exports from `@lando/sdk/services`: `ShellInteractiveSpec`, `ShellInteractiveResult`. The frozen `ShellRunner` method-signature fixture is updated to match. `@lando/sdk/errors` additively gains the `ShellRequiresTtyError` tagged error (raised when `app:shell` runs without a TTY, e.g. `--no-interactive`, redirected stdin, or CI); like `ProbeError`, it registers no JSON Schema and widens no frozen error union.
 - `LogsAppOptions` and provider `LogOptions` additively gain optional `since?: string` so `app logs --since` can pass the command-normalized Unix-second cursor to runtime providers. The field is type-only on existing interfaces; it registers no JSON Schema artifact and does not change the frozen `RuntimeProvider.logs` method signature.
 - `McpConfig` is a new public schema export and `GlobalConfig.mcp` is a new additive optional global-config field for MCP allow/deny/tooling policy.
+- `AgentEnvConfig` is a new public schema export; `GlobalConfig.agentEnv` and the top-level `LandofileShape.agentEnv` are new additive optional fields for host agent-context env forwarding policy. `@lando/sdk/errors` additively gains the `AgentEnvPatternError` tagged error raised at config validation when `agentEnv.allow`/`deny` contain wildcard/pattern names.
 - `@lando/sdk` publishes an additive MCP (Model Context Protocol) contract surface (§10.14, §8.3): the `McpToolDescriptor`, `McpCatalog`, `McpCatalogOptions`, and `McpServeOptions` public schemas (each registered in the JSON Schema registry and snapshot), plus the `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError` tagged errors on `@lando/sdk/errors`. These are additive contracts; the MCP service dispatch and `lando mcp` command land in later stories.
 
 ## Additive Alpha schema exports
@@ -294,6 +295,7 @@
 - `McpCatalogOptions`
 - `McpConfig`
 - `McpServeOptions`
+- `AgentEnvConfig`
 
 ## Additive Beta service fields
 
@@ -321,7 +323,9 @@
 - `LandofileShape.secrets`
 - `LandofileShape.sshAgent`
 - `LandofileShape.version`
+- `LandofileShape.agentEnv`
 - `LandofileShape.x-*`
+- `GlobalConfig.agentEnv`
 - `PluginManifest.deprecated`
 - `PluginManifest.requires`
 - `PluginContribution.downloaders` is a new additive optional field.
@@ -340,6 +344,7 @@
 
 - `AppResolveError`
 - `ConfigTranslateError`
+- `AgentEnvPatternError`
 - `ArchiveFormatError`
 - `ArtifactTransferError`
 - `DataChecksumMismatchError`

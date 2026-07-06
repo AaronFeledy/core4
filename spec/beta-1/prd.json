@@ -535,7 +535,7 @@
         "Lint passes"
       ],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-06 (spec 6.9.1, 7.4, 7.5)."
     },
     {

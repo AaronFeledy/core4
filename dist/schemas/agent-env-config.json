@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "allow": {
+      "description": "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "deny": {
+      "description": "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "enabled": {
+      "description": "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

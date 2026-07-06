@@ -16,6 +16,7 @@ import type {
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   CapabilityError,
+  ConfigError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -278,13 +279,20 @@ export interface InfoAppService {
   readonly endpoints: ReadonlyArray<string>;
 }
 
+export interface InfoAppAgentEnv {
+  readonly enabled: boolean;
+  readonly forwarded: ReadonlyArray<string>;
+}
+
 export interface InfoAppResult {
   readonly app: string;
   readonly services: ReadonlyArray<InfoAppService>;
+  readonly agentEnv?: InfoAppAgentEnv;
 }
 
 export type InfoAppError =
   | AppIdReservedError
+  | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -322,6 +330,7 @@ export interface ExecAppResult {
 export type ExecAppError =
   | AppIdReservedError
   | CapabilityError
+  | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -363,6 +372,7 @@ export type ToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
+  | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError

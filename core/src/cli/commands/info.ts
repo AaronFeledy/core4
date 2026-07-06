@@ -13,10 +13,16 @@ import type {
   InfoAppService,
   InfoServiceStatus,
 } from "@lando/sdk/app";
-import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { AppPlan, EndpointPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
+import {
+  AppPlanner,
+  type ConfigService,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { resolveAgentEnvAudit } from "../../config/agent-env-policy.ts";
+import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
 import {
   type SummaryDocument,
@@ -28,7 +34,7 @@ import {
 
 export type { InfoAppError, InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 
-type InfoAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
 const InfoServiceStatusSchema = Schema.Literal(
   "unknown",
@@ -51,9 +57,15 @@ export const AppInfoServiceSchema = Schema.Struct({
   endpoints: Schema.Array(Schema.String),
 });
 
+export const AppInfoAgentEnvSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  forwarded: Schema.Array(Schema.String),
+});
+
 export const AppInfoResultSchema = Schema.Struct({
   app: Schema.String,
   services: Schema.Array(AppInfoServiceSchema),
+  agentEnv: Schema.optional(AppInfoAgentEnvSchema),
 });
 
 const statusText = (status: string | undefined): InfoServiceStatus => {
@@ -116,6 +128,30 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       },
     ],
   }));
+  const agentEnvSection =
+    result.agentEnv === undefined
+      ? []
+      : [
+          {
+            title: "agent env",
+            rows: [
+              {
+                label: "forwarding",
+                tone: (result.agentEnv.enabled ? "ok" : "skipped") as SummaryTone,
+                value: result.agentEnv.enabled ? "enabled" : "disabled",
+                fields: [
+                  {
+                    label: "forwarded",
+                    value:
+                      result.agentEnv.forwarded.length === 0
+                        ? "(none)"
+                        : result.agentEnv.forwarded.join(", "),
+                  },
+                ],
+              },
+            ],
+          },
+        ];
   return {
     title: "APP INFO",
     subtitle: result.app,
@@ -126,20 +162,28 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         rows,
         ...(rows.length === 0 ? { notes: ["No services are defined for this app."] } : {}),
       },
+      ...agentEnvSection,
     ],
     footer: `${result.services.length} services`,
   };
 };
 
+const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
+  if (result.agentEnv === undefined) return [];
+  const forwarded = result.agentEnv.forwarded.length === 0 ? "(none)" : result.agentEnv.forwarded.join(", ");
+  return [`agent-env\t${result.agentEnv.enabled ? "enabled" : "disabled"}\t${forwarded}`];
+};
+
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
   if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), { columns: ctx?.columns });
-  if (result.services.length === 0) return `${result.app}\n(no services)`;
+  const extra = agentEnvLines(result);
+  if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.map((service) => {
     const endpoints = service.endpoints;
     const renderedEndpoints = endpoints.length === 0 ? "no endpoints" : endpoints.join(", ");
     return `${service.service}\t${service.status}\t${renderedEndpoints}`;
   });
-  return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows].join("\n");
+  return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
 };
 
 const toServiceInfo = (
@@ -190,7 +234,7 @@ export const infoForPlan = (
   });
 
 export const infoApp = (
-  _options?: InfoAppOptions,
+  options?: InfoAppOptions,
   target?: ResolvedAppTarget,
 ): Effect.Effect<InfoAppResult, InfoAppError, InfoAppServices> =>
   Effect.gen(function* () {
@@ -198,13 +242,21 @@ export const infoApp = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+    let plan: AppPlan;
+    let landofile: LandofileShape | undefined;
+    if (target?.plan !== undefined) {
+      plan = target.plan;
+      if (options?.deep === true) {
+        landofile = target.landofile ?? (yield* loadUserLandofileAt(landofileService, target.root));
+      }
+    } else {
+      landofile = yield* loadUserLandofile(landofileService);
+      const capabilities = yield* registry.capabilities;
+      plan = yield* planner.plan(landofile, capabilities);
+    }
 
-    return yield* infoForPlan(plan);
+    const result = yield* infoForPlan(plan);
+    if (options?.deep !== true) return result;
+    const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
+    return { ...result, agentEnv };
   });

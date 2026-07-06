@@ -29,6 +29,52 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
 
 export type HostEnv = Record<string, string | undefined>;
 
+/**
+ * Host env var that disables agent-context forwarding for a single invocation
+ * when set to `"0"`, without mutating persisted config.
+ */
+export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
+
+const EXACT_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Resolved agent-context forwarding policy: the global master switch, the
+ * additional/suppressed names, and whether the resolved app opted out.
+ */
+export interface AgentEnvPolicy {
+  readonly enabled?: boolean;
+  readonly allow?: ReadonlyArray<string>;
+  readonly deny?: ReadonlyArray<string>;
+  readonly appOptOut?: boolean;
+}
+
+/** Whether `name` is an exact POSIX env-var name (never a wildcard/pattern). */
+export const isExactAgentEnvName = (name: string): boolean => EXACT_ENV_NAME_PATTERN.test(name);
+
+/** The offending names that are wildcards/patterns rather than exact names. */
+export const findAgentEnvPatternNames = (names: ReadonlyArray<string>): ReadonlyArray<string> =>
+  names.filter((name) => !isExactAgentEnvName(name));
+
+/**
+ * Forwarding is off when the global master switch is off, the app opted out, or
+ * the per-invocation `LANDO_AGENT_ENV=0` switch is set.
+ */
+export const isAgentEnvForwardingDisabled = (policy: AgentEnvPolicy, hostEnv: HostEnv): boolean =>
+  policy.enabled === false || policy.appOptOut === true || hostEnv[AGENT_ENV_DISABLE_ENV_VAR] === "0";
+
+/**
+ * The resolved forwarding allowlist: built-ins + `allow` − `deny`, or empty when
+ * forwarding is disabled. Wildcard `allow` entries are dropped defensively; they
+ * are rejected up front at config validation with `AgentEnvPatternError`.
+ */
+export const resolveAgentEnvAllowlist = (policy: AgentEnvPolicy, hostEnv: HostEnv): ReadonlyArray<string> => {
+  if (isAgentEnvForwardingDisabled(policy, hostEnv)) return [];
+  const names = new Set<string>(AGENT_CONTEXT_ENV_ALLOWLIST);
+  for (const name of policy.allow ?? []) if (isExactAgentEnvName(name)) names.add(name);
+  for (const name of policy.deny ?? []) names.delete(name);
+  return [...names];
+};
+
 interface AgentContextEnvMergeOptions {
   readonly allowlist?: ReadonlyArray<string>;
   readonly lowerThanEnv?: Readonly<Record<string, string>>;

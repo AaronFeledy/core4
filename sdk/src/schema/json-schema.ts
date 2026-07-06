@@ -116,6 +116,7 @@ import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import {
+  AgentEnvConfig,
   GlobalConfig,
   McpConfig,
   NetworkCaConfig,
@@ -368,6 +369,7 @@ const rawPublicSchemaRegistry = {
   ToolingTaskShape,
   IncludeEntry,
   McpConfig,
+  AgentEnvConfig,
   TelemetryConfig,
   NetworkProxyConfig,
   NetworkCaConfig,
@@ -620,6 +622,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
   McpConfig: "Public Lando schema contract for Mcp Config.",
+  AgentEnvConfig: "Public Lando schema contract for Agent Env Config.",
   TelemetryConfig: "Public Lando schema contract for Telemetry Config.",
   NetworkProxyConfig: "Public Lando schema contract for Network Proxy Config.",
   NetworkCaConfig: "Public Lando schema contract for Network Ca Config.",
@@ -1329,6 +1332,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "LandofileExpressionParseError.line",
   "LandofileExpressionParseError.message",
   "LandofileExpressionParseError.remediation",
+  "LandofileShape.agentEnv",
   "LandofileShape.configs",
   "LandofileShape.include",
   "LandofileShape.includes",

@@ -35,6 +35,7 @@ import {
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -199,7 +200,13 @@ const makeLayer = (options: {
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(options.provider),
   });
-  return Layer.mergeAll(landofileLayer, plannerLayer, registryLayer, ProviderExecToolingEngineLive);
+  return Layer.mergeAll(
+    landofileLayer,
+    plannerLayer,
+    registryLayer,
+    ProviderExecToolingEngineLive,
+    emptyConfigServiceLayer,
+  );
 };
 
 const emptyPluginRegistry = Layer.succeed(PluginRegistry, {

@@ -66,6 +66,12 @@ export interface ToolingInvocation {
   readonly cwd?: string;
   /** Optional environment overlay applied to every command. */
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Resolved host agent-context env allowlist to forward beneath the service
+   * and task env. Omitted falls back to the built-in allowlist; an empty array
+   * disables forwarding (opt-out / off-switch).
+   */
+  readonly agentEnvAllowlist?: ReadonlyArray<string>;
   /** Pre-normalized argv forms, executed in order. */
   readonly commands: ReadonlyArray<ReadonlyArray<string>>;
 }

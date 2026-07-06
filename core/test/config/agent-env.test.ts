@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_CONTEXT_ENV_ALLOWLIST,
+  AGENT_ENV_DISABLE_ENV_VAR,
   filterHostProxyEnv,
+  findAgentEnvPatternNames,
+  isAgentEnvForwardingDisabled,
+  isExactAgentEnvName,
   resolveAgentContextEnv,
+  resolveAgentEnvAllowlist,
   withAgentContextEnv,
 } from "../../src/config/agent-env.ts";
 
@@ -92,6 +97,83 @@ describe("withAgentContextEnv — lowest-precedence merge", () => {
 
   test("returns explicit env unchanged when no markers are present", () => {
     expect(withAgentContextEnv({ PORT: "8080" }, { HOME: "/home/aaron" })).toEqual({ PORT: "8080" });
+  });
+});
+
+describe("isExactAgentEnvName / findAgentEnvPatternNames — exact-name validation", () => {
+  test("accepts POSIX-shaped exact env names", () => {
+    expect(isExactAgentEnvName("CLAUDECODE")).toBe(true);
+    expect(isExactAgentEnvName("MY_VAR_1")).toBe(true);
+    expect(isExactAgentEnvName("_leading")).toBe(true);
+  });
+
+  test("rejects wildcards and pattern syntax", () => {
+    expect(isExactAgentEnvName("CLAUDE_*")).toBe(false);
+    expect(isExactAgentEnvName("*")).toBe(false);
+    expect(isExactAgentEnvName("A?B")).toBe(false);
+    expect(isExactAgentEnvName("1STARTS_WITH_DIGIT")).toBe(false);
+    expect(isExactAgentEnvName("has space")).toBe(false);
+    expect(isExactAgentEnvName("")).toBe(false);
+  });
+
+  test("findAgentEnvPatternNames returns only the offending pattern names, in order", () => {
+    expect(findAgentEnvPatternNames(["FOO", "CLAUDE_*", "BAR", "X-Y"])).toEqual(["CLAUDE_*", "X-Y"]);
+    expect(findAgentEnvPatternNames(["FOO", "BAR"])).toEqual([]);
+  });
+});
+
+describe("isAgentEnvForwardingDisabled — master switch / opt-out / per-invocation", () => {
+  test("disabled when global enabled is false", () => {
+    expect(isAgentEnvForwardingDisabled({ enabled: false }, {})).toBe(true);
+  });
+
+  test("disabled when the app opts out via Landofile agentEnv:false", () => {
+    expect(isAgentEnvForwardingDisabled({ appOptOut: true }, {})).toBe(true);
+  });
+
+  test("disabled when LANDO_AGENT_ENV=0 for a single invocation", () => {
+    expect(AGENT_ENV_DISABLE_ENV_VAR).toBe("LANDO_AGENT_ENV");
+    expect(isAgentEnvForwardingDisabled({}, { LANDO_AGENT_ENV: "0" })).toBe(true);
+  });
+
+  test("enabled by default and for any non-zero LANDO_AGENT_ENV value", () => {
+    expect(isAgentEnvForwardingDisabled({}, {})).toBe(false);
+    expect(isAgentEnvForwardingDisabled({ enabled: true }, { LANDO_AGENT_ENV: "1" })).toBe(false);
+  });
+});
+
+describe("resolveAgentEnvAllowlist — built-ins + allow − deny with disable short-circuits", () => {
+  test("returns the built-in allowlist when no policy is configured", () => {
+    expect([...resolveAgentEnvAllowlist({}, {})]).toEqual([...AGENT_CONTEXT_ENV_ALLOWLIST]);
+  });
+
+  test("adds allow names after the built-ins and removes deny names", () => {
+    const resolved = resolveAgentEnvAllowlist({ allow: ["FOO_TOKEN"], deny: ["CI"] }, {});
+    expect(resolved).toContain("FOO_TOKEN");
+    expect(resolved).not.toContain("CI");
+    expect(resolved).toContain("CLAUDECODE");
+    expect(resolved[resolved.length - 1]).toBe("FOO_TOKEN");
+  });
+
+  test("deny wins over allow for the same name", () => {
+    expect(resolveAgentEnvAllowlist({ allow: ["CI"], deny: ["CI"] }, {})).not.toContain("CI");
+  });
+
+  test("silently drops wildcard allow entries (already rejected at config validation)", () => {
+    const resolved = resolveAgentEnvAllowlist({ allow: ["CLAUDE_*", "GOOD_NAME"] }, {});
+    expect(resolved).not.toContain("CLAUDE_*");
+    expect(resolved).toContain("GOOD_NAME");
+  });
+
+  test("returns an empty allowlist when forwarding is disabled by any switch", () => {
+    expect(resolveAgentEnvAllowlist({ enabled: false, allow: ["FOO"] }, {})).toEqual([]);
+    expect(resolveAgentEnvAllowlist({ appOptOut: true }, {})).toEqual([]);
+    expect(resolveAgentEnvAllowlist({}, { LANDO_AGENT_ENV: "0" })).toEqual([]);
+  });
+
+  test("never contains duplicates when an allow name repeats a built-in", () => {
+    const resolved = resolveAgentEnvAllowlist({ allow: ["CI"] }, {});
+    expect(resolved.filter((name) => name === "CI")).toHaveLength(1);
   });
 });
 

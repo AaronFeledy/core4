@@ -9,6 +9,7 @@ import { Chunk, DateTime, Effect, Stream } from "effect";
 import {
   type AppIdReservedError,
   type CapabilityError,
+  type ConfigError,
   type DeprecatedSurfaceError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
@@ -29,6 +30,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
+  type ConfigService,
   DeprecationService,
   type ExecTarget,
   LandofileService,
@@ -37,6 +39,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
+import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../../config/agent-env.ts";
 import { makeLandoPaths } from "../../config/paths.ts";
 import { quoteShellPath } from "../../services/shell-quote.ts";
@@ -115,6 +118,7 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
+  | ConfigError
   | DeprecatedSurfaceError
   | LandofileNotFoundError
   | LandofileParseError
@@ -132,7 +136,12 @@ export type ShellAppError =
   | ShellRequiresTtyError
   | ToolingExecError;
 
-export type ShellAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry | ShellRunner;
+export type ShellAppServices =
+  | AppPlanner
+  | ConfigService
+  | LandofileService
+  | RuntimeProviderRegistry
+  | ShellRunner;
 
 const HOST_FLAG_DEPRECATION_ID = "app:shell --host";
 
@@ -278,7 +287,11 @@ export const shellApp = (
         ...(options.user === undefined ? {} : { user: options.user }),
       };
       const terminalSize = currentTerminalSize(io);
-      const serviceEnv = withAgentContextEnv(options.env, process.env, { lowerThanEnv: service.environment });
+      const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+      const serviceEnv = withAgentContextEnv(options.env, process.env, {
+        allowlist,
+        lowerThanEnv: service.environment,
+      });
       const spec: CommandSpec = {
         command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
         stdin: "inherit",
