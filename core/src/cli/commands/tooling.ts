@@ -267,10 +267,9 @@ export const runTooling = (
     const landofileService = yield* LandofileService;
 
     const landofile =
-      target?.landofile ??
-      (target === undefined
+      target === undefined
         ? yield* loadUserLandofile(landofileService)
-        : yield* loadUserLandofileAt(landofileService, target.root));
+        : yield* loadUserLandofileAt(landofileService, target.root);
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
     const task = landofile.tooling?.[toolingLookupKey];
 

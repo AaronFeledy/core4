@@ -26,6 +26,7 @@ import {
 import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { ProviderExecToolingEngineLive } from "../../../core/src/services/tooling-engine.ts";
+import { emptyConfigServiceLayer } from "../../../core/test/cli/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("gointtest");
@@ -186,6 +187,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
               select: () => Effect.succeed(provider),
             }),
             ProviderExecToolingEngineLive,
+            emptyConfigServiceLayer,
           );
 
           const result = await Effect.runPromise(

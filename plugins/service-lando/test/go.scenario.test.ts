@@ -58,6 +58,7 @@ const capabilities: ProviderCapabilities = {
 interface ExecCall {
   readonly service: string;
   readonly command: ReadonlyArray<string>;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 const makeProvider = (
@@ -86,7 +87,11 @@ const makeProvider = (
     restart: () => Effect.void,
     destroy: () => Effect.void,
     exec: (target, spec) => {
-      calls.push({ service: String(target.service), command: spec.command });
+      calls.push({
+        service: String(target.service),
+        command: spec.command,
+        ...(spec.env === undefined ? {} : { env: spec.env }),
+      });
       const response = responses[i] ?? { exitCode: 0 };
       i += 1;
       return Effect.succeed({
@@ -216,5 +221,44 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("web");
     expect(calls[0]?.command).toEqual(["go", "build", "./..."]);
+  });
+
+  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      agentEnv: false,
+      services: { web: { type: "go:1.22" } },
+      tooling: { go: { service: "web", cmd: "go" } },
+    });
+    const staleLandofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { type: "go:1.22" } },
+      tooling: { go: { service: "web", cmd: "go" } },
+    });
+    const appPlan = await planLandofile(landofile);
+
+    const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "go version go1.22.0 linux/amd64\n" }]);
+    const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
+    const saved = process.env.CLAUDECODE;
+    process.env.CLAUDECODE = "1";
+    try {
+      const result = await Effect.runPromise(
+        runTooling(
+          { name: "go", args: ["version"] },
+          {
+            plan: appPlan,
+            root: process.cwd(),
+            app: { kind: "user", id: appPlan.id, root: appPlan.root },
+            landofile: staleLandofile,
+          },
+        ).pipe(Effect.provide(layer)),
+      );
+
+      expect(result.exitCode).toBe(0);
+    } finally {
+      process.env.CLAUDECODE = saved;
+    }
+
+    expect(calls[0]?.env).toBeUndefined();
   });
 });
