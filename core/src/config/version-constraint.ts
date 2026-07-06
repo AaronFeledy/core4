@@ -1,6 +1,6 @@
 /**
  * Pure Lando core version-constraint primitive for the top-level Landofile
- * `lando: <semver-range>` key (spec §7.4).
+ * `lando: <semver-range>` key.
  *
  * Effect-free by design so it can run on the tooling hot path against the
  * embedded `CORE_VERSION` without provider contact. Range evaluation compares
