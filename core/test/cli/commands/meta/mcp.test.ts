@@ -57,6 +57,11 @@ describe("validateMcpAllowlistIds", () => {
       validateMcpAllowlistIds({ allow: ["app:info"], deny: ["app:logs"], tooling: false }, known),
     ));
 
+  test("ignores unknown deny ids because deny is only subtractive", () =>
+    Effect.runPromise(
+      validateMcpAllowlistIds({ allow: ["app:info"], deny: ["tooling:disabled"], tooling: false }, known),
+    ));
+
   test("rejects an unknown --allow id with McpToolInputError carrying the flag path", async () => {
     const exit = await Effect.runPromiseExit(
       validateMcpAllowlistIds({ allow: ["does:not:exist"], deny: [], tooling: false }, known),

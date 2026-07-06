@@ -193,31 +193,26 @@ const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
   ]);
 
 /**
- * Reject an unknown canonical id in `--allow`/`--deny` (or global `mcp.allow`/
- * `mcp.deny`) BEFORE opening the transport, so serve startup fails
- * deterministically with one schema-valid failure envelope and no protocol
- * frame. `--list` fails the same way.
+ * Reject an unknown canonical id in `--allow` (or global `mcp.allow`) BEFORE
+ * opening the transport, so serve startup fails deterministically with one
+ * schema-valid failure envelope and no protocol frame. `--list` fails the same
+ * way. `deny` is subtractive: an id outside the active registry is harmless and
+ * may name tooling that is intentionally disabled for this invocation.
  */
 export const validateMcpAllowlistIds = (
   options: ResolvedMcpOptions,
   knownIds: ReadonlySet<string>,
 ): Effect.Effect<void, McpToolInputError> => {
-  const groups = [
-    ["allow", options.allow],
-    ["deny", options.deny],
-  ] as const;
-  for (const [group, ids] of groups) {
-    for (const id of ids) {
-      if (!knownIds.has(id)) {
-        return Effect.fail(
-          new McpToolInputError({
-            message: `Unknown command id "${id}" in mcp.${group}.`,
-            toolId: id,
-            path: `flags.${group}`,
-            remediation: "Use a canonical Lando command id; run `lando mcp --list` to see available ids.",
-          }),
-        );
-      }
+  for (const id of options.allow) {
+    if (!knownIds.has(id)) {
+      return Effect.fail(
+        new McpToolInputError({
+          message: `Unknown command id "${id}" in mcp.allow.`,
+          toolId: id,
+          path: "flags.allow",
+          remediation: "Use a canonical Lando command id; run `lando mcp --list` to see available ids.",
+        }),
+      );
     }
   }
   return Effect.void;
