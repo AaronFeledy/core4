@@ -362,7 +362,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
   });
 });
 
-describe("execApp — host agent-context env forwarding (US-400)", () => {
+describe("execApp — host agent-context env forwarding", () => {
   const AGENT_KEYS = [
     "CLAUDECODE",
     "CLAUDE_CODE",

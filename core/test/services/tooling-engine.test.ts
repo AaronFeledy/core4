@@ -374,7 +374,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(Exit.isFailure(exit)).toBe(true);
   });
 
-  describe("host agent-context env forwarding (US-400)", () => {
+  describe("host agent-context env forwarding", () => {
     test("forwards present host agent markers into the provider exec spec", async () => {
       const plan = makePlan([baseServicePlan("web", true)]);
       const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);

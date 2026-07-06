@@ -251,7 +251,7 @@ describe("shellApp — shell modes", () => {
     expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
   });
 
-  test("service mode forwards present host agent markers into the service shell (US-400)", async () => {
+  test("service mode forwards present host agent markers into the service shell", async () => {
     let captured: Readonly<Record<string, string>> | undefined;
     const provider = fakeProvider({
       execStream: (_target, command) => {
@@ -272,7 +272,7 @@ describe("shellApp — shell modes", () => {
     expect(captured).toEqual({ CLAUDECODE: "1", CI: "true" });
   });
 
-  test("service mode lets explicit exec env win over a forwarded agent value (US-400)", async () => {
+  test("service mode lets explicit exec env win over a forwarded agent value", async () => {
     let captured: Readonly<Record<string, string>> | undefined;
     const provider = fakeProvider({
       execStream: (_target, command) => {
@@ -294,7 +294,7 @@ describe("shellApp — shell modes", () => {
     expect(captured).toEqual({ CI: "explicit", CLAUDECODE: "1" });
   });
 
-  test("service mode lets service env win over a forwarded agent value (US-400)", async () => {
+  test("service mode lets service env win over a forwarded agent value", async () => {
     const webWithEnv = { ...web, environment: { CI: "service" } };
     const appPlan = { ...plan, services: { [webWithEnv.name]: webWithEnv } };
     let captured: Readonly<Record<string, string>> | undefined;

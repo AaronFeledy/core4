@@ -8,7 +8,7 @@ import {
 } from "../../src/config/agent-env.ts";
 
 describe("agent-context env allowlist", () => {
-  test("is exactly the spec §6.9.1 built-in names, in order", () => {
+  test("is exactly the built-in names, in order", () => {
     expect([...AGENT_CONTEXT_ENV_ALLOWLIST]).toEqual([
       "CLAUDECODE",
       "CLAUDE_CODE",
@@ -95,7 +95,7 @@ describe("withAgentContextEnv — lowest-precedence merge", () => {
   });
 });
 
-describe("filterHostProxyEnv — §10.10.3 shim filter with agent-context append", () => {
+describe("filterHostProxyEnv — shim filter with agent-context append", () => {
   test("keeps LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
     const filtered = filterHostProxyEnv({
       LANDO_APP_NAME: "demo",

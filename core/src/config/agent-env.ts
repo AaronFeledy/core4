@@ -1,11 +1,11 @@
 /**
- * Host agent-context env forwarding primitive (spec §6.9.1).
+ * Host agent-context env forwarding primitive.
  *
  * Pure, Effect-free: the single source of truth for the built-in agent-context
  * env allowlist, the presence-gated resolver the exec surfaces use to forward
  * host agent markers into per-invocation exec requests, and the in-container
- * shim env filter (§10.10.3) that the agent-context names are appended to so a
- * `runLando` re-entry preserves the same markers.
+ * shim env filter that appends the agent-context names so a `runLando`
+ * re-entry preserves the same markers.
  *
  * Forwarding is per-invocation: the resolver reads a caller-supplied host env
  * snapshot each call and never caches. Forwarded markers are always the lowest
@@ -13,8 +13,8 @@
  */
 
 /**
- * The built-in agent-context allowlist (spec §6.9.1). Exact names, never
- * patterns; the default set is boolean/identity markers, not credentials.
+ * Built-in agent-context allowlist. Exact names, never patterns; the default
+ * set is boolean/identity markers, not credentials.
  */
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
@@ -69,9 +69,9 @@ export const withAgentContextEnv = (
 };
 
 /**
- * In-container shim env-filter allowlist (spec §10.10.3). The shim forwards a
- * small set of env back to the host on a `runLando` re-entry; the agent-context
- * allowlist is appended (§6.9.1 host-proxy symmetry).
+ * In-container shim env-filter allowlist. The shim forwards a small set of env
+ * back to the host on a `runLando` re-entry; the agent-context allowlist is
+ * appended so host-proxy re-entry keeps the same markers.
  */
 export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LANDO_", "LC_"];
 export const HOST_PROXY_ENV_NAMES: ReadonlyArray<string> = ["LANG", "TERM"];
