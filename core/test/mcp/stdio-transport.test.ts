@@ -155,6 +155,44 @@ describe("makeStdioMcpTransport", () => {
     });
   });
 
+  test("writes MCP-shaped progress notifications for correlated tool calls", async () => {
+    const writes: string[] = [];
+    const frame = { _tag: "output", stream: "stdout", line: "Starting" };
+    const input = openInputFromMessage({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "app:info", _meta: { progressToken: "progress-1" } },
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const transport = yield* makeStdioMcpTransport({
+          catalog,
+          input,
+          write: (line) =>
+            Effect.sync(() => {
+              writes.push(line);
+            }),
+        });
+        const incoming = yield* transport.receive;
+        if (Option.isSome(incoming)) yield* transport.notify({ id: incoming.value.id, frame });
+        while (writes.length < 1) yield* Effect.sleep("10 millis");
+      }).pipe(Effect.scoped),
+    );
+
+    expect(parseJsonObject(writes[0])).toMatchObject({
+      jsonrpc: "2.0",
+      method: "notifications/progress",
+      params: {
+        progressToken: "progress-1",
+        progress: 1,
+        message: JSON.stringify(frame),
+        data: frame,
+      },
+    });
+  });
+
   test("writes an Invalid Request error when a request id is invalid", async () => {
     const writes: string[] = [];
     const input = inputFromMessages([{ jsonrpc: "2.0", id: { invalid: true }, method: "tools/list" }]);

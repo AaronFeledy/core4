@@ -2,7 +2,6 @@ import { Deferred, Effect, Option, Queue, Ref, Scope } from "effect";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
-import type { McpToolInput } from "./registry.ts";
 import {
   type JsonObject,
   type JsonRpcId,
@@ -39,6 +38,7 @@ export interface StdioTransportOptions {
 interface CorrelationEntry {
   readonly jsonrpcId: JsonRpcId;
   readonly progressToken?: ProgressToken;
+  readonly progress?: number;
 }
 
 interface CorrelationState {
@@ -60,9 +60,6 @@ const stdoutWrite = (): ((line: string) => Effect.Effect<void>) => {
 
 const progressTokenFromParams = (params: JsonObject | undefined): ProgressToken | undefined =>
   progressTokenFrom(objectField(params ?? {}, "_meta")?.progressToken);
-
-const callRequestFromParams = (params: JsonObject | undefined): McpToolInput | undefined =>
-  toolInputFrom(objectField(params ?? {}, "arguments"));
 
 export const makeStdioMcpTransport = (
   options: StdioTransportOptions,
@@ -113,10 +110,19 @@ export const makeStdioMcpTransport = (
         return { byInternalId, byJsonrpcId };
       });
 
+    const incrementProgress = (internalId: string, entry: CorrelationEntry): Effect.Effect<number> =>
+      Ref.updateAndGet(correlations, (current) => {
+        const nextProgress = (entry.progress ?? 0) + 1;
+        return {
+          byInternalId: new Map(current.byInternalId).set(internalId, { ...entry, progress: nextProgress }),
+          byJsonrpcId: current.byJsonrpcId,
+        };
+      }).pipe(Effect.map((current) => current.byInternalId.get(internalId)?.progress ?? 1));
+
     const enqueueToolCall = (id: JsonRpcId, params: JsonObject | undefined): Effect.Effect<void> => {
       const toolId = params === undefined ? undefined : stringField(params, "name");
       if (toolId === undefined) return writeError(id, -32602, "Invalid params");
-      const inputPayload = callRequestFromParams(params);
+      const inputPayload = toolInputFrom(objectField(params ?? {}, "arguments"));
       return Effect.gen(function* () {
         const next = yield* Ref.updateAndGet(counter, (value) => value + 1);
         const internalId = `req-${next}`;
@@ -246,11 +252,20 @@ export const makeStdioMcpTransport = (
         Effect.flatMap((current) => {
           const entry = current.byInternalId.get(notification.id);
           if (entry?.progressToken === undefined) return Effect.void;
-          return writeJson({
-            jsonrpc: "2.0",
-            method: "notifications/progress",
-            params: { progressToken: entry.progressToken, data: notification.frame },
-          });
+          return incrementProgress(notification.id, entry).pipe(
+            Effect.flatMap((progress) =>
+              writeJson({
+                jsonrpc: "2.0",
+                method: "notifications/progress",
+                params: {
+                  progressToken: entry.progressToken,
+                  progress,
+                  message: JSON.stringify(notification.frame),
+                  data: notification.frame,
+                },
+              }),
+            ),
+          );
         }),
       );
 
