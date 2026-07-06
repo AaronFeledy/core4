@@ -695,3 +695,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot MCP deny/id/progress findings, stale command reference, and guide drift PR-body skip)
 - Merge: merged (squash)
 ---
+
+## 2026-07-06 01:50 CDT - US-399 Review
+- Review fixed three MCP contract blockers: doctor now compares the generated default MCP allowlist against generated OCLIF manifest metadata instead of only checking shape, the §10.14 cancellation assertion now cancels an in-flight request through the MCP transport, and the redaction-boundary gate has explicit MCP doctor diagnostic-path coverage.
+- Review also updated the doctor walkthrough guide with the new MCP diagnostics section so the guide-owned doctor surface reflects the observable `mcp` check.
+- Review notes (deferred/rejected): importing the live command registry into `doctor` was rejected because provider-bootstrap doctor checks must stay hermetic; the generated manifest metadata gives a bootstrap-safe freshness source. The redaction-boundary finding was partly a wording issue because the gate already scans `core/src/**`, but a dedicated test now locks MCP doctor diagnostics into that coverage.
+- Verification: typecheck, lint, check:redaction-boundary, lint:guides, check:guide-coverage passed; check:guide-drift skipped with the documented no-PR-context local condition; focused MCP doctor/contract/allowlist/report/cancellation/redaction-boundary spot checks passed. Edited TypeScript files have clean LSP diagnostics except the known project-root limitation for `core/test/scripts/*` importing `scripts/*`, while root typecheck passed.
+---

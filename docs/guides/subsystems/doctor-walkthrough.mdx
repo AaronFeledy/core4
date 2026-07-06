@@ -62,4 +62,13 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-mcp-diagnostics" render={false} reason="The MCP doctor check is hermetic against a synthetic test runtime; doctor-mcp and doctor-report tests cover the exact output and redaction behavior without launching an agent client">
+    <Step name="mcp-diagnostics">
+      <Variable name="command" value="lando doctor" display="Includes an mcp section in the combined doctor report" />
+      <Variable name="section" value="mcp: pass | fail" display="The MCP section reports whether the default allowlist cache, catalog generation, and canary tool round-trip are healthy" />
+      <Variable name="context" value="allowlistFresh, allowlistSize, catalogGenerated, catalogTools, canaryRoundTrip, canaryRedacted" display="Structured MCP diagnostic fields available to machine-output consumers" />
+      <Variable name="canary" value="synthetic test runtime" display="Doctor dispatches an in-memory canary tool and verifies its planted secret is redacted before output" />
+    </Step>
+  </Scenario>
+
 </Guide>
