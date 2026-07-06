@@ -3,7 +3,7 @@ import type { HostProxyRunLandoRequest } from "@lando/sdk/schema";
 import { filterHostProxyEnv as filterAllowedHostProxyEnv } from "../../config/agent-env.ts";
 
 /**
- * Pure, Effect-free helpers for the in-container host-proxy shim (§10.10.3).
+ * Pure, Effect-free helpers for the in-container host-proxy shim.
  *
  * The shim itself is a tiny wire-protocol client with no Effect runtime; these
  * functions are the request-building logic it shares with the host-side test
@@ -12,9 +12,9 @@ import { filterHostProxyEnv as filterAllowedHostProxyEnv } from "../../config/ag
 
 /**
  * Env keys the shim forwards to the host. Everything else is dropped so
- * container-leaked env (PATH, secrets, HOME, …) never poisons the host program
- * (§10.10.3). The shared primitive also appends the agent-context allowlist from
- * §6.9.1 so `runLando` re-entry preserves agent markers.
+ * container-leaked env (PATH, secrets, HOME, …) never poisons the host program.
+ * The shared primitive also appends the agent-context allowlist so `runLando`
+ * re-entry preserves agent markers.
  */
 export const filterHostProxyEnv = (env: Readonly<Record<string, string>>): Record<string, string> =>
   filterAllowedHostProxyEnv(env);

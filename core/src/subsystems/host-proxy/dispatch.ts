@@ -25,16 +25,16 @@ import { parseOpenOptionsFromRunLandoArgv } from "./open-argv.ts";
 import { filterHostProxyEnv } from "./shim.ts";
 
 /**
- * Host-side `runLando` dispatcher (§10.10). It takes a container-forwarded
- * `runLando` request, enforces the host-proxy allowlist, remaps the container
- * cwd to the host app root, filters env, dispatches the command against the
- * retained host runtime, and publishes redacted `pre/post-host-proxy-call`
- * lifecycle events for EVERY request (including rejected ones). The result is
- * the same `CommandResultEnvelope` + exit code the host-side command produces.
+ * Host-side `runLando` dispatcher. It takes a container-forwarded `runLando`
+ * request, enforces the host-proxy allowlist, remaps the container cwd to the
+ * host app root, filters env, dispatches the command against the retained host
+ * runtime, and publishes redacted `pre/post-host-proxy-call` lifecycle events
+ * for every request (including rejected ones). The result is the same
+ * `CommandResultEnvelope` + exit code the host-side command produces.
  *
  * This is the logical round-trip; the physical Unix-socket transport, token
  * auth, concurrency cap, and recursion guard belong to the broader host-proxy
- * subsystem wave.
+ * transport wave.
  */
 
 export interface HostProxyRunLandoExecutorInput {

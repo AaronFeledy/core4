@@ -1,14 +1,13 @@
 import { posix } from "node:path";
 
 /**
- * Pure container→host cwd remapping for the host-proxy `runLando` dispatcher
- * (§10.10.4). The dispatcher never trusts a container-provided path: it remaps
- * the container cwd to the host app root using the active mount info, and any
- * path outside the mount collapses to the host app root as the safe default.
+ * Pure container→host cwd remapping for the host-proxy `runLando` dispatcher.
+ * The dispatcher never trusts a container-provided path: it remaps the container
+ * cwd to the host app root using the active mount info, and any path outside the
+ * mount collapses to the host app root as the safe default.
  *
- * `HostProxyMountInfo` is the minimal shape needed here; the full §6.4
- * `AppMountInfo` wiring that populates it belongs to the physical host-proxy
- * subsystem wave.
+ * `HostProxyMountInfo` is the minimal shape needed here; fuller mount wiring that
+ * populates it belongs to the physical host-proxy transport wave.
  */
 export interface HostProxyMountInfo {
   /** Absolute container-side app root (e.g. `/app`). */

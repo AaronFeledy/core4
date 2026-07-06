@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { AbsolutePath } from "./primitives.ts";
 
 /**
- * Host-proxy wire protocol (§10.10.2).
+ * Host-proxy wire protocol request/response schemas.
  *
  * The host proxy is a per-app container→host RPC channel. These schemas are the
  * canonical request/response shapes exchanged over the channel. This module is
@@ -31,8 +31,8 @@ const HostProxyEnv = Schema.Record({ key: Schema.String, value: Schema.String })
 
 /**
  * `runLando` re-enters Lando's command runtime on the host. `argv` is the
- * canonical-id + args (subject to the §8.3 host-proxy allowlist); `cwd` is the
- * container path the host dispatcher remaps to the host app root.
+ * canonical-id + args (subject to the generated host-proxy allowlist); `cwd` is
+ * the container path the host dispatcher remaps to the host app root.
  */
 export const HostProxyRunLandoRequest = Schema.TaggedStruct("runLando", {
   argv: Schema.Array(Schema.String),
@@ -42,7 +42,7 @@ export const HostProxyRunLandoRequest = Schema.TaggedStruct("runLando", {
 });
 export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
 
-/** Canonical host-proxy request union (§10.10.2). */
+/** Canonical host-proxy request union. */
 export const HostProxyRequest = Schema.Union(
   HostProxyRunLandoRequest,
   Schema.TaggedStruct("openUrl", {
@@ -68,7 +68,7 @@ export const HostProxyRequest = Schema.Union(
 );
 export type HostProxyRequest = typeof HostProxyRequest.Type;
 
-/** Canonical host-proxy response union (§10.10.2). */
+/** Canonical host-proxy response union. */
 export const HostProxyResponse = Schema.Union(
   Schema.TaggedStruct("ok", { data: Schema.optional(Schema.Unknown) }),
   Schema.TaggedStruct("error", {

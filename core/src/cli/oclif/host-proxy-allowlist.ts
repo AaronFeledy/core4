@@ -2,8 +2,8 @@ import { HostProxyAllowlistConflictError } from "@lando/sdk/errors";
 
 /**
  * Lifecycle and package-manager commands that MUST NOT ride the host-proxy
- * `runLando` channel (§10.10). A container asking the host to run these would
- * let a service tear down / restart the app or write to the host user's package
+ * `runLando` channel. A container asking the host to run these would let a
+ * service tear down / restart the app or write to the host user's package
  * caches. A command in this set that sets `hostProxyAllowed: true` is rejected
  * at registration with `HostProxyAllowlistConflictError`.
  */

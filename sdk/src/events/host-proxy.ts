@@ -4,11 +4,11 @@ import { AppRef } from "../schema/networking.ts";
 import { Timestamp } from "./_shared.ts";
 
 /**
- * Host-proxy `runLando` dispatch lifecycle events (§10.10.4, §11.2). Published
- * for EVERY dispatched request, including rejected ones. Payloads are redacted
- * summaries only: the request kind, canonical command id, a redacted argv
- * summary, and the remapped host cwd. Raw env values, secret-bearing argv
- * tails, and un-redacted URLs must never appear in these events.
+ * Host-proxy `runLando` dispatch lifecycle events. Published for every
+ * dispatched request, including rejected ones. Payloads are redacted summaries
+ * only: the request kind, canonical command id, a redacted argv summary, and the
+ * remapped host cwd. Raw env values, secret-bearing argv tails, and un-redacted
+ * URLs must never appear in these events.
  */
 
 /** Redacted summary of a host-proxy request carried on the call events. */

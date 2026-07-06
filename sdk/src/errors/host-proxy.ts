@@ -1,9 +1,8 @@
 import { Schema } from "effect";
 
 /**
- * Errors raised by the host-proxy `runLando` dispatch path (§10.10). Both are
- * tagged, carry a machine `_tag` and command id, and surface a human
- * remediation string.
+ * Errors raised by the host-proxy `runLando` dispatch path. Both are tagged,
+ * carry a machine `_tag` and command id, and surface a human remediation string.
  */
 
 /**
