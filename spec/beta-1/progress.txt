@@ -39,6 +39,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 05:55 CDT - US-401 Review
+- Review fixed the remaining public-schema default gap: `AgentEnvConfig.enabled` now emits a machine-readable/generated-docs default of `true`, matching the source PRD while preserving the runtime policy behavior that treats omitted `enabled` as enabled.
+- Review notes (deferred/rejected): moving wildcard rejection into `ConfigService.load`/the base schema was rejected because US-401 deliberately localizes `AgentEnvPatternError` to the `lando config set`/`validate`/`edit` seam to avoid widening unrelated command error unions; runtime allowlist resolution still fails closed for invalid allow entries and config-command validation rejects patterns with remediation.
+- Verification: typecheck, lint, schema snapshot/public schema/landofile spot checks passed; focused agent-env/config/exec/info/shell/tooling scenario tests passed.
+---
+
 ## 2026-07-06 04:55 CDT - US-401
 - Shipped the `agentEnv` config, off-switches, and audit surface on top of US-400's forwarding. Global config gains an `agentEnv: {enabled, allow, deny}` struct (default enabled) and a top-level Landofile `agentEnv: false` opt-out; both are new public SDK schema surfaces published from `@lando/sdk` (`AgentEnvConfig`, `GlobalConfig.agentEnv`, `LandofileShape.agentEnv`) with the schema snapshot and `dist/schemas`/`docs/reference` artifacts refreshed and `API_COMPATIBILITY.md` updated.
 - Wildcard/pattern entries in `agentEnv.allow`/`deny` are rejected at config validation with a new `AgentEnvPatternError` (machine `_tag` + remediation), enforced at the `lando config set`/`validate`/`edit` seam so the distinct error never has to ride `ConfigService.load` into unrelated commands.

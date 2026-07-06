@@ -58,6 +58,31 @@ export const AgentEnvConfig = Schema.Struct({
   deny: Schema.optional(Schema.Array(Schema.String)).annotations({
     description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
   }),
+}).annotations({
+  jsonSchema: {
+    type: "object",
+    required: [],
+    additionalProperties: false,
+    properties: {
+      enabled: {
+        type: "boolean",
+        default: true,
+        description:
+          "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+      },
+      allow: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+      },
+      deny: {
+        type: "array",
+        items: { type: "string" },
+        description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+      },
+    },
+  },
 });
 export type AgentEnvConfig = typeof AgentEnvConfig.Type;
 
