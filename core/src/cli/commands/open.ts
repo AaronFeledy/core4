@@ -118,6 +118,8 @@ export const resolveOpenTargets = (
     const routes = routesForService(plan, String(service.name));
     const chosen = preferHttps(routes);
     if (chosen !== undefined) return [buildOpenTarget(chosen)];
+  }
+  for (const service of Object.values(plan.services)) {
     const endpoint = preferHttpsTarget(endpointTargetsForService(plan, String(service.name)));
     if (endpoint !== undefined) return [endpoint];
   }

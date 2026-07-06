@@ -139,6 +139,15 @@ describe("resolveOpenTargets", () => {
       "https://localhost:8443",
     ]);
   });
+
+  test("S5 default prefers any proxy route before endpoint fallbacks", () => {
+    const p = plan(
+      [route({ hostname: "app.myapp.lndo.site", scheme: "https", service: "app" })],
+      [svc("db", [endpoint({ protocol: "http", port: 8888 })]), "app"],
+    );
+
+    expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://app.myapp.lndo.site"]);
+  });
 });
 
 describe("isOpenableScheme", () => {
