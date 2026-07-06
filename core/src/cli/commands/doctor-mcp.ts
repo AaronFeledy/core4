@@ -8,10 +8,8 @@
  * the selected provider and needs only `RedactionService`.
  *
  * Three sub-checks compose the single `mcp` check:
- *   1. allowlist cache safety — the committed default allowlist is non-empty,
- *      strictly sorted, and contains no destructive id (drift against the live
- *      registry is proven at build time by the §10.14 contract suite; this is
- *      the runtime well-formedness signal).
+ *   1. allowlist cache freshness — the committed default allowlist matches the
+ *      generated OCLIF manifest metadata and contains no destructive id.
  *   2. catalog generation — the catalog projects cleanly and yields a tool with
  *      a derived input schema.
  *   3. canary round-trip — a canary tool dispatches to an `ok:true` envelope and
@@ -29,8 +27,9 @@ import type { McpCommandEntry } from "../../mcp/registry.ts";
 import { RedactionService, RedactionServiceLive } from "../../redaction/service.ts";
 import { SecretStoreLive } from "../../services/secret-store.ts";
 import type { LandoCommandSpec } from "../oclif/command-base.ts";
+import { COMPILED_OCLIF_MANIFEST } from "../oclif/compiled-manifest.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../oclif/generated/mcp-allowlist.ts";
-import { isMcpAllowlistForbidden } from "../oclif/mcp-allowlist.ts";
+import { computeMcpDefaultAllowlist } from "../oclif/mcp-allowlist.ts";
 import type { CommandResultOutcome } from "../result-encode.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { renderSolution } from "./doctor.ts";
@@ -80,14 +79,24 @@ type McpExecute = (
   runInput: McpRunInput,
 ) => Effect.Effect<CommandResultOutcome, never>;
 
-const isStrictlySorted = (ids: ReadonlyArray<string>): boolean => {
-  for (let index = 1; index < ids.length; index += 1) {
-    const previous = ids[index - 1];
-    const current = ids[index];
-    if (previous === undefined || current === undefined) return false;
-    if (previous.localeCompare(current) >= 0) return false;
-  }
-  return true;
+interface McpAllowlistSpecView {
+  readonly id: string;
+  readonly mcpAllowed?: boolean;
+}
+
+const manifestMcpAllowlistSpecs = (): ReadonlyArray<McpAllowlistSpecView> =>
+  Object.values(COMPILED_OCLIF_MANIFEST.commands).map(({ landoSpec }) => {
+    const mcpAllowed = "mcpAllowed" in landoSpec ? landoSpec.mcpAllowed : undefined;
+    return {
+      id: landoSpec.id,
+      ...(mcpAllowed === undefined ? {} : { mcpAllowed }),
+    };
+  });
+
+export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
+  const expected = computeMcpDefaultAllowlist(manifestMcpAllowlistSpecs());
+  if (ids.length !== expected.length) return false;
+  return ids.every((id, index) => id === expected[index]);
 };
 
 const MCP_DEGRADED_SOLUTION: DoctorSolution = {
@@ -99,7 +108,7 @@ const MCP_DEGRADED_SOLUTION: DoctorSolution = {
 
 /**
  * Build the `mcp` doctor check. Returns a single `pass` check when the allowlist
- * cache is well-formed, the catalog projects cleanly, and the canary tool
+ * cache is fresh, the catalog projects cleanly, and the canary tool
  * round-trips with its secret redacted; otherwise a `fail` check carrying the
  * failing signals and a remediation.
  */
@@ -111,10 +120,10 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       sourceEnv: process.env,
     });
 
-    const allowlistFresh =
-      MCP_DEFAULT_ALLOWLIST.length > 0 &&
-      isStrictlySorted(MCP_DEFAULT_ALLOWLIST) &&
-      MCP_DEFAULT_ALLOWLIST.every((id) => !isMcpAllowlistForbidden(id));
+    const allowlistFreshResult = yield* Effect.either(
+      Effect.try(() => isMcpDefaultAllowlistFresh(MCP_DEFAULT_ALLOWLIST)),
+    );
+    const allowlistFresh = allowlistFreshResult._tag === "Right" && allowlistFreshResult.right;
 
     const catalog = yield* Effect.either(
       Effect.try(() =>
@@ -157,6 +166,8 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       canaryRoundTrip: redactor.redactString(String(canaryRoundTrip)),
       canaryRedacted: redactor.redactString(String(canaryRedacted)),
     };
+    if (allowlistFreshResult._tag === "Left")
+      context.allowlistError = redactor.redactString(String(allowlistFreshResult.left));
     if (canaryError !== undefined) context.canaryError = canaryError;
 
     const check: McpDoctorCheck = {
@@ -194,6 +205,7 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "catalogTools",
   "canaryRoundTrip",
   "canaryRedacted",
+  "allowlistError",
   "canaryError",
 ];
 

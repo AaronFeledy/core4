@@ -5,6 +5,7 @@ import {
   DefaultMcpDoctorLayer,
   MCP_DOCTOR_CANARY_SECRET,
   type McpDoctorResult,
+  isMcpDefaultAllowlistFresh,
   mcpDoctor,
   renderMcpDoctorResult,
   renderMcpDoctorResultAsNdjson,
@@ -36,6 +37,11 @@ describe("mcpDoctor", () => {
     expect(check.context.canaryRedacted).toBe("true");
     expect(Number(check.context.allowlistSize)).toBeGreaterThan(0);
     expect(Number(check.context.catalogTools)).toBeGreaterThan(0);
+  });
+
+  test("detects generated default allowlist drift against the OCLIF manifest", () => {
+    expect(isMcpDefaultAllowlistFresh([])).toBe(false);
+    expect(isMcpDefaultAllowlistFresh(["app:exec"])).toBe(false);
   });
 
   test("never leaks the canary secret into the check output", async () => {

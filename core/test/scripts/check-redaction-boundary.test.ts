@@ -66,4 +66,26 @@ describe("redaction boundary lint gate", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("covers MCP doctor diagnostic payload code under the scanned roots", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/cli/commands/doctor-mcp.ts",
+        "const diagnosticRedactor = /\\bBearer\\s+\\S+/gu;\n",
+      );
+
+      const result = await checkRedactionBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file)}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["core/src/cli/commands/doctor-mcp.ts:1:/\\bBearer\\s+\\S+/gu"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

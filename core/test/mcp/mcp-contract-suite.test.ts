@@ -14,6 +14,9 @@
  *   7. cancellation mid-call fails with an MCP transport error
  *   8. concurrency is capped at `mcp.maxConcurrent`
  *   9. a known secret never crosses the transport
+ *
+ * allow: SIZE_OK — one authoritative §10.14 contract suite keeps the acceptance
+ * bullets collocated and discoverable.
  */
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber, Layer, Schema } from "effect";
@@ -275,15 +278,44 @@ describe("MCP contract suite §10.14 — non-interactive prompt failure surfaces
 });
 
 describe("MCP contract suite §10.14 — cancellation mid-call", () => {
-  test("interrupting a dispatch mid-execution fails and still publishes both events", async () => {
-    const entry: McpCommandEntry = { spec: spec("app:exec", () => Effect.never) };
-    const { deps, events } = harness([entry]);
-    const exit = await Effect.runPromiseExit(
-      dispatchTool({ toolId: "app:exec" }, { ...deps, execute: () => Effect.interrupt }),
+  test("canceling an in-flight transport request interrupts the running command", async () => {
+    let finalized = false;
+    const blocking = spec("app:exec", () =>
+      Effect.never.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            finalized = true;
+          }),
+        ),
+      ),
     );
-    expect(exit._tag).toBe("Failure");
-    expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
-    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "Interrupted" });
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: blocking }],
+      defaultAllowlist: ["app:exec"],
+      runtimeLayer: Layer.empty,
+    };
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      const id = yield* inmem.push({ toolId: "app:exec" });
+      yield* Effect.sleep("10 millis");
+      yield* inmem.cancel(id);
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return { id, replies };
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const { id, replies } = await Effect.runPromise(program);
+
+    expect(finalized).toBe(true);
+    expect(replies).toEqual([
+      { id, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
+    ]);
   });
 });
 
