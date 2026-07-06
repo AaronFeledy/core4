@@ -1,8 +1,7 @@
 /**
- * MCP contract suite (spec §10.14 / §13.1).
+ * MCP contract suite — regression gate for the MCP command surface.
  *
- * The single authoritative contract that protects the MCP surface. It asserts,
- * against the test runtime (no live agent client), the safety and
+ * Asserts against the test runtime (no live agent client) the safety and
  * schema-fidelity properties every release must keep:
  *
  *   1. catalog generation matches the committed allowlist cache
@@ -15,8 +14,7 @@
  *   8. concurrency is capped at `mcp.maxConcurrent`
  *   9. a known secret never crosses the transport
  *
- * allow: SIZE_OK — one authoritative §10.14 contract suite keeps the acceptance
- * bullets collocated and discoverable.
+ * allow: SIZE_OK — acceptance bullets stay collocated in one discoverable suite.
  */
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber, Layer, Schema } from "effect";
@@ -126,7 +124,7 @@ const serviceLayer = (config: McpRuntimeConfigShape) =>
     Layer.provide(Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer())),
   );
 
-describe("MCP contract suite §10.14 — catalog matches the allowlist cache", () => {
+describe("MCP contract suite — catalog matches the allowlist cache", () => {
   test("projecting the full command registry through the default allowlist equals the committed cache", () => {
     const catalog = buildCatalog({
       commandEntries: allCommandEntries(),
@@ -146,7 +144,7 @@ describe("MCP contract suite §10.14 — catalog matches the allowlist cache", (
   });
 });
 
-describe("MCP contract suite §10.14 — tool input schemas round-trip against FlagSpec/ArgSpec", () => {
+describe("MCP contract suite — tool input schemas round-trip against FlagSpec/ArgSpec", () => {
   test("each default tool derives a closed flags/args object matching its declared spec", () => {
     for (const id of MCP_DEFAULT_ALLOWLIST) {
       const commandSpec = specFor(id);
@@ -199,7 +197,7 @@ describe("MCP contract suite §10.14 — tool input schemas round-trip against F
   });
 });
 
-describe("MCP contract suite §10.14 — success and failure dispatches return schema-valid envelopes", () => {
+describe("MCP contract suite — success and failure dispatches return schema-valid envelopes", () => {
   test("a successful dispatch returns an ok:true envelope that decodes against CommandResultEnvelope", async () => {
     const entry: McpCommandEntry = {
       spec: spec("app:info", () => Effect.succeed({ name: "demo" }), {
@@ -228,7 +226,7 @@ describe("MCP contract suite §10.14 — success and failure dispatches return s
   });
 });
 
-describe("MCP contract suite §10.14 — deny wins over allow", () => {
+describe("MCP contract suite — deny wins over allow", () => {
   test("an id in both allow and deny is excluded from the effective set", () => {
     const effective = computeEffectiveAllowlist({ defaults: [], allow: ["app:info"], deny: ["app:info"] });
     expect(effective.ids.has("app:info")).toBe(false);
@@ -244,7 +242,7 @@ describe("MCP contract suite §10.14 — deny wins over allow", () => {
   });
 });
 
-describe("MCP contract suite §10.14 — destructive-id self-allow registration is rejected", () => {
+describe("MCP contract suite — destructive-id self-allow registration is rejected", () => {
   test("a destructive id that self-allows is rejected with McpAllowlistConflictError", () => {
     expect(() => assertMcpAllowlistSafe({ id: "app:destroy", mcpAllowed: true })).toThrow(
       McpAllowlistConflictError,
@@ -256,7 +254,7 @@ describe("MCP contract suite §10.14 — destructive-id self-allow registration 
   });
 });
 
-describe("MCP contract suite §10.14 — non-interactive prompt failure surfaces as structured ok:false", () => {
+describe("MCP contract suite — non-interactive prompt failure surfaces as structured ok:false", () => {
   test("a command that requires a prompt fails as an ok:false envelope under non-interactive dispatch", async () => {
     const entry: McpCommandEntry = {
       spec: spec("app:start", (input) =>
@@ -277,7 +275,7 @@ describe("MCP contract suite §10.14 — non-interactive prompt failure surfaces
   });
 });
 
-describe("MCP contract suite §10.14 — cancellation mid-call", () => {
+describe("MCP contract suite — cancellation mid-call", () => {
   test("canceling an in-flight transport request interrupts the running command", async () => {
     let finalized = false;
     const blocking = spec("app:exec", () =>
@@ -319,7 +317,7 @@ describe("MCP contract suite §10.14 — cancellation mid-call", () => {
   });
 });
 
-describe("MCP contract suite §10.14 — concurrency cap", () => {
+describe("MCP contract suite — concurrency cap", () => {
   test("serve never runs more than mcp.maxConcurrent commands at once", async () => {
     let active = 0;
     let maxActive = 0;
@@ -363,7 +361,7 @@ describe("MCP contract suite §10.14 — concurrency cap", () => {
   });
 });
 
-describe("MCP contract suite §10.14 — a known secret never crosses the transport", () => {
+describe("MCP contract suite — a known secret never crosses the transport", () => {
   test("a secret in a command result is redacted before the envelope is returned", async () => {
     const secret = "sk-contract-suite-secret-token";
     const entry: McpCommandEntry = {
