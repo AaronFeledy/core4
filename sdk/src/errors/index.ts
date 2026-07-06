@@ -14,6 +14,7 @@ export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";
+export * from "./open.ts";
 export * from "./plugin.ts";
 export * from "./process.ts";
 export * from "./provider.ts";

@@ -5303,6 +5303,47 @@
         }
       ]
     },
+    "app:open": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "launch": {
+          "enum": ["opened", "printed", "headless-degraded"],
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string"
+              },
+              "scheme": {
+                "enum": ["http", "https"],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["service", "hostname", "scheme", "url"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["app", "targets", "launch"],
+      "type": "object"
+    },
     "app:pull": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -15142,6 +15183,7 @@
       "app:includes:verify",
       "app:info",
       "app:logs",
+      "app:open",
       "app:pull",
       "app:push",
       "app:rebuild",
@@ -25790,6 +25832,74 @@
             }
           },
           "required": ["_tag", "app", "service", "exitCode", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-open-url"],
+              "type": "string"
+            },
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "app", "url", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-open-url"],
+              "type": "string"
+            },
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "app", "url", "timestamp"],
           "type": "object"
         },
         {

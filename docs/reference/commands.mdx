@@ -205,6 +205,21 @@ Flags:
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
 | `--tail` | Show last N lines per service. |
 
+## `lando app:open`
+
+Open a resolved app URL in the host browser.
+
+Aliases: `lando open`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--all` | Open every resolved route. |
+| `--print` | Print the resolved URL(s) instead of opening a browser. |
+| `--route` | Select an exact route hostname to open. |
+| `--service, -s` | Scope resolution to a single service's routes. |
+
 ## `lando app:pull`
 
 Pull remote datasets into the current app.

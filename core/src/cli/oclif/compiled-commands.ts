@@ -16,6 +16,7 @@ import AppIncludesUpdateCommand from "./commands/app/includes/update.ts";
 import AppIncludesVerifyCommand from "./commands/app/includes/verify.ts";
 import InfoCommand from "./commands/app/info.ts";
 import LogsCommand from "./commands/app/logs.ts";
+import OpenCommand from "./commands/app/open.ts";
 import PullCommand from "./commands/app/pull.ts";
 import PushCommand from "./commands/app/push.ts";
 import RebuildCommand from "./commands/app/rebuild.ts";
@@ -101,6 +102,7 @@ export default {
   "app:includes:verify": AppIncludesVerifyCommand,
   "app:info": InfoCommand,
   "app:logs": LogsCommand,
+  "app:open": OpenCommand,
   "app:pull": PullCommand,
   "app:push": PushCommand,
   "app:remote:add": RemoteAddCommand,
