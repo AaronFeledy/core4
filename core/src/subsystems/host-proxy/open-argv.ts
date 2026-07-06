@@ -44,6 +44,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
   let all = false;
   let print = false;
   let json = false;
+  let formatSeen = false;
   let index = 0;
   while (index < tokens.length) {
     const token = tokens[index] ?? "";
@@ -60,6 +61,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
     } else if (formatValue !== undefined) {
       const parsedFormat = parseFormatJson([`--format=${formatValue}`]);
       if (parsedFormat._tag === "failure") return parsedFormat;
+      formatSeen = true;
       json = parsedFormat.json;
     } else if (token === "--service" || token === "-s") {
       index += 1;
@@ -74,13 +76,15 @@ export const parseOpenOptionsFromRunLandoArgv = (
       route = value;
     } else if (token === "--all") all = true;
     else if (token === "--print") print = true;
-    else if (token === "--json" || token === "-j") json = true;
-    else if (token === "--format") {
+    else if (token === "--json" || token === "-j") {
+      if (!formatSeen) json = true;
+    } else if (token === "--format") {
       index += 1;
       const value = tokens[index];
       if (value === undefined || value.startsWith("-")) return invalidOpenArgv("Missing value for --format.");
       const parsedFormat = parseFormatJson(["--format", value]);
       if (parsedFormat._tag === "failure") return parsedFormat;
+      formatSeen = true;
       json = parsedFormat.json;
     } else return invalidOpenArgv(`Unsupported app:open argument: ${token}.`);
     index += 1;

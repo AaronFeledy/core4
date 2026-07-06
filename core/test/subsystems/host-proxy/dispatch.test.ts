@@ -81,6 +81,15 @@ describe("openOptionsFromRunLandoArgv", () => {
     });
   });
 
+  test("keeps explicit text format ahead of later JSON shortcut", () => {
+    const options = openOptionsFromRunLandoArgv(["open", "--format=text", "-j"], { tty: false });
+
+    expect(options).toEqual({
+      json: false,
+      ttyPresent: false,
+    });
+  });
+
   test("rejects unsupported --format values", () => {
     expect(() => openOptionsFromRunLandoArgv(["open", "--format=xml"], { tty: false })).toThrow(
       'Unsupported result format value "xml" from flag.',
