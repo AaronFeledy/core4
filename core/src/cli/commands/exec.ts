@@ -89,7 +89,7 @@ export const execApp = (
     let landofile: LandofileShape | undefined;
     if (appTarget?.plan !== undefined) {
       plan = appTarget.plan;
-      landofile = appTarget.landofile ?? (yield* loadUserLandofileAt(landofileService, appTarget.root));
+      landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
     } else {
       landofile = yield* loadUserLandofile(landofileService);
       const capabilities = yield* registry.capabilities;
