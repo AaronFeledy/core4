@@ -16,12 +16,11 @@ export interface OpenUrlOptions {
 const OPENABLE_SCHEMES = new Set(["http:", "https:"]);
 
 const shellQuote = (value: string): string => `'${value.replace(/'/gu, "'\\''")}'`;
+const cmdQuote = (value: string): string => `"${value.replace(/"/gu, '""')}"`;
 
 export const openerCommandFor = (platform: NodeJS.Platform, url: string): string => {
-  const quoted = shellQuote(url);
-  if (platform === "darwin") return `open ${quoted}`;
-  if (platform === "win32") return `start "" ${quoted}`;
-  return `xdg-open ${quoted}`;
+  if (platform === "win32") return `start "" ${cmdQuote(url)}`;
+  return `${platform === "darwin" ? "open" : "xdg-open"} ${shellQuote(url)}`;
 };
 
 export const canOpenHost = (input: HostOpenerCapabilityInput): boolean => {

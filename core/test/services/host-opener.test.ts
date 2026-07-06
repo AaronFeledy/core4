@@ -21,7 +21,13 @@ describe("openerCommandFor", () => {
   test("selects the platform opener", () => {
     expect(openerCommandFor("darwin", "https://a.lndo.site")).toBe("open 'https://a.lndo.site'");
     expect(openerCommandFor("linux", "https://a.lndo.site")).toBe("xdg-open 'https://a.lndo.site'");
-    expect(openerCommandFor("win32", "https://a.lndo.site")).toBe("start \"\" 'https://a.lndo.site'");
+    expect(openerCommandFor("win32", "https://a.lndo.site")).toBe('start "" "https://a.lndo.site"');
+  });
+
+  test("quotes win32 URLs for cmd.exe", () => {
+    expect(openerCommandFor("win32", 'https://a.lndo.site/path?name="quoted value"')).toBe(
+      'start "" "https://a.lndo.site/path?name=""quoted value"""',
+    );
   });
 });
 
