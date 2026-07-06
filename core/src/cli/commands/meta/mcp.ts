@@ -7,7 +7,7 @@
  *   - serve mode runs the long-running stdio MCP server: it constructs
  *     `McpServiceLive` lazily, drives `McpService.serve` over the hand-rolled
  *     stdio JSON-RPC transport, and emits NO command-result envelope so it
- *     never corrupts the MCP protocol stream (§8.11.4 long-running carve-out).
+ *     never corrupts the MCP protocol stream (serve mode skips command-result envelopes).
  *
  * The command registry is injected (never imported from `compiled-commands`
  * here) so this module stays out of the compiled command-graph import cycle.
@@ -268,8 +268,8 @@ export const mcpListResult = (
 /**
  * Serve MCP over stdio until the transport closes (stdin EOF). Constructs
  * `McpServiceLive` lazily, computes the catalog for `tools/list`, and runs the
- * dispatch loop. Emits NO command-result envelope (long-running carve-out); a
- * startup validation failure still fails the effect (one failure envelope).
+ * dispatch loop. Emits no command-result envelope on the protocol stream;
+ * startup validation failures still surface as one failure envelope.
  */
 export const serveMcp = (
   registry: McpCommandRegistry,
