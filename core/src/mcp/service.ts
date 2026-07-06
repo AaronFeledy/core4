@@ -24,6 +24,7 @@ import type { CommandResultOutcome } from "../cli/result-encode.ts";
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
+import { RuntimeCwd } from "../runtime/cwd.ts";
 import { replyMcpCanceled } from "./cancellation.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
@@ -163,13 +164,19 @@ const makeService = (
             effective: effective.ids,
             allowlistSource: options.tooling === true ? `${effective.source}+tooling` : effective.source,
             redactor,
-            execute: (entry, runInput) =>
-              (entry.spec.run(runInput) as Effect.Effect<unknown, unknown, unknown>).pipe(
+            execute: (entry, runInput) => {
+              const command = entry.spec.run(runInput) as Effect.Effect<unknown, unknown, unknown>;
+              const rootAwareCommand =
+                runInput.appPath === undefined
+                  ? command
+                  : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
+              return rootAwareCommand.pipe(
                 Effect.provide(runtimeContext),
                 Effect.provideService(StreamFrameSink, streamSinkFor(notifyFor(incoming), redactor)),
                 Effect.exit,
                 Effect.flatMap(outcomeFromExit),
-              ) as Effect.Effect<CommandResultOutcome, never>,
+              ) as Effect.Effect<CommandResultOutcome, never>;
+            },
             notify: notifyFor(incoming),
             ...(publish === undefined ? {} : { publish }),
           });

@@ -15,6 +15,7 @@ import {
 } from "../../src/mcp/service.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
+import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 
 const spec = (
   id: string,
@@ -183,6 +184,36 @@ describe("McpService.serve", () => {
     );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: true, result: { ok: false } });
+  });
+
+  test("resolves command runtime cwd from per-call appPath", async () => {
+    const command = spec("app:info", () => RuntimeCwd.pipe(Effect.map((cwd) => ({ cwd }))));
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.succeed(RuntimeCwd, "/session-root"),
+    };
+
+    const program = Effect.gen(function* () {
+      const inmem = yield* makeInMemoryTransport();
+      const service = yield* McpService;
+      const fiber = yield* service
+        .serve({ transport: "stdio" })
+        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      yield* inmem.push({ toolId: "app:info", input: { appPath: "/per-call-root" } });
+      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      const replies = yield* inmem.replies;
+      yield* inmem.close;
+      yield* Fiber.join(fiber);
+      return replies;
+    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+
+    const replies = await Effect.runPromise(program);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { envelope: { ok: true, result: { cwd: "/per-call-root" } } },
+    });
   });
 
   test("caps concurrency at mcp.maxConcurrent", async () => {
