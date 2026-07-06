@@ -44,6 +44,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 17:47 CDT - US-404 Review
+- Review fixed post-Bugbot follow-ups: decoded Landofile shape selectors now enforce `lando:` before planning, and explicit Landofile file loads pass their selected path into version-constraint parse/runtime errors.
+- Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
+- Verification: typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed.
+---
+
 ## 2026-07-06 17:40 CDT - US-404 Review
 - Review fixed the accumulated-constraint blocker: include-layer `lando:` ranges now remain enforced with source provenance after scalar merge, so a looser root Landofile cannot erase a stricter included fragment.
 - Review notes (deferred/rejected): Bugbot's scalar-merge finding was confirmed and fixed; US-405 hot-path cache and doctor reporting remain the next story's scope, not a US-404 review blocker.
