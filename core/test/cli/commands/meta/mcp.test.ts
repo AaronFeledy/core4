@@ -9,6 +9,7 @@ import {
   mcpFlagsFromParsed,
   mcpListResult,
   mcpRegistryFromCompiled,
+  mcpRegistryWithToolingEntries,
   resolveMcpOptions,
   validateMcpAllowlistIds,
 } from "../../../../src/cli/commands/meta/mcp.ts";
@@ -94,6 +95,20 @@ describe("mcpRegistryFromCompiled", () => {
   });
 });
 
+describe("mcpRegistryWithToolingEntries", () => {
+  test("projects visible registered tooling commands into MCP tooling entries", () => {
+    const base = { commandEntries: [entry("app:info", "Show app info")] };
+    const registry = mcpRegistryWithToolingEntries(base, [
+      { id: "app:composer", summary: "Run Composer", hidden: false },
+      { id: "app:hidden", summary: "Hidden", hidden: true },
+    ]);
+
+    expect(registry.commandEntries).toEqual(base.commandEntries);
+    expect(registry.toolingEntries?.map((tooling) => tooling.spec.id)).toEqual(["app:composer"]);
+    expect(registry.toolingEntries?.[0]?.tooling).toBe(true);
+  });
+});
+
 describe("mcpListResult", () => {
   test("projects the effective catalog with per-tool source of allowance", async () => {
     const result = await Effect.runPromise(
@@ -112,6 +127,19 @@ describe("mcpListResult", () => {
       ),
     );
     expect(result.tools.map((tool) => tool.id)).toEqual(["app:config"]);
+  });
+
+  test("global config tooling exposes registered tooling entries in the list result", async () => {
+    const result = await Effect.runPromise(
+      mcpListResult(
+        mcpRegistryWithToolingEntries(registry, [
+          { id: "app:composer", summary: "Run Composer", hidden: false },
+        ]),
+        {},
+      ).pipe(Effect.provide(configLayer({ tooling: true }))),
+    );
+
+    expect(result.tools).toContainEqual({ id: "app:composer", summary: "Run Composer", source: "tooling" });
   });
 
   test("fails with McpToolInputError when an unknown id is requested", async () => {

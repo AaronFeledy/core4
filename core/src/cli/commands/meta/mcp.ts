@@ -12,12 +12,12 @@
  * The command registry is injected (never imported from `compiled-commands`
  * here) so this module stays out of the compiled command-graph import cycle.
  */
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
+import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
 import type { McpCommandEntry } from "../../../mcp/registry.ts";
 import {
@@ -34,6 +34,7 @@ import type { ResultFormat } from "../../format-flags.ts";
 import type { LandoCommandSpec } from "../../oclif/command-base.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist.ts";
 import { runWithRendererHandling } from "../../renderer-boundary.ts";
+import { type RunToolingResult, renderRunToolingResult, runTooling } from "../tooling.ts";
 import {
   type McpListResult,
   McpListResultSchema,
@@ -62,6 +63,46 @@ export interface McpCommandRegistry {
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
 }
 
+interface RegisteredToolingCommand {
+  readonly id: string;
+  readonly summary: string;
+  readonly hidden: boolean;
+}
+
+const ToolingMcpResultSchema = Schema.Struct({
+  tool: Schema.String,
+  service: Schema.String,
+  exitCode: Schema.Number,
+  stdout: Schema.String,
+  stderr: Schema.String,
+  rendered: Schema.optional(Schema.Boolean),
+});
+
+const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
+  if (input === null || typeof input !== "object") return [];
+  const args = (input as { readonly args?: Record<string, unknown> }).args;
+  const values = args?.args;
+  return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
+};
+
+const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec => ({
+  id: command.id,
+  summary: command.summary,
+  namespace: command.id.startsWith("meta:") ? "meta" : command.id.startsWith("apps:") ? "apps" : "app",
+  bootstrap: "app",
+  hidden: command.hidden,
+  args: {
+    args: {
+      type: "string",
+      multiple: true,
+      description: "Arguments passed to the tooling task.",
+    },
+  },
+  resultSchema: ToolingMcpResultSchema,
+  run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+  render: (result) => renderRunToolingResult(result as RunToolingResult),
+});
+
 const parsedStringArray = (value: unknown): ReadonlyArray<string> | undefined => {
   if (!Array.isArray(value)) return undefined;
   const strings = value.filter((item): item is string => typeof item === "string" && item.length > 0);
@@ -86,6 +127,50 @@ export const mcpRegistryFromCompiled = (
     command.landoSpec === undefined ? [] : [{ spec: command.landoSpec }],
   ),
 });
+
+export const mcpRegistryWithToolingEntries = (
+  registry: McpCommandRegistry,
+  commands: ReadonlyArray<RegisteredToolingCommand>,
+): McpCommandRegistry => ({
+  commandEntries: registry.commandEntries,
+  toolingEntries: commands
+    .filter((command) => !command.hidden)
+    .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
+});
+
+const resolveToolingRegistry = (
+  registry: McpCommandRegistry,
+  runtimeLayer: Layer.Layer<unknown>,
+): Effect.Effect<McpCommandRegistry, never, never> =>
+  Effect.scoped(
+    Layer.build(runtimeLayer).pipe(
+      Effect.orDie,
+      Effect.flatMap((context) =>
+        Effect.flatMap(CommandRegistry, (commandRegistry) => commandRegistry.list).pipe(
+          Effect.provide(context),
+        ),
+      ),
+      Effect.map((commands) => mcpRegistryWithToolingEntries(registry, commands)),
+    ),
+  );
+
+const resolveRegistryForEffectiveOptions = (
+  registry: McpCommandRegistry,
+  options: ResolvedMcpOptions,
+  runtimeLayer: Layer.Layer<unknown>,
+): Effect.Effect<McpCommandRegistry, never, never> =>
+  options.tooling === true ? resolveToolingRegistry(registry, runtimeLayer) : Effect.succeed(registry);
+
+const resolveRegistryForCommand = (
+  registry: McpCommandRegistry,
+  flags: McpCommandFlags,
+  runtimeLayer: Layer.Layer<unknown>,
+): Effect.Effect<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> =>
+  Effect.gen(function* () {
+    const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+    const options = resolveMcpOptions(flags, config);
+    return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
+  });
 
 /**
  * Compose CLI flags with global `mcp.*` config. Deny is unioned here and wins
@@ -227,7 +312,15 @@ export const dispatchMcpCommand = async (params: {
   readonly formatError: (error: unknown) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
-    return runWithRendererHandling(mcpListResult(params.registry, params.flags), {
+    const listEffect = Effect.gen(function* () {
+      const registry = yield* resolveRegistryForCommand(
+        params.registry,
+        params.flags,
+        params.retainedRuntime,
+      );
+      return yield* mcpListResult(registry, params.flags);
+    });
+    return runWithRendererHandling(listEffect, {
       runtime: params.commandRuntime,
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
@@ -239,9 +332,14 @@ export const dispatchMcpCommand = async (params: {
   }
 
   const exit = await Effect.runPromiseExit(
-    serveMcp(params.registry, params.flags, params.retainedRuntime).pipe(
-      Effect.provide(params.commandRuntime),
-    ),
+    Effect.gen(function* () {
+      const registry = yield* resolveRegistryForCommand(
+        params.registry,
+        params.flags,
+        params.retainedRuntime,
+      );
+      yield* serveMcp(registry, params.flags, params.retainedRuntime);
+    }).pipe(Effect.provide(params.commandRuntime)),
   );
   if (Exit.isSuccess(exit)) return;
   if (Exit.isInterrupted(exit)) return;
