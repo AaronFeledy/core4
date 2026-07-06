@@ -48,7 +48,7 @@ describe("buildRunLandoRequest", () => {
     });
     expect(request._tag).toBe("runLando");
     expect(request.argv).toEqual(["open", "--print"]);
-    expect(request.cwd).toBe("/app");
+    expect(String(request.cwd)).toBe("/app");
     expect(request.tty).toBe(false);
     expect(request.env).toEqual({ LANDO_APP: "demo", OPENCODE: "1" });
   });
@@ -81,6 +81,10 @@ describe("remapContainerCwd", () => {
 
   test("collapses parent-directory escapes back to the host root", () => {
     expect(remapContainerCwd("/app/../../.ssh", mount)).toBe("/home/u/site");
+  });
+
+  test("collapses mid-path parent-directory escapes back to the host root", () => {
+    expect(remapContainerCwd("/app/foo/../../etc/passwd", mount)).toBe("/home/u/site");
   });
 
   test("does not treat a sibling prefix as inside the mount", () => {

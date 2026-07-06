@@ -33,9 +33,9 @@ const safeRelativePath = (path: string): string | undefined => {
  * `hostRoot`.
  */
 export const remapContainerCwd = (containerCwd: string, mount: HostProxyMountInfo): string => {
-  const containerRoot = stripTrailingSlash(mount.containerRoot);
+  const containerRoot = stripTrailingSlash(posix.normalize(mount.containerRoot));
   const hostRoot = stripTrailingSlash(mount.hostRoot);
-  const cwd = stripTrailingSlash(containerCwd);
+  const cwd = stripTrailingSlash(posix.normalize(containerCwd));
 
   if (cwd === containerRoot) return hostRoot;
   const prefix = `${containerRoot}/`;
