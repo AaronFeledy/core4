@@ -154,4 +154,54 @@ describe("makeStdioMcpTransport", () => {
       },
     });
   });
+
+  test("writes an Invalid Request error when a request id is invalid", async () => {
+    const writes: string[] = [];
+    const input = inputFromMessages([{ jsonrpc: "2.0", id: { invalid: true }, method: "tools/list" }]);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* makeStdioMcpTransport({
+          catalog,
+          input,
+          write: (line) =>
+            Effect.sync(() => {
+              writes.push(line);
+            }),
+        });
+        while (writes.length < 1) yield* Effect.sleep("10 millis");
+      }).pipe(Effect.scoped),
+    );
+
+    expect(parseJsonObject(writes[0])).toMatchObject({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32600, message: "Invalid Request" },
+    });
+  });
+
+  test("writes an Invalid Request error when a request method omits id", async () => {
+    const writes: string[] = [];
+    const input = inputFromMessages([{ jsonrpc: "2.0", method: "tools/list" }]);
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* makeStdioMcpTransport({
+          catalog,
+          input,
+          write: (line) =>
+            Effect.sync(() => {
+              writes.push(line);
+            }),
+        });
+        while (writes.length < 1) yield* Effect.sleep("10 millis");
+      }).pipe(Effect.scoped),
+    );
+
+    expect(parseJsonObject(writes[0])).toMatchObject({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32600, message: "Invalid Request" },
+    });
+  });
 });

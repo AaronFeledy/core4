@@ -147,11 +147,13 @@ export const makeStdioMcpTransport = (
     const handleMessage = (message: JsonObject): Effect.Effect<void> => {
       const method = stringField(message, "method");
       if (method === undefined) return Effect.void;
-      const id = hasOwn(message, "id") ? jsonRpcIdFrom(message.id) : undefined;
+      const hasId = hasOwn(message, "id");
+      const id = hasId ? jsonRpcIdFrom(message.id) : undefined;
       const params = objectField(message, "params");
+      if (hasId && id === undefined) return writeError(null, -32600, "Invalid Request");
       if (method === "notifications/initialized") return Effect.void;
       if (method === "notifications/cancelled") return cancelToolCall(params);
-      if (id === undefined) return Effect.void;
+      if (id === undefined) return writeError(null, -32600, "Invalid Request");
       switch (method) {
         case "initialize":
           return writeJson(
