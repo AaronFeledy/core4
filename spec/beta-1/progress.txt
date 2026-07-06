@@ -44,6 +44,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 17:53 CDT - US-404 Review
+- Review fixed the remaining discovered-file provenance gap: `.lando.ts` discovery without includes now attributes `lando:` constraint errors to the discovered `.lando.ts` path instead of the `.lando.yml` fallback.
+- Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
+- Verification: typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed.
+---
+
 ## 2026-07-06 17:47 CDT - US-404 Review
 - Review fixed post-Bugbot follow-ups: decoded Landofile shape selectors now enforce `lando:` before planning, and explicit Landofile file loads pass their selected path into version-constraint parse/runtime errors.
 - Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
