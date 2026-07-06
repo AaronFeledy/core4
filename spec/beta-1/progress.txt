@@ -44,6 +44,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 17:58 CDT - US-404 Review
+- Review closed with post-fix Bugbot clean after repairing accumulated include constraints, shape-selector enforcement, and discovered `.lando.ts` source provenance.
+- Review notes (deferred/rejected): review-work reports were generated against the original build commit, so their accumulation/shape/source findings are stale after the review commits; full six-file Landofile discovery, full npm-semver grammar support, schema-level range predicates, and structured machine-warning plumbing remain broader spec gaps not safely added as review-step repairs on this branch.
+- Verification: final Bugbot reported no bugs; typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed after the final code fix.
+---
+
 ## 2026-07-06 17:53 CDT - US-404 Review
 - Review fixed the remaining discovered-file provenance gap: `.lando.ts` discovery without includes now attributes `lando:` constraint errors to the discovered `.lando.ts` path instead of the `.lando.yml` fallback.
 - Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
