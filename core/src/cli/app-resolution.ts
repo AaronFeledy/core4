@@ -68,6 +68,7 @@ export const assertUserAppIdNotReserved = (
 export interface LandoVersionConstraintOptions {
   readonly runningVersion?: string;
   readonly env?: NodeJS.ProcessEnv;
+  readonly sourcePath?: string;
 }
 
 const RANGE_SYNTAX_REMEDIATION = 'Use a valid semver range such as ">=4.1 <5", "^4.0.0", or "~4.1".';
@@ -97,7 +98,7 @@ export const assertLandoVersionConstraint = (
   landofile: LandofileShape,
   options?: LandoVersionConstraintOptions,
 ): Effect.Effect<void, LandofileParseError | LandofileVersionConstraintError> => {
-  const constraints = getVersionConstraintEntries(landofile, LANDOFILE_NAME);
+  const constraints = getVersionConstraintEntries(landofile, options?.sourcePath ?? LANDOFILE_NAME);
   if (constraints.length === 0) return Effect.void;
 
   const runningVersion = options?.runningVersion ?? CORE_VERSION;
@@ -168,7 +169,7 @@ export const loadUserLandofileFile = (filePath: string): Effect.Effect<Landofile
       return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath), sourcePath: filePath });
     }),
     Effect.tap(assertUserAppIdNotReserved),
-    Effect.tap((landofile) => assertLandoVersionConstraint(landofile)),
+    Effect.tap((landofile) => assertLandoVersionConstraint(landofile, { sourcePath: filePath })),
   );
 
 const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>

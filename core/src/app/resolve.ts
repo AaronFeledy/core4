@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { Effect, ExecutionStrategy, Scope } from "effect";
 
@@ -9,6 +9,7 @@ import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sd
 
 import {
   type ResolvedAppTarget,
+  assertLandoVersionConstraint,
   assertUserAppIdNotReserved,
   loadUserLandofileAt,
   loadUserLandofileFile,
@@ -77,8 +78,10 @@ const planFromShape = (
   appRoot: string,
 ): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
-    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot });
+    const sourcePath = join(appRoot, ".lando.yml");
+    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath });
     yield* assertUserAppIdNotReserved(landofile);
+    yield* assertLandoVersionConstraint(landofile, { sourcePath });
     return yield* planResolvedLandofile(landofile, appRoot);
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
 
