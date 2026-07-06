@@ -214,6 +214,7 @@ describe("doctor summary", () => {
     },
     subsystems: { checks: [] },
     globalApp: { checks: [] },
+    mcp: { checks: [] },
   } as unknown as DoctorReport;
 
   test("frames grouped doctor checks and preserves redaction markers", () => {
@@ -234,6 +235,7 @@ describe("doctor summary", () => {
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
+      mcp: { checks: [] },
       deprecations: {
         entries: [
           {
@@ -256,6 +258,7 @@ describe("doctor summary", () => {
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
+      mcp: { checks: [] },
       appConfig: {
         app: "demo",
         file: "/tmp/demo/.lando.yml",
