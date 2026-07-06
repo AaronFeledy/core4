@@ -18,6 +18,7 @@ import {
   type LandofileSandboxError,
   type LandofileTimeoutError,
   type LandofileValidationError,
+  type LandofileVersionConstraintError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
@@ -127,6 +128,7 @@ export type ShellAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

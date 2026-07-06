@@ -13,6 +13,7 @@ Public Lando schema contract for Landofile Shape.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `name` | No | `string` | — | — | — | — | — |
 | `runtime` | No | `number` | — | — | `4` | — | — |
+| `lando` | No | `string` | Semver range the running Lando core version must satisfy before the app is planned or started (e.g. "&gt;=4.1 &lt;5"). Prereleases are included; unsatisfied constraints fail closed with remediation. | — | — | — | — |
 | `recipe` | No | `string` | — | — | — | — | — |
 | `provider` | No | `string` | — | — | — | — | — |
 | `toolingEngine` | No | `string` | — | — | — | — | — |

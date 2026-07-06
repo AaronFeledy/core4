@@ -61,6 +61,22 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
 ) {}
 
 /**
+ * The running Lando core version does not satisfy the top-level
+ * `lando: <semver-range>` constraint. `constraints` carries every unsatisfied
+ * range paired with the source layer that declared it, alongside the running
+ * version and remediation.
+ */
+export class LandofileVersionConstraintError extends Schema.TaggedError<LandofileVersionConstraintError>()(
+  "LandofileVersionConstraintError",
+  {
+    message: Schema.String,
+    constraints: Schema.Array(Schema.Struct({ range: Schema.String, source: Schema.String })),
+    runningVersion: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+/**
  * A config write (`app config set/unset/edit`, `meta config set/unset/edit`,
  * `meta global config set/unset/edit`) was rejected because the resulting
  * document failed schema validation or the target path was malformed. The

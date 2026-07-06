@@ -381,6 +381,7 @@
 - `LandofileExpressionParseError`
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
+- `LandofileVersionConstraintError`
 - `ManagedFileError`
 - `RemoteError`
 - `RemoteUnreachableError`
