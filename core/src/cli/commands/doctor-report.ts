@@ -34,6 +34,13 @@ import {
   renderGlobalAppDoctorResult,
   renderGlobalAppDoctorResultAsNdjson,
 } from "./doctor-global-app.ts";
+import {
+  DefaultMcpDoctorLayer,
+  type McpDoctorResult,
+  mcpDoctor,
+  renderMcpDoctorResult,
+  renderMcpDoctorResultAsNdjson,
+} from "./doctor-mcp.ts";
 import { DoctorNdjsonSummarySchema } from "./doctor-ndjson.ts";
 import {
   DefaultSubsystemDoctorLayer,
@@ -55,6 +62,7 @@ export interface DoctorReport {
   readonly provider: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
+  readonly mcp: McpDoctorResult;
   readonly deprecations?: DoctorDeprecationReport;
   /** Present only under `lando doctor --app`; reuses the `app:config:lint` pass. */
   readonly appConfig?: ConfigLintResult;
@@ -139,6 +147,16 @@ const GlobalAppDoctorCheckSchema = Schema.Struct({
 const GlobalAppDoctorResultSchema = Schema.Struct({
   checks: Schema.Array(GlobalAppDoctorCheckSchema),
 });
+const McpDoctorCheckSchema = Schema.Struct({
+  name: Schema.Literal("mcp"),
+  status: DoctorStatusSchema,
+  severity: DoctorSeveritySchema,
+  context: Schema.Record({ key: Schema.String, value: Schema.String }),
+  solutions: Schema.Array(DoctorSolutionSchema),
+});
+const McpDoctorResultSchema = Schema.Struct({
+  checks: Schema.Array(McpDoctorCheckSchema),
+});
 const DoctorDeprecationEntrySchema = Schema.Struct({
   kind: DeprecationSurfaceKind,
   id: Schema.String,
@@ -159,6 +177,7 @@ export const DoctorReportSchema = Schema.Struct({
   provider: DoctorResultSchema,
   subsystems: SubsystemDoctorResultSchema,
   globalApp: GlobalAppDoctorResultSchema,
+  mcp: McpDoctorResultSchema,
   deprecations: Schema.optional(DoctorDeprecationReportSchema),
   appConfig: Schema.optional(ConfigLintResult),
 });
@@ -222,12 +241,14 @@ export const doctorReport = (
       Effect.provide(DefaultSubsystemDoctorLayer),
     );
     const globalApp = yield* globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer));
+    const mcp = yield* mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer));
     const deprecations = options.deprecations === true ? yield* doctorDeprecations() : undefined;
     const appConfig = options.app === true ? yield* appConfigForReport() : undefined;
     return {
       provider,
       subsystems,
       globalApp,
+      mcp,
       ...(deprecations === undefined ? {} : { deprecations }),
       ...(appConfig === undefined ? {} : { appConfig }),
     };
@@ -299,7 +320,12 @@ const appConfigSection = (result: ConfigLintResult): SummarySection => ({
 });
 
 const countByStatus = (report: DoctorReport): { readonly checks: number; readonly failed: number } => {
-  const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
+  const checks = [
+    ...report.provider.checks,
+    ...report.subsystems.checks,
+    ...report.globalApp.checks,
+    ...report.mcp.checks,
+  ];
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1),
@@ -312,6 +338,7 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
     checkSection("provider", report.provider.checks),
     checkSection("subsystems", report.subsystems.checks),
     checkSection("global app", report.globalApp.checks),
+    checkSection("mcp", report.mcp.checks),
   ];
   if (report.deprecations !== undefined) sections.push(deprecationsSection(report.deprecations));
   if (report.appConfig !== undefined) sections.push(appConfigSection(report.appConfig));
@@ -331,10 +358,13 @@ export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): s
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
   const globalApp = renderGlobalAppDoctorResult(report.globalApp);
+  const mcp = renderMcpDoctorResult(report.mcp);
   const deprecations =
     report.deprecations === undefined ? "" : renderDeprecationsSection(report.deprecations);
   const appConfig = report.appConfig === undefined ? "" : renderAppConfigSection(report.appConfig);
-  const parts = [provider, subsystems, globalApp, deprecations, appConfig].filter((part) => part.length > 0);
+  const parts = [provider, subsystems, globalApp, mcp, deprecations, appConfig].filter(
+    (part) => part.length > 0,
+  );
   return parts.join("\n");
 };
 
@@ -424,10 +454,16 @@ export const renderDoctorReportAsNdjson = (
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
     ...checkLinesFromNdjson(renderGlobalAppDoctorResultAsNdjson(report.globalApp, { now })),
+    ...checkLinesFromNdjson(renderMcpDoctorResultAsNdjson(report.mcp, { now })),
   );
   if (report.deprecations !== undefined) lines.push(deprecationsCheckLine(report.deprecations));
   if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
-  const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
+  const checks = [
+    ...report.provider.checks,
+    ...report.subsystems.checks,
+    ...report.globalApp.checks,
+    ...report.mcp.checks,
+  ];
   const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const summary = {

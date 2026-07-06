@@ -7014,6 +7014,63 @@
           "required": ["checks"],
           "type": "object"
         },
+        "mcp": {
+          "additionalProperties": false,
+          "properties": {
+            "checks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "context": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "enum": ["mcp"],
+                    "type": "string"
+                  },
+                  "severity": {
+                    "enum": ["info", "warn", "error"],
+                    "type": "string"
+                  },
+                  "solutions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": ["automatic", "manual"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["kind", "description"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": ["pass", "warn", "fail"],
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "status", "severity", "context", "solutions"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["checks"],
+          "type": "object"
+        },
         "provider": {
           "additionalProperties": false,
           "properties": {
@@ -7221,7 +7278,7 @@
           "type": "object"
         }
       },
-      "required": ["provider", "subsystems", "globalApp"],
+      "required": ["provider", "subsystems", "globalApp", "mcp"],
       "type": "object"
     },
     "meta:events:follow": {
