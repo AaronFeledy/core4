@@ -66,7 +66,10 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
-    const env = withAgentContextEnv(invocation.env, process.env, { lowerThanEnv: service.environment });
+    const env = withAgentContextEnv(invocation.env, process.env, {
+      lowerThanEnv: service.environment,
+      ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
+    });
     let exitCode = 0;
     let stdout = "";
     let stderr = "";

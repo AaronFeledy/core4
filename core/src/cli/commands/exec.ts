@@ -2,22 +2,24 @@ import { Effect } from "effect";
 
 import type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
+  type ConfigService,
   type ExecTarget,
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../../config/agent-env.ts";
-import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
 
 export type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 
-export type ExecAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
 const availableServiceList = (services: AppPlan["services"]): string =>
   Object.values(services)
@@ -83,13 +85,16 @@ export const execApp = (
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
 
-    const plan =
-      appTarget?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+    let plan: AppPlan;
+    let landofile: LandofileShape | undefined;
+    if (appTarget?.plan !== undefined) {
+      plan = appTarget.plan;
+      landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
+    } else {
+      landofile = yield* loadUserLandofile(landofileService);
+      const capabilities = yield* registry.capabilities;
+      plan = yield* planner.plan(landofile, capabilities);
+    }
 
     // Resolve service before selecting provider so an invalid --service
     // returns ToolingExecError with the available list instead of a
@@ -102,7 +107,11 @@ export const execApp = (
       plan,
       ...(options.user === undefined ? {} : { user: options.user }),
     };
-    const env = withAgentContextEnv(options.env, process.env, { lowerThanEnv: service.environment });
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile?.agentEnv, process.env);
+    const env = withAgentContextEnv(options.env, process.env, {
+      allowlist,
+      lowerThanEnv: service.environment,
+    });
     const spec: CommandSpec = {
       command: options.command,
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),

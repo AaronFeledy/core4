@@ -16,8 +16,15 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanner,
+  type ConfigService,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+
+import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -168,7 +175,13 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeInfoLayer = (state: "running" | "stopped") => {
+const makeInfoLayer = (
+  state: "running" | "stopped",
+  options?: {
+    readonly landofile?: { readonly agentEnv?: boolean };
+    readonly config?: Layer.Layer<ConfigService>;
+  },
+) => {
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
@@ -218,13 +231,16 @@ const makeInfoLayer = (state: "running" | "stopped") => {
   };
 
   return Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-info", services: {} }) }),
+    Layer.succeed(LandofileService, {
+      discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
+    }),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
     }),
+    options?.config ?? emptyConfigServiceLayer,
   );
 };
 
@@ -259,5 +275,102 @@ describe("lando info", () => {
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
+  });
+});
+
+describe("lando info --deep — agent-context env audit", () => {
+  const offKey = "LANDO_AGENT_ENV";
+  const withAgentEnvOff = async <A>(value: string | undefined, run: () => Promise<A>): Promise<A> => {
+    const saved = process.env[offKey];
+    if (value === undefined) delete process.env[offKey];
+    else process.env[offKey] = value;
+    try {
+      return await run();
+    } finally {
+      if (saved === undefined) delete process.env[offKey];
+      else process.env[offKey] = saved;
+    }
+  };
+
+  test("omits the agentEnv audit without --deep", async () => {
+    const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
+    expect(result.agentEnv).toBeUndefined();
+  });
+
+  test("reports the resolved built-in allowlist as enabled", async () => {
+    const result = await withAgentEnvOff(undefined, () =>
+      Effect.runPromise(infoApp({ deep: true }).pipe(Effect.provide(makeInfoLayer("running")))),
+    );
+    expect(result.agentEnv?.enabled).toBe(true);
+    expect([...(result.agentEnv?.forwarded ?? [])]).toEqual([
+      "CLAUDECODE",
+      "CLAUDE_CODE",
+      "CURSOR_AGENT",
+      "OPENCODE",
+      "COPILOT_CLI",
+      "GEMINI_CLI",
+      "AGENT",
+      "CI",
+    ]);
+    const rendered = renderInfoAppResult(result);
+    expect(rendered).toContain("agent-env\tenabled");
+    expect(rendered).toContain("CLAUDECODE");
+  });
+
+  test("reports built-ins plus allow minus deny", async () => {
+    const result = await withAgentEnvOff(undefined, () =>
+      Effect.runPromise(
+        infoApp({ deep: true }).pipe(
+          Effect.provide(
+            makeInfoLayer("running", {
+              config: agentEnvConfigServiceLayer({ allow: ["FOO_TOKEN"], deny: ["CI"] }),
+            }),
+          ),
+        ),
+      ),
+    );
+    expect(result.agentEnv?.enabled).toBe(true);
+    expect(result.agentEnv?.forwarded).toContain("FOO_TOKEN");
+    expect(result.agentEnv?.forwarded).not.toContain("CI");
+  });
+
+  test("reports disabled + empty when the app opts out via agentEnv:false", async () => {
+    const result = await withAgentEnvOff(undefined, () =>
+      Effect.runPromise(
+        infoApp({ deep: true }).pipe(
+          Effect.provide(makeInfoLayer("running", { landofile: { agentEnv: false } })),
+        ),
+      ),
+    );
+    expect(result.agentEnv?.enabled).toBe(false);
+    expect(result.agentEnv?.forwarded).toEqual([]);
+    expect(renderInfoAppResult(result)).toContain("agent-env\tdisabled");
+  });
+
+  test("deep resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+    const result = await withAgentEnvOff(undefined, () =>
+      Effect.runPromise(
+        infoApp(
+          { deep: true },
+          {
+            plan,
+            root: process.cwd(),
+            app: { kind: "user", id: plan.id, root: plan.root },
+            landofile: { name: "test-info" },
+          },
+        ).pipe(Effect.provide(makeInfoLayer("running", { landofile: { agentEnv: false } }))),
+      ),
+    );
+
+    expect(result.agentEnv?.enabled).toBe(false);
+    expect(result.agentEnv?.forwarded).toEqual([]);
+  });
+
+  test("reports disabled when LANDO_AGENT_ENV=0", async () => {
+    const result = await withAgentEnvOff("0", () =>
+      Effect.runPromise(infoApp({ deep: true }).pipe(Effect.provide(makeInfoLayer("running")))),
+    );
+    expect(result.agentEnv?.enabled).toBe(false);
+    expect(result.agentEnv?.forwarded).toEqual([]);
   });
 });

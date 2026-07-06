@@ -48,3 +48,15 @@ export class ConfigTranslateNoTranslatorsError extends Schema.TaggedError<Config
     remediation: Schema.optional(Schema.String),
   },
 ) {}
+
+/**
+ * Raised at config validation when `agentEnv.allow`/`agentEnv.deny` contain
+ * wildcard or pattern entries instead of exact env-var names. Pattern
+ * forwarding is how host secrets leak into containers by accident, so the
+ * allowlist is exact-name only. Carries the offending names for remediation.
+ */
+export class AgentEnvPatternError extends Schema.TaggedError<AgentEnvPatternError>()("AgentEnvPatternError", {
+  message: Schema.String,
+  patterns: Schema.Array(Schema.String),
+  remediation: Schema.optional(Schema.String),
+}) {}

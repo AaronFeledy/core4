@@ -336,6 +336,7 @@ const LandofileShapeBase = Schema.Struct({
   recipe: Schema.optional(Schema.String),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
+  agentEnv: Schema.optional(Schema.Boolean),
   version: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),
   include: Schema.optional(Schema.Array(Schema.String)),

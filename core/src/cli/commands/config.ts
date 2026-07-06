@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { Effect, Either, Schema } from "effect";
 
 import {
+  AgentEnvPatternError,
   ConfigError,
   type LandoCommandError,
   LandofileWriteValidationError,
@@ -14,6 +15,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
+import { findAgentEnvPatternNames } from "../../config/agent-env.ts";
 import { envOverlay, resolveConfigFileRoot } from "../../config/overlay.ts";
 import { resolveUserConfRoot } from "../../config/roots.ts";
 import { parseMinimalYaml } from "../../config/yaml-min.ts";
@@ -313,6 +315,22 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
 
 const decodeGlobalConfig = Schema.decodeUnknownEither(GlobalConfig);
 
+const agentEnvPatternError = (
+  decoded: ReturnType<typeof decodeGlobalConfig>,
+): AgentEnvPatternError | undefined => {
+  if (Either.isLeft(decoded)) return undefined;
+  const agentEnv = decoded.right.agentEnv;
+  if (agentEnv === undefined) return undefined;
+  const patterns = findAgentEnvPatternNames([...(agentEnv.allow ?? []), ...(agentEnv.deny ?? [])]);
+  if (patterns.length === 0) return undefined;
+  return new AgentEnvPatternError({
+    message: `agentEnv allow/deny entries must be exact env-var names, not patterns: ${patterns.join(", ")}.`,
+    patterns,
+    remediation:
+      "Replace wildcard or pattern entries with exact env-var names (e.g. CLAUDE_CODE, not CLAUDE_*).",
+  });
+};
+
 const configValidationError = (
   path: string,
   issues: ReadonlyArray<string>,
@@ -322,7 +340,7 @@ const configValidationError = (
 
 const metaConfigSet = (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
   Effect.gen(function* () {
     const key = options.key ?? options.path;
     const raw = options.value;
@@ -342,8 +360,11 @@ const metaConfigSet = (
     const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
     if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
     const next = mutation.right.next;
-    const issues = decodeIssues(decodeGlobalConfig(next));
+    const decoded = decodeGlobalConfig(next);
+    const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+    const patternError = agentEnvPatternError(decoded);
+    if (patternError !== undefined) return yield* Effect.fail(patternError);
     const dryRun = options.dryRun === true;
     if (!dryRun) {
       const emitted = emitConfigYaml({ file: path, value: next, path: key });
@@ -363,7 +384,7 @@ const metaConfigSet = (
 
 const metaConfigUnset = (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
   Effect.gen(function* () {
     const key = options.key ?? options.path;
     if (key === undefined) {
@@ -381,8 +402,11 @@ const metaConfigUnset = (
     const mutation = applyUnsetMutation({ tree, key, file: path });
     if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
     const next = mutation.right.next;
-    const issues = decodeIssues(decodeGlobalConfig(next));
+    const decoded = decodeGlobalConfig(next);
+    const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+    const patternError = agentEnvPatternError(decoded);
+    if (patternError !== undefined) return yield* Effect.fail(patternError);
     const dryRun = options.dryRun === true;
     if (!dryRun && mutation.right.changed) {
       const emitted = emitConfigYaml({ file: path, value: next, path: key });
@@ -401,12 +425,15 @@ const metaConfigUnset = (
 
 const metaConfigValidate = (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
   Effect.gen(function* () {
     const path = resolveConfigWritePath(options);
     const tree = yield* readConfigTree(path);
-    const issues = decodeIssues(decodeGlobalConfig(tree));
+    const decoded = decodeGlobalConfig(tree);
+    const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+    const patternError = agentEnvPatternError(decoded);
+    if (patternError !== undefined) return yield* Effect.fail(patternError);
     return {
       subcommand: "validate",
       valid: true,
@@ -418,7 +445,7 @@ const metaConfigValidate = (
 
 const metaConfigEdit = (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError> =>
+): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
   Effect.gen(function* () {
     const path = resolveConfigWritePath(options);
     const content = yield* readConfigText(path);
@@ -461,8 +488,11 @@ const metaConfigEdit = (
           remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
         }),
     });
-    const issues = decodeIssues(decodeGlobalConfig(parsed));
+    const decoded = decodeGlobalConfig(parsed);
+    const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+    const patternError = agentEnvPatternError(decoded);
+    if (patternError !== undefined) return yield* Effect.fail(patternError);
     yield* writeConfigAtomic(path, edited.content);
     return {
       subcommand: "edit",
@@ -477,7 +507,11 @@ export const config = (
   options: ConfigOptions = {},
 ): Effect.Effect<
   ConfigResult,
-  ConfigError | LandoCommandError | LandofileWriteValidationError | NotImplementedError,
+  | ConfigError
+  | LandoCommandError
+  | LandofileWriteValidationError
+  | NotImplementedError
+  | AgentEnvPatternError,
   ConfigService
 > =>
   Effect.gen(function* () {

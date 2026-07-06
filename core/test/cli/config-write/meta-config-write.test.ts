@@ -107,12 +107,69 @@ describe("meta config set (S4)", () => {
   });
 });
 
+describe("meta config agentEnv wildcard rejection (S2)", () => {
+  test("set of a wildcard allow name fails with AgentEnvPatternError, file untouched", async () => {
+    await seed("renderer: json\n");
+    const before = await readConfig();
+    const result = await exit(
+      config({
+        subcommand: "set",
+        key: "agentEnv.allow",
+        value: '["CLAUDE_*"]',
+        type: "json",
+        configPath: configPath(),
+      }),
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const text = result.cause.toString();
+      expect(text).toContain("AgentEnvPatternError");
+      expect(text).toContain("CLAUDE_*");
+    }
+    expect(await readConfig()).toBe(before);
+  });
+
+  test("set of an exact allow name succeeds", async () => {
+    const result = await run(
+      config({
+        subcommand: "set",
+        key: "agentEnv.allow",
+        value: '["FOO_TOKEN"]',
+        type: "json",
+        configPath: configPath(),
+      }),
+    );
+    expect(result.changed).toBe(true);
+    expect(await readConfig()).toContain("FOO_TOKEN");
+  });
+
+  test("validate rejects a hand-written wildcard deny name with AgentEnvPatternError", async () => {
+    await seed("agentEnv:\n  deny:\n    - BAD*\n");
+    const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("AgentEnvPatternError");
+  });
+});
+
 describe("meta config unset", () => {
   test("removes a key", async () => {
     await run(config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }));
     const result = await run(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
     expect(result.changed).toBe(true);
     expect(await readConfig()).not.toContain("renderer");
+  });
+
+  test("rejects a remaining wildcard agentEnv entry with AgentEnvPatternError, file untouched", async () => {
+    await seed("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\nrenderer: json\n");
+    const before = await readConfig();
+    const result = await exit(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const text = result.cause.toString();
+      expect(text).toContain("AgentEnvPatternError");
+      expect(text).toContain("CLAUDE_*");
+    }
+    expect(await readConfig()).toBe(before);
   });
 
   test("--path is honored when no positional key is given", async () => {

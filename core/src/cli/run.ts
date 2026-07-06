@@ -632,9 +632,9 @@ const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const runInfo = (): Promise<void> =>
+const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
   runCompiledCommand(
-    infoApp(),
+    infoApp({ deep: argv.includes("--deep") }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderInfoAppResult,
   );
@@ -2050,7 +2050,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "info" || argv[0] === "app:info") {
-    await runInfo();
+    await runInfo(argv.slice(1));
     return;
   }
 

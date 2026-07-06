@@ -46,6 +46,46 @@ export const McpConfig = Schema.Struct({
 });
 export type McpConfig = typeof McpConfig.Type;
 
+export const AgentEnvConfig = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean).annotations({
+    description:
+      "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+  }),
+  allow: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description:
+      "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+  }),
+  deny: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+  }),
+}).annotations({
+  jsonSchema: {
+    type: "object",
+    required: [],
+    additionalProperties: false,
+    properties: {
+      enabled: {
+        type: "boolean",
+        default: true,
+        description:
+          "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
+      },
+      allow: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
+      },
+      deny: {
+        type: "array",
+        items: { type: "string" },
+        description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
+      },
+    },
+  },
+});
+export type AgentEnvConfig = typeof AgentEnvConfig.Type;
+
 /**
  * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
  * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
@@ -68,6 +108,9 @@ export const GlobalConfig = Schema.Struct({
   network: Schema.optional(NetworkConfig),
   mcp: Schema.optional(McpConfig).annotations({
     description: "Global MCP command exposure policy (global mcp).",
+  }),
+  agentEnv: Schema.optional(AgentEnvConfig).annotations({
+    description: "Global host agent-context env forwarding policy (global agentEnv).",
   }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

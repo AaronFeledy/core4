@@ -788,6 +788,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        deep: {
+          description: "Include the resolved host agent-context env forwarding allowlist.",
+          name: "deep",
+          allowNo: false,
+          type: "boolean",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,

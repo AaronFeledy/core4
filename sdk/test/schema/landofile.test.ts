@@ -347,6 +347,13 @@ describe("GlobalConfig (MVP)", () => {
     expect(decoded.telemetry?.enabled).toBe(true);
   });
 
+  test("agentEnv.enabled is documented as default true in the public schema", () => {
+    const jsonSchema = getJsonSchema("AgentEnvConfig") as {
+      readonly properties?: { readonly enabled?: { readonly default?: unknown } };
+    };
+    expect(jsonSchema.properties?.enabled?.default).toBe(true);
+  });
+
   test("decodes an empty object (every field is optional at MVP)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({});
     expect(decoded.telemetry.enabled).toBe(true);

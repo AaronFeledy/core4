@@ -21,6 +21,7 @@ import {
 } from "@lando/core/services";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
+import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -186,6 +187,7 @@ const makeLayer = (options: {
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
     }),
+    emptyConfigServiceLayer,
   );
 
 describe("execApp — provider-exec scenarios (US-022)", () => {
@@ -453,5 +455,112 @@ describe("execApp — host agent-context env forwarding", () => {
     );
 
     expect(calls[0]?.env).toEqual({ CLAUDECODE: "1" });
+  });
+
+  test("global agentEnv.allow forwards an extra name and agentEnv.deny suppresses a built-in", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const fooKey = "FOO_TOKEN";
+    const savedFoo = process.env[fooKey];
+    process.env[fooKey] = "tok";
+    try {
+      await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(
+          execApp({ service: "appserver", command: ["env"] }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                makeLayer({ landofile: { name: "scenario" }, plan, provider }),
+                agentEnvConfigServiceLayer({ allow: ["FOO_TOKEN"], deny: ["CI"] }),
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (savedFoo === undefined) delete process.env[fooKey];
+      else process.env[fooKey] = savedFoo;
+    }
+
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1", FOO_TOKEN: "tok" });
+  });
+
+  test("Landofile agentEnv:false opts the app out of all forwarding", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario", agentEnv: false }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toBeUndefined();
+  });
+
+  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp(
+          { service: "appserver", command: ["env"] },
+          {
+            plan,
+            root: process.cwd(),
+            app: { kind: "user", id: plan.id, root: plan.root },
+            landofile: { name: "scenario" },
+          },
+        ).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario", agentEnv: false }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toBeUndefined();
+  });
+
+  test("LANDO_AGENT_ENV=0 disables forwarding for a single invocation", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const offKey = "LANDO_AGENT_ENV";
+    const saved = process.env[offKey];
+    process.env[offKey] = "0";
+    try {
+      await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+        Effect.runPromise(
+          execApp({ service: "appserver", command: ["env"] }).pipe(
+            Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+          ),
+        ),
+      );
+    } finally {
+      if (saved === undefined) delete process.env[offKey];
+      else process.env[offKey] = saved;
+    }
+
+    expect(calls[0]?.env).toBeUndefined();
+  });
+
+  test("global agentEnv.enabled:false disables forwarding", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ CLAUDECODE: "1", CI: "true", AGENT: undefined }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              makeLayer({ landofile: { name: "scenario" }, plan, provider }),
+              agentEnvConfigServiceLayer({ enabled: false }),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toBeUndefined();
   });
 });
