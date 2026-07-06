@@ -831,6 +831,21 @@ Flags:
 | --- | --- |
 | `--purge` | Also remove global service provider resources and data volumes before clearing services. |
 
+## `lando meta:mcp`
+
+Serve the Model Context Protocol over stdio, or --list the effective tool catalog.
+
+Aliases: `lando mcp`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--allow` | Allow a command id as an MCP tool; repeat to allow multiple commands. |
+| `--deny` | Deny a command id from the effective MCP tool catalog; repeat to deny multiple commands. |
+| `--list` | Print the effective MCP tool catalog instead of serving stdio MCP. |
+| `--tooling` | Include tooling-task MCP tools in the effective catalog. |
+
 ## `lando meta:plugin:add`
 
 Install a plugin (npm source) with manifest validation and trust prompt.
