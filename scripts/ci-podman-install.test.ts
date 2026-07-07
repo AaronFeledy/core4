@@ -96,6 +96,7 @@ describe("generated workflows carry the Podman 6 host contract", () => {
           .map((marker) => contents.indexOf(marker))
           .filter((index) => index >= 0),
       );
+      expect(firstPodmanUse).toBeGreaterThan(0);
       expect(assertIndex).toBeLessThan(firstPodmanUse);
     });
   }
