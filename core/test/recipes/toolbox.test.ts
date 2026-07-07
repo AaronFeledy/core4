@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Effect } from "effect";
 
-import { parse } from "yaml";
-
 import { TOOLBOX_RECIPE_ID, toolboxRecipeYaml } from "../../src/recipes/builtin/toolbox/manifest.ts";
-import { toolboxRenderer } from "../../src/recipes/builtin/toolbox/render.ts";
+import { TOOLBOX_IMAGE, toolboxRenderer } from "../../src/recipes/builtin/toolbox/render.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -35,14 +33,10 @@ describe("toolbox canonical recipe", () => {
     const files = toolboxRenderer.render({ appName: "toolbox-canon", answers: { name: "toolbox-canon" } });
     const landofile = files.get(".lando.yml");
     expect(landofile).toBeDefined();
-    const parsed = parse(landofile ?? "") as {
-      services?: Record<string, { type?: string; image?: string }>;
-    };
-    const services = Object.entries(parsed.services ?? {});
-    expect(services).toHaveLength(1);
-    const [, service] = services[0] as [string, { type?: string; image?: string }];
-    expect(service.type).toBe("lando");
+    expect(landofile).toContain("services:\n  toolbox:\n    type: lando\n");
+    expect(landofile?.match(/^ {2}[A-Za-z0-9_-]+:$/gm)).toHaveLength(1);
     // Version-pinned: an explicit tag that is not `latest`.
-    expect(service.image).toMatch(/:[0-9][A-Za-z0-9_.-]*$/);
+    expect(TOOLBOX_IMAGE).toMatch(/:[0-9][A-Za-z0-9_.-]*$/);
+    expect(landofile).toContain(`    image: ${TOOLBOX_IMAGE}\n`);
   });
 });
