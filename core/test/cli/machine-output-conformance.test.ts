@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Arbitrary, Effect, FastCheck, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
-import { CommandResultEnvelope, TunnelSession } from "@lando/sdk/schema";
+import { ScratchRunTargetError } from "@lando/sdk/errors";
+import { CommandResultEnvelope, StreamFrame, TunnelSession } from "@lando/sdk/schema";
 
 import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
@@ -145,5 +146,127 @@ describe("machine-output conformance", () => {
       expect(exitCode).toBe(1);
       expect(io.stderr()).toBe("");
     }
+  });
+
+  describe("apps:scratch:run streaming", () => {
+    const spec = specFor("apps:scratch:run");
+    const decodeFrame = (line: string): StreamFrame =>
+      Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+
+    const runScratchRunSpec = async (
+      effect: Effect.Effect<unknown, unknown>,
+      onExit?: (code: number) => void,
+    ) => {
+      const io = createBufferedRendererIO();
+      await runWithRendererHandling(effect, {
+        runtime: testRuntimeLayerFor(spec),
+        rendererMode: "json",
+        resultFormat: "json",
+        command: spec.id,
+        resultSchema: spec.resultSchema,
+        ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
+        ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+        ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
+        ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
+        io,
+        render: () => undefined,
+        formatError: (error) => `diagnostic: ${String(error)}`,
+        ...(onExit === undefined ? {} : { setExitCode: onExit }),
+      });
+      return io;
+    };
+
+    const successValue = (exitCode: number) => ({
+      scratchId: "scratch-toolbox-test",
+      service: "toolbox",
+      command: ["echo", "ok"],
+      exitCode,
+      kept: false,
+      stdout: "ok\n",
+      stderr: "warn\n",
+    });
+
+    test("success emits stdout/stderr frames terminated by a result frame with scratch id and exit code", async () => {
+      const io = await runScratchRunSpec(Effect.succeed(successValue(0)));
+      const frames = io.stdoutLines().map(decodeFrame);
+      expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "result"]);
+      const [stdout, stderr, result] = frames;
+      if (stdout?._tag !== "stdout" || stderr?._tag !== "stderr" || result?._tag !== "result") {
+        throw new Error("unexpected frame sequence");
+      }
+      expect(stdout.chunk).toBe("ok\n");
+      expect(stdout.service).toBe("toolbox");
+      expect(stderr.chunk).toBe("warn\n");
+      expect(result.envelope.ok).toBe(true);
+      expect(result.envelope.command).toBe("apps:scratch:run");
+      const payload = result.envelope.result as { scratchId: string; exitCode: number };
+      expect(payload.scratchId).toBe("scratch-toolbox-test");
+      expect(payload.exitCode).toBe(0);
+      expect(io.stderr()).toBe("");
+    });
+
+    test("a tagged command failure emits a single result frame with ok:false and exit 1", async () => {
+      let exitCode: number | undefined;
+      const io = await runScratchRunSpec(
+        Effect.fail(
+          new ScratchRunTargetError({
+            message: "Service nope is not defined by this recipe (available: toolbox).",
+            service: "nope",
+            available: ["toolbox"],
+            remediation: "Pass --service with one of: toolbox.",
+          }),
+        ),
+        (code) => {
+          exitCode = code;
+        },
+      );
+      const frames = io.stdoutLines().map(decodeFrame);
+      expect(frames.map((frame) => frame._tag)).toEqual(["result"]);
+      const [result] = frames;
+      if (result?._tag !== "result") throw new Error("expected a result frame");
+      expect(result.envelope.ok).toBe(false);
+      const error = result.envelope.error as { _tag: string } | undefined;
+      expect(error?._tag).toBe("ScratchRunTargetError");
+      expect(exitCode).toBe(1);
+    });
+
+    test("a non-zero tool exit stays ok:true in the result frame and propagates the exit code", async () => {
+      let exitCode: number | undefined;
+      const io = await runScratchRunSpec(Effect.succeed(successValue(7)), (code) => {
+        exitCode = code;
+      });
+      const frames = io.stdoutLines().map(decodeFrame);
+      const result = frames.at(-1);
+      if (result?._tag !== "result") throw new Error("expected a terminal result frame");
+      expect(result.envelope.ok).toBe(true);
+      const payload = result.envelope.result as { exitCode: number };
+      expect(payload.exitCode).toBe(7);
+      expect(exitCode).toBe(7);
+    });
+
+    test("forwarded agent env values are redacted from stream frames and the result envelope", async () => {
+      const secret = "opencode-forwarded-secret";
+      const io = await runScratchRunSpec(
+        Effect.succeed({
+          ...successValue(0),
+          stdout: `out:${secret}\n`,
+          stderr: `err:${secret}\n`,
+          redactionTokens: [secret],
+        }),
+      );
+      const output = io.stdout();
+      expect(output).not.toContain(secret);
+      expect(output).toContain("[redacted]");
+      const frames = io.stdoutLines().map(decodeFrame);
+      const [stdout, stderr, result] = frames;
+      if (stdout?._tag !== "stdout" || stderr?._tag !== "stderr" || result?._tag !== "result") {
+        throw new Error("unexpected frame sequence");
+      }
+      expect(stdout.chunk).toBe("out:[redacted]\n");
+      expect(stderr.chunk).toBe("err:[redacted]\n");
+      const payload = result.envelope.result as { readonly stdout: string; readonly stderr: string };
+      expect(payload.stdout).toBe("out:[redacted]\n");
+      expect(payload.stderr).toBe("err:[redacted]\n");
+    });
   });
 });

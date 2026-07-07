@@ -1,13 +1,16 @@
 import { Flags } from "@oclif/core";
 
+import { StreamFrame } from "@lando/sdk/schema";
 import {
   type ScratchRunResult,
   ScratchRunResultSchema,
   renderScratchRunResult,
   scratchRun,
   scratchRunOptionsFromInput,
+  scratchRunRedactionTokens,
   scratchRunSuccessExitCode,
 } from "../../../../commands/scratch-run.ts";
+import type { RenderContext } from "../../../../renderer-boundary.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
@@ -17,8 +20,19 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
   namespace: "apps",
   topLevelAlias: ["scratch:run", "run"],
   bootstrap: "scratch",
+  streaming: StreamFrame,
   run: (input) => scratchRun(scratchRunOptionsFromInput(input)),
-  render: (result) => renderScratchRunResult(result as ScratchRunResult),
+  streamFrames: (value) => {
+    const result = value as ScratchRunResult;
+    const frames = [];
+    if (result.stdout.length > 0)
+      frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
+    if (result.stderr.length > 0)
+      frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
+    return frames;
+  },
+  redactionTokens: (value) => scratchRunRedactionTokens(value as ScratchRunResult),
+  render: (result, ctx) => renderScratchRunResult(result as ScratchRunResult, ctx as RenderContext),
   successExitCode: (result) => scratchRunSuccessExitCode(result),
 };
 

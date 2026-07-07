@@ -1,17 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
+  type AppPlan,
+  LandofileShape,
+  type ProviderCapabilities,
+  ProviderId,
+  StreamFrame,
+} from "@lando/core/schema";
+import {
+  type ConfigService,
   type EventService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ScratchAcquireInput,
+  ScratchAppService,
 } from "@lando/core/services";
-import { Effect, Exit, Fiber, Layer, Stream } from "effect";
+import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import {
@@ -27,6 +35,9 @@ import {
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
+import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -34,13 +45,14 @@ import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
-import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
+import { ScratchAppServiceLive, readScratchLandofile } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { SecretStoreLive } from "../../src/services/secret-store.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
+import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -80,6 +92,7 @@ interface ExecCall {
   readonly command: ReadonlyArray<string>;
   readonly tty: boolean | undefined;
   readonly stdin: string | undefined;
+  readonly env: Readonly<Record<string, string>> | undefined;
 }
 
 interface DestroyCall {
@@ -98,6 +111,7 @@ interface HarnessOptions {
   readonly execStdout?: string;
   readonly execStderr?: string;
   readonly execNever?: boolean;
+  readonly configLayer?: Layer.Layer<ConfigService>;
 }
 
 const die = (operation: string) =>
@@ -137,6 +151,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
           command: spec.command,
           tty: spec.tty,
           stdin: spec.stdin,
+          env: spec.env,
         });
       });
       if (options.execNever === true) return record.pipe(Effect.zipRight(Effect.never));
@@ -193,7 +208,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       ),
     ),
   );
-  return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
+  return Layer.mergeAll(
+    scratchDeps,
+    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+    options.configLayer ?? ConfigServiceLive,
+  );
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
@@ -690,5 +709,256 @@ describe("scratch run rendering", () => {
   test("success exit code passes through only non-zero tool exits", () => {
     expect(scratchRunSuccessExitCode(baseResult)).toBeUndefined();
     expect(scratchRunSuccessExitCode({ ...baseResult, exitCode: 3 })).toBe(3);
+  });
+
+  test("human rendering includes captured tool stderr", () => {
+    expect(
+      renderScratchRunResult(
+        { ...baseResult, stderr: "warn\n" },
+        { mode: "plain", format: "text", columns: 80, isTTY: false },
+      ),
+    ).toBe("ok\nwarn");
+  });
+
+  test("json rendering leaves captured tool stderr for stream frames only", () => {
+    expect(
+      renderScratchRunResult(
+        { ...baseResult, stderr: "warn\n" },
+        { mode: "lando", format: "json", columns: 80, isTTY: false },
+      ),
+    ).toBe("ok");
+  });
+
+  test("json streaming does not duplicate captured tool stderr onto renderer stderr", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      const result = await Effect.runPromise(
+        scratchRun({
+          command: ["sh", "-c", "echo warn >&2"],
+          mount: true,
+          keep: false,
+          answers: {},
+          issues: [],
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provide(makeJsonRendererServiceLive(io)),
+        ),
+      );
+
+      expect(result.stderr).toBe("warn\n");
+      expect(io.stderr()).toBe("");
+    });
+  });
+});
+
+describe("scratch run agent env forwarding", () => {
+  const AGENT_KEYS = [
+    "CLAUDECODE",
+    "CLAUDE_CODE",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "COPILOT_CLI",
+    "GEMINI_CLI",
+    "AGENT",
+    "CI",
+    "LANDO_AGENT_ENV",
+  ] as const;
+
+  const withHostEnv = async <A>(
+    env: Record<string, string | undefined>,
+    run: () => Promise<A>,
+  ): Promise<A> => {
+    const saved = new Map<string, string | undefined>();
+    for (const key of AGENT_KEYS) saved.set(key, process.env[key]);
+    try {
+      for (const key of AGENT_KEYS) {
+        const value = env[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      return await run();
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+
+  const baseOptions = {
+    command: ["env"],
+    mount: true,
+    keep: false,
+    answers: {},
+    issues: [],
+  };
+
+  test("forwards present agent markers from the host env into the scratch exec", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      await withHostEnv({ OPENCODE: "1" }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions).pipe(
+            Effect.provide(makeHarnessLayer(recorded)),
+            Effect.provide(testSupportLayer()),
+          ),
+        ),
+      );
+      expect(recorded.execCalls).toHaveLength(1);
+      expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: "1" });
+    });
+  });
+
+  test("service environment wins: forwarded keys shadowed by the service env are dropped", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const deps = {
+        ...defaultScratchRunDeps,
+        acquireWithPlan: (input: ScratchAcquireInput) =>
+          defaultScratchRunDeps.acquireWithPlan(input).pipe(
+            Effect.map(({ handle, plan }) => {
+              const services = { ...plan.services };
+              for (const key of Object.keys(services) as Array<keyof typeof services>) {
+                const service = services[key];
+                if (service === undefined) continue;
+                services[key] = { ...service, environment: { ...service.environment, CI: "in-service" } };
+              }
+              return { handle, plan: { ...plan, services } };
+            }),
+          ),
+      };
+      await withHostEnv({ OPENCODE: "1", CI: "true" }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions, deps).pipe(
+            Effect.provide(makeHarnessLayer(recorded)),
+            Effect.provide(testSupportLayer()),
+          ),
+        ),
+      );
+      expect(recorded.execCalls[0]?.env).toEqual({ OPENCODE: "1" });
+    });
+  });
+
+  test("LANDO_AGENT_ENV=0 disables forwarding for the invocation", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      await withHostEnv({ OPENCODE: "1", LANDO_AGENT_ENV: "0" }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions).pipe(
+            Effect.provide(makeHarnessLayer(recorded)),
+            Effect.provide(testSupportLayer()),
+          ),
+        ),
+      );
+      expect(recorded.execCalls[0]?.env).toBeUndefined();
+    });
+  });
+
+  test("global agentEnv.enabled=false disables forwarding", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      await withHostEnv({ OPENCODE: "1" }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions).pipe(
+            Effect.provide(
+              makeHarnessLayer(recorded, { configLayer: agentEnvConfigServiceLayer({ enabled: false }) }),
+            ),
+            Effect.provide(testSupportLayer()),
+          ),
+        ),
+      );
+      expect(recorded.execCalls[0]?.env).toBeUndefined();
+    });
+  });
+
+  test("a rendered landofile agentEnv:false opt-out disables forwarding", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const optOutLandofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "toolbox",
+        agentEnv: false,
+      });
+      const deps = {
+        ...defaultScratchRunDeps,
+        readLandofile: () => Effect.succeed(optOutLandofile),
+      };
+      await withHostEnv({ OPENCODE: "1" }, () =>
+        Effect.runPromise(
+          scratchRun(baseOptions, deps).pipe(
+            Effect.provide(makeHarnessLayer(recorded)),
+            Effect.provide(testSupportLayer()),
+          ),
+        ),
+      );
+      expect(recorded.execCalls[0]?.env).toBeUndefined();
+    });
+  });
+});
+
+describe("readScratchLandofile", () => {
+  test("decodes the rendered scratch landofile including the agentEnv opt-out", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded);
+      const result = await Effect.runPromise(
+        scratchRun({
+          command: ["true"],
+          mount: true,
+          keep: true,
+          answers: {},
+          issues: [],
+        }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      const landofile = await Effect.runPromise(
+        readScratchLandofile(result.scratchId).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(landofile.name).toBeDefined();
+      expect(landofile.agentEnv).toBeUndefined();
+
+      const paths = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) => service.paths(result.scratchId)).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      const file = join(paths.root, ".lando.yml");
+      await writeFile(file, `${await readFile(file, "utf8")}\nagentEnv: false\n`);
+      const updated = await Effect.runPromise(
+        readScratchLandofile(result.scratchId).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(updated.agentEnv).toBe(false);
+    });
+  });
+});
+
+describe("scratch run streaming spec", () => {
+  const baseResult: ScratchRunResult = {
+    scratchId: "scratch-toolbox-abc123",
+    service: "toolbox",
+    command: ["echo", "ok"],
+    exitCode: 0,
+    kept: false,
+    stdout: "ok\n",
+    stderr: "warn\n",
+  };
+
+  test("declares the shared StreamFrame schema", () => {
+    expect(appsScratchRunSpec.streaming).toBe(StreamFrame);
+  });
+
+  test("maps stdout and stderr onto service-tagged stream frames", () => {
+    expect(appsScratchRunSpec.streamFrames?.(baseResult)).toEqual([
+      { _tag: "stdout", service: "toolbox", chunk: "ok\n" },
+      { _tag: "stderr", service: "toolbox", chunk: "warn\n" },
+    ]);
+    expect(appsScratchRunSpec.streamFrames?.({ ...baseResult, stdout: "", stderr: "" })).toEqual([]);
   });
 });

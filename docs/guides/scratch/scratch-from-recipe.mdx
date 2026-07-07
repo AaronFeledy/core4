@@ -25,6 +25,20 @@ tags: [beta, docs, scratch, recipe]
     </Step>
   </Scenario>
 
+  <Scenario id="scratch-recipe-run" render={false} reason="Scratch run creates a disposable recipe app, executes one command, streams output, and tears down provider resources, so this scenario documents the command surface without booting containers">
+    <Step name="run">
+      <Variable name="command" value="apps:scratch:run -- composer install" display="Runs the command tail in a disposable scratch app and exits with the tool command's exit code" />
+      <Variable name="alias" value="lando run -- composer install" display="The top-level run alias reaches the same disposable scratch execution path" />
+      <Variable name="defaultRecipe" value="toolbox" display="When --from is omitted, scratch run uses the bundled toolbox recipe instead of the current app" />
+      <Variable name="from" value="--from lamp" display="Overrides the recipe used for the disposable scratch app before the command is executed" />
+      <Variable name="service" value="--service appserver" display="Runs in the requested service; an unknown service fails with the available service names" />
+      <Variable name="mount" value="cwd mount by default" display="The current working directory is mounted into the scratch app unless --no-mount is passed" />
+      <Variable name="keep" value="--keep" display="Retains the scratch app after the command exits and prints the kept scratch id" />
+      <Variable name="output" value="streamed stdout/stderr" display="stdout and stderr are forwarded as renderer stream frames; non-json output renders both streams, while json keeps stderr out of the result body" />
+      <Variable name="agentEnv" value="forwarded allowlist" display="Allowed agent-context environment values are forwarded below service environment values and registered as redaction tokens" />
+    </Step>
+  </Scenario>
+
   <Scenario id="scratch-recipe-render" render={false} reason="The recipe is rendered into the scratch cache root and planned under a generated identity, mirroring fork mode's materialize then plan then apply shape">
     <Step name="render">
       <Variable name="root" value="user cache scratch dir" display="The recipe renders into <userCacheRoot>/scratch/<id>/root/, never into the current working directory" />
