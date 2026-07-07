@@ -902,3 +902,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot findings were already addressed by branch commits; guide drift resolved with documented Guide-Coverage-Skip PR body line)
 - Merge: merged (squash)
 ---
+## 2026-07-07 14:30 CDT - US-413 Review
+- Review (5-lane review-work + Bugbot manual fallback) found no in-scope defects; no code changes made. All acceptance criteria confirmed against the source PRD: floor constant routed through every setup error/remediation string, both CLI and API-info sources gated, numeric major.minor.patch comparison with suffix tolerance, tagged ProviderUnavailableError-family rejection with observed version/source details.
+- Review notes (deferred/rejected): Bugbot "gate runs after runtime-bundle download" rejected — by design, the bundle provides the podman binary being version-checked and no Podman-dependent action (machine/socket) precedes the gate at setup.ts:682-693 vs 696/721; Bugbot/security "API info missing version fails open" rejected as blocker — the mandatory CLI gate already enforced the floor and unparseable version strings still fail closed, only absent metadata skips; security LOWs (quadratic regex on adversarial digit-only megastrings, verbatim observed-version in error message, Number() overflow on absurd components) deferred — local dev-tool threat model, podman binary/socket are user-controlled.
+- Verification: typecheck, lint passed on review; version-gate + provider-lando setup/machine/runtime-bundle + core setup + provider-podman availability spot checks all passed.
+---
+
