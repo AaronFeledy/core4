@@ -503,18 +503,21 @@ jobs:
           BREW_PREFIX="$(brew --prefix)"
           echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
           echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
-          sudo mkdir -p /etc/containers
-          if ! test -f /etc/containers/policy.json; then
-            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' | sudo tee /etc/containers/policy.json >/dev/null
+          # User-level container configs override any system files wholesale, so seed
+          # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
+          # can be v1-format TOML, and appending v2 keys to it makes every podman
+          # engine load fail with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
           fi
-          if ! grep -qs unqualified-search-registries /etc/containers/registries.conf; then
-            printf 'unqualified-search-registries = ["docker.io"]\n' | sudo tee -a /etc/containers/registries.conf >/dev/null
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
           fi
           # A system-level storage.conf left behind by a distro podman install pins the
           # rootful runroot/graphroot, which Podman 6 honors literally for rootless
           # users. Seed a rootless-safe user-level storage.conf so the default service
           # always resolves user paths.
-          mkdir -p "$HOME/.config/containers"
           if ! test -f "$HOME/.config/containers/storage.conf"; then
             printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
               "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
@@ -1217,18 +1220,21 @@ jobs:
           BREW_PREFIX="$(brew --prefix)"
           echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
           echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
-          sudo mkdir -p /etc/containers
-          if ! test -f /etc/containers/policy.json; then
-            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' | sudo tee /etc/containers/policy.json >/dev/null
+          # User-level container configs override any system files wholesale, so seed
+          # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
+          # can be v1-format TOML, and appending v2 keys to it makes every podman
+          # engine load fail with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
           fi
-          if ! grep -qs unqualified-search-registries /etc/containers/registries.conf; then
-            printf 'unqualified-search-registries = ["docker.io"]\n' | sudo tee -a /etc/containers/registries.conf >/dev/null
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
           fi
           # A system-level storage.conf left behind by a distro podman install pins the
           # rootful runroot/graphroot, which Podman 6 honors literally for rootless
           # users. Seed a rootless-safe user-level storage.conf so the default service
           # always resolves user paths.
-          mkdir -p "$HOME/.config/containers"
           if ! test -f "$HOME/.config/containers/storage.conf"; then
             printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
               "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
