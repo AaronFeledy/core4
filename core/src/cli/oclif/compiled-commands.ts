@@ -42,6 +42,7 @@ import AppsScratchGcCommand from "./commands/apps/scratch/gc.ts";
 import AppsScratchInfoCommand from "./commands/apps/scratch/info.ts";
 import AppsScratchListCommand from "./commands/apps/scratch/list.ts";
 import AppsScratchLogsCommand from "./commands/apps/scratch/logs.ts";
+import AppsScratchRunCommand from "./commands/apps/scratch/run.ts";
 import AppsScratchStartCommand from "./commands/apps/scratch/start.ts";
 import AppsScratchStopCommand from "./commands/apps/scratch/stop.ts";
 import BunCommand from "./commands/meta/bun.ts";
@@ -130,6 +131,7 @@ export default {
   "apps:scratch:info": AppsScratchInfoCommand,
   "apps:scratch:list": AppsScratchListCommand,
   "apps:scratch:logs": AppsScratchLogsCommand,
+  "apps:scratch:run": AppsScratchRunCommand,
   "apps:scratch:start": AppsScratchStartCommand,
   "apps:scratch:stop": AppsScratchStopCommand,
   "meta:bun": BunCommand,

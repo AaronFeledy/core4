@@ -20,6 +20,7 @@ import {
   type ProviderCapabilities,
   ServiceName,
   landoNetworkingPlan,
+  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -43,7 +44,7 @@ import { initApp } from "../cli/commands/init.ts";
 import { makeLandoPaths } from "../config/paths.ts";
 import { parseLandofile } from "../landofile/parser.ts";
 import { decodeOrFail } from "../schema/decode.ts";
-import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
+import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
 const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
@@ -209,7 +210,7 @@ const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
   },
 });
 
-const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined => {
+export const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined => {
   const names = Object.keys(plan.services).map((name) => ServiceName.make(name));
   return names.find((name) => plan.services[name]?.primary === true) ?? names[0];
 };
@@ -230,6 +231,10 @@ const applyMountCwd = (plan: AppPlan, target: string | undefined, hostCwd: strin
     const nextPrimary = {
       ...primary,
       appMount: { ...appMount, source, realization: "passthrough" as const },
+      // Drop redundant app-root binds a service type mirrored into `mounts`
+      // (e.g. `type: lando`): after the source rewrite they no longer match
+      // the appMount, so providers would realize two mounts at one target.
+      mounts: primary.mounts.filter((mount) => !sameAppMountTarget(appMount, mount)),
     };
     return {
       ...plan,
@@ -609,7 +614,14 @@ const makeScratchAppService = (
         ),
       );
       if (!detached) {
-        yield* Effect.addFinalizer(() => destroyScratchResources);
+        // Skip the destroy when the entry was converted to detached mid-scope
+        // (`apps:scratch:run --keep`): the registry owns the scratch from there.
+        yield* Effect.addFinalizer(() =>
+          scratchRegistry.get(scratchId).pipe(
+            Effect.catchAll(() => Effect.succeed(undefined)),
+            Effect.flatMap((entry) => (entry?.detached === true ? Effect.void : destroyScratchResources)),
+          ),
+        );
       }
       return {
         id: scratchId,
@@ -963,6 +975,23 @@ export const ScratchAppServiceLive = Layer.effect(
     );
   }),
 );
+
+/**
+ * Converts a live foreground scratch app to a detached one
+ * (`apps:scratch:run --keep`): the registry entry drops its owner pid and the
+ * acquire scope's destroy finalizer observes `detached: true` and skips the
+ * teardown, leaving lifecycle ownership to `apps:scratch:*` and gc.
+ */
+export const detachScratchApp = (
+  id: string,
+): Effect.Effect<void, ScratchAppNotFoundError | ScratchAppError> =>
+  Effect.gen(function* () {
+    const registry = makeScratchRegistry();
+    const entry = yield* registry.get(id);
+    if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
+    const { ownerPid: _ownerPid, ...rest } = entry;
+    yield* registry.upsert({ ...rest, detached: true, updatedAt: nowIso() });
+  });
 
 /**
  * Acquires a scratch app and also returns its planned `AppPlan`. The plan is

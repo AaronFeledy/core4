@@ -48,3 +48,18 @@ export class ScratchIsolationConflictError extends Schema.TaggedError<ScratchIso
     remediation: Schema.String,
   },
 ) {}
+
+/**
+ * `apps:scratch:run --service <name>` referenced a service the resolved
+ * recipe does not define. Carries the requested service and the services
+ * the scratch app actually planned.
+ */
+export class ScratchRunTargetError extends Schema.TaggedError<ScratchRunTargetError>()(
+  "ScratchRunTargetError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    available: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}

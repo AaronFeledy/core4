@@ -887,6 +887,27 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }, 30_000);
   });
 
+  describe("apps:scratch:run dispatches identically on both paths", () => {
+    test("run with no command fails with ScratchAppError on the canonical id and both aliases", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "lando-parity-scratchrun-"));
+      try {
+        for (const token of ["apps:scratch:run", "scratch:run", "run"]) {
+          const source = await runSourceCli([token, "--format=json"], { cwd });
+          const compiled = await runCompiledCli([token, "--format=json"], { cwd });
+          expect(source.exitCode, `source(${token}) stderr: ${source.stderr}`).toBe(1);
+          expect(compiled.exitCode).toBe(source.exitCode);
+          const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+          const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+          expect(compiledEnvelope).toEqual(sourceEnvelope);
+          expect(sourceEnvelope.code).toBe("ScratchAppError");
+          expect(sourceEnvelope.commandId).toBe("apps:scratch:run");
+        }
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }, 90_000);
+  });
+
   describe("meta:mcp dispatches identically on both paths", () => {
     test("mcp --list projects the same effective catalog envelope on both paths", async () => {
       const source = await runSourceCli(["mcp", "--list", "--format=json"]);

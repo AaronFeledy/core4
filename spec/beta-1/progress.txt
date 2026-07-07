@@ -890,3 +890,21 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot findings were already addressed by branch commits; guide drift resolved with documented Guide-Coverage-Skip PR body line)
 - Merge: merged (squash)
 ---
+
+## [2026-07-07 04:53:06 CDT] - Babysit
+- PR: #539 https://github.com/AaronFeledy/core4/pull/539
+- CI outcome: pass
+- Review feedback: fixed (removed missing yaml test dependency and added guide coverage skip reason)
+- Merge: merged (squash)
+---
+
+## 2026-07-07 06:25 CDT - US-407
+- Shipped `apps:scratch:run` (aliases `scratch:run` and the reserved bare `run`, bootstrap `scratch`): a thin disposable tool runner over `ScratchAppService.acquire` — recipe source defaults to the bundled toolbox (`--from` overrides), cwd bind-mounted by default (`--no-mount` bakes), foreground lifetime, recipe postInit skipped. Everything after `--` passes verbatim to `RuntimeProvider.exec` in the recipe's primary service (`--service` selects; unknown service fails with the new `ScratchRunTargetError` listing available services) with TTY allocation when stdin is a TTY, and the tool's exit code propagates as the command's exit code — a non-zero tool exit is a successful result, never a tagged error.
+- Scope close destroys the scratch on normal exit, non-zero exit, and interrupt; `--keep` flips the registry entry to detached mid-scope (new `detachScratchApp`), the acquire finalizer re-reads the entry and skips the destroy, and the command prints the kept scratch id — ownership hands off to the registry/gc. `applyMountCwd` now drops service-mirrored app-root binds that no longer match the rewritten appMount so providers don't realize two mounts at one target.
+- Reserved the bare `run` top-level alias per spec 21.10.2 in a new `core/src/cli/reserved-aliases.ts` helper: `validateCommandSpec` rejects foreign command specs claiming `run`/`scratch`/`scratch:*` at registration, and `runTooling` rejects Landofile tooling tasks (and script-backed tasks) named `run` with the new SDK `CommandAliasConflictError`; user `commandAliases.custom` remaps still work. Dual-dispatch parity covers the new canonical id; `--answer` flows into recipe prompts as in apps:init.
+- Verification: typecheck, lint, renderer/paths/state-store/probe/redaction boundary gates passed; codegen (schema-snapshot, oclif-manifest) idempotent; spot checks green — scratch-run + reserved-aliases + aliases suites, dispatch-parity, oclif-manifest, sdk-backward-compatibility, scratch app/list/foreground/namespace/recipe-flags, gc/registry, tooling scenario, mcp/host-proxy allowlists. Manual CLI QA in the lando4-dev sandbox on BOTH dispatch paths (OCLIF source and compiled binary): happy path prints the tool's stdout from the cwd mount, `sh -c "exit 7"` exits 7 with no error, `--service bogus` exits 1 with ScratchRunTargetError listing `toolbox`, `--keep` prints the id and registers a detached entry, `--no-mount` hides the cwd, `--format json` emits the full result envelope, and scratch list/containers are empty after each run (cleanup verified via the managed podman socket).
+- **Learnings for future iterations:**
+  - provider-lando never pulls images at runtime (`pullArtifact` is unavailable; `bringUp.create` 404s with "image not known"); CI pre-pulls images and the lando4-dev sandbox must too. The provider talks to the MANAGED runtime podman at `~/.local/share/lando/runtime/run/podman.sock` with its own image store — pulling with the user's `/usr/bin/podman` does NOT help. Pre-pull via `curl -X POST --unix-socket ~/.local/share/lando/runtime/run/podman.sock "http://d/v4.0.0/images/create?fromImage=<image>&tag=<tag>"`.
+  - The compiled dispatcher matches scratch verbs only as `scratch:<verb>`/`apps:scratch:<verb>` colon forms (plus bare `scratch` and `run`); the `apps scratch <verb>` space form is OCLIF-path-only for the whole scratch family — match that pattern for new scratch verbs.
+  - A foreground scratch finalizer that must be skippable mid-scope (e.g. `--keep`) should re-read the registry entry inside the finalizer and branch on `detached`, rather than capturing the decision at acquire time.
+---

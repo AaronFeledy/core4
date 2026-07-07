@@ -6698,6 +6698,38 @@
       "required": ["handle", "lines"],
       "type": "object"
     },
+    "apps:scratch:run": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "kept": {
+          "type": "boolean"
+        },
+        "scratchId": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        }
+      },
+      "required": ["scratchId", "service", "command", "exitCode", "kept", "stdout", "stderr"],
+      "type": "object"
+    },
     "apps:scratch:start": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -15416,6 +15448,7 @@
       "apps:scratch:info",
       "apps:scratch:list",
       "apps:scratch:logs",
+      "apps:scratch:run",
       "apps:scratch:start",
       "apps:scratch:stop",
       "meta:bun",

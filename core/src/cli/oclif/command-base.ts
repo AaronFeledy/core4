@@ -19,6 +19,7 @@ import {
   resolveCliRendererMode,
   runWithRendererHandling,
 } from "../renderer-boundary.ts";
+import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
@@ -115,6 +116,8 @@ export const validateCommandSpec = (spec: {
   readonly resultSchema?: unknown;
   readonly mcpAllowed?: boolean;
   readonly hostProxyAllowed?: boolean;
+  readonly topLevelAlias?: LandoTopLevelAlias;
+  readonly aliases?: ReadonlyArray<LandoAliasSpec>;
 }): void => {
   if (spec.resultSchema === undefined || spec.resultSchema === null) {
     throw new CommandRegistrationError({
@@ -125,6 +128,14 @@ export const validateCommandSpec = (spec: {
   }
   assertMcpAllowlistSafe(spec);
   assertHostProxyAllowlistSafe(spec);
+  assertTopLevelAliasesClaimable(
+    spec.id,
+    resolveTopLevelAliases({
+      id: spec.id,
+      ...(spec.topLevelAlias === undefined ? {} : { topLevelAlias: spec.topLevelAlias }),
+      ...(spec.aliases === undefined ? {} : { aliases: spec.aliases }),
+    }),
+  );
 };
 
 const MVP_COMMAND_IDS = new Set([
@@ -168,6 +179,7 @@ const MVP_COMMAND_IDS = new Set([
   "apps:scratch:info",
   "apps:scratch:list",
   "apps:scratch:logs",
+  "apps:scratch:run",
   "apps:scratch:start",
   "apps:scratch:stop",
   "meta:bun",
@@ -242,7 +254,9 @@ export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined 
     ? input.signal
     : undefined;
 
-export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
+export const resolveTopLevelAliases = (
+  spec: Pick<LandoCommandSpec, "id" | "topLevelAlias" | "aliases">,
+): ReadonlyArray<string> => {
   const explicit = (spec.aliases ?? []).map((alias) => (typeof alias === "string" ? alias : alias.name));
   const top = spec.topLevelAlias;
 

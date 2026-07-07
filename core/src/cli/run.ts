@@ -117,6 +117,12 @@ import {
 } from "./commands/remote.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
+  parseScratchRunArgv,
+  renderScratchRunResult,
+  scratchRun,
+  scratchRunSuccessExitCode,
+} from "./commands/scratch-run.ts";
+import {
   type ScratchStartOptions,
   normalizeScratchStartArgv,
   renderScratchDestroyResult,
@@ -1366,6 +1372,11 @@ const scratchRuntimeLayer = () =>
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
 
+const scratchRunRuntimeLayer = () =>
+  makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
+  ) as Layer.Layer<ScratchAppService | FileSystem | RuntimeProviderRegistry, LandoRuntimeBootstrapError>;
+
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
   render: (result: A, ctx: RenderContext) => string | undefined,
@@ -1435,6 +1446,16 @@ const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = scratchCommandInput("apps:scratch:gc", argv);
   await runScratchEffect(scratchGc({ prune: pruneFromInput(input) }), renderScratchGcReport);
 };
+
+const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      scratchRun({ ...parseScratchRunArgv(argv), signal }),
+      scratchRunRuntimeLayer(),
+      (result) => renderScratchRunResult(result),
+      { successExitCode: scratchRunSuccessExitCode },
+    ),
+  );
 
 const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -2371,6 +2392,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "scratch:gc" || argv[0] === "apps:scratch:gc") {
     await runAppsScratchGc(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "run" || argv[0] === "scratch:run" || argv[0] === "apps:scratch:run") {
+    await runAppsScratchRun(argv.slice(1));
     return;
   }
 
