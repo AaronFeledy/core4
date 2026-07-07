@@ -48,6 +48,7 @@ export interface ScratchRunResult {
   readonly kept: boolean;
   readonly stdout: string;
   readonly stderr: string;
+  readonly redactionTokens?: ReadonlyArray<string>;
 }
 
 export const ScratchRunResultSchema = Schema.Struct({
@@ -251,6 +252,16 @@ export const defaultScratchRunDeps: ScratchRunDeps = {
   stdinIsTty: () => process.stdin.isTTY === true,
 };
 
+const MIN_REDACTION_TOKEN_LENGTH = 8;
+
+const redactionTokensFromEnv = (env: Readonly<Record<string, string>> | undefined): ReadonlyArray<string> => {
+  if (env === undefined) return [];
+  return Object.values(env).filter((value) => value.trim().length >= MIN_REDACTION_TOKEN_LENGTH);
+};
+
+export const scratchRunRedactionTokens = (result: ScratchRunResult): ReadonlyArray<string> =>
+  result.redactionTokens ?? [];
+
 const usageError = (message: string): ScratchAppError =>
   new ScratchAppError({
     message,
@@ -358,6 +369,7 @@ export const scratchRun = (
           kept: options.keep,
           stdout: result.stdout,
           stderr: result.stderr,
+          redactionTokens: redactionTokensFromEnv(env),
         } satisfies ScratchRunResult;
       }),
     );

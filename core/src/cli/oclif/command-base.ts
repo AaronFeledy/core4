@@ -91,6 +91,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live";
   readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
+  readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
   readonly render?: (result: unknown, input?: unknown, ctx?: RenderContext) => string | undefined;
   readonly successExitCode?: {
     bivarianceHack(result: A, input?: unknown): number | undefined;
@@ -415,6 +416,7 @@ export abstract class LandoCommandBase extends Command {
       ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
       ...(spec.streamingMode === undefined ? {} : { streamingMode: spec.streamingMode }),
       ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+      ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
       deprecationWarnings: deprecationWarnings.enabled,
       suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
       render: (value, ctx) => spec.render?.(value, input, ctx),

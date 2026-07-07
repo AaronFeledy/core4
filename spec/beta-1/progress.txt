@@ -47,6 +47,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - To produce the SAME `CommandResultEnvelope` object a command emits over JSON (not the redacted JSON line), use `buildCommandResultEnvelope(options)` in `core/src/cli/result-encode.ts` (object form of the private `encodeCommandEnvelope`, with the same fallback-envelope catch-all as `encodeCommandResult`). The host-proxy dispatcher's `runOpenForHostProxy(plan, input)` reuses `openForPlan` + `buildCommandResultEnvelope` so a round-trip envelope is byte-identical to host-side `app:open` — the contract test asserts `toEqual` on both. Failure outcomes map to exit 1, success to exit 0, mirroring `runCompiledCommand`.
 
 
+## 2026-07-07 13:10 CDT - US-408 Verify
+- Verified the rebuilt compiled binary in `lando4-dev`: `lando setup --provider podman --yes --no-interactive --skip-file-sync` completed, `lando run --format json` emitted decodable stdout/stderr/event/result frames with exit 7 and a scratch id, `scratch:run` and `apps scratch run` aliases returned exit 0 frames, and scratch containers were cleaned up.
+- Fixed the real-world JSON streaming redaction miss: forwarded agent env values now travel as command-scoped redaction tokens so stdout/stderr frames, event frames, and the terminal result envelope mask those values before emission.
+- **Learnings for future iterations:** `RedactionService.forProfile("secrets", { sourceEnv })` only auto-collects secret-looking env names; command-specific forwarded env that can appear in generic stream chunks must pass explicit `redactionTokens` into the renderer boundary.
+---
+
 ## 2026-07-07 03:05 CDT - US-406
 - Shipped the bundled `toolbox` canonical recipe: `recipes/toolbox/recipe.yml` (canonical on-disk copy, drift-gated against the embedded manifest by a unit test) plus the builtin manifest/renderer pair. The rendered Landofile has exactly one `type: lando` service on the version-pinned `debian:12.11-slim` image with `command: sleep infinity`, and the single `name` prompt defaults to `toolbox` so non-interactive init never blocks. Wired through `core/build.config.ts` + `codegen:bundled-recipes`, so the compiled binary embeds the recipe.
 - Added the missing raw `lando` service type to `@lando/service-lando` (base `"lando"`, requires a pinned `image:`, app mount by default with `appMount: false` opt-out, passthrough command/entrypoint/user/ports/dependsOn) — spec §1.1 lists it as the plugin's reason to exist and the toolbox recipe cannot plan without it.

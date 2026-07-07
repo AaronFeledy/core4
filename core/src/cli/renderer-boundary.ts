@@ -157,6 +157,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live";
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
+  readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
   readonly io?: RendererIO;
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
@@ -332,27 +333,35 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const program = Effect.gen(function* () {
     const command = options.command ?? "cli:unknown";
     const resultSchema = options.resultSchema ?? EmptyCommandResultSchema;
-    const jsonRedactor = Effect.gen(function* () {
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      if (redaction._tag === "Some")
-        return yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
-      return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
-    });
+    const jsonRedactor = (redactionTokens: ReadonlyArray<string> = []) =>
+      Effect.gen(function* () {
+        const redaction = yield* Effect.serviceOption(RedactionService);
+        if (redaction._tag === "Some")
+          return yield* redaction.value.forProfile("secrets", {
+            sourceEnv: process.env,
+            redactionTokens,
+          });
+        return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
+      });
     const emitJsonResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
       Effect.gen(function* () {
-        const redactor = yield* jsonRedactor;
+        const redactor = yield* jsonRedactor();
         const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor });
         yield* writeResultLine(line);
       });
-    const emitStreamResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
+    const emitStreamResult = (
+      outcome: Parameters<typeof encodeCommandResult>[0]["outcome"],
+      redactionTokens: ReadonlyArray<string> = [],
+    ) =>
       Effect.gen(function* () {
-        const redactor = yield* jsonRedactor;
+        const redactor = yield* jsonRedactor(redactionTokens);
         const line = yield* encodeStreamResultFrame({ command, resultSchema, outcome, redactor });
         yield* writeResultLine(line);
       });
     const emitStreamingSuccess = (value: A) =>
       Effect.gen(function* () {
-        const redactor = yield* jsonRedactor;
+        const tokens = options.redactionTokens?.(value) ?? [];
+        const redactor = yield* jsonRedactor(tokens);
         for (const frame of options.streamFrames?.(value) ?? []) {
           const line =
             frame._tag === "stdout"
@@ -379,7 +388,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
           yield* writeResultLine(line);
         }
-        yield* emitStreamResult({ _tag: "success", value });
+        yield* emitStreamResult({ _tag: "success", value }, tokens);
       });
     const setExitCode = (code: number): void => {
       (
@@ -432,7 +441,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         yield* applySuccessExitCode(commandExit.value);
         if (liveStreaming) {
           if (renderContext.format === "json") {
-            yield* emitStreamResult({ _tag: "success", value: commandExit.value });
+            yield* emitStreamResult(
+              { _tag: "success", value: commandExit.value },
+              options.redactionTokens?.(commandExit.value) ?? [],
+            );
           }
           return { _tag: "handled-success" } as const;
         }

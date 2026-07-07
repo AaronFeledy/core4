@@ -166,6 +166,7 @@ describe("machine-output conformance", () => {
         resultSchema: spec.resultSchema,
         ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
         ...(spec.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+        ...(spec.redactionTokens === undefined ? {} : { redactionTokens: spec.redactionTokens }),
         ...(spec.successExitCode === undefined ? {} : { successExitCode: spec.successExitCode }),
         io,
         render: () => undefined,
@@ -241,6 +242,31 @@ describe("machine-output conformance", () => {
       const payload = result.envelope.result as { exitCode: number };
       expect(payload.exitCode).toBe(7);
       expect(exitCode).toBe(7);
+    });
+
+    test("forwarded agent env values are redacted from stream frames and the result envelope", async () => {
+      const secret = "opencode-forwarded-secret";
+      const io = await runScratchRunSpec(
+        Effect.succeed({
+          ...successValue(0),
+          stdout: `out:${secret}\n`,
+          stderr: `err:${secret}\n`,
+          redactionTokens: [secret],
+        }),
+      );
+      const output = io.stdout();
+      expect(output).not.toContain(secret);
+      expect(output).toContain("[redacted]");
+      const frames = io.stdoutLines().map(decodeFrame);
+      const [stdout, stderr, result] = frames;
+      if (stdout?._tag !== "stdout" || stderr?._tag !== "stderr" || result?._tag !== "result") {
+        throw new Error("unexpected frame sequence");
+      }
+      expect(stdout.chunk).toBe("out:[redacted]\n");
+      expect(stderr.chunk).toBe("err:[redacted]\n");
+      const payload = result.envelope.result as { readonly stdout: string; readonly stderr: string };
+      expect(payload.stdout).toBe("out:[redacted]\n");
+      expect(payload.stderr).toBe("err:[redacted]\n");
     });
   });
 });

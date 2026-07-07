@@ -7,6 +7,7 @@ import {
   renderScratchRunResult,
   scratchRun,
   scratchRunOptionsFromInput,
+  scratchRunRedactionTokens,
   scratchRunSuccessExitCode,
 } from "../../../../commands/scratch-run.ts";
 import type { RenderContext } from "../../../../renderer-boundary.ts";
@@ -30,6 +31,7 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },
+  redactionTokens: (value) => scratchRunRedactionTokens(value as ScratchRunResult),
   render: (result, ctx) => renderScratchRunResult(result as ScratchRunResult, ctx as RenderContext),
   successExitCode: (result) => scratchRunSuccessExitCode(result),
 };

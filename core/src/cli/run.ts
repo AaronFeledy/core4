@@ -591,6 +591,7 @@ const runCompiledCommand = <A, E, R, RE>(
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
+  const redactionTokens = spec?.redactionTokens;
   const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
@@ -600,6 +601,7 @@ const runCompiledCommand = <A, E, R, RE>(
     ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
     ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),
     ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+    ...(redactionTokens === undefined ? {} : { redactionTokens }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
