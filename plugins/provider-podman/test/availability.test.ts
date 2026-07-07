@@ -9,7 +9,12 @@ describe("provider-podman isAvailable", () => {
   test("reports available when the Podman API responds to /info", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } })),
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          }),
+        ),
       ),
     );
     expect(await Effect.runPromise(provider.isAvailable)).toBe(true);
@@ -29,7 +34,7 @@ describe("provider-podman isAvailable", () => {
               }).pipe(
                 Effect.flatMap((call) =>
                   call === 1
-                    ? Effect.succeed({})
+                    ? Effect.succeed({ version: { Version: "6.0.2" } })
                     : Effect.fail(
                         new ProviderUnavailableError({
                           providerId: "podman",
