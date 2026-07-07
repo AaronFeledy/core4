@@ -59,6 +59,12 @@ const VERSION_CONSTRAINT_SOLUTION = {
   command: "lando update",
 } as const;
 
+const INCLUDE_RESOLUTION_SOLUTION = {
+  kind: "manual",
+  description: "Resolve Landofile include errors before trusting the app version-constraint report.",
+  command: "lando app:includes:update",
+} as const;
+
 const relativeSource = (appRoot: string, source: string): string => {
   if (source === ".lando.yml") return source;
   const relativePath = relative(appRoot, source);
@@ -93,11 +99,32 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
     const appRoot = dirname(filePath);
     const parsed = yield* parseAppLandofileForReport(filePath);
     if (parsed === undefined) return undefined;
-    const landofile = yield* resolveLandofileIncludes({
-      landofile: parsed,
-      appRoot,
-      sourcePath: filePath,
-    }).pipe(Effect.catchAll(() => Effect.succeed(parsed)));
+    const resolved = yield* Effect.either(
+      resolveLandofileIncludes({
+        landofile: parsed,
+        appRoot,
+        sourcePath: filePath,
+      }),
+    );
+    if (Either.isLeft(resolved)) {
+      return {
+        checks: [
+          {
+            name: "app-version-constraint",
+            status: "fail",
+            severity: "error",
+            context: {
+              runningVersion: CORE_VERSION,
+              skipped: String(isVersionConstraintSkipped(process.env)),
+              declared: "(unresolved includes)",
+              includeResolution: resolved.left.message,
+            },
+            solutions: [INCLUDE_RESOLUTION_SOLUTION],
+          },
+        ],
+      } satisfies AppVersionConstraintDoctorResult;
+    }
+    const landofile = resolved.right;
     const entries = getVersionConstraintEntries(landofile, filePath);
     const skipped = isVersionConstraintSkipped(process.env);
     if (entries.length === 0 && !skipped) return undefined;

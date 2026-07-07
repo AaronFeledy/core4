@@ -286,6 +286,34 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("doctor --app fails version-constraint reporting when includes cannot resolve", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-include-")));
+    await writeFile(
+      join(dir, ".lando.yml"),
+      ["name: doctor-app", "includes:", "  - ./missing.yml", ""].join("\n"),
+    );
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appVersionConstraints?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: { declared: "(unresolved includes)" },
+      });
+      expect(report.appVersionConstraints?.checks[0]?.context.includeResolution).toContain("missing.yml");
+      expect(renderDoctorReport(report)).toContain("lando app:includes:update");
+    } finally {
+      process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("doctor --app reports the invocation-scoped version-constraint skip", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-skip-")));
