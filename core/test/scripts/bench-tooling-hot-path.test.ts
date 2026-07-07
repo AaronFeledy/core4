@@ -87,7 +87,7 @@ describe("bench-tooling-hot-path", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-bench-pass-"));
     try {
       const binary = await writeFakeBinary(dir);
-      const baseline = await writeBaseline(dir, 100);
+      const baseline = await writeBaseline(dir, 1_000);
 
       const result = await runBench(["--binary", binary, "--baseline", baseline, "--runs", "3"], {
         LANDO_FAKE_SLEEP_MS: "1",

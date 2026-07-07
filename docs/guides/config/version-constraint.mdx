@@ -1,0 +1,41 @@
+---
+id: version-constraint
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, config, version-constraint]
+---
+
+<Guide>
+  <Scenario id="author-lando-range" render={false} reason="The Landofile schema, semver parser, and app-resolution enforcement are covered by focused version-constraint tests">
+    <Step name="declare">
+      <Variable name="landofileKey" value='lando: ">=4.1 &lt;5"' display="Declare the running Lando core semver range at the top level of .lando.yml" />
+      <Variable name="rangeGrammar" value=">=, &lt;=, >, &lt;, =, ^, ~, exact versions" display="Supported range forms; prerelease/build metadata on the running version is ignored for numeric comparison" />
+      <Variable name="distinctSurface" value="runtime: and services.*.api remain separate" display="The lando: key constrains the Lando core binary only" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failure-payload" render={false} reason="Tagged error and machine-output envelopes are covered by app-resolution and command-result tests">
+    <Step name="fail-closed">
+      <Variable name="errorTag" value="LandofileVersionConstraintError" display="Unsatisfied constraints fail before app planning or provider action" />
+      <Variable name="messageContext" value="declared range, source layer, running version" display="The error message carries enough context for agents because JSON envelopes serialize _tag, message, and remediation" />
+      <Variable name="jsonShape" value="{ ok:false, error:{ _tag, message, remediation } }" display="--format=json uses the central command-result envelope" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="skip-warning" render={false} reason="The invocation-scoped skip behavior is covered by assertLandoVersionConstraint and doctor-report tests">
+    <Step name="skip">
+      <Variable name="env" value="LANDO_SKIP_VERSION_CONSTRAINT=1" display="Downgrade an unsatisfied valid range to a warning for the current invocation only" />
+      <Variable name="scope" value="current process only" display="The skip does not rewrite the Landofile, mutate the app-plan cache, or mark the constraint satisfied" />
+      <Variable name="doctor" value="lando doctor --app" display="Doctor reports when the skip env is active and includes the same source-layer context" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="repair-workflow" render={false} reason="Repair is a user workflow documented here; command behavior is protected by focused tests and machine-output gates">
+    <Step name="repair">
+      <Variable name="inspect" value="lando doctor --app --format=json" display="Inspect unsatisfied ranges and source layers without prose scraping" />
+      <Variable name="binaryFix" value="lando update" display="Install a compatible Lando binary when the project requires a newer core" />
+      <Variable name="landofileFix" value="edit lando: after confirming project support" display="Relax or correct the range only when the project intentionally supports the running version" />
+    </Step>
+  </Scenario>
+</Guide>

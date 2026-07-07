@@ -18,7 +18,12 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 import { CacheService } from "@lando/core/services";
-import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
+import {
+  APP_PLAN_CACHE_HEADER_BYTES,
+  deriveAppPlanCacheKey,
+  readCachedAppPlan,
+  writeCachedAppPlan,
+} from "../../src/cache/app-plan.ts";
 import { writeFileAtomicViaRename } from "../../src/cache/atomic.ts";
 import {
   CWD_APP_MAP_CACHE_FILE,
@@ -382,6 +387,60 @@ describe("CacheServiceLive", () => {
     expect((await stat(cachePath)).size).toBeGreaterThan(44);
     expect(read?.name).toBe("cache-plan");
     expect(stale).toBeNull();
+  });
+
+  test("treats app-plan caches without version-constraint provenance as stale", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-legacy-"));
+    const appRoot = "/workspace/cache-plan";
+    const key = "app-plan-key";
+
+    const cachePath = await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "cache-plan",
+        appRoot,
+        key,
+        plan: appPlanFixture,
+        now: () => 1,
+      }),
+    );
+    const original = Buffer.from(await readFile(cachePath));
+    const payload = deserialize(original.subarray(APP_PLAN_CACHE_HEADER_BYTES)) as Record<string, unknown>;
+    const { versionConstraints: _discard, ...legacyPayload } = payload;
+    const body = Buffer.from(serialize(legacyPayload));
+    const header = Buffer.from(original.subarray(0, APP_PLAN_CACHE_HEADER_BYTES));
+    createHash("sha256").update(body).digest().copy(header, 12);
+    await writeFile(cachePath, Buffer.concat([header, body]));
+
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key }),
+    );
+
+    expect(read).toBeNull();
+  });
+
+  test("treats app-plan caches with unsatisfied version constraints as stale", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-version-"));
+    const appRoot = "/workspace/cache-plan";
+    const key = "app-plan-key";
+
+    await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "cache-plan",
+        appRoot,
+        key,
+        plan: appPlanFixture,
+        versionConstraints: [{ range: ">=99", source: ".lando.yml" }],
+        now: () => 1,
+      }),
+    );
+
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key }),
+    );
+
+    expect(read).toBeNull();
   });
 
   test("derives route global-service requirements when reading cached app plans", async () => {

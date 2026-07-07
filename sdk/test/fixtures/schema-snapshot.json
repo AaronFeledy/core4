@@ -6976,6 +6976,63 @@
           "required": ["app", "file", "valid", "violations"],
           "type": "object"
         },
+        "appVersionConstraints": {
+          "additionalProperties": false,
+          "properties": {
+            "checks": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "context": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "name": {
+                    "enum": ["app-version-constraint"],
+                    "type": "string"
+                  },
+                  "severity": {
+                    "enum": ["info", "warn", "error"],
+                    "type": "string"
+                  },
+                  "solutions": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": ["manual"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["kind", "description"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "status": {
+                    "enum": ["pass", "warn", "fail"],
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "status", "severity", "context", "solutions"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["checks"],
+          "type": "object"
+        },
         "deprecations": {
           "additionalProperties": false,
           "properties": {

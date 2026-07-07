@@ -24,6 +24,7 @@ import {
   defaultTarballRecipeFetcher,
 } from "../recipes/tarball-source.ts";
 import { makeStateStore } from "../state/service.ts";
+import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 
@@ -596,10 +597,14 @@ const resolveTree = (
     }
     const includes = landofile.includes ?? [];
     if (includes.length === 0)
-      return rememberVersionConstraintEntries(landofile, ownVersionConstraintEntries(landofile, source));
+      return rememberLocalIncludePaths(
+        rememberVersionConstraintEntries(landofile, ownVersionConstraintEntries(landofile, source)),
+        [],
+      );
 
     const fragments: LandofileShape[] = [];
     const fragmentRecords: Record<string, unknown>[] = [];
+    const localIncludePaths: string[] = [];
     for (const rawEntry of includes) {
       const entry = normalizeInclude(rawEntry);
       const fragment = yield* Effect.tryPromise({
@@ -633,6 +638,8 @@ const resolveTree = (
       );
       fragments.push(nested);
       fragmentRecords.push(nested as Record<string, unknown>);
+      localIncludePaths.push(...getLocalIncludePaths(nested));
+      if (!fragment.locked) localIncludePaths.push(fragment.sourceId);
       if (fragment.locked && fragment.resolved !== undefined) {
         const actual = sha256(fragment.content);
         if (ctx.mode === "refresh") {
@@ -672,10 +679,13 @@ const resolveTree = (
       inlineWithoutIncludes(landofile as Record<string, unknown>),
     ]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
-    return rememberVersionConstraintEntries(decoded, [
-      ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-      ...ownVersionConstraintEntries(landofile, source),
-    ]);
+    return rememberLocalIncludePaths(
+      rememberVersionConstraintEntries(decoded, [
+        ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+        ...ownVersionConstraintEntries(landofile, source),
+      ]),
+      [...localIncludePaths],
+    );
   });
 
 const lockScalar = (value: unknown): string | undefined => {

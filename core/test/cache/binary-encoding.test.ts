@@ -46,6 +46,7 @@ const appCommandPayload = {
   sourceFile: "/workspace/fixture-app/.lando.yml",
   sourceMtimeMs: 1_700_000_000_000,
   sourceSize: 128,
+  versionConstraints: [],
   generatedAtMs: 1_700_000_100_000,
   entries: [{ id: "fixture:task", summary: "Fixture task", hidden: false, service: "appserver" }],
 };

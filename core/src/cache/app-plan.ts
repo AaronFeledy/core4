@@ -14,6 +14,11 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 
+import {
+  type VersionConstraintEntry,
+  evaluateVersionConstraints,
+  isVersionConstraintSkipped,
+} from "../config/version-constraint.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 
@@ -25,6 +30,7 @@ interface AppPlanCachePayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
   readonly key: string;
+  readonly versionConstraints: ReadonlyArray<VersionConstraintEntry>;
   readonly generatedAtMs: number;
   readonly plan: unknown;
 }
@@ -38,6 +44,7 @@ export interface AppPlanCacheKeyInput {
   readonly includedFragmentShas?: ReadonlyArray<string>;
   readonly config?: unknown;
   readonly serviceInputs?: unknown;
+  readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
 }
 
 export interface AppPlanSourceFingerprint {
@@ -127,15 +134,7 @@ const normalizeManifest = (manifest: PluginManifest) => ({
 const compareManifests = (
   a: ReturnType<typeof normalizeManifest>,
   b: ReturnType<typeof normalizeManifest>,
-): number => {
-  const nameOrder = a.name.localeCompare(b.name);
-  if (nameOrder !== 0) return nameOrder;
-
-  const versionOrder = a.version.localeCompare(b.version);
-  if (versionOrder !== 0) return versionOrder;
-
-  return a.api - b.api;
-};
+): number => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api;
 
 export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
   // Keep registry list order out of the cache key for equivalent manifests.
@@ -152,6 +151,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
         ...(input.sourceFingerprint?.includedFragmentShas ?? []),
         ...(input.includedFragmentShas ?? []),
       ].sort(),
+      versionConstraints: input.versionConstraints ?? [],
       pluginManifests: sortedManifests,
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
@@ -199,6 +199,12 @@ const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
   };
 };
 
+const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>): boolean => {
+  const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
+  if (evaluation.invalid.length > 0) return false;
+  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+};
+
 export const readCachedAppPlan = (input: {
   readonly cacheRoot: string;
   readonly appName: string;
@@ -226,6 +232,8 @@ export const readCachedAppPlan = (input: {
     const payload = decode(bytes);
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
+    if (!Array.isArray(payload.versionConstraints)) return null;
+    if (!versionConstraintsUsable(payload.versionConstraints)) return null;
     return yield* Effect.try({
       try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
       catch: (cause) =>
@@ -244,6 +252,7 @@ export const writeCachedAppPlan = (input: {
   readonly appRoot: string;
   readonly key: string;
   readonly plan: AppPlan;
+  readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly now?: () => number;
 }): Effect.Effect<string, CacheError, CacheService> => {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
@@ -255,6 +264,7 @@ export const writeCachedAppPlan = (input: {
           schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
           landoVersion: CORE_VERSION,
           key: input.key,
+          versionConstraints: input.versionConstraints ?? [],
           generatedAtMs: (input.now ?? Date.now)(),
           plan: Schema.encodeSync(AppPlan)(input.plan),
         }),

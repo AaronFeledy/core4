@@ -258,6 +258,98 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("doctor --app reports an unsatisfied lando version constraint", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-")));
+    await writeFile(join(dir, ".lando.yml"), "name: doctor-app\nlando: >=99\n");
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appVersionConstraints?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.yml)", skipped: "false" },
+      });
+      const text = renderDoctorReport(report);
+      expect(text).toContain("app-version-constraint: fail");
+      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+      expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-version-constraint");
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 12, failed: 1 });
+    } finally {
+      process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("doctor --app reports the invocation-scoped version-constraint skip", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-skip-")));
+    await writeFile(join(dir, ".lando.yml"), "name: doctor-app\nlando: >=99\n");
+    const previousCwd = process.cwd();
+    const previousSkip = process.env.LANDO_SKIP_VERSION_CONSTRAINT;
+    try {
+      process.chdir(dir);
+      process.env.LANDO_SKIP_VERSION_CONSTRAINT = "1";
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appVersionConstraints?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "warn",
+        severity: "warn",
+        context: { skipped: "true", unsatisfied: ">=99 (.lando.yml)" },
+      });
+      expect(renderDoctorReport(report)).toContain("LANDO_SKIP_VERSION_CONSTRAINT=1 is active");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSkip === undefined) Reflect.deleteProperty(process.env, "LANDO_SKIP_VERSION_CONSTRAINT");
+      else process.env.LANDO_SKIP_VERSION_CONSTRAINT = previousSkip;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("doctor --app redacts templated secret values in version constraints", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-redact-")));
+    const previousCwd = process.cwd();
+    const previousSecret = process.env.LANDO_SECRET_VERSION_RANGE;
+    try {
+      process.chdir(dir);
+      process.env.LANDO_SECRET_VERSION_RANGE = "super-secret-version-range";
+      await writeFile(
+        join(dir, ".lando.yml"),
+        ["template: handlebars", "name: doctor-app", "lando: {{ env.LANDO_SECRET_VERSION_RANGE }}", ""].join(
+          "\n",
+        ),
+      );
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      const text = renderDoctorReport(report);
+      const yaml = renderDoctorReportAsYaml(report);
+      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+
+      expect(text).not.toContain("super-secret-version-range");
+      expect(yaml).not.toContain("super-secret-version-range");
+      expect(ndjson).not.toContain("super-secret-version-range");
+      expect(report.appVersionConstraints?.checks[0]?.context.invalid).not.toContain(
+        "super-secret-version-range",
+      );
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_VERSION_RANGE");
+      else process.env.LANDO_SECRET_VERSION_RANGE = previousSecret;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("doctor --deprecations renders populated deprecation entries from summary and lookup", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await Effect.runPromise(

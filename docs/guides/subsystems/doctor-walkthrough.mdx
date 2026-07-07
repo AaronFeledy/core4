@@ -42,6 +42,15 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-app-version-constraint" render={false} reason="doctor --app version-constraint output is covered by doctor-report tests; this records the user-facing diagnostic fields">
+    <Step name="app-version-constraint">
+      <Variable name="command" value="lando doctor --app" display="Adds an app-version-constraint check when the current app declares lando: or the skip env is active" />
+      <Variable name="section" value="app-version-constraint: pass | warn | fail" display="The check fails for unsatisfied constraints, warns when LANDO_SKIP_VERSION_CONSTRAINT=1 is active, and passes when declared ranges are satisfied" />
+      <Variable name="context" value="runningVersion, declared, unsatisfied, skipped, skipEnv" display="Structured context carries source-layer provenance and the invocation-scoped skip state" />
+      <Variable name="remediation" value="lando update or edit the Landofile lando: range" display="Doctor gives the same repair path as the tagged command failure" />
+    </Step>
+  </Scenario>
+
   <Scenario id="doctor-setup-readiness" render={false} reason="The setup-readiness check consumes the persisted summary written by lando setup; unit tests cover the exact JSON and redaction behavior">
     <Step name="setup-readiness">
       <Variable name="summaryPath" value="<userDataRoot>/setup/readiness.json" display="lando setup writes the persisted readiness summary consumed by doctor" />

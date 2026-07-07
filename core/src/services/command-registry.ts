@@ -38,6 +38,7 @@ import {
   writePluginCommandCache,
 } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
+import { loadUserLandofile } from "../cli/app-resolution.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 
@@ -85,7 +86,7 @@ export const CommandRegistryLive = Layer.effect(
         );
         if (cached !== null) return toRegisteredCommands(cached.entries);
 
-        const landofile = yield* landofileService.discover;
+        const landofile = yield* loadUserLandofile(landofileService);
         const scripts = yield* discoverScriptsForCwd(process.cwd());
         const entries = compileAppCommands(landofile, scripts);
         const pluginManifests =
