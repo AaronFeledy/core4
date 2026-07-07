@@ -839,7 +839,7 @@
         "Lint passes"
       ],
       "priority": 47,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: scripts/build-provider-matrix-workflow.ts:116-150 and docs/ci-runbook.md; Podman 6 provider-integration CI assertion."
     },
     {
