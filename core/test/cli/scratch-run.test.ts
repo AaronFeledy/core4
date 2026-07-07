@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -43,7 +43,7 @@ import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
-import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
+import { ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive, readScratchLandofile } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
@@ -682,6 +682,152 @@ describe("scratchRun", () => {
       );
       expect(recorded.execCalls[0]?.tty).toBe(true);
       expect(recorded.execCalls[0]?.stdin).toBe("inherit");
+    });
+  });
+});
+
+describe("scratch run cleanup and warm repeats", () => {
+  const serviceBuildInputs = (plan: AppPlan): Record<string, unknown> => {
+    const service = Object.values(plan.services)[0];
+    if (service === undefined) throw new Error("scratch run plan has no service");
+    return {
+      type: service.type,
+      artifact: service.artifact,
+      command: service.command,
+      entrypoint: service.entrypoint,
+      user: service.user,
+      workingDirectory: service.workingDirectory,
+    };
+  };
+
+  test("a kept run is listed detached and reaped by gc --prune once its registry entry is lost", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded, { execStdout: "ok\n" });
+      const result = await Effect.runPromise(
+        scratchRun({ command: ["echo", "ok"], mount: true, keep: true, answers: {}, issues: [] }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(recorded.destroyCalls).toHaveLength(0);
+
+      const listed = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      const summary = listed.find((entry) => entry.id === result.scratchId);
+      expect(summary?.status).toBe("detached");
+      expect(summary?.source).toEqual({ kind: "recipe", ref: "toolbox" });
+      expect(summary?.mode).toBe("cwd");
+
+      // Losing the registry entry (a wiped cache) turns the kept scratch into an
+      // orphan whose cache dir and provider resources gc --prune then reaps.
+      await Effect.runPromise(makeScratchRegistry().remove(result.scratchId));
+      const gc = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(gc.reaped).toEqual([result.scratchId]);
+      expect(recorded.destroyCalls.map((call) => call.app)).toEqual([result.scratchId]);
+
+      const afterGc = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(afterGc).toEqual([]);
+      const remaining = await readdir(makeLandoPaths().scratchDir);
+      expect(remaining.filter((entry) => entry !== "registry.bin")).toEqual([]);
+    });
+  });
+
+  test("interrupting a run leaves no registry entry or scratch root behind", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded, { execNever: true });
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.fork(
+            scratchRun({
+              command: ["sleep", "infinity"],
+              mount: true,
+              keep: false,
+              answers: {},
+              issues: [],
+            }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+          );
+          for (let attempt = 0; attempt < 500 && recorded.execCalls.length === 0; attempt += 1) {
+            yield* Effect.sleep("5 millis");
+          }
+          yield* Fiber.interrupt(fiber);
+        }),
+      );
+      expect(recorded.execCalls).toHaveLength(1);
+      expect(recorded.destroyCalls).toHaveLength(1);
+
+      const listed = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(listed).toEqual([]);
+      const remaining = await readdir(makeLandoPaths().scratchDir);
+      expect(remaining.filter((entry) => entry !== "registry.bin")).toEqual([]);
+    });
+  });
+
+  test("repeated toolbox runs acquire and destroy a fresh scratch with content-addressed build inputs and no warm pool", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded, { execStdout: "ok\n" });
+      const options = {
+        command: ["echo", "ok"],
+        mount: true,
+        keep: false,
+        answers: {},
+        issues: [],
+      } as const;
+
+      const first = await Effect.runPromise(
+        scratchRun(options).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      const second = await Effect.runPromise(
+        scratchRun(options).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+
+      expect(first.scratchId).not.toBe(second.scratchId);
+      expect(recorded.appliedPlans).toHaveLength(2);
+      const [firstPlan, secondPlan] = recorded.appliedPlans;
+      if (firstPlan === undefined || secondPlan === undefined) {
+        throw new Error("expected two applied plans");
+      }
+      expect(String(firstPlan.id)).not.toBe(String(secondPlan.id));
+
+      expect(recorded.destroyCalls).toHaveLength(2);
+
+      // Content-addressed render: identical resolved image build inputs across runs, so
+      // the standard buildKey up-to-date check short-circuits the toolbox image build.
+      const firstInputs = serviceBuildInputs(firstPlan);
+      expect(serviceBuildInputs(secondPlan)).toEqual(firstInputs);
+      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+
+      const afterRuns = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(afterRuns).toEqual([]);
+
+      // Only a --keep run persists a scratch for later apps:scratch:* verbs; a plain
+      // repeat still acquires and destroys a fresh scratch.
+      const kept = await Effect.runPromise(
+        scratchRun({ ...options, keep: true }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(recorded.destroyCalls).toHaveLength(2);
+      const afterKeep = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(afterKeep.map((entry) => entry.id)).toEqual([kept.scratchId]);
+      expect(afterKeep[0]?.status).toBe("detached");
     });
   });
 });
