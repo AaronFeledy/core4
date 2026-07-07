@@ -409,6 +409,31 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("invalidates the warm tooling cache when cached version constraints differ from the current Landofile", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const staleLandofile = { name: "version-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: version-cache", "lando: >=99", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: staleLandofile,
+            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+        expect(fresh).toBeNull();
+      });
+    });
+  });
+
   test("does not write tooling caches while an unsatisfied version constraint is skipped", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {

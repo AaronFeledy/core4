@@ -17,6 +17,8 @@ import {
 } from "../config/version-constraint.ts";
 import { findLandofilePath } from "../landofile/discovery.ts";
 import { getLocalIncludePaths } from "../landofile/include-provenance.ts";
+import { resolveLandofileIncludes } from "../landofile/includes.ts";
+import { loadLandofileFile } from "../landofile/service.ts";
 import { detectTemplateDirective } from "../landofile/template-render.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -437,6 +439,22 @@ const readAppCommandCacheTask = async (
   }
 };
 
+const currentVersionConstraintsForSource = async (
+  source: AppCommandCacheSource,
+): Promise<ReadonlyArray<VersionConstraintEntry> | null> => {
+  const appRoot = dirname(source.filePath);
+  const loaded = await Effect.runPromise(
+    loadLandofileFile(source.filePath).pipe(
+      Effect.flatMap((landofile) =>
+        resolveLandofileIncludes({ landofile, appRoot, sourcePath: source.filePath }),
+      ),
+      Effect.map((landofile) => getVersionConstraintEntries(landofile, source.filePath)),
+      Effect.either,
+    ),
+  );
+  return loaded._tag === "Left" ? null : loaded.right;
+};
+
 const readFreshAppCommandCacheForCwdTask = async (options: {
   readonly cwd?: string;
   readonly cacheRoot?: string;
@@ -462,7 +480,10 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
       return null;
     if (payload.sourceMtimeMs !== source.stats.mtimeMs || payload.sourceSize !== source.stats.size)
       return null;
-    if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+    const currentVersionConstraints = await currentVersionConstraintsForSource(source);
+    if (currentVersionConstraints === null) return null;
+    if (!versionConstraintsEqual(payload.versionConstraints, currentVersionConstraints)) return null;
+    if (!versionConstraintsUsable(currentVersionConstraints)) return null;
     return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;
