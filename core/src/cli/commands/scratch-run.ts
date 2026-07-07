@@ -25,7 +25,7 @@ import {
   readScratchLandofile,
 } from "../../scratch-app/service.ts";
 import { parseAnswerFlags } from "../prompts/answer-flags.ts";
-import { emitOptionalStderr } from "../renderer-boundary.ts";
+import type { RenderContext } from "../renderer-boundary.ts";
 
 export const DEFAULT_SCRATCH_RUN_RECIPE = "toolbox";
 
@@ -350,7 +350,6 @@ export const scratchRun = (
             ),
           );
         if (options.keep) yield* deps.detach(handle.id);
-        if (result.stderr.length > 0) yield* emitOptionalStderr(result.stderr);
         return {
           scratchId: handle.id,
           service: String(service.name),
@@ -364,10 +363,13 @@ export const scratchRun = (
     );
   });
 
-export const renderScratchRunResult = (result: ScratchRunResult): string | undefined => {
+export const renderScratchRunResult = (result: ScratchRunResult, ctx?: RenderContext): string | undefined => {
   const lines: string[] = [];
   if (result.stdout.length > 0) {
     lines.push(result.stdout.endsWith("\n") ? result.stdout.slice(0, -1) : result.stdout);
+  }
+  if (ctx?.format !== "json" && result.stderr.length > 0) {
+    lines.push(result.stderr.endsWith("\n") ? result.stderr.slice(0, -1) : result.stderr);
   }
   if (result.kept) lines.push(`kept: ${result.scratchId}`);
   return lines.length === 0 ? undefined : lines.join("\n");

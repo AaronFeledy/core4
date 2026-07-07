@@ -9,6 +9,7 @@ import {
   scratchRunOptionsFromInput,
   scratchRunSuccessExitCode,
 } from "../../../../commands/scratch-run.ts";
+import type { RenderContext } from "../../../../renderer-boundary.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
@@ -29,7 +30,7 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult> = {
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },
-  render: (result) => renderScratchRunResult(result as ScratchRunResult),
+  render: (result, ctx) => renderScratchRunResult(result as ScratchRunResult, ctx as RenderContext),
   successExitCode: (result) => scratchRunSuccessExitCode(result),
 };
 

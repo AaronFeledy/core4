@@ -1457,7 +1457,7 @@ const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
     runCompiledCommand(
       scratchRun({ ...parseScratchRunArgv(argv), signal }),
       scratchRunRuntimeLayer(),
-      (result) => renderScratchRunResult(result),
+      renderScratchRunResult,
       { successExitCode: scratchRunSuccessExitCode },
     ),
   );
