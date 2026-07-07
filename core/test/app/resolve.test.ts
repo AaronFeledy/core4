@@ -179,6 +179,32 @@ describe("resolveApp", () => {
     });
   });
 
+  test("a decoded Landofile selector enforces the lando version constraint", async () => {
+    await withTempApp(async (dir) => {
+      const error = await Effect.runPromise(
+        Effect.flip(
+          resolveApp({
+            landofile: {
+              name: "embedded-app",
+              runtime: 4,
+              provider: ProviderId.make(TestRuntimeProvider.id),
+              lando: ">=99",
+            },
+            root: dir as never,
+          }).pipe(Effect.scoped, Effect.provide(appLayer())),
+        ),
+      );
+
+      expect(error._tag).toBe("AppResolveError");
+      expect(error.message).toContain("LandofileVersionConstraintError");
+      const causeTag =
+        typeof error.cause === "object" && error.cause !== null && "_tag" in error.cause
+          ? error.cause._tag
+          : undefined;
+      expect(causeTag).toBe("LandofileVersionConstraintError");
+    });
+  });
+
   test("a landofile path selector loads the explicit selected file", async () => {
     await withTempApp(async (dir) => {
       await Bun.write(join(dir, "custom.lando.yml"), landofileYaml("custom-app"));

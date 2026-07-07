@@ -41,7 +41,16 @@ const tunnelSessionSample = Schema.decodeUnknownSync(TunnelSession)({
   startedAt: "2026-01-01T00:00:00.000Z",
 });
 
+const appConfigResultCommandIds = new Set<string>([
+  "app:config",
+  "app:config:edit",
+  "app:config:set",
+  "app:config:unset",
+  "app:config:validate",
+]);
+
 const successValueFor = (spec: LandoCommandSpec): unknown => {
+  if (appConfigResultCommandIds.has(spec.id)) return {};
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
   const arbitrary = Arbitrary.make(spec.resultSchema);

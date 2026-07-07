@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Option } from "effect";
 
 import {
   AppIdReservedError,
@@ -11,13 +11,22 @@ import {
   type LandofileSandboxError,
   type LandofileTimeoutError,
   type LandofileValidationError,
+  LandofileVersionConstraintError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
-import type { LandofileService } from "@lando/sdk/services";
+import { type LandofileService, Renderer } from "@lando/sdk/services";
 
+import {
+  type VersionConstraintEntry,
+  evaluateVersionConstraints,
+  getVersionConstraintEntries,
+  isVersionConstraintSkipped,
+} from "../config/version-constraint.ts";
+import { LANDOFILE_NAME } from "../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { findDiscoveredLandofilePath, loadLandofileFile } from "../landofile/service.ts";
+import { CORE_VERSION } from "../version.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -44,6 +53,7 @@ export type UserLandofileError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | AppIdReservedError;
 
 export const assertUserAppIdNotReserved = (
@@ -55,13 +65,92 @@ export const assertUserAppIdNotReserved = (
     : Effect.void;
 };
 
+export interface LandoVersionConstraintOptions {
+  readonly runningVersion?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly sourcePath?: string;
+}
+
+const discoveredLandofilePath = (): Effect.Effect<
+  { readonly filePath: string; readonly appRoot: string } | undefined
+> =>
+  Effect.promise(() =>
+    findDiscoveredLandofilePath(process.cwd()).then(
+      (result) => result,
+      () => undefined,
+    ),
+  );
+
+const RANGE_SYNTAX_REMEDIATION = 'Use a valid semver range such as ">=4.1 <5", "^4.0.0", or "~4.1".';
+
+const VERSION_CONSTRAINT_REMEDIATION =
+  "Run `lando update` to move to a satisfying Lando version, or edit the `lando:` constraint in your Landofile.";
+
+const warnConstraintSkipped = (
+  unsatisfied: ReadonlyArray<VersionConstraintEntry>,
+  runningVersion: string,
+): Effect.Effect<void> =>
+  Effect.serviceOption(Renderer).pipe(
+    Effect.flatMap((maybe) =>
+      Option.isNone(maybe)
+        ? Effect.void
+        : maybe.value.message
+            .warn(
+              `Skipping unsatisfied Lando version constraint ${unsatisfied
+                .map((entry) => `"${entry.range}"`)
+                .join(", ")} (running ${runningVersion}); LANDO_SKIP_VERSION_CONSTRAINT is set.`,
+            )
+            .pipe(Effect.catchAll(() => Effect.void)),
+    ),
+  );
+
+export const assertLandoVersionConstraint = (
+  landofile: LandofileShape,
+  options?: LandoVersionConstraintOptions,
+): Effect.Effect<void, LandofileParseError | LandofileVersionConstraintError> => {
+  const constraints = getVersionConstraintEntries(landofile, options?.sourcePath ?? LANDOFILE_NAME);
+  if (constraints.length === 0) return Effect.void;
+
+  const runningVersion = options?.runningVersion ?? CORE_VERSION;
+  const env = options?.env ?? process.env;
+  const { invalid, unsatisfied } = evaluateVersionConstraints(constraints, runningVersion);
+
+  const bad = invalid[0];
+  if (bad !== undefined)
+    return Effect.fail(
+      new LandofileParseError({
+        message: `Landofile "lando:" is not a valid semver range: "${bad.range}". ${RANGE_SYNTAX_REMEDIATION}`,
+        filePath: bad.source,
+        line: undefined,
+        column: undefined,
+      }),
+    );
+
+  if (unsatisfied.length === 0) return Effect.void;
+  if (isVersionConstraintSkipped(env)) return warnConstraintSkipped(unsatisfied, runningVersion);
+
+  return Effect.fail(
+    new LandofileVersionConstraintError({
+      message: `The running Lando version ${runningVersion} does not satisfy the Landofile \`lando:\` constraint ${unsatisfied
+        .map((entry) => `"${entry.range}" (${entry.source})`)
+        .join(", ")}.`,
+      constraints: unsatisfied,
+      runningVersion,
+      remediation: VERSION_CONSTRAINT_REMEDIATION,
+    }),
+  );
+};
+
 export const loadUserLandofile = (
   landofileService: Context.Tag.Service<typeof LandofileService>,
 ): Effect.Effect<LandofileShape, UserLandofileError> =>
   landofileService.discover.pipe(
     Effect.flatMap((landofile) => {
-      if (landofile.includes === undefined || landofile.includes.length === 0)
-        return Effect.succeed(landofile);
+      if (landofile.includes === undefined || landofile.includes.length === 0) {
+        return discoveredLandofilePath().pipe(
+          Effect.map((discovered) => ({ landofile, sourcePath: discovered?.filePath })),
+        );
+      }
       return Effect.tryPromise({
         try: () => findDiscoveredLandofilePath(process.cwd()),
         catch: (cause) =>
@@ -75,9 +164,18 @@ export const loadUserLandofile = (
                 column: undefined,
                 cause,
               }),
-      }).pipe(Effect.flatMap(({ appRoot }) => resolveLandofileIncludes({ landofile, appRoot })));
+      }).pipe(
+        Effect.flatMap(({ appRoot, filePath }) =>
+          resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
+        ),
+        Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
+      );
     }),
-    Effect.tap(assertUserAppIdNotReserved),
+    Effect.tap(({ landofile }) => assertUserAppIdNotReserved(landofile)),
+    Effect.tap(({ landofile, sourcePath }) =>
+      assertLandoVersionConstraint(landofile, sourcePath === undefined ? undefined : { sourcePath }),
+    ),
+    Effect.map(({ landofile }) => landofile),
   );
 
 export const loadUserLandofileFile = (filePath: string): Effect.Effect<LandofileShape, UserLandofileError> =>
@@ -85,9 +183,10 @@ export const loadUserLandofileFile = (filePath: string): Effect.Effect<Landofile
     Effect.flatMap((landofile) => {
       if (landofile.includes === undefined || landofile.includes.length === 0)
         return Effect.succeed(landofile);
-      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath) });
+      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath), sourcePath: filePath });
     }),
     Effect.tap(assertUserAppIdNotReserved),
+    Effect.tap((landofile) => assertLandoVersionConstraint(landofile, { sourcePath: filePath })),
   );
 
 const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>

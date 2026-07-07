@@ -18,6 +18,7 @@ import type {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  LandofileVersionConstraintError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
@@ -70,6 +71,7 @@ type AppCacheRefreshError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NotImplementedError
   | PluginManifestError
   | CapabilityError

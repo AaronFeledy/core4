@@ -30,6 +30,7 @@ import type {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  LandofileVersionConstraintError,
   NoProviderInstalledError,
   NotImplementedError,
   ProviderConfigError,
@@ -176,6 +177,7 @@ export type StartAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
   | GlobalAutoStartError
@@ -206,6 +208,7 @@ export type StopAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
   | LandoCommandError
@@ -300,6 +303,7 @@ export type InfoAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
   | LandoCommandError
@@ -338,6 +342,7 @@ export type ExecAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
@@ -380,6 +385,7 @@ export type ToolingError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
@@ -406,6 +412,7 @@ export type LogsAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
   | LandoCommandError
@@ -458,6 +465,7 @@ export type RemoteSyncError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | RemoteSourceError
   | DatasetServiceError
   | DataMoverError

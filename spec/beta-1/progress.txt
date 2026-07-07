@@ -44,6 +44,41 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 17:58 CDT - US-404 Review
+- Review closed with post-fix Bugbot clean after repairing accumulated include constraints, shape-selector enforcement, and discovered `.lando.ts` source provenance.
+- Review notes (deferred/rejected): review-work reports were generated against the original build commit, so their accumulation/shape/source findings are stale after the review commits; full six-file Landofile discovery, full npm-semver grammar support, schema-level range predicates, and structured machine-warning plumbing remain broader spec gaps not safely added as review-step repairs on this branch.
+- Verification: final Bugbot reported no bugs; typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed after the final code fix.
+---
+
+## 2026-07-06 17:53 CDT - US-404 Review
+- Review fixed the remaining discovered-file provenance gap: `.lando.ts` discovery without includes now attributes `lando:` constraint errors to the discovered `.lando.ts` path instead of the `.lando.yml` fallback.
+- Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
+- Verification: typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed.
+---
+
+## 2026-07-06 17:47 CDT - US-404 Review
+- Review fixed post-Bugbot follow-ups: decoded Landofile shape selectors now enforce `lando:` before planning, and explicit Landofile file loads pass their selected path into version-constraint parse/runtime errors.
+- Review notes (deferred/rejected): no additional Bugbot findings were rejected in this pass.
+- Verification: typecheck, lint, focused app-resolution/version-constraint tests, and adjacent app resolve tests passed.
+---
+
+## 2026-07-06 17:40 CDT - US-404 Review
+- Review fixed the accumulated-constraint blocker: include-layer `lando:` ranges now remain enforced with source provenance after scalar merge, so a looser root Landofile cannot erase a stricter included fragment.
+- Review notes (deferred/rejected): Bugbot's scalar-merge finding was confirmed and fixed; US-405 hot-path cache and doctor reporting remain the next story's scope, not a US-404 review blocker.
+- Verification: typecheck, lint, and focused version-constraint/app-resolution spot checks passed.
+---
+
+## 2026-07-06 17:35 CDT - US-404
+- Shipped the top-level `lando: <semver-range>` Landofile version constraint. Added the optional public `lando:` schema field, the tagged `LandofileVersionConstraintError` (carrying `constraints[{range,source}]`, `runningVersion`, `remediation`), and an Effect-free semver primitive (`core/src/config/version-constraint.ts`) that evaluates ranges against the embedded `CORE_VERSION` with no provider contact. Range parsing supports comparators (`>=`/`<=`/`>`/`<`/`=`), caret, tilde, and `v`-prefixed/exact versions; unions (`||`) and hyphen ranges are intentionally rejected as parse failures. Evaluation is prerelease-inclusive (numeric `major.minor.patch` compare ignoring prerelease/build metadata), so `>=4.1` accepts `4.1.0-beta.2`.
+- Enforcement is a `tap` on `loadUserLandofile`/`loadUserLandofileFile` (`app-resolution.ts`), running after the six-file merge + include resolution and before planning. An unparseable range fails Landofile validation with `LandofileParseError` + range-syntax remediation; a valid-but-unsatisfied range fails closed with `LandofileVersionConstraintError`; `LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades the failure to a renderer warning (no-op when no Renderer is provided). The accumulation primitive (`evaluateVersionConstraints`) takes an array of `{range,source}` and reports every unsatisfied/invalid range with provenance; the current merged-shape wiring feeds the single accumulated `lando:` value (per-layer provenance through the app-plan cache is US-405's hot-path/reporting story).
+- Schema surface: `lando:` added to `LandofileShape` with a per-field annotation; `LandofileVersionConstraintError` added to `sdk/API_COMPATIBILITY.md` and threaded into the SDK app-error unions + the app-loading command error unions (`app config`, `app cache refresh`, `shell`, exec/tooling/info/logs/start/stop/destroy/open). Snapshot + `dist/schemas` + `docs/reference/schemas` refreshed via `codegen:schema-snapshot` (idempotent).
+- Verification: typecheck, lint (biome + deprecations) passed. Test spot checks green — version-constraint primitive (satisfiesRange/isValidSemverRange/evaluate accumulation/skip, 14) + app-resolution enforcement incl. runtime:/api: distinctness (10); regression: sdk landofile schema (many), app-resolution, schema-snapshot drift, sdk-backward-compatibility. Manual CLI QA on the source binary via `lando app config`: unsatisfied `>=4.1 <5` on core `0.0.0` fails exit 1 with the tagged error (range + `.lando.yml` source + running version + remediation), `LANDO_SKIP_VERSION_CONSTRAINT=1` downgrades to a `⚠` warning and proceeds, `>=0.0.0` passes exit 0, `not-a-range` fails exit 1 as `LandofileParseError`, and `--format json` emits an `ok:false` envelope with the `LandofileVersionConstraintError` `_tag`/`message`/`remediation`.
+- **Learnings for future iterations:**
+  - The `lando:` constraint is enforced by a `tap` on `loadUserLandofile`/`loadUserLandofileFile` in `core/src/cli/app-resolution.ts` — every app-loading command already routes through those helpers, so adding the error to a command's declared error union (a pure type-level change) is all the wiring a new app command needs; there is no per-command call site.
+  - `toErrorEnvelope` only serializes a tagged error's `_tag`/`message`/`remediation`, so `LandofileVersionConstraintError.constraints`/`runningVersion` are dropped from the `--format json` envelope; the full range + source + running version is folded into `message` so machine consumers still see it (same pattern as `OpenTargetUnresolvedError`).
+  - In source mode `CORE_VERSION` is `0.0.0` (workspace package version), so ANY `>=4.x`/`^4`/`~4` constraint is unsatisfied when exercising the source binary — use `>=0.0.0` for a "satisfied" fixture. Compiled binaries stamp the real version via `--define=__LANDO_CORE_VERSION__`.
+---
+
 ## 2026-07-06 12:54 CDT - US-403
 - Shipped the logical container→host `runLando` round-trip for `app:open`. `app:open` now rides a generated host-proxy allowlist; an in-container `lando open` request builds a `runLando` wire request (argv, cwd, tty, env filtered to `LANDO_*`/`LC_*`/`LANG`/`TERM`) and the host-side dispatcher enforces the allowlist, remaps the container cwd to the host app root, dispatches against the retained runtime, and returns the SAME `CommandResultEnvelope` + exit code as host-side `app:open` — including `--print` and headless degradation. Targets always resolve from the plan host-side; container-provided URLs are never trusted.
 - New SDK surface: host-proxy wire schema (`HostProxyRequest`/`HostProxyResponse`/`HostProxyErrorCode`, internal export — not registered in the public JSON-schema registry yet), dispatch errors (`HostProxyCommandNotAllowedError`, `HostProxyAllowlistConflictError`), and redacted lifecycle events (`pre-host-proxy-call`/`post-host-proxy-call`) added to the `LandoEvent` union + schema snapshot. Every dispatched request (including rejected ones) publishes redacted pre/post call events; the existing `pre-open-url`/`post-open-url` events remain redacted through the same `secrets` `RedactionService` redactor.
@@ -806,4 +841,11 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): physical socket transport, compiled shim binary, token auth, concurrency cap, and recursion guard remain deferred to the later host-proxy subsystem wave because US-403’s source ACs require the logical in-process round-trip; `lando app open` multi-token forwarding was rejected as a blocker because the host-proxy wire contract carries canonical command id + args, while the shim/allowlist path canonicalizes `open`/`app:open` for this story.
 - Verification: typecheck, lint, check:redaction-boundary, lint:guides, check:guide-coverage, and check:public-transcripts passed; focused spot checks passed for host-proxy dispatch/shim/round-trip, SDK compatibility, host-proxy schema/events/errors, and host-proxy allowlist.
 - **Learnings for future iterations:** Host-proxy env filtering has one source of truth in `core/src/config/agent-env.ts`; new `@lando/sdk/schema` barrel exports must also be added to `sdk/API_COMPATIBILITY.md` or the SDK compatibility test fails.
+---
+
+## [2026-07-06 15:55 CDT] - Babysit
+- PR: #534 https://github.com/AaronFeledy/core4/pull/534
+- CI outcome: pass
+- Review feedback: fixed (Bugbot findings were already addressed by branch commits; guide drift resolved with documented Guide-Coverage-Skip PR body line)
+- Merge: merged (squash)
 ---

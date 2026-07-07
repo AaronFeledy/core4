@@ -9,6 +9,11 @@ import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/sche
 import type { StateBucket, StateRoot } from "@lando/sdk/services";
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import {
+  type VersionConstraintEntry,
+  getVersionConstraintEntries,
+  rememberVersionConstraintEntries,
+} from "../config/version-constraint.ts";
 import { httpJsonFetch } from "../http-client/json-fetch.ts";
 import { type GitRecipeCloner, defaultGitRecipeCloner, publish } from "../recipes/git-source.ts";
 import { type NpmPackument, type NpmRegistryClient, parseNpmPackageSpec } from "../recipes/npm-source.ts";
@@ -37,6 +42,7 @@ export interface LandofileIncludeDeps {
 export interface ResolveLandofileIncludesOptions {
   readonly landofile: LandofileShape;
   readonly appRoot: string;
+  readonly sourcePath?: string;
   readonly cacheRoot?: string;
   readonly lockfilePath?: string;
   readonly now?: () => number;
@@ -565,11 +571,18 @@ const inlineWithoutIncludes = (landofile: Record<string, unknown>): Record<strin
   return rest;
 };
 
+const ownVersionConstraintEntries = (
+  landofile: { readonly lando?: string | undefined },
+  source: string,
+): ReadonlyArray<VersionConstraintEntry> =>
+  landofile.lando === undefined ? [] : [{ range: landofile.lando, source }];
+
 const resolveTree = (
   landofile: LandofileShape,
   ctx: ResolveContext,
   depth: number,
   stack: ReadonlyArray<string>,
+  source: string,
 ): Effect.Effect<LandofileShape, LandofileIncludeError | LandofileLockMismatchError | LandofileParseError> =>
   Effect.gen(function* () {
     if (depth > ctx.maxDepth) {
@@ -582,9 +595,11 @@ const resolveTree = (
       );
     }
     const includes = landofile.includes ?? [];
-    if (includes.length === 0) return landofile;
+    if (includes.length === 0)
+      return rememberVersionConstraintEntries(landofile, ownVersionConstraintEntries(landofile, source));
 
-    const fragments: Record<string, unknown>[] = [];
+    const fragments: LandofileShape[] = [];
+    const fragmentRecords: Record<string, unknown>[] = [];
     for (const rawEntry of includes) {
       const entry = normalizeInclude(rawEntry);
       const fragment = yield* Effect.tryPromise({
@@ -609,11 +624,15 @@ const resolveTree = (
         );
       }
       const parsed = yield* parseFragment(fragment);
-      const nested = yield* resolveTree(parsed as LandofileShape, ctx, depth + 1, [
-        ...stack,
+      const nested = yield* resolveTree(
+        parsed as LandofileShape,
+        ctx,
+        depth + 1,
+        [...stack, fragment.sourceId],
         fragment.sourceId,
-      ]);
-      fragments.push(nested as Record<string, unknown>);
+      );
+      fragments.push(nested);
+      fragmentRecords.push(nested as Record<string, unknown>);
       if (fragment.locked && fragment.resolved !== undefined) {
         const actual = sha256(fragment.content);
         if (ctx.mode === "refresh") {
@@ -649,10 +668,14 @@ const resolveTree = (
     }
 
     const merged = mergeLandofiles([
-      ...fragments,
+      ...fragmentRecords,
       inlineWithoutIncludes(landofile as Record<string, unknown>),
     ]);
-    return yield* decodeMerged(merged, ctx.lockfilePath);
+    const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
+    return rememberVersionConstraintEntries(decoded, [
+      ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+      ...ownVersionConstraintEntries(landofile, source),
+    ]);
   });
 
 const lockScalar = (value: unknown): string | undefined => {
@@ -875,7 +898,8 @@ export const resolveLandofileIncludes = (
       stagedLocks: new Map(),
       noNetwork: false,
     };
-    const resolved = yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
+    const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
+    const resolved = yield* resolveTree(options.landofile, ctx, 0, [options.appRoot], sourcePath);
     yield* writeLockfileIfNeeded(ctx);
     return resolved;
   });
@@ -967,7 +991,7 @@ export const updateLandofileIncludes = (
     };
 
     if (includes.length > 0) {
-      yield* resolveTree(landofile, ctx, 0, [options.appRoot]);
+      yield* resolveTree(landofile, ctx, 0, [options.appRoot], join(options.appRoot, ".lando.yml"));
     }
 
     const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
@@ -1078,7 +1102,7 @@ export const verifyLandofileIncludes = (
     };
 
     if (includes.length > 0) {
-      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
+      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot], join(options.appRoot, ".lando.yml"));
     }
 
     const staged = ctx.stagedLocks;

@@ -592,7 +592,7 @@
         "Lint passes"
       ],
       "priority": 33,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-08 (spec 7.4). Distinct from runtime:/api:; mirrors recipe requires.lando (spec 8.8.3)."
     },
     {

@@ -333,6 +333,10 @@ const ComposeConfigConfig = Schema.Struct({
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(Schema.String),
   runtime: Schema.optional(Schema.Literal(4)),
+  lando: Schema.optional(Schema.String).annotations({
+    description:
+      'Semver range the running Lando core version must satisfy before the app is planned or started (e.g. ">=4.1 <5"). Prereleases are included; unsatisfied constraints fail closed with remediation.',
+  }),
   recipe: Schema.optional(Schema.String),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),

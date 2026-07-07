@@ -7,6 +7,7 @@ import type {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  LandofileVersionConstraintError,
 } from "@lando/sdk/errors";
 import {
   ConfigError,
@@ -81,6 +82,7 @@ type AppConfigError =
   | LandofileWriteValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileVersionConstraintError
   | ConfigError
   | NotImplementedError;
 
