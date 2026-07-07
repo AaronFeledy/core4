@@ -187,7 +187,7 @@ ${setupBunSteps}
 ${timingNoticeStep("perf-budget-linux-x64", 10)}
 `;
 
-const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
+export const landoManagedPodmanTeardownCommands = `          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true`;
@@ -200,9 +200,9 @@ const contractProviderTestSteps = `      - name: Run provider contract tests
           bun test plugins/provider-podman/test/contract.integration.test.ts
           bun test plugins/provider-podman/test/capabilities.test.ts`;
 
-const landoRuntimeSocketPath = '"$HOME/.local/share/lando/runtime/run/podman.sock"';
+export const landoRuntimeSocketPath = '"$HOME/.local/share/lando/runtime/run/podman.sock"';
 
-const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prerequisites
+export const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y uidmap fuse-overlayfs

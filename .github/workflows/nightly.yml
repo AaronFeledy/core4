@@ -248,6 +248,175 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  published-manifest-setup-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Podman 6 toolchain (Homebrew; Ubuntu/OBS lack Podman 6)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! command -v brew >/dev/null 2>&1; then
+            test -x /home/linuxbrew/.linuxbrew/bin/brew
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          brew install podman
+          BREW_PREFIX="$(brew --prefix)"
+          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
+          # The OCI runtime and monitor are separate Homebrew formulae that Homebrew does
+          # not link onto PATH, so a bundle-staging step that searches PATH would copy
+          # the runner's preinstalled (older) crun/conmon and Podman 6 would reject their
+          # OCI config version. Export the Podman 6 toolchain directories so staging can
+          # prefer them over the system copies.
+          toolchain_dirs="$BREW_PREFIX/opt/podman/libexec/podman:$BREW_PREFIX/bin"
+          for dep in crun conmon fuse-overlayfs; do
+            dep_prefix="$(brew --prefix "$dep" 2>/dev/null || true)"
+            if test -n "$dep_prefix" && test -d "$dep_prefix/bin"; then
+              toolchain_dirs="$dep_prefix/bin:$toolchain_dirs"
+            fi
+          done
+          echo "LANDO_CI_PODMAN_TOOLCHAIN_DIRS=$toolchain_dirs" >> "$GITHUB_ENV"
+          # The managed runtime resolves its OCI runtime from the default system search
+          # list (/usr/bin/crun first), not from the bundle or helper_binaries_dir, so a
+          # runner's preinstalled crun that predates Podman 6 makes container start fail
+          # with "crun: unknown version specified". Overwrite the default-path crun with
+          # the Podman 6 toolchain build (its interpreter/RPATH stay absolute to the
+          # Homebrew prefix, which persists on the runner).
+          crun_prefix="$(brew --prefix crun 2>/dev/null || true)"
+          if test -n "$crun_prefix" && test -x "$crun_prefix/bin/crun"; then
+            sudo install -m 0755 "$crun_prefix/bin/crun" /usr/bin/crun
+          fi
+          # User-level container configs override any system files wholesale, so seed
+          # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
+          # can be v1-format TOML, and appending v2 keys to it makes every podman
+          # engine load fail with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
+          fi
+          # A system-level storage.conf left behind by a distro podman install pins the
+          # rootful runroot/graphroot, which Podman 6 honors literally for rootless
+          # users. Seed a rootless-safe user-level storage.conf so the default service
+          # always resolves user paths.
+          if ! test -f "$HOME/.config/containers/storage.conf"; then
+            printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
+              "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
+              "$HOME/.local/share/containers/storage" > "$HOME/.config/containers/storage.conf"
+          fi
+          podman --version
+
+      - name: Assert Podman 6 host contract
+        run: |
+          MINIMUM="6.0.0"
+          version_output="$(podman --version 2>/dev/null || true)"
+          numbers="$(printf '%s\n' "$version_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+          remediation="Install Podman >= $MINIMUM (Homebrew formula: podman) before Podman-backed CI runs."
+          if test -z "$numbers"; then
+            echo "::error title=podman6-contract::Could not parse a Podman version from '${version_output:-<no podman on PATH>}'. $remediation"
+            exit 1
+          fi
+          major="${numbers%%.*}"
+          minor_patch="${numbers#*.}"
+          minor="${minor_patch%%.*}"
+          patch="${minor_patch#*.}"
+          floor_major="${MINIMUM%%.*}"
+          floor_minor_patch="${MINIMUM#*.}"
+          floor_minor="${floor_minor_patch%%.*}"
+          floor_patch="${floor_minor_patch#*.}"
+          meets=yes
+          if test "$major" -lt "$floor_major"; then
+            meets=no
+          elif test "$major" -eq "$floor_major"; then
+            if test "$minor" -lt "$floor_minor"; then
+              meets=no
+            elif test "$minor" -eq "$floor_minor" && test "$patch" -lt "$floor_patch"; then
+              meets=no
+            fi
+          fi
+          if test "$meets" = no; then
+            echo "::error title=podman6-contract::Podman $numbers (from '$version_output') does not satisfy the >= $MINIMUM host contract. $remediation"
+            exit 1
+          fi
+          echo "podman6-contract: $numbers satisfies >= $MINIMUM"
+
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via ubuntu-24.04 default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Build Linux x64 binary
+        run: |
+          mkdir -p dist/cache/runtime-bundle
+          bun run --filter='@lando/core' build:manifest
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+
+      - name: Configure rootless overlay storage
+        run: |
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
+
+      - name: Prepare provider via lando setup against the published manifest
+        run: |
+          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Verify the published bundle downloaded, verified, and installed
+        run: |
+          for _ in {1..30}; do
+            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
+          test -x "$HOME/.local/share/lando/runtime/bin/podman"
+
+      - name: Teardown Lando runtime
+        if: always()
+        run: |
+          dist/lando poweroff || true
+          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
+
   distribution-rehearsal-linux-x64:
     runs-on: ubuntu-24.04
     timeout-minutes: 45

@@ -1,6 +1,11 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import {
+  landoManagedPodmanTeardownCommands,
+  landoRootlessPrereqSteps,
+  landoRuntimeSocketPath,
+} from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
@@ -92,6 +97,61 @@ ${renderAssertPodman6Step()}
           if-no-files-found: ignore
           retention-days: 7`;
 
+const publishedManifestSetupJob = `
+  published-manifest-setup-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+${bunSetupStep}
+
+${renderInstallPodman6Step()}
+
+${renderAssertPodman6Step()}
+
+${landoRootlessPrereqSteps}
+
+      - name: Build Linux x64 binary
+        run: |
+          mkdir -p dist/cache/runtime-bundle
+          bun run --filter='@lando/core' build:manifest
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+
+      - name: Configure rootless overlay storage
+        run: |
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
+
+      - name: Prepare provider via lando setup against the published manifest
+        run: |
+          test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          mkdir -p "\$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Verify the published bundle downloaded, verified, and installed
+        run: |
+          for _ in {1..30}; do
+            test -S ${landoRuntimeSocketPath} && break
+            sleep 1
+          done
+          test -S ${landoRuntimeSocketPath}
+          test -x "$HOME/.local/share/lando/runtime/bin/podman"
+
+      - name: Teardown Lando runtime
+        if: always()
+        run: |
+          dist/lando poweroff || true
+${landoManagedPodmanTeardownCommands}`;
+
 const distributionBundlePath = (platform: CiPlatform): string =>
   `./dist/bundle/lando-${platform.id}${platform.binaryName.endsWith(".exe") ? ".exe" : ""}`;
 
@@ -163,7 +223,12 @@ ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
 export const renderNightlyWorkflow = (): string => {
-  const jobsYaml = [...JOBS.map(renderJob), providerLandoE2eJob, distributionRehearsalJob].join("\n");
+  const jobsYaml = [
+    ...JOBS.map(renderJob),
+    providerLandoE2eJob,
+    publishedManifestSetupJob,
+    distributionRehearsalJob,
+  ].join("\n");
 
   return `${GENERATED_HEADER}
 name: nightly
