@@ -141,6 +141,7 @@ export const recipesDescribe = (
       const manifestYaml = yield* readManifestText(manifestPath);
       yield* ensureSingleRecipeManifestForm(manifestPath);
       const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+      yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
       return describeFromManifest(manifest, manifestPath);
     }
     const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
@@ -227,6 +228,23 @@ const ensureSingleRecipeManifestForm = (
   );
 };
 
+const ensureRecipeIdMatchesDirectory = (
+  manifest: RecipeManifest,
+  manifestPath: string,
+): Effect.Effect<void, RecipeManifestValidationError> => {
+  const recipeRoot = dirname(manifestPath);
+  const dirBasename = basename(recipeRoot);
+  return manifest.id === dirBasename
+    ? Effect.void
+    : Effect.fail(
+        new RecipeManifestValidationError({
+          message: `Recipe id "${manifest.id}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
+          source: manifestPath,
+          issues: [`id: "${manifest.id}" must equal directory basename "${dirBasename}"`],
+        }),
+      );
+};
+
 export const recipesValidate = (
   path: string,
   options: { readonly cwd: string },
@@ -236,6 +254,7 @@ export const recipesValidate = (
     const manifestYaml = yield* readManifestText(manifestPath);
     yield* ensureSingleRecipeManifestForm(manifestPath);
     const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
     return {
       valid: true as const,
       id: manifest.id,

@@ -37,6 +37,13 @@ const lastJsonLine = (text: string): Record<string, unknown> => {
   return JSON.parse(last) as Record<string, unknown>;
 };
 
+const writeMinimalRecipeYaml = (dir: string, id: string): void => {
+  writeFileSync(
+    join(dir, "recipe.yml"),
+    [`id: ${id}`, "title: Test", "description: Test recipe.", "version: 0.0.1", ""].join("\n"),
+  );
+};
+
 describe("meta:recipes:list", () => {
   test("lists bundled recipes including toolbox", async () => {
     const result = await runCli(["meta", "recipes", "list"]);
@@ -134,13 +141,22 @@ describe("meta:recipes:describe", () => {
     const parent = mkdtempSync(join(tmpdir(), "lando-recipes-describe-both-"));
     const dir = join(parent, "both-recipe");
     mkdirSync(dir);
-    writeFileSync(
-      join(dir, "recipe.yml"),
-      [`id: ${basename(dir)}`, "title: Both", "description: Two manifest forms.", "version: 0.0.1", ""].join(
-        "\n",
-      ),
-    );
+    writeMinimalRecipeYaml(dir, basename(dir));
     writeFileSync(join(dir, "recipe.ts"), "export default {};\n");
+
+    const result = await runCli(["meta", "recipes", "describe", dir, "--format", "json"]);
+
+    expect(result.exitCode).toBe(1);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(false);
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestValidationError");
+  }, 30_000);
+
+  test("local describe rejects recipe ids that do not match the directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "lando-recipes-describe-id-"));
+    const dir = join(parent, "mismatch-recipe");
+    mkdirSync(dir);
+    writeMinimalRecipeYaml(dir, "wrong-recipe");
 
     const result = await runCli(["meta", "recipes", "describe", dir, "--format", "json"]);
 
@@ -183,13 +199,22 @@ describe("meta:recipes:validate", () => {
     const parent = mkdtempSync(join(tmpdir(), "lando-recipes-validate-both-"));
     const dir = join(parent, "both-recipe");
     mkdirSync(dir);
-    writeFileSync(
-      join(dir, "recipe.yml"),
-      [`id: ${basename(dir)}`, "title: Both", "description: Two manifest forms.", "version: 0.0.1", ""].join(
-        "\n",
-      ),
-    );
+    writeMinimalRecipeYaml(dir, basename(dir));
     writeFileSync(join(dir, "recipe.ts"), "export default {};\n");
+
+    const result = await runCli(["meta", "recipes", "validate", dir, "--format", "json"]);
+
+    expect(result.exitCode).toBe(1);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(false);
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestValidationError");
+  }, 30_000);
+
+  test("rejects recipe ids that do not match the directory", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "lando-recipes-validate-id-"));
+    const dir = join(parent, "mismatch-recipe");
+    mkdirSync(dir);
+    writeMinimalRecipeYaml(dir, "wrong-recipe");
 
     const result = await runCli(["meta", "recipes", "validate", dir, "--format", "json"]);
 

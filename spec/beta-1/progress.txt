@@ -62,6 +62,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review fixed the MCP-allowlisted recipe describe security issue: local `recipe.ts` programmatic recipes are no longer evaluated by `meta:recipes:describe`; local describe now parses inert YAML manifests only, while bundled recipe describes still work.
 - Post-fix Bugbot found and review fixed recipe-form consistency: `meta:recipes:describe` and `meta:recipes:validate` now reject directories containing both `recipe.yml` and `recipe.ts`, matching the standard recipe resolver/init behavior.
 - A final Bugbot pass found and review fixed cwd-relative local describe refs, so `meta:recipes:describe recipes/toolbox/recipe.yml` matches `meta:recipes:validate` without re-enabling `recipe.ts` execution.
+- A follow-up Bugbot pass found and review fixed local manifest id parity, so local describe/validate reject recipe ids that do not match the recipe directory basename like init does.
 - Review notes (deferred/rejected): Context mining, goal, code-quality, and QA review lanes had no blockers; the security lane's `recipe.ts` execution finding was confirmed and fixed. The missing no-excuse helper from the shared TypeScript skill was not available in this repo, so LSP, typecheck, lint, focused tests, and machine-output checks were used instead.
 - Verification: typecheck, lint, machine-output boundary passed; focused recipes-commands regression, toolbox/canonical recipe, init canonical recipe, MCP allowlist, not-implemented, and dispatch-parity spot checks passed.
 ---
