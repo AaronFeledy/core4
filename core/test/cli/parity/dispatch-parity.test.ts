@@ -896,8 +896,12 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
           const compiled = await runCompiledCli([...args, "--format=json"], { cwd });
           expect(source.exitCode, `source(${args.join(" ")}) stderr: ${source.stderr}`).toBe(1);
           expect(compiled.exitCode).toBe(source.exitCode);
-          const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
-          const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+          const sourceFrame = lastJsonLine(source.stdout || source.stderr) as Record<string, unknown>;
+          const compiledFrame = lastJsonLine(compiled.stdout || compiled.stderr) as Record<string, unknown>;
+          expect(sourceFrame._tag).toBe("result");
+          expect(compiledFrame._tag).toBe("result");
+          const sourceEnvelope = normalizeJsonEnvelope(sourceFrame);
+          const compiledEnvelope = normalizeJsonEnvelope(compiledFrame);
           expect(compiledEnvelope).toEqual(sourceEnvelope);
           expect(sourceEnvelope.code).toBe("ScratchAppError");
           expect(sourceEnvelope.commandId).toBe("apps:scratch:run");

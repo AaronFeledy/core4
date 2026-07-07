@@ -1043,3 +1043,29 @@ export const acquireScratchAppWithPlan = (
     });
     return { handle, plan };
   });
+
+/**
+ * Read and decode the rendered Landofile at a scratch instance's root.
+ *
+ * Exec surfaces (`apps:scratch:run`) use this to honor Landofile-level
+ * policy such as the `agentEnv: false` forwarding opt-out; the plan cache
+ * intentionally does not carry those fields. Core-private: keeps the
+ * rendered-Landofile coupling inside the scratch module.
+ */
+export const readScratchLandofile = (
+  scratchId: string,
+): Effect.Effect<LandofileShape, ScratchAppError, ScratchAppService | FileSystem> =>
+  Effect.gen(function* () {
+    const service = yield* ScratchAppService;
+    const fileSystem = yield* FileSystem;
+    const scratchPaths = yield* service.paths(scratchId);
+    const landofilePath = join(scratchPaths.root, ".lando.yml");
+    const content = yield* fileSystem
+      .readText(landofilePath)
+      .pipe(
+        Effect.mapError((cause) =>
+          scratchAppError("run", `Unable to read the rendered scratch Landofile at ${landofilePath}.`, cause),
+        ),
+      );
+    return yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root);
+  });

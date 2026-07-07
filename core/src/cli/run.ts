@@ -1377,7 +1377,10 @@ const scratchRuntimeLayer = () =>
 const scratchRunRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<ScratchAppService | FileSystem | RuntimeProviderRegistry, LandoRuntimeBootstrapError>;
+  ) as Layer.Layer<
+    ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry,
+    LandoRuntimeBootstrapError
+  >;
 
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,

@@ -962,3 +962,22 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Bugbot timed out in this harness; the loaded `review-work` skill returned orchestration instructions rather than an executable report, so findings were cross-checked manually against US-407 and the focused parity suite. US-408 streaming/env and US-409 hardening/docs remain later-story scope.
 - Verification: typecheck and lint passed; focused scratch-run, reserved-aliases, dual-dispatch parity, dispatch-parity, scratch recipe flags, scratch registry, and scratch GC spot checks passed.
 ---
+
+## 2026-07-07 11:36:25 CDT - Babysit
+- PR: #541 https://github.com/AaronFeledy/core4/pull/541
+- CI outcome: pass
+- Review feedback: fixed stale command/schema docs, guide drift coverage, scratch isolate normalization, detached scratch retention, and version argv handling
+- Merge: merged (squash)
+---
+
+## 2026-07-07 12:25 CDT - US-408
+- `apps:scratch:run` now declares the shared StreamFrame streaming contract: under `--format json` both dispatch paths emit stdout/stderr frames (service-tagged), redacted lifecycle event frames, and a terminal result frame carrying the envelope with the scratch id and the propagated tool exit code. Failures emit a result frame instead of a bare envelope. All serialization stays on the central `runWithRendererHandling`/`encodeCommandResult` seam — no per-command JSON.
+- Agent-context env forwarding (§6.9.1) now reaches the scratch exec: the run path reads the rendered scratch Landofile via a new `readScratchLandofile` helper (so a recipe's `agentEnv: false` opt-out is honored), resolves the global agentEnv config policy fresh per invocation, and merges the allowlisted host markers into `RuntimeProvider.exec` env below the service environment. `LANDO_AGENT_ENV=0`, `agentEnv.enabled:false`, and the Landofile opt-out all disable forwarding.
+- Conformance coverage added for scratch-run streaming success, tagged failure, and non-zero tool exit; dispatch parity now asserts both paths emit result frames on the failure path.
+- Verification: typecheck, lint, renderer/redaction/probe/paths/state-store boundary gates passed; scratch-run (37), machine-output-conformance, full dispatch-parity (78), aliases, result-encode, exec.scenario, scratch-foreground, scratch-namespace spot checks passed; no schema-snapshot or oclif-manifest drift. Manual QA in the lando4-dev sandbox against real Podman: `lando run --format=json -- echo ok` streamed stdout/event/result frames with scratch id, `sh -c 'exit 7'` propagated exit 7 with ok:true envelope, `OPENCODE=1` reached the container env, and `LANDO_AGENT_ENV=0` suppressed it; scratch list empty afterwards (no orphans).
+- **Learnings for future iterations:**
+  - Making a command streaming is spec-only wiring: add `streaming: StreamFrame` + `streamFrames(result)` to the `LandoCommandSpec`; BOTH OCLIF `runEffect` and compiled `runCompiledCommand` read those fields via `landoSpecForId`, so no run.ts dispatch changes are needed. The parity helper `normalizeJsonEnvelope` already unwraps `{_tag:"result",envelope}` frames, so envelope-comparison tests survive the switch.
+  - Once a spec declares `streaming`, `--format json` FAILURES also switch shape (result frame instead of bare envelope) — any test using `lastJsonLine` on that command keeps working, but tests asserting raw envelope shape must unwrap the frame.
+  - The scratch plan cache does not carry Landofile-level policy fields (like `agentEnv`); read the rendered `.lando.yml` at the scratch root (`readScratchLandofile`) when an exec surface needs Landofile policy for a scratch app.
+  - Adding `ConfigService` to a scratch command's `R` requires widening the `scratchRunRuntimeLayer()` cast in run.ts; the scratch bootstrap already provides it (MinimalRuntimeServices ⊂ ScratchRuntimeServices).
+---

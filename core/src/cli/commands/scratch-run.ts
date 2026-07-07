@@ -1,19 +1,28 @@
 import { Effect, Schema } from "effect";
 
 import {
+  type ConfigError,
   ScratchAppError,
   type ScratchAppNotFoundError,
   type ScratchIsolationConflictError,
   ScratchRunTargetError,
   type ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName } from "@lando/sdk/schema";
-import { type FileSystem, RuntimeProviderRegistry, type ScratchAppService } from "@lando/sdk/services";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import {
+  type ConfigService,
+  type FileSystem,
+  RuntimeProviderRegistry,
+  type ScratchAppService,
+} from "@lando/sdk/services";
 
+import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
+import { withAgentContextEnv } from "../../config/agent-env.ts";
 import {
   acquireScratchAppWithPlan,
   detachScratchApp,
   findPrimaryServiceName,
+  readScratchLandofile,
 } from "../../scratch-app/service.ts";
 import { parseAnswerFlags } from "../prompts/answer-flags.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
@@ -56,9 +65,10 @@ export type ScratchRunError =
   | ScratchIsolationConflictError
   | ScratchAppError
   | ScratchAppNotFoundError
-  | ScratchRunTargetError;
+  | ScratchRunTargetError
+  | ConfigError;
 
-export type ScratchRunServices = ScratchAppService | FileSystem | RuntimeProviderRegistry;
+export type ScratchRunServices = ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry;
 
 const VALUE_FLAGS = new Map<string, "from" | "service" | "answer">([
   ["--from", "from"],
@@ -230,12 +240,14 @@ export const scratchRunOptionsFromInput = (input: unknown): ScratchRunOptions =>
 export interface ScratchRunDeps {
   readonly acquireWithPlan: typeof acquireScratchAppWithPlan;
   readonly detach: typeof detachScratchApp;
+  readonly readLandofile: typeof readScratchLandofile;
   readonly stdinIsTty: () => boolean;
 }
 
 export const defaultScratchRunDeps: ScratchRunDeps = {
   acquireWithPlan: acquireScratchAppWithPlan,
   detach: detachScratchApp,
+  readLandofile: readScratchLandofile,
   stdinIsTty: () => process.stdin.isTTY === true,
 };
 
@@ -249,11 +261,11 @@ const usageError = (message: string): ScratchAppError =>
 const resolveRunService = (
   requested: string | undefined,
   plan: AppPlan,
-): Effect.Effect<ServiceName, ScratchRunTargetError> => {
+): Effect.Effect<ServicePlan, ScratchRunTargetError> => {
   const available = Object.keys(plan.services).sort();
   if (requested !== undefined && requested.length > 0) {
     const match = Object.values(plan.services).find((service) => String(service.name) === requested);
-    if (match !== undefined) return Effect.succeed(match.name);
+    if (match !== undefined) return Effect.succeed(match);
     return Effect.fail(
       new ScratchRunTargetError({
         message: `Service ${requested} is not defined by this recipe (available: ${available.join(", ")}).`,
@@ -263,7 +275,11 @@ const resolveRunService = (
       }),
     );
   }
-  const primary = findPrimaryServiceName(plan);
+  const primaryName = findPrimaryServiceName(plan);
+  const primary =
+    primaryName === undefined
+      ? undefined
+      : Object.values(plan.services).find((service) => service.name === primaryName);
   if (primary !== undefined) return Effect.succeed(primary);
   return Effect.fail(
     new ScratchRunTargetError({
@@ -295,7 +311,7 @@ export const scratchRun = (
           ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
           ...(options.mount ? { mountCwd: {} } : {}),
         });
-        const serviceName = yield* resolveRunService(options.service, plan);
+        const service = yield* resolveRunService(options.service, plan);
         const provider = yield* registry.select(plan).pipe(
           Effect.mapError(
             (cause) =>
@@ -306,12 +322,19 @@ export const scratchRun = (
               }),
           ),
         );
+        const landofile = yield* deps.readLandofile(handle.id);
+        const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+        const env = withAgentContextEnv(undefined, process.env, {
+          allowlist,
+          lowerThanEnv: service.environment,
+        });
         const tty = deps.stdinIsTty();
         const result = yield* provider
           .exec(
-            { app: plan.id, service: serviceName, plan },
+            { app: plan.id, service: service.name, plan },
             {
               command: options.command,
+              ...(env === undefined ? {} : { env }),
               ...(tty ? { tty: true, stdin: "inherit" as const } : {}),
               ...(options.signal === undefined ? {} : { signal: options.signal }),
             },
@@ -330,7 +353,7 @@ export const scratchRun = (
         if (result.stderr.length > 0) yield* emitOptionalStderr(result.stderr);
         return {
           scratchId: handle.id,
-          service: String(serviceName),
+          service: String(service.name),
           command: options.command,
           exitCode: result.exitCode,
           kept: options.keep,
