@@ -866,7 +866,7 @@
       "description": "As a user inspecting app readiness on Podman 6, Lando derives service health from the container `Health` field and uses the shared probe primitive for polling.",
       "acceptanceCriteria": [
         "Future implementation maps the Podman 6 container Health field into ServiceRuntimeInfo health/readiness output instead of deriving readiness only from State.Running/State.Status as currently anchored in plugins/provider-lando/src/inspect.ts:12-19 and plugins/provider-lando/src/inspect.ts:61-132.",
-        "Polling/backoff/timeout behavior for health waits uses @lando/sdk/probe's runProbe; no new hand-rolled Effect.retry, Effect.repeat, or Schedule. loop is introduced in provider health code, and check:probe-boundary passes.",
+        "Polling/backoff/timeout behavior for health waits uses @lando/sdk/probe's runProbe; no new hand-rolled Effect.retry, Effect.repeat, or Schedule.* loop is introduced in provider health code, and check:probe-boundary passes.",
         "Probe failures redact ProbeResult.lastError through RedactionService before events, transcripts, or readiness summaries; check:redaction-boundary passes.",
         "Tests cover healthy, starting, unhealthy, missing-health, timeout, and redacted-last-error cases with a fake Podman API response.",
         "Provider capabilities remain honest: any health capability change must update the provider contract suite and @lando/sdk schema/compatibility artifacts if public schema changes.",
