@@ -890,3 +890,14 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot findings were already addressed by branch commits; guide drift resolved with documented Guide-Coverage-Skip PR body line)
 - Merge: merged (squash)
 ---
+## 2026-07-07 16:55 CDT - US-418
+- Provider integration CI now provisions and proves the Podman 6 host contract instead of inheriting the runner's Podman line: all Linux Podman-backed jobs (ci provider-integration + guide e2e, nightly e2e, weekly provider matrix) install the Homebrew `podman` formula (6.0.0 with Netavark/Aardvark-dns v2 in its helper dir; passt/crun/conmon deps) and run a fail-fast "Assert Podman 6 host contract" step (numeric major.minor.patch >= 6.0.0, suffixes ignored, unparseable fails closed with remediation) before any `podman system service` or `lando setup`. Ubuntu 24.04 apt ships 4.9.x and OBS Kubic xUbuntu_24.04 has no Podman 6, so the Homebrew selection is documented in the shared module and ci-runbook; the OBS packaging question stays open. Shared install/assert steps live in `scripts/ci-podman-install.ts` so the three workflow generators cannot drift; the bundle-staging helper list gained pasta/passt/rootlessport/catatonit plus a brew-helper-dir fallback via `LANDO_CI_PODMAN_HELPER_DIR`.
+- Note for the deferred provider-lando gate PR (#540): once this story merges to main, rerunning that PR's CI should turn its two red Linux jobs green.
+- Verification: typecheck, lint passed; new `scripts/ci-podman-install.test.ts` (8 tests: bash assert behavior via podman shims + generated-workflow contract) passed; generators re-ran with zero drift; emitted install+assert scripts rehearsed for real in the `lando4-dev` sandbox — Homebrew poured podman 6.0.0, assert accepted 6.0.0 and rejected system 5.4.2 with remediation, and a rootless `podman run alpine` succeeded with netavark v2.
+- **Learnings for future iterations:**
+  - The libpod HTTP API accepts older URL version prefixes: a 5.4.2 daemon answered /v3.0.0 through /v6.0.0 `/libpod/info` with 200, so `/v5.0.0` clients keep working against Podman 6 daemons and the prefix migration story is not CI-ordering-critical.
+  - A system-level `/usr/share/containers/storage.conf` (from any distro podman/containers-common install) pins rootful runroot/graphroot that Podman 6 honors literally for rootless users; the install step seeds a rootless-safe `$HOME/.config/containers/storage.conf` to stay deterministic on polluted hosts.
+  - Homebrew's podman formula compiles `HELPER_BINARIES_DIR` to `$(brew --prefix podman)/libexec/podman` (netavark/aardvark-dns/rootlessport/catatonit live there, NOT on PATH); anything staging helpers must look there explicitly.
+  - wsl.exe one-off commands mangle `$VAR` expansions; drive sandbox reruns through a script file on the shared mount instead.
+---
+
