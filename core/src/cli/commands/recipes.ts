@@ -106,11 +106,34 @@ const describeFromManifest = (manifest: RecipeManifest, source: string): Recipes
   postInit: (manifest.postInit ?? []).map((action) => action.type),
 });
 
+const expandsAsLocalPath = (ref: string): boolean =>
+  ref.startsWith("./") || ref.startsWith("../") || ref.startsWith("~/") || isAbsolute(ref);
+
+const expandRecipePath = (path: string, cwd: string): string =>
+  path.startsWith("~/")
+    ? resolve(process.env.HOME ?? cwd, path.slice(2))
+    : isAbsolute(path)
+      ? path
+      : resolve(cwd, path);
+
+const recipeManifestPath = (path: string, cwd: string): string => {
+  const expanded = expandRecipePath(path, cwd);
+  return basename(expanded) === "recipe.yml" || expanded.endsWith(".yml") || expanded.endsWith(".yaml")
+    ? expanded
+    : resolve(expanded, "recipe.yml");
+};
+
 export const recipesDescribe = (
   ref: string,
   options: { readonly cwd: string },
 ): Effect.Effect<RecipesDescribeResult, RecipesManifestError> =>
   Effect.gen(function* () {
+    if (expandsAsLocalPath(ref)) {
+      const manifestPath = recipeManifestPath(ref, options.cwd);
+      const manifestYaml = yield* readManifestText(manifestPath);
+      const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+      return describeFromManifest(manifest, manifestPath);
+    }
     const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
     const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
     return describeFromManifest(manifest, resolved.source);
@@ -173,11 +196,7 @@ export const recipesValidate = (
   options: { readonly cwd: string },
 ): Effect.Effect<RecipesValidateResult, RecipesManifestError> =>
   Effect.gen(function* () {
-    const expanded = isAbsolute(path) ? path : resolve(options.cwd, path);
-    const manifestPath =
-      basename(expanded) === "recipe.yml" || expanded.endsWith(".yml") || expanded.endsWith(".yaml")
-        ? expanded
-        : resolve(expanded, "recipe.yml");
+    const manifestPath = recipeManifestPath(path, options.cwd);
     const manifestYaml = yield* readManifestText(manifestPath);
     const manifest = yield* parseRecipe(manifestPath, manifestYaml);
     return {

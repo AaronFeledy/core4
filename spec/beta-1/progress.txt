@@ -57,6 +57,13 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - The compiled dispatcher only space-normalizes topics that `normalizeCompiledCommandArgv` knows about; a new `meta <topic> <verb>` family needs its own normalization branch or `lando meta <topic> <verb>` silently falls through to help on the compiled path while working in OCLIF.
   - `resolveRecipeRef` treats bare ids as builtin and `./`-prefixed/absolute as local; a repo-relative path like `recipes/toolbox/recipe.yml` matches NEITHER, so `meta:recipes:validate` expands its positional against cwd itself before touching the resolver.
 ---
+
+## 2026-07-07 02:35 CDT - US-406 Review
+- Review fixed the MCP-allowlisted recipe describe security issue: local `recipe.ts` programmatic recipes are no longer evaluated by `meta:recipes:describe`; local describe now parses inert YAML manifests only, while bundled recipe describes still work.
+- Review notes (deferred/rejected): Context mining, goal, code-quality, and QA review lanes had no blockers; the security lane's `recipe.ts` execution finding was confirmed and fixed. The missing no-excuse helper from the shared TypeScript skill was not available in this repo, so LSP, typecheck, lint, focused tests, and machine-output checks were used instead.
+- Verification: typecheck, lint, machine-output boundary passed; focused recipes-commands regression, toolbox/canonical recipe, init canonical recipe, MCP allowlist, not-implemented, and dispatch-parity spot checks passed.
+---
+
 ---
 
 ## 2026-07-06 21:34 CDT - US-405 Review

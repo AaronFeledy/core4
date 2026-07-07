@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -86,6 +86,32 @@ describe("meta:recipes:describe", () => {
     const envelope = lastJsonLine(result.stdout);
     expect(envelope.ok).toBe(false);
     expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
+  }, 30_000);
+
+  test("local recipe.ts is not evaluated by describe", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lando-recipes-describe-"));
+    const marker = join(dir, "executed.txt");
+    writeFileSync(
+      join(dir, "recipe.ts"),
+      [
+        `await Bun.write(${JSON.stringify(marker)}, "executed");`,
+        "export default {",
+        `  id: ${JSON.stringify(basename(dir))},`,
+        '  title: "Executable",',
+        '  description: "Must not execute during describe.",',
+        '  version: "0.0.1",',
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const result = await runCli(["meta", "recipes", "describe", dir, "--format", "json"]);
+
+    expect(result.exitCode).toBe(1);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(false);
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
+    expect(existsSync(marker)).toBe(false);
   }, 30_000);
 });
 
