@@ -51,6 +51,32 @@ const VERSION_FILE = join(PROVIDER_DIR, "runtime-bundle-version");
 const COMMITTED_MANIFEST = join(PROVIDER_DIR, "runtime-bundle-versions.json");
 const DEFAULT_STAGING_DIR = resolve(import.meta.dir, "..", "dist", "cache", "runtime-bundle");
 
+/** Fallback host slug when the publishing workflow does not export `GITHUB_REPOSITORY` (spec §13.5). */
+export const LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT = "lando-community/core4";
+
+export const resolveRuntimeBundleRepository = (
+  env: Record<string, string | undefined> = process.env,
+): string => {
+  const repository = env.GITHUB_REPOSITORY;
+  return repository !== undefined && repository.length > 0
+    ? repository
+    : LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT;
+};
+
+export const releaseBundleBaseUrl = (runtimeVersion: string, repository: string): string =>
+  `https://github.com/${repository}/releases/download/runtime-v${runtimeVersion}`;
+
+export interface ReleaseBundleUrlOptions {
+  readonly runtimeVersion: string;
+  readonly repository: string;
+  readonly baseUrl?: string;
+}
+
+export const releaseBundleUrl = (target: RuntimeBundleTarget, options: ReleaseBundleUrlOptions): string => {
+  const base = options.baseUrl ?? releaseBundleBaseUrl(options.runtimeVersion, options.repository);
+  return `${base.replace(/\/+$/u, "")}/${target.filename}`;
+};
+
 export const computeBundleEntry = async (
   artifactPath: string,
   url: string,
@@ -161,14 +187,15 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
   const runtimeVersion = await readRuntimeVersion(args.runtimeVersion);
   const targets = selectTargets(args.platform);
 
+  const repository = resolveRuntimeBundleRepository();
   const urlFor = args.local
     ? (_target: RuntimeBundleTarget, artifactPath: string): string => pathToFileURL(artifactPath).href
-    : (target: RuntimeBundleTarget): string => {
-        if (args.baseUrl === undefined) {
-          throw new Error("build-runtime-bundle: release mode requires --base-url for https manifest URLs");
-        }
-        return `${args.baseUrl.replace(/\/+$/u, "")}/${target.filename}`;
-      };
+    : (target: RuntimeBundleTarget): string =>
+        releaseBundleUrl(target, {
+          runtimeVersion,
+          repository,
+          ...(args.baseUrl === undefined ? {} : { baseUrl: args.baseUrl }),
+        });
 
   const manifest = await buildRuntimeBundleManifest({
     stagingDir: args.stagingDir,

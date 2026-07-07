@@ -1,0 +1,171 @@
+{
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative GitHub release asset digest. netavark/aardvark-dns publish no linux-arm64 binary and passt/pasta ships only as a .deb, so those are not yet pinned for every platform; extend when upstream publishes matching artifacts.",
+  "schemaVersion": 1,
+  "runtimeVersion": "0.1.0",
+  "bundles": {
+    "linux-x64": {
+      "components": [
+        {
+          "name": "podman",
+          "version": "6.0.0",
+          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_amd64.tar.gz",
+          "sha256": "46b882f98e2432df09b11d4272a67ab53eb8a38156ba0b389be5585ee9a9b1f5",
+          "archive": "tar.gz",
+          "member": "bin/podman-remote-static-linux_amd64",
+          "installName": "bin/podman",
+          "mode": 493
+        },
+        {
+          "name": "crun",
+          "version": "1.28",
+          "url": "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-amd64",
+          "sha256": "2aa6b7024a9c9f153895c0d11ae233d3758f54844011c3a039e3e89048d01d42",
+          "archive": "none",
+          "installName": "bin/crun",
+          "mode": 493
+        },
+        {
+          "name": "conmon",
+          "version": "2.2.1",
+          "url": "https://github.com/containers/conmon/releases/download/v2.2.1/conmon.amd64",
+          "sha256": "1d97294c14c43d477e0a0826e9cd0f2a2af373ddfafe6f10252e8a3c43f32be6",
+          "archive": "none",
+          "installName": "bin/conmon",
+          "mode": 493
+        },
+        {
+          "name": "netavark",
+          "version": "2.0.0",
+          "url": "https://github.com/containers/netavark/releases/download/v2.0.0/netavark.gz",
+          "sha256": "d8bc342c38382029e7e12256120ac0f7676dcc063aa1e7259189bb69cc869563",
+          "archive": "gz",
+          "installName": "bin/netavark",
+          "mode": 493
+        },
+        {
+          "name": "aardvark-dns",
+          "version": "2.0.0",
+          "url": "https://github.com/containers/aardvark-dns/releases/download/v2.0.0/aardvark-dns.gz",
+          "sha256": "fdaa3665ce58337fe597e0822e24de97528529d1a39fa6b655aa656c8ad33086",
+          "archive": "gz",
+          "installName": "bin/aardvark-dns",
+          "mode": 493
+        },
+        {
+          "name": "gvproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-linux-amd64",
+          "sha256": "3011c5629c9138d2050fb23c510e09ae53e30ec52e6a9ab85632bc1550e8ef63",
+          "archive": "none",
+          "installName": "bin/gvproxy",
+          "mode": 493
+        },
+        {
+          "name": "fuse-overlayfs",
+          "version": "1.17",
+          "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.17/fuse-overlayfs-x86_64",
+          "sha256": "1684ef18c337702a0378a4e9942802770c83b11aed6a93c445d43e641a1f3c90",
+          "archive": "none",
+          "installName": "bin/fuse-overlayfs",
+          "mode": 493
+        }
+      ]
+    },
+    "linux-arm64": {
+      "components": [
+        {
+          "name": "podman",
+          "version": "6.0.0",
+          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_arm64.tar.gz",
+          "sha256": "f5049048b05465859f2773a969cc5d42760426460be66cbc7241cbe739b81f15",
+          "archive": "tar.gz",
+          "member": "bin/podman-remote-static-linux_arm64",
+          "installName": "bin/podman",
+          "mode": 493
+        },
+        {
+          "name": "crun",
+          "version": "1.28",
+          "url": "https://github.com/containers/crun/releases/download/1.28/crun-1.28-linux-arm64",
+          "sha256": "cc1e8ec89aef1422e0741be196f9ed099e2e09d2f48f30f27cd44a22ef1f0342",
+          "archive": "none",
+          "installName": "bin/crun",
+          "mode": 493
+        },
+        {
+          "name": "conmon",
+          "version": "2.2.1",
+          "url": "https://github.com/containers/conmon/releases/download/v2.2.1/conmon.arm64",
+          "sha256": "c2fa62b3555eb0a729d853df23c5784d970f46050f2fb5f9931ded1bf455d216",
+          "archive": "none",
+          "installName": "bin/conmon",
+          "mode": 493
+        },
+        {
+          "name": "gvproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-linux-arm64",
+          "sha256": "6ecca02839254c9a0cc184bba7aac63755a22d7ed10d455b852528a99d7f7d4b",
+          "archive": "none",
+          "installName": "bin/gvproxy",
+          "mode": 493
+        },
+        {
+          "name": "fuse-overlayfs",
+          "version": "1.17",
+          "url": "https://github.com/containers/fuse-overlayfs/releases/download/v1.17/fuse-overlayfs-aarch64",
+          "sha256": "34c9995c929dd52f45cca985858d7e58d9a9626104bc2610db218aaa11115c23",
+          "archive": "none",
+          "installName": "bin/fuse-overlayfs",
+          "mode": 493
+        }
+      ]
+    },
+    "darwin-arm64": {
+      "components": [
+        {
+          "name": "podman",
+          "version": "6.0.0",
+          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-release-darwin_arm64.zip",
+          "sha256": "72ba7f340b9b08fc9194723db06d1a9d9da55ec633dcacd02fb0b31836ac7c18",
+          "archive": "zip",
+          "member": "podman-6.0.0/usr/bin/podman",
+          "installName": "bin/podman",
+          "mode": 493
+        },
+        {
+          "name": "gvproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-darwin",
+          "sha256": "c6f7b4bc7f21bf810b5cf54e04d979b014c5d96472a03a9e97fe62a00940067c",
+          "archive": "none",
+          "installName": "bin/gvproxy",
+          "mode": 493
+        }
+      ]
+    },
+    "win32-x64": {
+      "components": [
+        {
+          "name": "podman",
+          "version": "6.0.0",
+          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-release-windows_amd64.zip",
+          "sha256": "5f94d7248cc2c304a46b275ba3af895d024d381fbe3633814660ef1f5899c767",
+          "archive": "zip",
+          "member": "podman-6.0.0/usr/bin/podman.exe",
+          "installName": "bin/podman.exe",
+          "mode": 493
+        },
+        {
+          "name": "gvproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/gvproxy-windows.exe",
+          "sha256": "a3b6915d8a976f5ed2bbba727af52c90c55b9d5e85f680b584c8a1c5d6b546bc",
+          "archive": "none",
+          "installName": "bin/gvproxy.exe",
+          "mode": 493
+        }
+      ]
+    }
+  }
+}
