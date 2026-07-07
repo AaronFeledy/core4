@@ -28,6 +28,18 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("branches: [main]");
   });
 
+  test("keeps publishing on main with publish-only write permissions", async () => {
+    const workflow = await readWorkflow();
+    expect(workflow).toContain("permissions:\n  contents: read\n\njobs:");
+    expect(workflow).toContain("  assemble:\n    if: github.ref == 'refs/heads/main'\n    runs-on");
+    expect(workflow).toContain(
+      "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false",
+    );
+    expect(workflow).toContain(
+      "  publish:\n    needs: [assemble]\n    if: github.ref == 'refs/heads/main'\n    permissions:\n      contents: write\n      pull-requests: write",
+    );
+  });
+
   test("assembles exactly the four runtime host keys and never darwin-x64", async () => {
     const workflow = await readWorkflow();
     for (const key of ["linux-x64", "linux-arm64", "darwin-arm64", "win32-x64"]) {
@@ -64,5 +76,20 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle");
     expect(workflow).toContain("gh pr create");
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-versions.json");
+  });
+
+  test("pushes the manifest pin branch before the irreversible release upload", async () => {
+    const workflow = await readWorkflow();
+    const manifestBuild = workflow.indexOf(
+      "bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle",
+    );
+    const branchPush = workflow.indexOf('git push -u origin "$BRANCH"');
+    const releaseCreate = workflow.indexOf('gh release create "$RUNTIME_BUNDLE_TAG"');
+    const prCreate = workflow.indexOf('gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH"');
+
+    expect(manifestBuild).toBeGreaterThan(-1);
+    expect(branchPush).toBeGreaterThan(manifestBuild);
+    expect(releaseCreate).toBeGreaterThan(branchPush);
+    expect(prCreate).toBeGreaterThan(releaseCreate);
   });
 });

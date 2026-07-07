@@ -51,11 +51,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   assemble:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: true
@@ -64,6 +64,8 @@ jobs:
 ${matrixInclude}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -86,6 +88,10 @@ ${matrixInclude}
 
   publish:
     needs: [assemble]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +129,30 @@ ${matrixInclude}
             exit 1
           fi
 
+      - name: Prepare manifest pin branch for landing
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle
+          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
+            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; nothing to land."
+            echo "RUNTIME_BUNDLE_MANIFEST_BRANCH=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          BRANCH="runtime-bundle-manifest-$RUNTIME_BUNDLE_VERSION"
+          echo "RUNTIME_BUNDLE_MANIFEST_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "::notice title=runtime-bundle-manifest::manifest pin branch $BRANCH already exists; leaving it in place."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add plugins/provider-lando/runtime-bundle-versions.json
+          git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
+          git push -u origin "$BRANCH"
+
       - name: Publish runtime-v release assets
         env:
           GH_TOKEN: \${{ github.token }}
@@ -133,26 +163,20 @@ ${matrixInclude}
             --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" \\
             --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
 
-      - name: Regenerate committed manifest against published assets
-        run: bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle
-
-      - name: Surface manifest pin for landing
+      - name: Surface manifest pin PR
         env:
           GH_TOKEN: \${{ github.token }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
-            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; nothing to land."
+          if [ -z "\${RUNTIME_BUNDLE_MANIFEST_BRANCH:-}" ]; then
+            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; no PR needed."
             exit 0
           fi
-          BRANCH="runtime-bundle-manifest-$RUNTIME_BUNDLE_VERSION"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git switch -c "$BRANCH"
-          git add plugins/provider-lando/runtime-bundle-versions.json
-          git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
-          git push -u origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" \\
+          if gh pr view "$RUNTIME_BUNDLE_MANIFEST_BRANCH" >/dev/null 2>&1; then
+            echo "::notice title=runtime-bundle-manifest::manifest pin PR for $RUNTIME_BUNDLE_MANIFEST_BRANCH already exists."
+            exit 0
+          fi
+          gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH" \\
             --title "Pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION" \\
             --body "Regenerated runtime-bundle-versions.json against the published $RUNTIME_BUNDLE_TAG release assets."
 `;

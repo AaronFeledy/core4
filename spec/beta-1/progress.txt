@@ -1087,3 +1087,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Podman remote archives place the binary at `bin/podman-remote-static-linux_<arch>` (linux tar.gz) and `podman-6.0.0/usr/bin/podman[.exe]` (darwin/win zip); the windows zip already bundles `gvproxy.exe`/`win-sshproxy.exe`.
   - Deterministic archive packing is `tar --format=gnu --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner | gzip -n`; tar's `--mtime` overrides on-disk file mtimes so output sha is input-only.
 ---
+
+## 2026-07-07 16:53 CDT - US-410 Review
+- Review fixed runtime-bundle publish recovery and workflow security blockers: the generated workflow now pushes the regenerated manifest pin branch before creating the immutable `runtime-v*` release, skips publish paths unless the run is on `main`, uses read-only default workflow permissions, and grants write permissions only to the publish job while assembly checkout does not persist credentials.
+- Review notes (deferred/rejected): Goal-review helper-set finding rejected as a documented upstream-artifact limitation for this story; `runtime-bundle-sources.json` and the prior build note explicitly track missing linux-arm64 netavark/aardvark and passt/pasta until matching upstream artifacts or source-build handling exists. Security-review action-SHA pinning finding rejected as out of scope for this story because generated workflows in this repo currently follow mutable major-version action refs; a repo-wide action-pin policy should land separately.
+- Verification: typecheck and lint passed; focused runtime-bundle workflow, CI workflow, manifest builder, and bundle assembler spot checks passed (48 tests total); generated workflow drift check is covered by the runtime-bundle workflow test.
+---
