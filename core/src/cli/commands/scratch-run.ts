@@ -8,7 +8,7 @@ import {
   type ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ServiceName } from "@lando/sdk/schema";
-import { type FileSystem, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
+import { type FileSystem, RuntimeProviderRegistry, type ScratchAppService } from "@lando/sdk/services";
 
 import {
   acquireScratchAppWithPlan,
@@ -290,19 +290,11 @@ export const scratchRun = (
         const { handle, plan } = yield* deps.acquireWithPlan({
           source: { kind: "recipe", ref: options.from ?? DEFAULT_SCRATCH_RUN_RECIPE },
           isolate: options.mount ? "cwd" : "baked",
-          detached: options.keep,
+          detached: false,
           ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
           ...(options.mount ? { mountCwd: {} } : {}),
         });
-        const serviceName = yield* resolveRunService(options.service, plan).pipe(
-          Effect.tapError(() =>
-            options.keep
-              ? ScratchAppService.pipe(
-                  Effect.flatMap((service) => service.destroy(handle.id, { keepVolumes: false })),
-                )
-              : Effect.void,
-          ),
-        );
+        const serviceName = yield* resolveRunService(options.service, plan);
         const provider = yield* registry.select(plan).pipe(
           Effect.mapError(
             (cause) =>
@@ -333,6 +325,7 @@ export const scratchRun = (
                 }),
             ),
           );
+        if (options.keep) yield* deps.detach(handle.id);
         if (result.stderr.length > 0) yield* emitOptionalStderr(result.stderr);
         return {
           scratchId: handle.id,

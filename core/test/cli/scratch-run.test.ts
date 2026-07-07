@@ -496,6 +496,7 @@ describe("scratchRun", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       expect(recorded.execCalls).toHaveLength(0);
+      expect(recorded.destroyCalls).toHaveLength(1);
 
       const summaries = await Effect.runPromise(
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
@@ -546,30 +547,6 @@ describe("scratchRun", () => {
       );
       const summary = summaries.find((entry) => entry.id === result.scratchId);
       expect(summary?.status).toBe("detached");
-    });
-  });
-
-  test("--keep does not depend on a post-exec detach write", async () => {
-    await withTempProject(async () => {
-      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
-      const result = await Effect.runPromise(
-        scratchRun(
-          {
-            command: ["echo", "ok"],
-            mount: true,
-            keep: true,
-            answers: {},
-            issues: [],
-          },
-          {
-            ...defaultScratchRunDeps,
-            detach: () => Effect.dieMessage("scratch run should not detach after exec"),
-          },
-        ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
-      );
-      expect(result.kept).toBe(true);
-      expect(recorded.execCalls).toHaveLength(1);
-      expect(recorded.destroyCalls).toHaveLength(0);
     });
   });
 

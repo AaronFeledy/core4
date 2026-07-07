@@ -66,6 +66,8 @@ export { ScratchAppService } from "@lando/sdk/services";
 
 export const SCRATCH_DIR = "scratch";
 
+const retainedScratchIds = new Set<string>();
+
 const scratchAppError = (
   operation: string,
   message: string,
@@ -629,7 +631,11 @@ const makeScratchAppService = (
         yield* Effect.addFinalizer(() =>
           scratchRegistry.get(scratchId).pipe(
             Effect.catchAll(() => Effect.succeed(undefined)),
-            Effect.flatMap((entry) => (entry?.detached === true ? Effect.void : destroyScratchResources)),
+            Effect.flatMap((entry) =>
+              entry?.detached === true || retainedScratchIds.has(scratchId)
+                ? Effect.void
+                : destroyScratchResources,
+            ),
           ),
         );
       }
@@ -1000,6 +1006,7 @@ export const detachScratchApp = (
     const registry = makeScratchRegistry();
     const entry = yield* registry.get(id);
     if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
+    retainedScratchIds.add(id);
     const { ownerPid: _ownerPid, ...rest } = entry;
     yield* registry.upsert({ ...rest, detached: true, updatedAt: nowIso() });
   });
