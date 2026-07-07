@@ -107,14 +107,28 @@ describe("scratch registry", () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();
       const first = entry("scratch-one-000001");
-      const second = entry("scratch-two-000002");
+      const second = { ...entry("scratch-two-000002"), source: { kind: "recipe" as const, ref: "empty" } };
+      const legacyFirst = { ...first, isolate: "none" };
+      const legacySecond = { ...second, isolate: "none" };
       await mkdir(paths.base, { recursive: true });
-      await writeFile(paths.registry, `${JSON.stringify({ version: 1, entries: [first, second] })}\n`);
+      await writeFile(
+        paths.registry,
+        `${JSON.stringify({ version: 1, entries: [legacyFirst, legacySecond] })}\n`,
+      );
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first, second]);
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+        { ...first, isolate: "cwd" },
+        { ...second, isolate: "baked" },
+      ]);
 
       const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
-      expect(raw).toEqual({ version: 1, data: [first, second] });
+      expect(raw).toEqual({
+        version: 1,
+        data: [
+          { ...first, isolate: "cwd" },
+          { ...second, isolate: "baked" },
+        ],
+      });
       const files = await readdir(paths.base);
       expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(false);
     });

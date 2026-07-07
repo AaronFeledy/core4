@@ -157,11 +157,27 @@ export const parseScratchRunArgv = (argv: ReadonlyArray<string>): ScratchRunOpti
 
 export const scratchRunOptionsFromInput = (input: unknown): ScratchRunOptions => {
   const record = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const flags =
+    typeof record.flags === "object" && record.flags !== null
+      ? (record.flags as Record<string, unknown>)
+      : {};
   const argv = Array.isArray(record.argv)
     ? record.argv.filter((entry): entry is string => typeof entry === "string")
     : [];
+  const parsed = parseScratchRunArgv(argv);
+  const answerFlags = Array.isArray(flags.answer)
+    ? flags.answer.filter((entry): entry is string => typeof entry === "string")
+    : [];
   const signal = record.signal instanceof AbortSignal ? record.signal : undefined;
-  return { ...parseScratchRunArgv(argv), ...(signal === undefined ? {} : { signal }) };
+  return {
+    ...parsed,
+    ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+    ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+    mount: flags["no-mount"] === true ? false : parsed.mount,
+    answers: { ...parsed.answers, ...parseAnswerFlags(answerFlags) },
+    keep: flags.keep === true || parsed.keep,
+    ...(signal === undefined ? {} : { signal }),
+  };
 };
 
 export interface ScratchRunDeps {

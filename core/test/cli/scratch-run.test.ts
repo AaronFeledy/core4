@@ -294,6 +294,26 @@ describe("parseScratchRunArgv", () => {
     expect(options.command).toEqual(["true"]);
     expect(options.signal).toBe(controller.signal);
   });
+
+  test("scratchRunOptionsFromInput merges OCLIF structured flags with the command argv", () => {
+    const options = scratchRunOptionsFromInput({
+      argv: ["node", "--version"],
+      flags: {
+        from: "lamp",
+        service: "appserver",
+        "no-mount": true,
+        answer: ["php=8.3", "webroot=public"],
+        keep: true,
+      },
+      args: {},
+    });
+    expect(options.command).toEqual(["node", "--version"]);
+    expect(options.from).toBe("lamp");
+    expect(options.service).toBe("appserver");
+    expect(options.mount).toBe(false);
+    expect(options.keep).toBe(true);
+    expect(options.answers).toEqual({ php: "8.3", webroot: "public" });
+  });
 });
 
 describe("scratchRun", () => {

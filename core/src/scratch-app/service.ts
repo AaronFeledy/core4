@@ -650,10 +650,11 @@ const makeScratchAppService = (
       const base = input.name ?? landofile.name ?? sourcePlan.name;
       const scratchId = yield* synthesizeId(base);
       const scratchPaths = yield* paths(scratchId);
+      const isolate = input.isolate ?? (input.source.kind === "fork" ? "full" : "baked");
       const registryEntry = makeRegistryEntry({
         id: scratchId,
         source: input.source,
-        isolate: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
+        isolate,
         detached: input.detached,
         rootPath: String(scratchPaths.root),
         status: "acquiring",
@@ -669,7 +670,7 @@ const makeScratchAppService = (
 
       const forkLandofile = { ...landofile, name: scratchId };
       const planForkPlan =
-        input.isolate === "full"
+        isolate === "full"
           ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root)).pipe(
               Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))),
               Effect.zipRight(

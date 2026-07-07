@@ -914,3 +914,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Bugbot could not produce a usable report in this harness (the command returned immediately with no findings); review-work's US-408 streaming/env and US-409 guide/GC/warm-repeat notes were deferred because they are later-story scope, not US-407 blockers.
 - Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
 ---
+
+## 2026-07-07 07:01 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed remaining scratch-run parity issues: source OCLIF now honors structured `--from`/`--service`/`--no-mount`/`--answer`/`--keep` flags, fork default isolation now plans against the copied root it records, and legacy scratch registry entries with `isolate: "none"` migrate instead of being quarantined.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected.
+- Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
+---

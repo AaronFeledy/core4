@@ -41,11 +41,29 @@ const RegistryEntrySchema = Schema.Struct({
   updatedAt: Schema.String,
 });
 
+const LegacyRegistryEntrySchema = Schema.Struct({
+  id: Schema.String,
+  source: ScratchSourceSchema,
+  isolate: Schema.Literal("none", "full", "baked", "cwd"),
+  detached: Schema.Boolean,
+  ownerPid: Schema.optional(Schema.Number),
+  rootPath: Schema.String,
+  status: Schema.Literal("acquiring", "running", "stopping", "destroyed-pending-cleanup"),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+
 const RegistryEntriesSchema = Schema.Array(RegistryEntrySchema);
+const LegacyRegistryEntriesSchema = Schema.Array(LegacyRegistryEntrySchema);
 
 const RegistryEnvelopeSchema = Schema.Struct({
   version: Schema.Literal(REGISTRY_VERSION),
   entries: RegistryEntriesSchema,
+});
+
+const LegacyRegistryEnvelopeSchema = Schema.Struct({
+  version: Schema.Literal(REGISTRY_VERSION),
+  entries: LegacyRegistryEntriesSchema,
 });
 
 export type ScratchRegistryEntry = typeof RegistryEntrySchema.Type;
@@ -89,9 +107,13 @@ const isMissing = (cause: unknown): boolean =>
 
 const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   try {
-    return Schema.decodeUnknownSync(RegistryEnvelopeSchema)(JSON.parse(content), {
+    const envelope = Schema.decodeUnknownSync(LegacyRegistryEnvelopeSchema)(JSON.parse(content), {
       onExcessProperty: "error",
-    }).entries;
+    });
+    return envelope.entries.map((entry) => ({
+      ...entry,
+      isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
+    }));
   } catch {
     return null;
   }
