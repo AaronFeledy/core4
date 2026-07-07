@@ -8,7 +8,7 @@
  * without performing an init. `validate` parses a `recipe.yml` (or a recipe
  * directory) against the published RecipeManifest schema.
  */
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -16,7 +16,7 @@ import {
   type NotImplementedError,
   RecipeManifestNotFoundError,
   type RecipeManifestParseError,
-  type RecipeManifestValidationError,
+  RecipeManifestValidationError,
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
@@ -131,6 +131,7 @@ export const recipesDescribe = (
     if (expandsAsLocalPath(ref)) {
       const manifestPath = recipeManifestPath(ref, options.cwd);
       const manifestYaml = yield* readManifestText(manifestPath);
+      yield* ensureSingleRecipeManifestForm(manifestPath);
       const manifest = yield* parseRecipe(manifestPath, manifestYaml);
       return describeFromManifest(manifest, manifestPath);
     }
@@ -191,6 +192,33 @@ const readManifestText = (manifestPath: string): Effect.Effect<string, RecipeMan
       }),
   });
 
+const ensureSingleRecipeManifestForm = (
+  manifestPath: string,
+): Effect.Effect<void, RecipeManifestNotFoundError | RecipeManifestValidationError> => {
+  const recipeRoot = dirname(manifestPath);
+  const recipeTsPath = resolve(recipeRoot, "recipe.ts");
+  return Effect.tryPromise({
+    try: () => Bun.file(recipeTsPath).exists(),
+    catch: (cause) =>
+      new RecipeManifestNotFoundError({
+        message: `Could not stat recipe.ts at ${recipeTsPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        source: recipeTsPath,
+      }),
+  }).pipe(
+    Effect.flatMap((programmaticManifestExists) =>
+      programmaticManifestExists
+        ? Effect.fail(
+            new RecipeManifestValidationError({
+              message: `Both recipe.yml and recipe.ts are present in ${recipeRoot}. A recipe ships one or the other, never both.`,
+              source: recipeRoot,
+              issues: ["recipe.yml and recipe.ts are mutually exclusive in a recipe directory"],
+            }),
+          )
+        : Effect.void,
+    ),
+  );
+};
+
 export const recipesValidate = (
   path: string,
   options: { readonly cwd: string },
@@ -198,6 +226,7 @@ export const recipesValidate = (
   Effect.gen(function* () {
     const manifestPath = recipeManifestPath(path, options.cwd);
     const manifestYaml = yield* readManifestText(manifestPath);
+    yield* ensureSingleRecipeManifestForm(manifestPath);
     const manifest = yield* parseRecipe(manifestPath, manifestYaml);
     return {
       valid: true as const,

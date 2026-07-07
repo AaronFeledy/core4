@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -113,6 +113,26 @@ describe("meta:recipes:describe", () => {
     expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
     expect(existsSync(marker)).toBe(false);
   }, 30_000);
+
+  test("local describe rejects directories with both recipe.yml and recipe.ts", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "lando-recipes-describe-both-"));
+    const dir = join(parent, "both-recipe");
+    mkdirSync(dir);
+    writeFileSync(
+      join(dir, "recipe.yml"),
+      [`id: ${basename(dir)}`, "title: Both", "description: Two manifest forms.", "version: 0.0.1", ""].join(
+        "\n",
+      ),
+    );
+    writeFileSync(join(dir, "recipe.ts"), "export default {};\n");
+
+    const result = await runCli(["meta", "recipes", "describe", dir, "--format", "json"]);
+
+    expect(result.exitCode).toBe(1);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(false);
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestValidationError");
+  }, 30_000);
 });
 
 describe("meta:recipes:validate", () => {
@@ -137,6 +157,26 @@ describe("meta:recipes:validate", () => {
     const dir = mkdtempSync(join(tmpdir(), "lando-recipes-validate-"));
     writeFileSync(join(dir, "recipe.yml"), "id: broken\ntitle: Broken\n");
     const result = await runCli(["meta", "recipes", "validate", join(dir, "recipe.yml"), "--format", "json"]);
+    expect(result.exitCode).toBe(1);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(false);
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestValidationError");
+  }, 30_000);
+
+  test("rejects directories with both recipe.yml and recipe.ts", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "lando-recipes-validate-both-"));
+    const dir = join(parent, "both-recipe");
+    mkdirSync(dir);
+    writeFileSync(
+      join(dir, "recipe.yml"),
+      [`id: ${basename(dir)}`, "title: Both", "description: Two manifest forms.", "version: 0.0.1", ""].join(
+        "\n",
+      ),
+    );
+    writeFileSync(join(dir, "recipe.ts"), "export default {};\n");
+
+    const result = await runCli(["meta", "recipes", "validate", dir, "--format", "json"]);
+
     expect(result.exitCode).toBe(1);
     const envelope = lastJsonLine(result.stdout);
     expect(envelope.ok).toBe(false);
