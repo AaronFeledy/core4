@@ -50,7 +50,7 @@ bun build ./bin/lando.ts \
 
 `--bytecode` is REQUIRED. It precompiles JavaScript to V8 bytecode at build time and embeds the bytecode in the binary, eliminating per-invocation parse cost on cold start. The resulting binary is ~30% larger but starts measurably faster — the cold-start budgets below assume bytecode caching is on. If a future Bun version regresses or removes `--bytecode`, the build floor moves with it; the flag is not optional. The Bun version floor for v4.0.0 GA is tracked in §14.2 and MUST be one that supports stable `--bytecode` for every cross-compile target listed below.
 
-Cross-compilation targets: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-x64`, `bun-darwin-arm64`, `bun-windows-x64`. Each release ships all five.
+Cross-compilation targets: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`. Each release ships all four supported host binaries; Intel macOS is not a supported Lando v4 runtime host.
 
 The build invocation above is one stage of the larger release pipeline (codegen, type-check, lint, test, compile, sign, notarize, manifest, provenance, publish). The full ordered pipeline, the orchestrator script, signing/notarization rules, supply-chain artifacts, and the self-update mechanism live in §17 ([15 Binary Build and Release Engineering](./15-binary-build-and-release.md)).
 

@@ -323,11 +323,17 @@ Three providers ship with Lando v4. All implement the full `RuntimeProvider` con
 
 What this provider owns privately (all paths under Lando-controlled roots — see §12.4):
 
-- Podman and companion helper binaries.
+- Podman >= 6.0.0 and companion helper binaries.
 - A private config root (registries, policy).
 - A private storage root (images, volumes).
 - An API socket and PID files.
 - On macOS and Windows: a managed VM/machine (creation, start, stop, upgrade, teardown).
+
+**Podman 6 runtime floor.** The bundled Lando-managed runtime MUST use Podman >= 6.0.0 on every supported host. Version comparison is numeric over `major.minor.patch`; pre-release and build suffixes are ignored for the floor check, so a `6.x` pre-release gates as its numeric version. The same floor applies to the system-wide Podman provider (§5.8.3). Podman 6.0.0 fixes CVE-2026-57231 / GHSA-4hq8-gpf5-8p68, where malformed image `Env` entries could leak host environment variables into containers; the advisory also lists patched v5 lines, but Lando's supported floor is 6.0.0.
+
+**Podman 6 platform and network contract.** Supported Podman-backed hosts are: Apple Silicon macOS only, Windows 11 or newer, and Linux hosts with cgroups v2 and nftables. Podman 6 removed upstream support for Intel Macs, Windows 10, cgroups v1, iptables, CNI networking, and the `slirp4netns` rootless network stack. Lando's rootless Podman contract is therefore Pasta for rootless networking plus Netavark and Aardvark v2. The provider MUST fail setup/readiness with tagged remediation when a host can only satisfy the removed stack instead of silently selecting a legacy compatibility path.
+
+**Podman machine command caveat.** Managed macOS and Windows machines MAY use Podman 6's machine connection controls, including `podman machine start --update-connection=false`, when preserving a user's default system connection matters. Published Podman v6.0.0/latest manpages expose the machine OS command as `podman machine os upgrade` while the v6.0.0 release notes refer to `podman machine os update`; until that spelling conflict is resolved in the Beta PRD open questions, this top-level spec does not normatively require one exact OS-update subcommand spelling.
 
 It demonstrates:
 
@@ -348,7 +354,7 @@ Override-loaded entries MAY use `file://` URLs so neither CI nor a developer nee
 
 **The committed-manifest invariant.** At every commit on the default branch, the committed `runtime-bundle-versions.json` MUST reference already-published, immutable release assets with their real SHA-256 checksums and sizes — placeholder entries (all-zero-style checksums or `sizeBytes: 0`) are forbidden. Because the manifest is always true, *any* binary compiled from *any* commit — a local developer build, a dev-channel snapshot, or a tagged release — resolves and verifies the runtime bundle with **zero overrides**, and running from source resolves the same manifest from the checkout. There is no channel-aware manifest resolution and no runtime manifest fetch: dev and release binaries behave identically, differing only in which commit's manifest they embed. Published `runtime-v*` assets are never re-uploaded or deleted, so the embedded manifest of an older binary remains resolvable for that binary's lifetime. The overrides above exist for exactly one situation: exercising a bundle whose contents are not yet published (bundle development and the §13.5 current-commit CI verification).
 
-**`bindMountPerformance` declaration.** `@lando/provider-lando` declares per platform: `native` on Linux (the runtime is on the host filesystem), `slow` on macOS (the managed Podman machine is a VM with VM-mediated file sharing), `slow` on Windows (managed machine on WSL2 or Hyper-V; even WSL-resident projects pay for the Windows↔WSL boundary on host-mounted paths). The planner consults the live capability report at `app:start`, so a user who later adopts a future native macOS Linux container substrate sees the value flip without code changes.
+**`bindMountPerformance` declaration.** `@lando/provider-lando` declares per platform: `native` on Linux (the runtime is on the host filesystem), `slow` on Apple Silicon macOS (the managed Podman machine is a VM with VM-mediated file sharing), `slow` on Windows 11+ (managed machine on WSL2 or Hyper-V; even WSL-resident projects pay for the Windows↔WSL boundary on host-mounted paths). The planner consults the live capability report at `app:start`, so a user who later adopts a future native macOS Linux container substrate sees the value flip without code changes.
 
 `@lando/provider-lando` is bundled and active by default. Removing it from a distribution is supported.
 
@@ -368,9 +374,9 @@ It demonstrates:
 
 #### 5.8.3 Opt-in: system Podman (`@lando/provider-podman`)
 
-`@lando/provider-podman` targets a system-wide Podman installation. Activate with `provider: podman` in a Landofile or `defaultProvider: podman` in global config. It demonstrates the same core behaviors as `@lando/provider-docker`, adapted for the Podman API and rootless operation.
+`@lando/provider-podman` targets a system-wide Podman >= 6.0.0 installation. Activate with `provider: podman` in a Landofile or `defaultProvider: podman` in global config. It demonstrates the same core behaviors as `@lando/provider-docker`, adapted for the Podman API and rootless operation. Version comparison uses the same numeric `major.minor.patch` floor policy as the bundled runtime: pre-release and build suffixes are ignored, so `6.x` prereleases gate as their numeric version.
 
-**`bindMountPerformance` declaration.** `@lando/provider-podman` reports `native` on Linux (rootless or rootful, both run on the host filesystem), `slow` on macOS and Windows (the user's Podman machine is a VM), with the same WSL-resident detection as `@lando/provider-docker`. Plugin authors implementing additional providers (Lima, OrbStack, Rancher Desktop, remote/cloud) MUST report `bindMountPerformance` honestly: OrbStack on macOS reports `native` because its file-sharing layer reaches host-filesystem latency; Lima with default settings reports `slow`; Rancher Desktop reports `slow`.
+**`bindMountPerformance` declaration.** `@lando/provider-podman` reports `native` on Linux (rootless or rootful, both run on the host filesystem), `slow` on Apple Silicon macOS and Windows 11+ (the user's Podman machine is a VM), with the same WSL-resident detection as `@lando/provider-docker`. Plugin authors implementing additional providers (Lima, OrbStack, Rancher Desktop, remote/cloud) MUST report `bindMountPerformance` honestly: OrbStack on macOS reports `native` because its file-sharing layer reaches host-filesystem latency; Lima with default settings reports `slow`; Rancher Desktop reports `slow`.
 
 ### 5.9 Multi-provider apps (deferred)
 
