@@ -926,3 +926,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): no follow-up Bugbot findings were rejected.
 - Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, scratch flag mapping, OCLIF manifest, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
 ---
+
+## 2026-07-07 07:29 CDT - US-407 Review
+- Review fixed two remaining scratch-run blockers: source and compiled dispatch now preserve tool-tail flags such as `node --version`/`node --help` once a tool command begins, and `--keep` now detaches only after target resolution and provider exec return a result so invalid services and pre-exec failures still clean up the foreground scratch.
+- Review notes (deferred/rejected): Bugbot again returned no usable report content in this harness; the previous progress-log decision to detach `--keep` immediately was rejected as stale because the source PRD/spec require ownership handoff after exec completion. US-408 streaming/env and US-409 guide/warm-repeat/GC notes remain later-story scope.
+- Verification: typecheck and lint passed; focused scratch-run, dual-dispatch parity, reserved-aliases, and scratch-run dispatch-parity spot checks passed.
+---
