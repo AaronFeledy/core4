@@ -1,0 +1,24 @@
+id: toolbox
+title: Toolbox
+description: Disposable tool-runner default — one general-purpose CLI service on a pinned image.
+version: 0.1.0
+authors:
+  - Lando Core Team
+tags:
+  - tools
+  - starter
+prompts:
+  - name: name
+    type: text
+    message: App name
+    default: toolbox
+    validate:
+      pattern: ^[a-z][a-z0-9-]*$
+      message: App name must be lowercase kebab-case.
+files:
+  - src: templates/.lando.yml.tmpl
+    dest: .lando.yml
+    template: true
+postInit:
+  - type: message
+    text: Run `lando start` to boot the toolbox service, or run one-shot tools against it.

@@ -9,6 +9,7 @@ const expectedServiceTypes = [
   "elasticsearch:8",
   "go:1.22",
   "go:1.23",
+  "lando",
   "mariadb",
   "meilisearch",
   "meilisearch:1",

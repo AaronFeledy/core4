@@ -79,7 +79,9 @@ import PluginTestCommand from "./commands/meta/plugin/test.ts";
 import PluginTrustAuthoringRootCommand from "./commands/meta/plugin/trust-authoring-root.ts";
 import PluginTrustCommand from "./commands/meta/plugin/trust.ts";
 import PluginUnlinkCommand from "./commands/meta/plugin/unlink.ts";
+import RecipesDescribeCommand from "./commands/meta/recipes/describe.ts";
 import RecipesListCommand from "./commands/meta/recipes/list.ts";
+import RecipesValidateCommand from "./commands/meta/recipes/validate.ts";
 import SetupCommand from "./commands/meta/setup.ts";
 import ShellenvCommand from "./commands/meta/shellenv.ts";
 import UninstallCommand from "./commands/meta/uninstall.ts";
@@ -163,7 +165,9 @@ export default {
   "meta:plugin:trust": PluginTrustCommand,
   "meta:plugin:trust-authoring-root": PluginTrustAuthoringRootCommand,
   "meta:plugin:unlink": PluginUnlinkCommand,
+  "meta:recipes:describe": RecipesDescribeCommand,
   "meta:recipes:list": RecipesListCommand,
+  "meta:recipes:validate": RecipesValidateCommand,
   "meta:setup": SetupCommand,
   "meta:shellenv": ShellenvCommand,
   "meta:uninstall": UninstallCommand,

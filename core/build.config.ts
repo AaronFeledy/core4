@@ -108,6 +108,7 @@ export const buildConfig: BuildConfig = {
     { id: "eleventy" },
     { id: "empty" },
     { id: "node-ts" },
+    { id: "toolbox" },
   ],
   bundledPluginTemplates: [],
 };

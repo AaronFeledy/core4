@@ -923,7 +923,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   });
 
   describe("deferred canonical ids defer identically on both paths", () => {
-    const probeIds = ["meta:recipes:list", "meta:events:follow", "meta:plugin:login"] as const;
+    const probeIds = ["meta:events:follow", "meta:plugin:login"] as const;
     for (const id of probeIds) {
       test(`${id}: both paths emit NotImplementedError with matching tagged fields`, async () => {
         const source = await runSourceCli([id, "--renderer=json"]);
@@ -939,8 +939,8 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }
 
     test("plain renderer: a deferred id reports the same tagged error code on both paths", async () => {
-      const source = await runSourceCli(["meta:recipes:list"]);
-      const compiled = await runCompiledCli(["meta:recipes:list"]);
+      const source = await runSourceCli(["meta:events:follow"]);
+      const compiled = await runCompiledCli(["meta:events:follow"]);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(errorCodeFromStderr(source.stderr)).toBe("NotImplementedError");
       expect(errorCodeFromStderr(compiled.stderr)).toBe("NotImplementedError");

@@ -75,7 +75,7 @@ describe("non-MVP OCLIF commands", () => {
     const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
       { args: ["meta:events:follow", "--detect"], commandId: "meta:events:follow" },
       { args: ["meta:global:rebuild", "--check"], commandId: "meta:global:rebuild" },
-      { args: ["meta:recipes:list", "--format", "json"], commandId: "meta:recipes:list" },
+      { args: ["meta:plugin:login", "--format", "json"], commandId: "meta:plugin:login" },
     ];
 
     for (const probe of probes) {

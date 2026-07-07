@@ -91,6 +91,16 @@ import { pluginUnlink, renderPluginUnlinkResult } from "./commands/plugin-unlink
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import {
+  recipePathFromInput,
+  recipeRefFromInput,
+  recipesDescribe,
+  recipesList,
+  recipesValidate,
+  renderRecipesDescribeResult,
+  renderRecipesListResult,
+  renderRecipesValidateResult,
+} from "./commands/recipes.ts";
+import {
   appPull,
   appPush,
   appRemoteAdd,
@@ -1886,6 +1896,37 @@ const runMetaVersion = async (): Promise<void> => {
   );
 };
 
+const runMetaRecipesList = (): Promise<void> =>
+  runCompiledCommand(recipesList, Layer.empty, (value) => renderRecipesListResult(value));
+
+const runMetaRecipesDescribe = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:recipes:describe", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("meta:recipes:describe", argv);
+  const ref = recipeRefFromInput(input);
+  if (ref === "") {
+    emitDiagnosticLine("Missing required argument: ref");
+    process.exitCode = 2;
+    return Promise.resolve();
+  }
+  return runCompiledCommand(recipesDescribe(ref, { cwd: process.cwd() }), Layer.empty, (value) =>
+    renderRecipesDescribeResult(value),
+  );
+};
+
+const runMetaRecipesValidate = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:recipes:validate", argv)) return Promise.resolve();
+  const input = compiledCommandInputFromArgv("meta:recipes:validate", argv);
+  const path = recipePathFromInput(input);
+  if (path === "") {
+    emitDiagnosticLine("Missing required argument: path");
+    process.exitCode = 2;
+    return Promise.resolve();
+  }
+  return runCompiledCommand(recipesValidate(path, { cwd: process.cwd() }), Layer.empty, (value) =>
+    renderRecipesValidateResult(value),
+  );
+};
+
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
 const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise<void> => {
@@ -1923,7 +1964,15 @@ const GLOBAL_COMMAND_VERBS = new Set([
 
 const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"]);
 
+const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
+
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "meta" && argv[1] === "recipes") {
+    const verb = argv[2];
+    if (verb === undefined || !RECIPES_COMMAND_VERBS.has(verb)) return argv;
+    return [`meta:recipes:${verb}`, ...argv.slice(3)];
+  }
+
   if (argv[0] === "meta" && argv[1] === "global") {
     const verb = argv[2];
     if (verb === undefined || !GLOBAL_COMMAND_VERBS.has(verb)) return argv;
@@ -2332,6 +2381,22 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "version" || argv[0] === "meta:version") {
     await runMetaVersion();
+    return;
+  }
+
+  if (argv[0] === "recipes" || argv[0] === "meta:recipes:list") {
+    if (rejectInvalidInvocation("meta:recipes:list", argv.slice(1))) return;
+    await runMetaRecipesList();
+    return;
+  }
+
+  if (argv[0] === "meta:recipes:describe") {
+    await runMetaRecipesDescribe(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:recipes:validate") {
+    await runMetaRecipesValidate(argv.slice(1));
     return;
   }
 

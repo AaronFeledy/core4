@@ -27,6 +27,7 @@ import { nodeTsRenderer } from "./node-ts/render.ts";
 import { railsRenderer } from "./rails/render.ts";
 import { sveltekitRenderer } from "./sveltekit/render.ts";
 import { symfonyRenderer } from "./symfony/render.ts";
+import { toolboxRenderer } from "./toolbox/render.ts";
 import { wordpressRenderer } from "./wordpress/render.ts";
 
 /** Map of recipe file dest → rendered content. */
@@ -67,6 +68,7 @@ const RENDERERS = [
   eleventyRenderer,
   emptyRenderer,
   nodeTsRenderer,
+  toolboxRenderer,
 ] as const satisfies ReadonlyArray<RecipeRenderer>;
 
 /**
