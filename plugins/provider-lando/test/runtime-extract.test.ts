@@ -455,6 +455,34 @@ describe("installRuntimeBundle", () => {
     }
   });
 
+  test("accepts an existing windows podman.exe when the version marker matches", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, "podman.exe"), "podman");
+      let calls = 0;
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "win32",
+          extractImpl: () => {
+            calls += 1;
+            return [{ path: "bin/podman.exe", bytes: encoder.encode("new-podman"), mode: 0o755 }];
+          },
+        }),
+      );
+
+      expect(result).toEqual({ installed: false, runtimeBinDir, version: "1.0.0" });
+      expect(calls).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("atomically replaces stale files on version change", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {

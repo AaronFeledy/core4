@@ -341,9 +341,15 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
     ),
   );
 
-const hasInstalledRuntimeEntrypoint = (runtimeBinDir: string): Effect.Effect<boolean, never> =>
+const runtimeEntrypointName = (platform: HostPlatform): string =>
+  platform === "win32" ? "podman.exe" : "podman";
+
+const hasInstalledRuntimeEntrypoint = (
+  runtimeBinDir: string,
+  platform: HostPlatform,
+): Effect.Effect<boolean, never> =>
   Effect.promise(() =>
-    access(stringJoin(runtimeBinDir, "podman")).then(
+    access(stringJoin(runtimeBinDir, runtimeEntrypointName(platform))).then(
       () => true,
       () => false,
     ),
@@ -395,7 +401,7 @@ export const installRuntimeBundle = (
     const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
     const entrypointReady =
       installedVersion === options.version
-        ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir)
+        ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform)
         : false;
     if (entrypointReady) {
       return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
