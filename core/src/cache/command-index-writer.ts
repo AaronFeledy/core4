@@ -17,6 +17,7 @@ import {
 } from "../config/version-constraint.ts";
 import { findLandofilePath } from "../landofile/discovery.ts";
 import { getLocalIncludePaths } from "../landofile/include-provenance.ts";
+import { detectTemplateDirective } from "../landofile/template-render.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
@@ -89,7 +90,7 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
 };
 
 const landofileUsesTemplate = (bytes: Uint8Array): boolean =>
-  /^template\s*:/mu.test(Buffer.from(bytes).toString("utf8"));
+  detectTemplateDirective(Buffer.from(bytes).toString("utf8")) !== undefined;
 
 interface BunShellScriptSource {
   readonly relativePath: string;

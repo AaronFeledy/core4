@@ -516,6 +516,38 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("invalidates the warm tooling cache when a BOM-prefixed Landofile is templated", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "bom-template-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          [
+            "\uFEFFtemplate: none",
+            "name: bom-template-cache",
+            "tooling:",
+            "  build:",
+            "    cmd: make",
+            "",
+          ].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+        expect(fresh).toBeNull();
+      });
+    });
+  });
+
   test("does not use cached tooling when a local include symlink escapes the app root", async () => {
     const outsideRoot = await mkdtemp(join(tmpdir(), "lando-command-registry-outside-"));
     try {
