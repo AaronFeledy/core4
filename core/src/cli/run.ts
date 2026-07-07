@@ -2648,6 +2648,16 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     return;
   }
 
+  const normalizedSourceArgv = normalizeCompiledCommandArgv(args);
+  if (
+    normalizedSourceArgv[0] === "run" ||
+    normalizedSourceArgv[0] === "scratch:run" ||
+    normalizedSourceArgv[0] === "apps:scratch:run"
+  ) {
+    await runCompiledCli(options.argv);
+    return;
+  }
+
   const rawHead = args[0];
   const isBunOrXPassthrough =
     rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";

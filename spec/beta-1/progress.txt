@@ -956,3 +956,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
 - Verification: typecheck and lint passed; focused scratch recipe flag and scratch-run spot checks passed.
 ---
+
+## 2026-07-07 08:58 CDT - US-407 Review
+- Review fixed the remaining source-dispatch JSON parity blocker for `apps:scratch:run`: source-mode scratch-run invocations now route through the same hand-rolled dispatcher as compiled mode, so `--format=json` failure envelopes and command-tail flag handling stay identical.
+- Review notes (deferred/rejected): Bugbot timed out in this harness; the loaded `review-work` skill returned orchestration instructions rather than an executable report, so findings were cross-checked manually against US-407 and the focused parity suite. US-408 streaming/env and US-409 hardening/docs remain later-story scope.
+- Verification: typecheck and lint passed; focused scratch-run, reserved-aliases, dual-dispatch parity, dispatch-parity, scratch recipe flags, scratch registry, and scratch GC spot checks passed.
+---
