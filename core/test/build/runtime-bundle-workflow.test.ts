@@ -92,4 +92,13 @@ describe("runtime-bundle workflow", () => {
     expect(releaseCreate).toBeGreaterThan(branchPush);
     expect(prCreate).toBeGreaterThan(releaseCreate);
   });
+
+  test("updates an existing manifest pin branch before publishing", async () => {
+    const workflow = await readWorkflow();
+    expect(workflow).toContain('MANIFEST_PIN="$(mktemp)"');
+    expect(workflow).toContain('git fetch origin "$BRANCH:$BRANCH"');
+    expect(workflow).toContain('cp "$MANIFEST_PIN" plugins/provider-lando/runtime-bundle-versions.json');
+    expect(workflow).toContain("manifest pin branch $BRANCH already matches regenerated assets");
+    expect(workflow).not.toContain("leaving it in place");
+  });
 });

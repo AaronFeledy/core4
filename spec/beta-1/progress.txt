@@ -1093,3 +1093,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Goal-review helper-set finding rejected as a documented upstream-artifact limitation for this story; `runtime-bundle-sources.json` and the prior build note explicitly track missing linux-arm64 netavark/aardvark and passt/pasta until matching upstream artifacts or source-build handling exists. Security-review action-SHA pinning finding rejected as out of scope for this story because generated workflows in this repo currently follow mutable major-version action refs; a repo-wide action-pin policy should land separately.
 - Verification: typecheck and lint passed; focused runtime-bundle workflow, CI workflow, manifest builder, and bundle assembler spot checks passed (48 tests total); generated workflow drift check is covered by the runtime-bundle workflow test.
 ---
+
+## 2026-07-07 16:57 CDT - US-410 Review
+- Post-fix Bugbot found and review fixed the manifest-branch retry path: when the pin branch already exists, the workflow now reapplies the freshly regenerated `runtime-bundle-versions.json` to that branch and commits any checksum/size changes before creating the immutable release.
+- Review notes (deferred/rejected): no additional findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused runtime-bundle workflow, CI workflow, manifest builder, and bundle assembler spot checks passed (49 tests total).
+---

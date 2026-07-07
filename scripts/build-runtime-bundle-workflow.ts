@@ -142,13 +142,22 @@ ${matrixInclude}
           fi
           BRANCH="runtime-bundle-manifest-$RUNTIME_BUNDLE_VERSION"
           echo "RUNTIME_BUNDLE_MANIFEST_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          MANIFEST_PIN="$(mktemp)"
+          cp plugins/provider-lando/runtime-bundle-versions.json "$MANIFEST_PIN"
+          git restore -- plugins/provider-lando/runtime-bundle-versions.json
           if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
-            echo "::notice title=runtime-bundle-manifest::manifest pin branch $BRANCH already exists; leaving it in place."
+            git fetch origin "$BRANCH:$BRANCH"
+            git switch "$BRANCH"
+          else
+            git switch -c "$BRANCH"
+          fi
+          cp "$MANIFEST_PIN" plugins/provider-lando/runtime-bundle-versions.json
+          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
+            echo "::notice title=runtime-bundle-manifest::manifest pin branch $BRANCH already matches regenerated assets."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git switch -c "$BRANCH"
           git add plugins/provider-lando/runtime-bundle-versions.json
           git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
           git push -u origin "$BRANCH"
