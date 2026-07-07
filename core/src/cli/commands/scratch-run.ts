@@ -94,6 +94,7 @@ const scratchRunCommandTailIndex = (argv: ReadonlyArray<string>): number | undef
       index += 2;
       continue;
     }
+    if (arg === "--version" || arg === "-v") return index;
     if (arg.startsWith("-")) return undefined;
     return index;
   }

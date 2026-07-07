@@ -333,6 +333,13 @@ describe("parseScratchRunArgv", () => {
       "echo",
       "ok",
     ]);
+    expect(normalizeScratchRunArgvForParsing(["-v", "node", "--version"])).toEqual([
+      "--",
+      "-v",
+      "node",
+      "--version",
+    ]);
+    expect(normalizeScratchRunArgvForParsing(["--version", "node"])).toEqual(["--", "--version", "node"]);
     expect(scratchRunHasCommandTail(["node", "--help"])).toBe(true);
     expect(scratchRunHasCommandTail(["--help"])).toBe(false);
   });
