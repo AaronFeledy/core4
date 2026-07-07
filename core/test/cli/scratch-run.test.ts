@@ -342,6 +342,8 @@ describe("parseScratchRunArgv", () => {
     expect(normalizeScratchRunArgvForParsing(["--version", "node"])).toEqual(["--", "--version", "node"]);
     expect(scratchRunHasCommandTail(["node", "--help"])).toBe(true);
     expect(scratchRunHasCommandTail(["--help"])).toBe(false);
+    expect(scratchRunHasCommandTail(["--version"])).toBe(false);
+    expect(scratchRunHasCommandTail(["-v"])).toBe(false);
   });
 
   test("normalization protects tool output flags from universal result-format parsing", () => {
