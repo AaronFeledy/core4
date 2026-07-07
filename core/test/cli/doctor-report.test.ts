@@ -286,6 +286,33 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("doctor --app reports an unsatisfied lando version constraint from .lando.ts", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-ts-")));
+    await writeFile(
+      join(dir, ".lando.ts"),
+      ["export default {", '  name: "doctor-ts-app",', '  lando: ">=99",', "};", ""].join("\n"),
+    );
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appVersionConstraints?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.ts)", skipped: "false" },
+      });
+      expect(renderDoctorReport(report)).toContain("app-version-constraint: fail");
+    } finally {
+      process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("doctor --app fails version-constraint reporting when includes cannot resolve", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-include-")));

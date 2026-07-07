@@ -1,8 +1,6 @@
-import { dirname, relative } from "node:path";
+import { relative } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
-
-import { LandofileShape } from "@lando/sdk/schema";
 
 import {
   VERSION_CONSTRAINT_SKIP_ENV_VAR,
@@ -11,10 +9,8 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "../../config/version-constraint.ts";
-import { findLandofilePath } from "../../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../../landofile/includes.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
-import { renderLandofileTemplate } from "../../landofile/template-render.ts";
+import { findDiscoveredLandofilePath, loadLandofileFile } from "../../landofile/service.ts";
 import { createStandaloneRedactor } from "../../redaction/service.ts";
 import { CORE_VERSION } from "../../version.ts";
 
@@ -77,15 +73,8 @@ const formatConstraintEntry = (
   redact: (value: string) => string,
 ): string => `${redact(entry.range)} (${relativeSource(appRoot, entry.source)})`;
 
-const parseAppLandofileForReport = (filePath: string) =>
-  Effect.gen(function* () {
-    const content = yield* Effect.tryPromise(() => Bun.file(filePath).text());
-    const rendered = yield* renderLandofileTemplate({ filePath, content });
-    const parsed = yield* parseLandofile({ file: filePath, content: rendered, cwd: dirname(filePath) });
-    const decoded = Schema.decodeUnknownEither(LandofileShape)(parsed, { onExcessProperty: "error" });
-    if (Either.isLeft(decoded)) return undefined;
-    return decoded.right;
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+const loadAppLandofileForReport = (filePath: string) =>
+  loadLandofileFile(filePath).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
 export const appVersionConstraintsForReport = (): Effect.Effect<
   AppVersionConstraintDoctorResult | undefined,
@@ -94,10 +83,15 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
 > =>
   Effect.gen(function* () {
     const cwd = process.cwd();
-    const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
-    if (filePath === undefined) return undefined;
-    const appRoot = dirname(filePath);
-    const parsed = yield* parseAppLandofileForReport(filePath);
+    const discovered = yield* Effect.promise(() =>
+      findDiscoveredLandofilePath(cwd).then(
+        (result) => result,
+        () => undefined,
+      ),
+    );
+    if (discovered === undefined) return undefined;
+    const { appRoot, filePath } = discovered;
+    const parsed = yield* loadAppLandofileForReport(filePath);
     if (parsed === undefined) return undefined;
     const resolved = yield* Effect.either(
       resolveLandofileIncludes({
