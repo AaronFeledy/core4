@@ -106,8 +106,16 @@ const describeFromManifest = (manifest: RecipeManifest, source: string): Recipes
   postInit: (manifest.postInit ?? []).map((action) => action.type),
 });
 
+const looksLikeRelativePath = (ref: string): boolean =>
+  !ref.includes(":") &&
+  (ref.includes("/") || ref.includes("\\") || ref.endsWith(".yml") || ref.endsWith(".yaml"));
+
 const expandsAsLocalPath = (ref: string): boolean =>
-  ref.startsWith("./") || ref.startsWith("../") || ref.startsWith("~/") || isAbsolute(ref);
+  ref.startsWith("./") ||
+  ref.startsWith("../") ||
+  ref.startsWith("~/") ||
+  isAbsolute(ref) ||
+  looksLikeRelativePath(ref);
 
 const expandRecipePath = (path: string, cwd: string): string =>
   path.startsWith("~/")

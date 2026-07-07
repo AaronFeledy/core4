@@ -80,6 +80,22 @@ describe("meta:recipes:describe", () => {
     }
   }, 30_000);
 
+  test("describes a repo-relative recipe.yml path", async () => {
+    const result = await runCli([
+      "meta",
+      "recipes",
+      "describe",
+      "recipes/toolbox/recipe.yml",
+      "--format",
+      "json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const envelope = lastJsonLine(result.stdout);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.command).toBe("meta:recipes:describe");
+    expect((envelope.result as { id: string }).id).toBe("toolbox");
+  }, 30_000);
+
   test("unknown recipe fails with tagged RecipeManifestNotFoundError", async () => {
     const result = await runCli(["meta", "recipes", "describe", "nope-nothing", "--format", "json"]);
     expect(result.exitCode).toBe(1);
