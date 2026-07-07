@@ -25,7 +25,6 @@ import {
   readScratchLandofile,
 } from "../../scratch-app/service.ts";
 import { parseAnswerFlags } from "../prompts/answer-flags.ts";
-import { emitOptionalStderr } from "../renderer-boundary.ts";
 
 export const DEFAULT_SCRATCH_RUN_RECIPE = "toolbox";
 
@@ -350,7 +349,6 @@ export const scratchRun = (
             ),
           );
         if (options.keep) yield* deps.detach(handle.id);
-        if (result.stderr.length > 0) yield* emitOptionalStderr(result.stderr);
         return {
           scratchId: handle.id,
           service: String(service.name),

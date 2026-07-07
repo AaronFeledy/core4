@@ -36,6 +36,8 @@ import {
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -708,6 +710,29 @@ describe("scratch run rendering", () => {
     expect(scratchRunSuccessExitCode(baseResult)).toBeUndefined();
     expect(scratchRunSuccessExitCode({ ...baseResult, exitCode: 3 })).toBe(3);
   });
+
+  test("json streaming does not duplicate captured tool stderr onto renderer stderr", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      const result = await Effect.runPromise(
+        scratchRun({
+          command: ["sh", "-c", "echo warn >&2"],
+          mount: true,
+          keep: false,
+          answers: {},
+          issues: [],
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provide(makeJsonRendererServiceLive(io)),
+        ),
+      );
+
+      expect(result.stderr).toBe("warn\n");
+      expect(io.stderr()).toBe("");
+    });
+  });
 });
 
 describe("scratch run agent env forwarding", () => {
@@ -869,7 +894,10 @@ describe("readScratchLandofile", () => {
         }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       const landofile = await Effect.runPromise(
-        readScratchLandofile(result.scratchId).pipe(Effect.provide(layer)),
+        readScratchLandofile(result.scratchId).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(landofile.name).toBeDefined();
       expect(landofile.agentEnv).toBeUndefined();
@@ -877,12 +905,16 @@ describe("readScratchLandofile", () => {
       const paths = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.paths(result.scratchId)).pipe(
           Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
         ),
       );
       const file = join(paths.root, ".lando.yml");
       await writeFile(file, `${await readFile(file, "utf8")}\nagentEnv: false\n`);
       const updated = await Effect.runPromise(
-        readScratchLandofile(result.scratchId).pipe(Effect.provide(layer)),
+        readScratchLandofile(result.scratchId).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(updated.agentEnv).toBe(false);
     });

@@ -981,3 +981,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - The scratch plan cache does not carry Landofile-level policy fields (like `agentEnv`); read the rendered `.lando.yml` at the scratch root (`readScratchLandofile`) when an exec surface needs Landofile policy for a scratch app.
   - Adding `ConfigService` to a scratch command's `R` requires widening the `scratchRunRuntimeLayer()` cast in run.ts; the scratch bootstrap already provides it (MinimalRuntimeServices ⊂ ScratchRuntimeServices).
 ---
+
+## 2026-07-07 12:34 CDT - US-408 Review
+- Review fixed the JSON streaming contract for `lando run`: captured tool stderr now stays in the command result for StreamFrame emission and no longer leaks as raw renderer stderr beside NDJSON output.
+- Review notes (deferred/rejected): Bugbot's duplicate-stderr finding was confirmed and fixed. The loaded `review-work` skill returned orchestration instructions rather than an executable report in this harness, so the source PRD criteria were cross-checked with the focused streaming, conformance, and parity gates.
+- Verification: typecheck and lint passed; focused scratch-run, machine-output-conformance, and dispatch-parity spot checks passed.
+---
