@@ -2040,6 +2040,14 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
   return ["app:config", ...argv.slice(2)];
 };
 
+const normalizeCompiledScratchRunArgvForUniversalFlags = (
+  argv: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const head = argv[0];
+  if (head !== "run" && head !== "scratch:run" && head !== "apps:scratch:run") return argv;
+  return [head, ...normalizeScratchRunArgvForParsing(argv.slice(1))];
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
@@ -2047,8 +2055,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
+    argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
     try {
-      const resolution = await resolveCliRendererMode({ argv: rawArgv, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv, env: process.env });
       argv = resolution.remainingArgv;
       setActiveRendererMode(resolution.mode);
     } catch (error) {

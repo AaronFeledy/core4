@@ -26,6 +26,7 @@ import {
   scratchRunSuccessExitCode,
 } from "../../src/cli/commands/scratch-run.ts";
 import { scratchList } from "../../src/cli/commands/scratch.ts";
+import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -334,6 +335,33 @@ describe("parseScratchRunArgv", () => {
     ]);
     expect(scratchRunHasCommandTail(["node", "--help"])).toBe(true);
     expect(scratchRunHasCommandTail(["--help"])).toBe(false);
+  });
+
+  test("normalization protects tool output flags from universal result-format parsing", () => {
+    expect(
+      resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "--format=json"]) }),
+    ).toEqual({
+      format: "text",
+      remainingArgv: ["--", "node", "--format=json"],
+      source: "default",
+    });
+    expect(resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "--json"]) })).toEqual({
+      format: "text",
+      remainingArgv: ["--", "node", "--json"],
+      source: "default",
+    });
+    expect(resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["node", "-j"]) })).toEqual({
+      format: "text",
+      remainingArgv: ["--", "node", "-j"],
+      source: "default",
+    });
+    expect(
+      resolveResultFormat({ argv: normalizeScratchRunArgvForParsing(["--format", "json", "node"]) }),
+    ).toEqual({
+      format: "json",
+      remainingArgv: ["node"],
+      source: "format",
+    });
   });
 });
 

@@ -307,6 +307,12 @@ export abstract class LandoCommandBase extends Command {
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     validateCommandSpec(spec);
+    if (spec.id === "apps:scratch:run") {
+      const normalizedArgv = normalizeScratchRunArgvForParsing(this.argv);
+      this.argv.length = 0;
+      this.argv.push(...normalizedArgv);
+    }
+
     let rendererMode: RendererMode;
     try {
       const resolution = await resolveCliRendererMode({
@@ -367,12 +373,6 @@ export abstract class LandoCommandBase extends Command {
         return;
       }
       throw new Error(text);
-    }
-
-    if (spec.id === "apps:scratch:run") {
-      const normalizedArgv = normalizeScratchRunArgvForParsing(this.argv);
-      this.argv.length = 0;
-      this.argv.push(...normalizedArgv);
     }
 
     const parsed = await this.parse(this.ctor);
