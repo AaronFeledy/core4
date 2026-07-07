@@ -84,14 +84,9 @@ jobs:
       - name: Machine output boundary lint
         run: bun run check:machine-output
 
-      - name: Static scope notice for portable-only platforms
-        if: ${{ matrix.platform != 'linux-x64' }}
+      - name: Static scope notice for portable static matrix
         run: |
-          echo "::notice title=static-checks-scope::${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability remains a follow-up portability effort."
-
-      - name: Unit test layer (linux-x64 full static scope)
-        if: ${{ matrix.platform == 'linux-x64' }}
-        run: bun run test:unit
+          echo "::notice title=static-checks-scope::${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64. Full cross-platform static test portability remains a follow-up portability effort."
 
       - name: Report job timing
         if: always()
@@ -111,6 +106,32 @@ jobs:
             exit 1
           fi
           echo "static-checks platform matrix passed"
+
+  unit-tests-linux-x64:
+    needs: [static-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Unit test layer
+        run: bun run test:unit
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::unit-tests-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   schema-snapshot:
     runs-on: ubuntu-24.04

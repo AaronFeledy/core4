@@ -4,7 +4,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -23,7 +23,7 @@ bun run check:network-boundary
 bun run check:machine-output
 ```
 
-Only the `linux-x64` static-checks cell runs the full current static test suite. The non-linux cells emit a `static-checks-scope` notice instead of pretending those path-sensitive test layers ran there. Full cross-platform static test portability remains separate US-189 work.
+The `unit-tests-linux-x64` job runs the full current static test suite after `static-checks` passes. Keeping it as a separate required status check lets downstream build, guide, provider, and perf jobs start from the portable static gate instead of waiting for the longest unit-test layer. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
 
 ```bash
 bun run test:unit
@@ -203,6 +203,7 @@ Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix
 Protect `main` in GitHub with required status checks enabled. All required status checks must pass before a pull request can merge to `main`:
 
 - `static-checks`
+- `unit-tests-linux-x64`
 - `schema-snapshot`
 - `bundled-codegen`
 - `library-api-tests`

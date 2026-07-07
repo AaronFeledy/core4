@@ -78,14 +78,9 @@ ${setupBunSteps}
       - name: Machine output boundary lint
         run: bun run check:machine-output
 
-      - name: Static scope notice for portable-only platforms
-        if: \${{ matrix.platform != 'linux-x64' }}
+      - name: Static scope notice for portable static matrix
         run: |
-          echo "::notice title=static-checks-scope::\${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability remains a follow-up portability effort."
-
-      - name: Unit test layer (linux-x64 full static scope)
-        if: \${{ matrix.platform == 'linux-x64' }}
-        run: bun run test:unit
+          echo "::notice title=static-checks-scope::\${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64. Full cross-platform static test portability remains a follow-up portability effort."
 
 ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
 
@@ -102,6 +97,23 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
             exit 1
           fi
           echo "static-checks platform matrix passed"
+`;
+
+const renderUnitTests = (): string => `  unit-tests-linux-x64:
+    needs: [static-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Unit test layer
+        run: bun run test:unit
+
+${timingNoticeStep("unit-tests-linux-x64", 35)}
 `;
 
 const renderSmokeCommands = (platform: CiPlatform): string =>
@@ -493,6 +505,7 @@ permissions:
 
 jobs:
 ${renderStaticChecks()}
+${renderUnitTests()}
   schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
