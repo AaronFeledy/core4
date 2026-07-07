@@ -28,10 +28,10 @@ const expectVersionRejection = (
   expected: { readonly version: string; readonly source: string },
 ) => {
   expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) return;
+  if (Exit.isSuccess(exit)) return;
   const failure = Cause.failureOption(exit.cause);
   expect(failure._tag).toBe("Some");
-  if (failure._tag !== "Some") return;
+  if (failure._tag === "None") return;
   const error = failure.value;
   expect(error).toBeInstanceOf(ProviderUnavailableError);
   expect(error._tag).toBe("ProviderUnavailableError");
