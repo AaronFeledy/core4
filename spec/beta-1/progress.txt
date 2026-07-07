@@ -932,3 +932,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Bugbot again returned no usable report content in this harness; the previous progress-log decision to detach `--keep` immediately was rejected as stale because the source PRD/spec require ownership handoff after exec completion. US-408 streaming/env and US-409 guide/warm-repeat/GC notes remain later-story scope.
 - Verification: typecheck and lint passed; focused scratch-run, dual-dispatch parity, reserved-aliases, and scratch-run dispatch-parity spot checks passed.
 ---
+
+## 2026-07-07 07:37 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed the OCLIF source-dispatch normalization bug introduced by the tool-tail flag repair: `apps:scratch:run` now snapshots normalized argv before mutating `this.argv`, so source-mode flags and tool commands are preserved.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch-run and dual-dispatch parity spot checks passed.
+---

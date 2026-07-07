@@ -370,8 +370,9 @@ export abstract class LandoCommandBase extends Command {
     }
 
     if (spec.id === "apps:scratch:run") {
+      const normalizedArgv = normalizeScratchRunArgvForParsing(this.argv);
       this.argv.length = 0;
-      this.argv.push(...normalizeScratchRunArgvForParsing(this.argv));
+      this.argv.push(...normalizedArgv);
     }
 
     const parsed = await this.parse(this.ctor);
