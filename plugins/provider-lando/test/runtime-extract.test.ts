@@ -193,6 +193,26 @@ describe("installRuntimeBundle", () => {
     }
   });
 
+  test("installs published bundles packaged under a top-level bin directory", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const archiveBytes = buildTarGz([
+        { path: "bin/podman", bytes: encoder.encode("podman") },
+        { path: "bin/fuse-overlayfs", bytes: encoder.encode("fuse-overlayfs") },
+      ]);
+
+      await Effect.runPromise(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
+      expect(existsSync(join(runtimeBinDir, "fuse-overlayfs"))).toBe(true);
+      expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("extracts a real stored zip runtime bundle", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {

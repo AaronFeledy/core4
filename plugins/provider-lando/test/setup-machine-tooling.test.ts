@@ -168,6 +168,27 @@ describe("provider-lando bundled machine tooling resolution", () => {
     }
   });
 
+  test("linux setup detects the Podman version from the bundled binary, not system PATH", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-version-linux-"));
+    try {
+      await writeFile(join(runtimeBinDir, "podman"), '#!/bin/sh\necho "podman version 9.9.9-bundled"\n', {
+        mode: 0o755,
+      });
+
+      const result = await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          runtimeBinDir,
+          skipSocketProbe: true,
+        }),
+      );
+
+      expect(result.podmanVersion).toBe("9.9.9-bundled");
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
   test("darwin Detect Podman step fails with bundle remediation, not PATH wording, when the bundled binary is absent", async () => {
     const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-detect-missing-"));
     try {

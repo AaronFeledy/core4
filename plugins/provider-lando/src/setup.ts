@@ -356,15 +356,15 @@ export const makeSystemPodmanMachineRunner = (
 const MANAGED_MACHINE_NAME = "lando";
 
 const missingBundledMachineToolingError = (
-  platform: "darwin" | "win32",
+  platform: HostPlatform,
   podmanBin?: string,
 ): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation: "setup",
-    message: `The installed Lando runtime bundle does not provide Podman machine tooling for ${platform}.`,
+    message: `The installed Lando runtime bundle does not provide Podman tooling for ${platform}.`,
     remediation:
-      "Reinstall the managed runtime with `lando setup`; the bundled Podman machine tooling for this platform was not found in the runtime bundle.",
+      "Reinstall the managed runtime with `lando setup`; the bundled Podman tooling for this platform was not found in the runtime bundle.",
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
 
@@ -375,7 +375,7 @@ const resolveSetupPodmanCommandRunner = (
   runtimeBinDir: string | undefined,
   toolingExists: (podmanBin: string) => boolean,
 ): Effect.Effect<PodmanCommandRunner, ProviderUnavailableError> => {
-  if ((platform !== "darwin" && platform !== "win32") || runtimeBinDir === undefined) {
+  if (runtimeBinDir === undefined) {
     return Effect.succeed(makeSystemPodmanCommandRunner());
   }
 
