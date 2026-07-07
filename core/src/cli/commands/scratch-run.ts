@@ -248,6 +248,7 @@ export const scratchRun = (
           ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
           ...(options.mount ? { mountCwd: {} } : {}),
         });
+        if (options.keep) yield* deps.detach(handle.id);
         const serviceName = yield* resolveRunService(options.service, plan);
         const provider = yield* registry.select(plan).pipe(
           Effect.mapError(
@@ -280,7 +281,6 @@ export const scratchRun = (
             ),
           );
         if (result.stderr.length > 0) yield* emitOptionalStderr(result.stderr);
-        if (options.keep) yield* deps.detach(handle.id);
         return {
           scratchId: handle.id,
           service: String(serviceName),

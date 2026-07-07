@@ -134,6 +134,39 @@ describe("scratch registry", () => {
     });
   });
 
+  test("StateStore-framed legacy none isolation is normalized before bucket open", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const fork = entry("scratch-fork-000001");
+      const recipe = { ...entry("scratch-recipe-000002"), source: { kind: "recipe" as const, ref: "empty" } };
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(
+        paths.registry,
+        `${JSON.stringify({
+          version: 1,
+          data: [
+            { ...fork, isolate: "none" },
+            { ...recipe, isolate: "none" },
+          ],
+        })}\n`,
+      );
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+        { ...fork, isolate: "cwd" },
+        { ...recipe, isolate: "baked" },
+      ]);
+
+      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
+      expect(raw).toEqual({
+        version: 1,
+        data: [
+          { ...fork, isolate: "cwd" },
+          { ...recipe, isolate: "baked" },
+        ],
+      });
+    });
+  });
+
   test("lock release removes only the matching token", async () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();

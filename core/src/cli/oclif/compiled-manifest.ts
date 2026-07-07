@@ -3046,11 +3046,11 @@ export const COMPILED_OCLIF_MANIFEST = {
           type: "boolean",
         },
         isolate: {
-          description: "Fork isolation: 'none' shares the source app root, 'full' uses a content copy.",
+          description: "Scratch isolation mode; 'none' is a legacy alias for 'cwd'.",
           name: "isolate",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["none", "full"],
+          options: ["none", "full", "baked", "cwd"],
           type: "option",
         },
         "mount-cwd": {

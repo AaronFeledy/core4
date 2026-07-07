@@ -920,3 +920,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): no post-Bugbot findings were rejected.
 - Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
 ---
+
+## 2026-07-07 07:15 CDT - US-407 Review
+- Follow-up Bugbot found and review fixed legacy/start edge cases: `--isolate=none` now maps to `cwd` instead of being silently dropped, StateStore-framed registry entries with legacy `none` isolation migrate before bucket open, and `lando run --keep` detaches immediately after acquisition so successful retention survives tool execution failures.
+- Review notes (deferred/rejected): no follow-up Bugbot findings were rejected.
+- Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, scratch flag mapping, OCLIF manifest, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
+---

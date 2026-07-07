@@ -38,7 +38,7 @@ export interface ScratchStartOptions {
 }
 
 export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
-  value === "full" || value === "baked" || value === "cwd" ? value : undefined;
+  value === "none" ? "cwd" : value === "full" || value === "baked" || value === "cwd" ? value : undefined;
 
 const MOUNT_CWD_FLAG = "--mount-cwd";
 

@@ -66,6 +66,11 @@ const LegacyRegistryEnvelopeSchema = Schema.Struct({
   entries: LegacyRegistryEntriesSchema,
 });
 
+const LegacyStateFrameSchema = Schema.Struct({
+  version: Schema.Literal(REGISTRY_VERSION),
+  data: LegacyRegistryEntriesSchema,
+});
+
 export type ScratchRegistryEntry = typeof RegistryEntrySchema.Type;
 export type ScratchRegistryEnvelope = typeof RegistryEnvelopeSchema.Type;
 
@@ -107,15 +112,26 @@ const isMissing = (cause: unknown): boolean =>
 
 const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   try {
-    const envelope = Schema.decodeUnknownSync(LegacyRegistryEnvelopeSchema)(JSON.parse(content), {
+    const parsed = JSON.parse(content) as unknown;
+    const entries = Schema.decodeUnknownSync(LegacyRegistryEnvelopeSchema)(parsed, {
       onExcessProperty: "error",
-    });
-    return envelope.entries.map((entry) => ({
+    }).entries;
+    return entries.map((entry) => ({
       ...entry,
       isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
     }));
   } catch {
-    return null;
+    try {
+      const entries = Schema.decodeUnknownSync(LegacyStateFrameSchema)(JSON.parse(content), {
+        onExcessProperty: "error",
+      }).data;
+      return entries.map((entry) => ({
+        ...entry,
+        isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
+      }));
+    } catch {
+      return null;
+    }
   }
 };
 
@@ -212,10 +228,10 @@ export const makeScratchRegistry = (): ScratchRegistryService => {
     message: string,
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
-    openRegistryBucket().pipe(
-      Effect.flatMap((bucket) =>
-        migrateLegacyEnvelope().pipe(
-          Effect.zipRight(
+    migrateLegacyEnvelope().pipe(
+      Effect.zipRight(
+        openRegistryBucket().pipe(
+          Effect.flatMap((bucket) =>
             use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
           ),
         ),
