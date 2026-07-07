@@ -30,6 +30,7 @@ import {
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   GlobalConfig,
+  type IsolateMode,
   LandofileShape,
   type PlanMetadata,
   ProviderId,
@@ -62,6 +63,7 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  type ScratchAcquireInput,
   ScratchAppService,
   type ScratchInfo,
   type ScratchSummary,
@@ -334,6 +336,11 @@ const primaryServiceName = (plan: AppPlan): string => {
   const service =
     Object.values(plan.services).find((candidate) => candidate.primary) ?? Object.values(plan.services)[0];
   return service?.name ?? "appserver";
+};
+
+const canonicalScratchIsolationMode = (input: ScratchAcquireInput): IsolateMode => {
+  if (input.isolate === "none") return "cwd";
+  return input.isolate ?? (input.source.kind === "fork" ? "full" : "baked");
 };
 
 const registryEntriesFrom = (
@@ -824,7 +831,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           id,
           app: appRefForScratch(id, paths.root),
           source: input.source,
-          mode: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
+          mode: canonicalScratchIsolationMode(input),
           created: "2026-06-01T00:00:00.000Z",
           status: input.detached ? "detached" : "attached",
         };

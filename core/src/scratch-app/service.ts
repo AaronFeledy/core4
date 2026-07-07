@@ -93,8 +93,12 @@ const scratchSourceUnresolvedError = (input: ScratchAcquireInput): ScratchSource
     remediation: scratchSourceRemediation(input),
   });
 
-export const resolveScratchAcquireIsolation = (input: ScratchAcquireInput): IsolateMode =>
-  input.isolate ?? (input.mountCwd !== undefined ? "cwd" : input.source.kind === "fork" ? "full" : "baked");
+export const resolveScratchAcquireIsolation = (input: ScratchAcquireInput): IsolateMode => {
+  if (input.isolate === "none") return "cwd";
+  return (
+    input.isolate ?? (input.mountCwd !== undefined ? "cwd" : input.source.kind === "fork" ? "full" : "baked")
+  );
+};
 
 const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({
