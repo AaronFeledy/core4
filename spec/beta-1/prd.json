@@ -849,7 +849,7 @@
       "acceptanceCriteria": [
         "Future implementation changes Podman image pull requests to include pullProgress=true, matching the Podman 6 Libpod Pull endpoint behavior from task-1 evidence.",
         "Non-200 pull responses become typed ProviderUnavailableError or operation-specific pull errors instead of assuming Podman pull endpoints always return HTTP 200 on failure.",
-        "Pull progress is rendered only through the Renderer service; no new console. or process.std.write appears under core/src/ or plugins/, and check:renderer-boundary passes.",
+        "Pull progress is rendered only through the Renderer service; no new console.* or process.std*.write appears under core/src/** or plugins/**, and check:renderer-boundary passes.",
         "Error bodies and progress details pass through RedactionService before events, transcripts, or structured output store registry/image names that may include credentials or private hosts; check:redaction-boundary passes.",
         "Tests cover progress frames, non-200 failure mapping, renderer-only output, and redacted transcript/event payloads.",
         "Tests pass",
