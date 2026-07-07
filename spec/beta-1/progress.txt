@@ -50,6 +50,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - A new executable guide for a scratch/exec command that needs a live provider ships as `render={false}` `Variable`-only doc scenarios (mirror `docs/guides/scratch/scratch-gc.mdx`): each `<Scenario render={false}>` needs a `reason` ≥ 8 chars. Generated scenario tests under `test/scenarios/generated/guides/<id>/` are GITIGNORED — only the `.mdx` is tracked. Regenerate + run with `bun run dev:guides docs/guides/<path>.mdx --once`. `check:guide-coverage` only scans `spec/alpha-3` PRDs, so a beta-1 guide needs no `docs/guides/INDEX.md` row; render=false guides produce no public transcripts.
 
 
+## 2026-07-07 17:25 CDT - Babysit
+- PR: #545 https://github.com/AaronFeledy/core4/pull/545
+- CI outcome: pass (guide-scenarios failed once on check:guide-drift; cleared)
+- Review feedback: fixed (merged origin/main to resolve prd.json/progress.txt metadata conflicts; appended Guide-Coverage-Skip line to the PR body for the enforcement-only version floor, matching the provider-lando gate PR precedent)
+- Merge: merged (squash)
+---
 ## 2026-07-07 15:18 CDT - US-414
 - Enforced the Podman 6 runtime floor in provider-podman: provider construction (selection) now reads the server version from the `/libpod/info` payload it already fetches for availability, gates it through the shared `podmanVersionMeetsFloor`/`MINIMUM_PODMAN_VERSION` exports from `@lando/provider-lando`, and fails closed with `PodmanServerVersionUnsupportedError` (ProviderUnavailableError family; `providerId: "podman"`, `operation: "select"`, details carry observed version + `libpod-info` source + minimum, remediation names the >= 6.0.0 upgrade). Missing or unparseable server versions also fail closed. No `podman` CLI command is executed — the gate is API-only.
 - `getVersions` now reports `{ provider: "0.0.0", runtime: <server version> }` using the gated server version (pre-release strings like `6.1.0-rc1` are preserved verbatim). The platform capability matrix is untouched; gating happens before capabilities are returned.
