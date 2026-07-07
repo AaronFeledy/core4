@@ -83,7 +83,7 @@ const makeFakeApi = () => {
   const calls: PodmanHttpRequest[] = [];
 
   const api: PodmanApiClient = {
-    info: Effect.succeed({ host: { os: "darwin" } }),
+    info: Effect.succeed({ host: { os: "darwin" }, version: { Version: "6.0.2" } }),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
