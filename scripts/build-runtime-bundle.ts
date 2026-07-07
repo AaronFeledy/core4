@@ -6,8 +6,8 @@
  * `file://` URLs plus locally-computed SHA-256 values. CI points
  * `LANDO_RUNTIME_BUNDLE_MANIFEST` at that manifest so `lando setup` exercises
  * the real download-and-verify path against a bundle built from the current
- * commit (spec §13.5). Verification stays enforced against the computed
- * checksum — the override redirects verification, it never disables it (§5.8.1).
+ * commit. Verification stays enforced against the computed checksum — the
+ * override redirects verification, it never disables it.
  *
  * Default (release) mode reads staged artifacts plus the pinned upstream base
  * URL and emits the committed `https://` manifest. Both modes share one builder.
@@ -51,7 +51,7 @@ const VERSION_FILE = join(PROVIDER_DIR, "runtime-bundle-version");
 const COMMITTED_MANIFEST = join(PROVIDER_DIR, "runtime-bundle-versions.json");
 const DEFAULT_STAGING_DIR = resolve(import.meta.dir, "..", "dist", "cache", "runtime-bundle");
 
-/** Fallback host slug when the publishing workflow does not export `GITHUB_REPOSITORY` (spec §13.5). */
+/** Fallback repository slug when the publishing workflow does not export `GITHUB_REPOSITORY`. */
 export const LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT = "lando-community/core4";
 
 export const resolveRuntimeBundleRepository = (

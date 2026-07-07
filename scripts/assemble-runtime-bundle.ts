@@ -6,7 +6,7 @@
  * pinned component, verifies it against its committed SHA-256 (fail-closed),
  * lays the binaries out under a normalized path, and packs them into a
  * deterministic `lando-runtime-<hostKey>.tar.gz` / `.zip`. Re-running against
- * the same pins yields byte-identical archives (spec §17.8 reproducibility):
+ * the same pins yields byte-identical archives (reproducible packing):
  * tar entries are sorted with a fixed mtime and numeric owner, and gzip is run
  * without its filename/timestamp header.
  *
