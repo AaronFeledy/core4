@@ -645,7 +645,7 @@
         "Lint passes"
       ],
       "priority": 36,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-09 (spec 21.10.3). Thin layer over ScratchAppService - no new lifecycle machinery."
     },
     {

@@ -29,6 +29,8 @@ export interface ScratchMountCwd {
   readonly target?: string;
 }
 
+type ScratchAcquireIsolationMode = IsolateMode | "none";
+
 export interface ScratchAcquireInput {
   readonly source: ScratchSource;
   readonly detached: boolean;
@@ -36,7 +38,8 @@ export interface ScratchAcquireInput {
   readonly answers?: Record<string, string>;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
-  readonly isolate?: IsolateMode;
+  /** Isolation mode; legacy `none` is accepted as an input alias for `cwd`. */
+  readonly isolate?: ScratchAcquireIsolationMode;
   /** Mount $PWD into the scratch app's primary service (`--mount-cwd`). */
   readonly mountCwd?: ScratchMountCwd;
   /**
@@ -65,7 +68,7 @@ export interface ScratchSummary {
   readonly app: AppRef;
   /** Where the scratch app came from — a fork of the cwd app or a recipe. */
   readonly source: ScratchSource;
-  /** Isolation mode the scratch app was started in (`none` | `full`). */
+  /** Isolation mode the scratch app was started in (`full` | `baked` | `cwd`). */
   readonly mode: IsolateMode;
   /** ISO 8601 timestamp the scratch app was first registered. */
   readonly created: string;

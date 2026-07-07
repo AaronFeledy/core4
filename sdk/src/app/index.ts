@@ -16,6 +16,7 @@ import type {
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   CapabilityError,
+  CommandAliasConflictError,
   ConfigError,
   EventError,
   FileSyncDriftError,
@@ -393,6 +394,7 @@ export type ToolingError =
   | ProviderUnavailableError
   | ShellExecError
   | ShellScriptOutsideRootError
+  | CommandAliasConflictError
   | ToolingCompileError
   | ToolingExecError;
 

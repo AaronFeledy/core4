@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +33,7 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
 const entry = (id: string): ScratchRegistryEntry => ({
   id,
   source: { kind: "fork" },
-  isolate: "none",
+  isolate: "full",
   detached: true,
   rootPath: join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id, "root"),
   status: "running",
@@ -106,16 +107,77 @@ describe("scratch registry", () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();
       const first = entry("scratch-one-000001");
-      const second = entry("scratch-two-000002");
+      const second = { ...entry("scratch-two-000002"), source: { kind: "recipe" as const, ref: "empty" } };
+      const legacyFirst = { ...first, isolate: "none" };
+      const legacySecond = { ...second, isolate: "none" };
       await mkdir(paths.base, { recursive: true });
-      await writeFile(paths.registry, `${JSON.stringify({ version: 1, entries: [first, second] })}\n`);
+      await writeFile(
+        paths.registry,
+        `${JSON.stringify({ version: 1, entries: [legacyFirst, legacySecond] })}\n`,
+      );
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first, second]);
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+        { ...first, isolate: "cwd" },
+        { ...second, isolate: "baked" },
+      ]);
 
       const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
-      expect(raw).toEqual({ version: 1, data: [first, second] });
+      expect(raw).toEqual({
+        version: 1,
+        data: [
+          { ...first, isolate: "cwd" },
+          { ...second, isolate: "baked" },
+        ],
+      });
       const files = await readdir(paths.base);
       expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(false);
+    });
+  });
+
+  test("StateStore-framed legacy none isolation is normalized before bucket open", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const fork = entry("scratch-fork-000001");
+      const recipe = { ...entry("scratch-recipe-000002"), source: { kind: "recipe" as const, ref: "empty" } };
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(
+        paths.registry,
+        `${JSON.stringify({
+          version: 1,
+          data: [
+            { ...fork, isolate: "none" },
+            { ...recipe, isolate: "none" },
+          ],
+        })}\n`,
+      );
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+        { ...fork, isolate: "cwd" },
+        { ...recipe, isolate: "baked" },
+      ]);
+
+      const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
+      expect(raw).toEqual({
+        version: 1,
+        data: [
+          { ...fork, isolate: "cwd" },
+          { ...recipe, isolate: "baked" },
+        ],
+      });
+    });
+  });
+
+  test("StateStore-framed current isolation is not rewritten by legacy migration", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const first = entry("scratch-one-000001");
+      await mkdir(paths.base, { recursive: true });
+      const currentFrame = `${JSON.stringify({ version: 1, data: [first] }, null, 2)}\n`;
+      await writeFile(paths.registry, currentFrame);
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first]);
+
+      expect(await readFile(paths.registry, "utf8")).toBe(currentFrame);
     });
   });
 

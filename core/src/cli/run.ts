@@ -117,6 +117,14 @@ import {
 } from "./commands/remote.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
+  normalizeScratchRunArgvForParsing,
+  parseScratchRunArgv,
+  renderScratchRunResult,
+  scratchRun,
+  scratchRunHasCommandTail,
+  scratchRunSuccessExitCode,
+} from "./commands/scratch-run.ts";
+import {
   type ScratchStartOptions,
   normalizeScratchStartArgv,
   renderScratchDestroyResult,
@@ -1366,6 +1374,11 @@ const scratchRuntimeLayer = () =>
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
 
+const scratchRunRuntimeLayer = () =>
+  makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
+  ) as Layer.Layer<ScratchAppService | FileSystem | RuntimeProviderRegistry, LandoRuntimeBootstrapError>;
+
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
   render: (result: A, ctx: RenderContext) => string | undefined,
@@ -1435,6 +1448,16 @@ const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = scratchCommandInput("apps:scratch:gc", argv);
   await runScratchEffect(scratchGc({ prune: pruneFromInput(input) }), renderScratchGcReport);
 };
+
+const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      scratchRun({ ...parseScratchRunArgv(argv), signal }),
+      scratchRunRuntimeLayer(),
+      (result) => renderScratchRunResult(result),
+      { successExitCode: scratchRunSuccessExitCode },
+    ),
+  );
 
 const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -1967,6 +1990,10 @@ const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"]);
 const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
 
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "apps" && argv[1] === "scratch" && argv[2] === "run") {
+    return ["apps:scratch:run", ...argv.slice(3)];
+  }
+
   if (argv[0] === "meta" && argv[1] === "recipes") {
     const verb = argv[2];
     if (verb === undefined || !RECIPES_COMMAND_VERBS.has(verb)) return argv;
@@ -2013,6 +2040,14 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
   return ["app:config", ...argv.slice(2)];
 };
 
+const normalizeCompiledScratchRunArgvForUniversalFlags = (
+  argv: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const head = argv[0];
+  if (head !== "run" && head !== "scratch:run" && head !== "apps:scratch:run") return argv;
+  return [head, ...normalizeScratchRunArgvForParsing(argv.slice(1))];
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
@@ -2020,8 +2055,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
+    argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
     try {
-      const resolution = await resolveCliRendererMode({ argv: rawArgv, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv, env: process.env });
       argv = resolution.remainingArgv;
       setActiveRendererMode(resolution.mode);
     } catch (error) {
@@ -2059,11 +2095,14 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
+  const isScratchRun = head === "run" || head === "scratch:run" || head === "apps:scratch:run";
+  const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
 
   if (
     !isBunOrX &&
+    !scratchRunHasToolCommand &&
     (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h"))
   ) {
     const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
@@ -2081,7 +2120,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if ((dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) && !isBunOrX) {
+  if (
+    (dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) &&
+    !isBunOrX &&
+    !scratchRunHasToolCommand
+  ) {
     await runMetaVersion();
     return;
   }
@@ -2374,6 +2417,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
+  if (argv[0] === "run" || argv[0] === "scratch:run" || argv[0] === "apps:scratch:run") {
+    await runAppsScratchRun(normalizeScratchRunArgvForParsing(argv.slice(1)));
+    return;
+  }
+
   if (argv[0] === "config" || argv[0] === "meta:config") {
     await runMetaConfig(argv.slice(1));
     return;
@@ -2596,6 +2644,16 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
   const args = options.argv as Array<string>;
 
   if (isCompiledCliEntryPath(entryPath)) {
+    await runCompiledCli(options.argv);
+    return;
+  }
+
+  const normalizedSourceArgv = normalizeCompiledCommandArgv(args);
+  if (
+    normalizedSourceArgv[0] === "run" ||
+    normalizedSourceArgv[0] === "scratch:run" ||
+    normalizedSourceArgv[0] === "apps:scratch:run"
+  ) {
     await runCompiledCli(options.argv);
     return;
   }

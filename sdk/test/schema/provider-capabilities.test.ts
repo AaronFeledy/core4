@@ -101,14 +101,14 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
 };
 
 describe("IsolateMode", () => {
-  test("accepts the two scratch isolation modes", () => {
-    for (const mode of ["none", "full"] as const) {
+  test("accepts the canonical scratch isolation modes", () => {
+    for (const mode of ["full", "baked", "cwd"] as const) {
       expect(Either.isRight(Schema.decodeUnknownEither(IsolateMode)(mode))).toBe(true);
     }
   });
 
   test("rejects any other isolation value", () => {
-    for (const invalid of ["", "partial", "cow", "FULL"]) {
+    for (const invalid of ["", "none", "partial", "cow", "FULL"]) {
       expect(Either.isLeft(Schema.decodeUnknownEither(IsolateMode)(invalid))).toBe(true);
     }
   });

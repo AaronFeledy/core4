@@ -23,6 +23,7 @@ tags: [beta, docs, library, testing]
       <Variable name="provider" value="provided" display="provideTestRuntime({ bootstrap: 'provider' }) adds provider level services" />
       <Variable name="global" value="provided" display="provideTestRuntime({ bootstrap: 'global' }) adds global app services" />
       <Variable name="scratch" value="provided" display="provideTestRuntime({ bootstrap: 'scratch' }) adds scratch app services" />
+      <Variable name="scratchRuntime" value="openLandoRuntime({ scratch })" display="Library runtimes can acquire a scratch app up front; legacy isolate 'none' inputs are normalized to the canonical cwd mode before persistence" />
       <Variable name="app" value="provided" display="provideTestRuntime({ bootstrap: 'app' }) adds the full app service set" />
     </Step>
   </Scenario>
