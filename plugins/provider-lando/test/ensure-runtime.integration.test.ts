@@ -109,7 +109,7 @@ const makeFakePodmanApi = (
       events.push("api.info");
       const launchCount = events.filter((event) => event === "service.launch").length;
       if (infoCalls <= infoSuccessesBeforeEnsureFailure || launchCount >= launchesBeforeInfoSuccess) {
-        return { version: { Version: "5.2.0" } };
+        return { version: { Version: "6.0.2" } };
       }
       return yield* Effect.fail(
         new ProviderUnavailableError({
@@ -186,7 +186,7 @@ const withRuntimeProvider = async <A>(
       makeRuntimeProvider({
         platform: "linux",
         podmanApi: makeFakePodmanApi(events, infoSuccessesBeforeEnsureFailure, launchesBeforeInfoSuccess),
-        podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+        podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         podmanService: makeFakeServiceRunner(events),
         providerSocketPath: join(tempDir, "podman.sock"),
         runtimeBinDir: join(tempDir, "bin"),

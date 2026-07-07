@@ -87,6 +87,7 @@ export {
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
+  PodmanVersionUnsupportedError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
@@ -105,11 +106,14 @@ export type {
   PodmanCommandRunner,
   PodmanMachineRunner,
   PodmanMachineStatus,
+  PodmanVersionSource,
   RuntimeBundle,
   RuntimeBundleDownloader,
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
+export { parsePodmanVersionNumbers, podmanVersionMeetsFloor } from "./version-floor.ts";
+export type { PodmanVersionNumbers } from "./version-floor.ts";
 
 export {
   ProviderBundleChecksumError,
