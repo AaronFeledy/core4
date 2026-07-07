@@ -23,12 +23,6 @@ const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
   remediation: "Plugin registry login/logout are not available yet.",
 };
 
-const META_RECIPES_LIST_PLAN: DeferredCommandPlan = {
-  summary: "Recipe catalog listing through `meta:recipes:list` is not available yet.",
-  remediation:
-    "`meta:recipes:list` is not available yet. Use `lando init --help` to list currently bundled recipes available through `lando init --recipe <id>`.",
-};
-
 const META_EVENTS_FOLLOW_PLAN: DeferredCommandPlan = {
   summary: "Lifecycle-event streaming through `meta:events:follow` is not available yet.",
   remediation:
@@ -42,7 +36,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
-  ["meta:recipes:list", META_RECIPES_LIST_PLAN],
   ["meta:events:follow", META_EVENTS_FOLLOW_PLAN],
 ]);
 

@@ -1015,11 +1015,33 @@ Arguments:
 | --- | --- |
 | `name` | Plugin name. |
 
+## `lando meta:recipes:describe`
+
+Print a recipe's prompts and metadata without running it.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `ref` | Recipe ref: a bundled recipe id or a local path. |
+
 ## `lando meta:recipes:list`
 
 List canonical recipes shipped with the binary.
 
 Aliases: `lando recipes`
+
+## `lando meta:recipes:validate`
+
+Validate a recipe.yml against the published schema.
+
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `path` | Path to a recipe.yml or a recipe directory. |
 
 ## `lando meta:setup`
 

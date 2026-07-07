@@ -4,6 +4,7 @@ import { apacheServiceFeature } from "../services/apache.ts";
 import { composeServiceFeature } from "../services/compose.ts";
 import { elasticsearchServiceFeature } from "../services/elasticsearch.ts";
 import { goServiceFeature } from "../services/go.ts";
+import { landoServiceFeature } from "../services/lando.ts";
 import { mariadbServiceFeature } from "../services/mariadb.ts";
 import { meilisearchServiceFeature } from "../services/meilisearch.ts";
 import { memcachedServiceFeature } from "../services/memcached.ts";
@@ -45,6 +46,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   composeServiceFeature,
   elasticsearchServiceFeature,
   goServiceFeature,
+  landoServiceFeature,
   mariadbServiceFeature,
   meilisearchServiceFeature,
   memcachedServiceFeature,

@@ -20,5 +20,8 @@ export const MCP_DEFAULT_ALLOWLIST: ReadonlyArray<string> = [
   "apps:list",
   "apps:scratch:list",
   "meta:doctor",
+  "meta:recipes:describe",
+  "meta:recipes:list",
+  "meta:recipes:validate",
   "meta:version",
 ];

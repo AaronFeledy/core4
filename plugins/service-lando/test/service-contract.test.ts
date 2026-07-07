@@ -9,6 +9,7 @@ import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
+import { landoServiceType } from "../src/services/lando.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
@@ -43,6 +44,11 @@ const catalogEntries: ReadonlyArray<CatalogCompositionEntry> = [
   { serviceType: elasticsearch8ServiceType, landofileService: { type: "elasticsearch:8" } },
   { serviceType: go122ServiceType, landofileService: { type: "go:1.22" } },
   { serviceType: go123ServiceType, landofileService: { type: "go:1.23" } },
+  {
+    serviceType: landoServiceType,
+    landofileService: { type: "lando", image: "debian:12.11-slim" },
+    serviceName: "toolbox",
+  },
   { serviceType: mariadbServiceType, landofileService: { type: "mariadb" } },
   { serviceType: meilisearchServiceType, landofileService: { type: "meilisearch" } },
   { serviceType: meilisearch1ServiceType, landofileService: { type: "meilisearch:1" } },
@@ -127,6 +133,7 @@ describe("service catalog per-type checklist × composition contract suite", () 
       "elasticsearch:8",
       "go:1.22",
       "go:1.23",
+      "lando",
       "mariadb",
       "meilisearch",
       "meilisearch:1",

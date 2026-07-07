@@ -53,6 +53,7 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   eleventy: { name: "eleventy-canon" },
   empty: { name: "empty-canon" },
   "node-ts": { name: "node-ts-canon" },
+  toolbox: { name: "toolbox-canon" },
 };
 
 const buildAnswers = (entry: CanonicalAnswers): Record<string, string> => ({

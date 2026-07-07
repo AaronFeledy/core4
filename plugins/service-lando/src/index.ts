@@ -9,6 +9,7 @@ import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
+import { landoServiceType } from "./services/lando.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
 import { meilisearch1ServiceType, meilisearchServiceType } from "./services/meilisearch.ts";
 import { memcachedServiceType } from "./services/memcached.ts";
@@ -32,6 +33,7 @@ export { apacheServiceType } from "./services/apache.ts";
 export { composeServiceType } from "./services/compose.ts";
 export { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
+export { landoServiceType } from "./services/lando.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
 export {
   MEILISEARCH_DEFAULT_MASTER_KEY,
@@ -65,6 +67,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["elasticsearch:8", elasticsearch8ServiceType],
   ["go:1.22", go122ServiceType],
   ["go:1.23", go123ServiceType],
+  ["lando", landoServiceType],
   ["mariadb", mariadbServiceType],
   ["meilisearch", meilisearchServiceType],
   ["meilisearch:1", meilisearch1ServiceType],
@@ -134,6 +137,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "elasticsearch:8",
       "go:1.22",
       "go:1.23",
+      "lando",
       "mariadb",
       "meilisearch",
       "meilisearch:1",

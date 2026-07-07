@@ -170,6 +170,7 @@
             "service-lando.compose",
             "service-lando.elasticsearch",
             "service-lando.go",
+            "service-lando.lando",
             "service-lando.mariadb",
             "service-lando.meilisearch",
             "service-lando.memcached",
@@ -194,6 +195,7 @@
             "elasticsearch:8",
             "go:1.22",
             "go:1.23",
+            "lando",
             "mariadb",
             "meilisearch",
             "meilisearch:1",
@@ -12856,17 +12858,125 @@
       "required": ["pluginName", "registryEntry", "action"],
       "type": "object"
     },
-    "meta:recipes:list": {
-      "$id": "/schemas/%7B%7D",
+    "meta:recipes:describe": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "anyOf": [
-        {
-          "type": "object"
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
         },
-        {
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "postInit": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prompts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "default": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "type", "message"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "source": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "title", "description", "version", "source", "tags", "prompts", "files", "postInit"],
+      "type": "object"
+    },
+    "meta:recipes:list": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "recipes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "title", "description"],
+            "type": "object"
+          },
           "type": "array"
         }
-      ]
+      },
+      "required": ["recipes"],
+      "type": "object"
+    },
+    "meta:recipes:validate": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "prompts": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "valid": {
+          "enum": [true],
+          "type": "boolean"
+        }
+      },
+      "required": ["valid", "id", "source", "prompts", "files"],
+      "type": "object"
     },
     "meta:setup": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -15341,7 +15451,9 @@
       "meta:plugin:trust",
       "meta:plugin:trust-authoring-root",
       "meta:plugin:unlink",
+      "meta:recipes:describe",
       "meta:recipes:list",
+      "meta:recipes:validate",
       "meta:setup",
       "meta:shellenv",
       "meta:uninstall",

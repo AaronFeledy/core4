@@ -234,6 +234,7 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
       "eleventy",
       "empty",
       "node-ts",
+      "toolbox",
     ];
     expect([...ids].sort()).toEqual([...required].sort());
     for (const id of required) {

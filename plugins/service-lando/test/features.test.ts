@@ -16,6 +16,7 @@ const EXPECTED_CATALOG_FEATURE_IDS: ReadonlyArray<string> = [
   "service-lando.compose",
   "service-lando.elasticsearch",
   "service-lando.go",
+  "service-lando.lando",
   "service-lando.mariadb",
   "service-lando.meilisearch",
   "service-lando.memcached",

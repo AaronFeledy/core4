@@ -43,6 +43,7 @@ import {
   sveltekitRecipeYaml,
 } from "./builtin/sveltekit/manifest.ts";
 import { SYMFONY_RECIPE_ID, symfonyRecipeSource, symfonyRecipeYaml } from "./builtin/symfony/manifest.ts";
+import { TOOLBOX_RECIPE_ID, toolboxRecipeSource, toolboxRecipeYaml } from "./builtin/toolbox/manifest.ts";
 import {
   WORDPRESS_RECIPE_ID,
   wordpressRecipeSource,
@@ -155,5 +156,10 @@ export const BUNDLED_RECIPES: ReadonlyArray<BundledRecipe> = [
     id: NODE_TS_RECIPE_ID,
     source: nodeTsRecipeSource,
     manifestYaml: nodeTsRecipeYaml,
+  },
+  {
+    id: TOOLBOX_RECIPE_ID,
+    source: toolboxRecipeSource,
+    manifestYaml: toolboxRecipeYaml,
   },
 ];
