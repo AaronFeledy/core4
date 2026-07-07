@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { deflateRawSync, gzipSync } from "node:zlib";
@@ -430,6 +430,26 @@ describe("installRuntimeBundle", () => {
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
         "1.0.0",
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("repairs the old nested bin layout even when the version marker matches", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(join(runtimeBinDir, "bin"), { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, "bin", "podman"), "old-podman");
+      const archiveBytes = buildTarGz([{ path: "bin/podman", bytes: encoder.encode("new-podman") }]);
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
+      expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

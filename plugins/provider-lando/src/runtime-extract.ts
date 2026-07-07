@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
 import { Effect } from "effect";
@@ -341,6 +341,14 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
     ),
   );
 
+const hasInstalledRuntimeEntrypoint = (runtimeBinDir: string): Effect.Effect<boolean, never> =>
+  Effect.promise(() =>
+    access(stringJoin(runtimeBinDir, "podman")).then(
+      () => true,
+      () => false,
+    ),
+  );
+
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>
   cause instanceof ProviderRuntimeExtractError ? cause : new ProviderRuntimeExtractError(message, cause);
 
@@ -385,7 +393,11 @@ export const installRuntimeBundle = (
 ): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
   Effect.gen(function* () {
     const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
-    if (installedVersion === options.version) {
+    const entrypointReady =
+      installedVersion === options.version
+        ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir)
+        : false;
+    if (entrypointReady) {
       return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
     }
 
