@@ -295,8 +295,10 @@ const applyScratchStartFlags = (
 ): Effect.Effect<AppPlan, ScratchAppError> =>
   Effect.gen(function* () {
     let next = plan;
-    if (input.mountCwd !== undefined) {
-      const mounted = applyMountCwd(next, input.mountCwd.target, hostCwd);
+    const mountCwd =
+      resolveScratchAcquireIsolation(input) === "cwd" ? (input.mountCwd ?? {}) : input.mountCwd;
+    if (mountCwd !== undefined) {
+      const mounted = applyMountCwd(next, mountCwd.target, hostCwd);
       if (mounted === undefined) {
         return yield* Effect.fail(
           scratchAppError(

@@ -302,6 +302,10 @@ describe("ScratchAppServiceLive fork acquire", () => {
         }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, destroyCalls))),
       );
       expect(String(appliedPlans.at(0)?.root)).toBe(dir);
+      const primaryService = Object.values(appliedPlans.at(0)?.services ?? {}).find(
+        (service) => service.primary,
+      );
+      expect(String(primaryService?.appMount?.source)).toBe(dir);
       expect(result.resolved).toEqual(result.handle);
       expect(result.stopped).toEqual(result.handle);
       expect(result.destroyed).toEqual(result.keepHandle);
