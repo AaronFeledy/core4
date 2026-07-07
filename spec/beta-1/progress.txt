@@ -944,3 +944,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
 - Verification: typecheck and lint passed; focused scratch-run and dual-dispatch parity spot checks passed.
 ---
+
+## 2026-07-07 07:52 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed registry migration churn from the legacy `isolate: none` repair: already-current StateStore-framed scratch registries are no longer rewritten on every registry touch, while StateStore frames that still contain legacy `none` entries continue to migrate.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch registry and scratch-run spot checks passed.
+---

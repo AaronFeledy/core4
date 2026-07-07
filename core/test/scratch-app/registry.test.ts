@@ -167,6 +167,20 @@ describe("scratch registry", () => {
     });
   });
 
+  test("StateStore-framed current isolation is not rewritten by legacy migration", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const first = entry("scratch-one-000001");
+      await mkdir(paths.base, { recursive: true });
+      const currentFrame = `${JSON.stringify({ version: 1, data: [first] }, null, 2)}\n`;
+      await writeFile(paths.registry, currentFrame);
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first]);
+
+      expect(await readFile(paths.registry, "utf8")).toBe(currentFrame);
+    });
+  });
+
   test("lock release removes only the matching token", async () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();

@@ -125,6 +125,7 @@ const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
       const entries = Schema.decodeUnknownSync(LegacyStateFrameSchema)(JSON.parse(content), {
         onExcessProperty: "error",
       }).data;
+      if (!entries.some((entry) => entry.isolate === "none")) return null;
       return entries.map((entry) => ({
         ...entry,
         isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
