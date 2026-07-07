@@ -803,8 +803,7 @@ describe("scratch run cleanup and warm repeats", () => {
 
       expect(recorded.destroyCalls).toHaveLength(2);
 
-      // Content-addressed render: identical resolved image build inputs across runs, so
-      // the standard buildKey up-to-date check short-circuits the toolbox image build.
+      // Identical resolved image build inputs across runs — content-addressed recipe render.
       const firstInputs = serviceBuildInputs(firstPlan);
       expect(serviceBuildInputs(secondPlan)).toEqual(firstInputs);
       expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
