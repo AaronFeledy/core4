@@ -1006,9 +1006,9 @@ export const detachScratchApp = (
     const registry = makeScratchRegistry();
     const entry = yield* registry.get(id);
     if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
-    retainedScratchIds.add(id);
     const { ownerPid: _ownerPid, ...rest } = entry;
     yield* registry.upsert({ ...rest, detached: true, updatedAt: nowIso() });
+    retainedScratchIds.add(id);
   });
 
 /**
