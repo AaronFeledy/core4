@@ -120,9 +120,17 @@ jobs:
           floor_minor_patch="${MINIMUM#*.}"
           floor_minor="${floor_minor_patch%%.*}"
           floor_patch="${floor_minor_patch#*.}"
-          observed=$((major * 1000000 + minor * 1000 + patch))
-          floor=$((floor_major * 1000000 + floor_minor * 1000 + floor_patch))
-          if test "$observed" -lt "$floor"; then
+          meets=yes
+          if test "$major" -lt "$floor_major"; then
+            meets=no
+          elif test "$major" -eq "$floor_major"; then
+            if test "$minor" -lt "$floor_minor"; then
+              meets=no
+            elif test "$minor" -eq "$floor_minor" && test "$patch" -lt "$floor_patch"; then
+              meets=no
+            fi
+          fi
+          if test "$meets" = no; then
             echo "::error title=podman6-contract::Podman $numbers (from '$version_output') does not satisfy the >= $MINIMUM host contract. $remediation"
             exit 1
           fi

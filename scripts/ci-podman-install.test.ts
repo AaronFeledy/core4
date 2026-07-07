@@ -27,11 +27,13 @@ afterEach(async () => {
 const runAssertWithPodmanOutput = async (versionOutput: string | undefined): Promise<number> => {
   const shim = join(shimDir, "podman");
   if (versionOutput === undefined) {
-    // No podman binary on PATH at all.
+    // Simulate a missing podman deterministically: a shim that fails like an
+    // absent command, so a real host podman on PATH can never leak in.
+    await writeFile(shim, "#!/bin/sh\nexit 127\n");
   } else {
     await writeFile(shim, `#!/bin/sh\nprintf '%s\\n' "${versionOutput}"\n`);
-    await chmod(shim, 0o755);
   }
+  await chmod(shim, 0o755);
   const proc = Bun.spawnSync(["bash", "-c", podmanVersionAssertScript], {
     env: { ...process.env, PATH: `${shimDir}:/usr/bin:/bin` },
     stdout: "pipe",
@@ -48,6 +50,12 @@ describe("podman version assert script", () => {
   test("rejects versions below the floor with remediation", async () => {
     expect(await runAssertWithPodmanOutput("podman version 4.9.3")).not.toBe(0);
     expect(await runAssertWithPodmanOutput("podman version 5.4.2")).not.toBe(0);
+  });
+
+  test("compares tuple-wise, not as packed integers", async () => {
+    expect(await runAssertWithPodmanOutput("podman version 5.1000.0")).not.toBe(0);
+    expect(await runAssertWithPodmanOutput("podman version 5.0.9999999")).not.toBe(0);
+    expect(await runAssertWithPodmanOutput("podman version 6.08.0")).toBe(0);
   });
 
   test("accepts the floor and above, ignoring pre-release suffixes", async () => {
