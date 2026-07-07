@@ -1,37 +1,30 @@
 {
-  "_comment": "Pinned runtime-bundle manifest for supported host platforms. SHA-256 values are placeholders until release artifact generation replaces them.",
   "schemaVersion": 1,
   "runtimeVersion": "0.1.0",
   "bundles": {
     "linux-x64": {
-      "url": "https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-linux-x64.tar.gz",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0/lando-runtime-linux-x64.tar.gz",
+      "sha256": "3b45e11fb652fe1fd6ca2fa2c9781ec3dc137efed6a9ff3e7e3a0859644ca490",
       "filename": "lando-runtime-linux-x64.tar.gz",
-      "sizeBytes": 0
+      "sizeBytes": 36666820
     },
     "linux-arm64": {
-      "url": "https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-linux-arm64.tar.gz",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000002",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0/lando-runtime-linux-arm64.tar.gz",
+      "sha256": "4ce8dceb9f2b90c868b4dfe2672c248eee18a49816abeff2a08499cb1dce90af",
       "filename": "lando-runtime-linux-arm64.tar.gz",
-      "sizeBytes": 0
-    },
-    "darwin-x64": {
-      "url": "https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-darwin-x64.tar.gz",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000003",
-      "filename": "lando-runtime-darwin-x64.tar.gz",
-      "sizeBytes": 0
+      "sizeBytes": 28026931
     },
     "darwin-arm64": {
-      "url": "https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-darwin-arm64.tar.gz",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0/lando-runtime-darwin-arm64.tar.gz",
+      "sha256": "d02e43ef84de776a2b2b3cb0e45acd2f075d3860027001288edf8ef1534b18ad",
       "filename": "lando-runtime-darwin-arm64.tar.gz",
-      "sizeBytes": 0
+      "sizeBytes": 30608459
     },
     "win32-x64": {
-      "url": "https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-win32-x64.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.0/lando-runtime-win32-x64.zip",
+      "sha256": "5825667b63e1579161d229ddbe3678a449c23c8b224fda673f631425c297c1a9",
       "filename": "lando-runtime-win32-x64.zip",
-      "sizeBytes": 0
+      "sizeBytes": 27548275
     }
   }
 }
