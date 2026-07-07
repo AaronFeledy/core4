@@ -10,6 +10,7 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
+import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
@@ -366,6 +367,11 @@ export abstract class LandoCommandBase extends Command {
         return;
       }
       throw new Error(text);
+    }
+
+    if (spec.id === "apps:scratch:run") {
+      this.argv.length = 0;
+      this.argv.push(...normalizeScratchRunArgvForParsing(this.argv));
     }
 
     const parsed = await this.parse(this.ctor);

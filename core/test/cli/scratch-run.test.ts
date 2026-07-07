@@ -17,9 +17,11 @@ import { CacheServiceLive } from "../../src/cache/service.ts";
 import {
   type ScratchRunResult,
   defaultScratchRunDeps,
+  normalizeScratchRunArgvForParsing,
   parseScratchRunArgv,
   renderScratchRunResult,
   scratchRun,
+  scratchRunHasCommandTail,
   scratchRunOptionsFromInput,
   scratchRunSuccessExitCode,
 } from "../../src/cli/commands/scratch-run.ts";
@@ -313,6 +315,25 @@ describe("parseScratchRunArgv", () => {
     expect(options.mount).toBe(false);
     expect(options.keep).toBe(true);
     expect(options.answers).toEqual({ php: "8.3", webroot: "public" });
+  });
+
+  test("normalizes bare command tails before OCLIF can parse tool flags", () => {
+    expect(normalizeScratchRunArgvForParsing(["node", "--version"])).toEqual(["--", "node", "--version"]);
+    expect(normalizeScratchRunArgvForParsing(["--from", "toolbox", "node", "--version"])).toEqual([
+      "--from",
+      "toolbox",
+      "--",
+      "node",
+      "--version",
+    ]);
+    expect(normalizeScratchRunArgvForParsing(["--keep", "--", "echo", "ok"])).toEqual([
+      "--keep",
+      "--",
+      "echo",
+      "ok",
+    ]);
+    expect(scratchRunHasCommandTail(["node", "--help"])).toBe(true);
+    expect(scratchRunHasCommandTail(["--help"])).toBe(false);
   });
 });
 

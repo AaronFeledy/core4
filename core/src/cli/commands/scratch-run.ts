@@ -66,6 +66,52 @@ const VALUE_FLAGS = new Map<string, "from" | "service" | "answer">([
   ["--answer", "answer"],
 ]);
 
+const BOOLEAN_FLAGS = new Set(["--no-mount", "--keep"]);
+
+const flagName = (arg: string): string => {
+  const equals = arg.indexOf("=");
+  return equals === -1 ? arg : arg.slice(0, equals);
+};
+
+const scratchRunCommandTailIndex = (argv: ReadonlyArray<string>): number | undefined => {
+  let index = 0;
+  while (index < argv.length) {
+    const arg = argv[index];
+    if (arg === undefined) return undefined;
+    if (arg === "--") return index + 1 < argv.length ? index : undefined;
+    if (BOOLEAN_FLAGS.has(arg)) {
+      index += 1;
+      continue;
+    }
+    const name = flagName(arg);
+    if (VALUE_FLAGS.has(name)) {
+      if (arg.includes("=")) {
+        index += 1;
+        continue;
+      }
+      const next = argv[index + 1];
+      if (next === undefined || next.startsWith("-")) return undefined;
+      index += 2;
+      continue;
+    }
+    if (arg.startsWith("-")) return undefined;
+    return index;
+  }
+  return undefined;
+};
+
+export const scratchRunHasCommandTail = (argv: ReadonlyArray<string>): boolean => {
+  const index = scratchRunCommandTailIndex(argv);
+  if (index === undefined) return false;
+  return argv[index] === "--" ? index + 1 < argv.length : true;
+};
+
+export const normalizeScratchRunArgvForParsing = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const index = scratchRunCommandTailIndex(argv);
+  if (index === undefined || argv[index] === "--") return argv;
+  return [...argv.slice(0, index), "--", ...argv.slice(index)];
+};
+
 interface MutableParse {
   command: string[];
   from?: string;

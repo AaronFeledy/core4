@@ -117,9 +117,11 @@ import {
 } from "./commands/remote.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
+  normalizeScratchRunArgvForParsing,
   parseScratchRunArgv,
   renderScratchRunResult,
   scratchRun,
+  scratchRunHasCommandTail,
   scratchRunSuccessExitCode,
 } from "./commands/scratch-run.ts";
 import {
@@ -2084,11 +2086,14 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
+  const isScratchRun = head === "run" || head === "scratch:run" || head === "apps:scratch:run";
+  const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
 
   if (
     !isBunOrX &&
+    !scratchRunHasToolCommand &&
     (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h"))
   ) {
     const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
@@ -2106,7 +2111,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if ((dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) && !isBunOrX) {
+  if (
+    (dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) &&
+    !isBunOrX &&
+    !scratchRunHasToolCommand
+  ) {
     await runMetaVersion();
     return;
   }
@@ -2400,7 +2409,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "run" || argv[0] === "scratch:run" || argv[0] === "apps:scratch:run") {
-    await runAppsScratchRun(argv.slice(1));
+    await runAppsScratchRun(normalizeScratchRunArgvForParsing(argv.slice(1)));
     return;
   }
 
