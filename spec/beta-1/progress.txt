@@ -913,3 +913,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (rejected): post-cleanup Bugbot High — "Linux gate checks system podman while the managed runtime uses the bundled binary, and managed setup skips the socket probe" — rejected as out-of-scope. The Linux CLI source selection in resolveSetupPodmanCommandRunner is pre-existing and is the exact CLI source this story's acceptance criteria anchor for gating; system and bundled Podman cannot diverge across the 6.0.0 floor until runtime bundles ship Podman 6, and aligning detection with bundled runtime content belongs to the runtime-bundle/CI stories later in the Podman 6 wave.
 ---
 
+## 2026-07-07 15:20 CDT - Babysit
+- PR: #540 https://github.com/AaronFeledy/core4/pull/540
+- CI outcome: fail (guide-scenarios-linux-x64, provider-integration-linux-x64 — both at "Prepare provider via lando setup": runners provision Podman 4.9.3 and the new >= 6.0.0 floor correctly rejects it)
+- Review feedback: fixed (guide-drift resolved with documented Guide-Coverage-Skip PR body line; other four guide-scenarios platforms went green on rerun); Bugbot posted no findings
+- Merge: deferred (Linux CI jobs cannot pass until provider-integration runners install/stage Podman >= 6.0.0 with passt/Netavark/Aardvark via the generated provider-matrix workflow — that is the CI Podman 6 provisioning story in this wave; do not weaken the gate to merge sooner)
+---
+
