@@ -209,7 +209,7 @@ describe("ci workflow codegen", () => {
       const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(21);
+      expect(versionFileMatches).toBe(22);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(6);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
@@ -319,7 +319,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "keeps non-linux static-checks platform cells to portable gates",
+    "keeps static-checks platform matrix cells to portable gates",
     async () => {
       await runCodegen();
 
@@ -345,16 +345,17 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Network boundary lint");
       expect(workflow).toContain("run: bun run check:network-boundary");
-      expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
-      expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
+      expect(workflow).toContain("- name: Static scope notice for portable static matrix");
       expect(workflow).toContain("follow-up portability effort");
-      expect(workflow).toContain("- name: Unit test layer (linux-x64 full static scope)");
+      expect(workflow).not.toContain("if: ${{ matrix.platform == 'linux-x64' }}");
+      expect(workflow).toContain("unit-tests-linux-x64:");
+      expect(workflow).toContain("- name: Unit test layer");
       expect(workflow).not.toContain(
         "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
       );
       expect(workflow).not.toContain("- name: Recipe test layer (linux-x64 full static scope)");
       expect(workflow).not.toContain("- name: Library API test layer (linux-x64 full static scope)");
-      expect((workflow.match(/if: \$\{\{ matrix\.platform == 'linux-x64' \}\}/g) ?? []).length).toBe(1);
+      expect((workflow.match(/if: \$\{\{ matrix\.platform == 'linux-x64' \}\}/g) ?? []).length).toBe(0);
     },
     codegenTestTimeout,
   );
@@ -501,6 +502,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("static-checks:");
       expect(workflow).toContain("static-checks-platform:");
+      expect(workflow).toContain("unit-tests-linux-x64:");
       expect(workflow).toContain("needs: [static-checks-platform]");
       expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
       expect(workflow).toContain(

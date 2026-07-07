@@ -194,6 +194,7 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const staticChecksPlatform = findIndentedBlock(jobs, "static-checks-platform", 2);
     const staticChecks = findIndentedBlock(jobs, "static-checks", 2);
+    const unitTests = findIndentedBlock(jobs, "unit-tests-linux-x64", 2);
 
     expect(triggers).toContain("  pull_request:");
     expect(triggers).toContain("    branches: [main]");
@@ -218,14 +219,11 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run check:probe-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:network-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:machine-output");
-    expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable-only platforms");
-    expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform != 'linux-x64' }}");
+    expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
-      "runs fork-safe portable static gates only; linux-x64 runs the full static test suite",
+      "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64",
     );
-    expect(staticChecksPlatform).toContain("      - name: Unit test layer (linux-x64 full static scope)");
-    expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform == 'linux-x64' }}");
-    expect(staticChecksPlatform).toContain("        run: bun run test:unit");
+    expect(staticChecksPlatform).not.toContain("bun run test:unit");
     expect(staticChecksPlatform).not.toContain(
       "bun test core/test/services core/test/cli core/test/scenario",
     );
@@ -244,6 +242,12 @@ describe("ci workflow", () => {
     );
     expect(staticChecks).toContain("            exit 1");
     expect(staticChecks).toContain('          echo "static-checks platform matrix passed"');
+
+    expect(unitTests).toContain("    needs: [static-checks]");
+    expect(unitTests).toContain("    runs-on: ubuntu-24.04");
+    expect(unitTests).toContain("    timeout-minutes: 35");
+    expect(unitTests).toContain("      - name: Unit test layer");
+    expect(unitTests).toContain("        run: bun run test:unit");
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {

@@ -7,6 +7,7 @@ const runbookPath = resolve(repoRoot, "docs/ci-runbook.md");
 
 const requiredChecks = [
   "static-checks",
+  "unit-tests-linux-x64",
   "schema-snapshot",
   "bundled-codegen",
   "library-api-tests",
