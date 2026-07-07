@@ -98,6 +98,11 @@ const generators: ReadonlyArray<Generator> = [
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-provider-matrix-workflow.ts`],
     cwd: REPO_ROOT,
   },
+  {
+    id: "runtime-bundle-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-runtime-bundle-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
 ] satisfies ReadonlyArray<Generator>;
 
 const run = async (cmd: Array<string>, cwd: string): Promise<void> => {

@@ -47,7 +47,13 @@ describe("ci workflow", () => {
       .map((entry) => entry.name)
       .sort();
 
-    expect(activeWorkflowFiles).toEqual(["ci.yml", "nightly.yml", "provider-matrix.yml", "release.yml"]);
+    expect(activeWorkflowFiles).toEqual([
+      "ci.yml",
+      "nightly.yml",
+      "provider-matrix.yml",
+      "release.yml",
+      "runtime-bundle.yml",
+    ]);
   });
 
   test("runs the weekly provider matrix as an advisory workflow", async () => {
