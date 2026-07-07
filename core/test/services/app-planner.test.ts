@@ -28,6 +28,7 @@ import type { GlobalConfig } from "@lando/sdk/schema";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
@@ -2159,6 +2160,46 @@ describe("AppPlannerLive", () => {
         } finally {
           if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
           else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+          await rm(cacheRoot, { recursive: true, force: true });
+        }
+      });
+    });
+
+    test("does not write an app-plan cache while an unsatisfied version constraint is skipped", async () => {
+      await withTempCwd(async (dir) => {
+        const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+        const previousSkip = process.env.LANDO_SKIP_VERSION_CONSTRAINT;
+        const cacheRoot = await mkdtemp(join(tmpdir(), "lando-skipped-version-plan-cache-"));
+        process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+        process.env.LANDO_SKIP_VERSION_CONSTRAINT = "1";
+        try {
+          const appName = "skip-plan-cache";
+          const result = await Effect.runPromise(
+            Effect.flatMap(AppPlanner, (appPlanner) =>
+              appPlanner.plan(
+                {
+                  name: appName,
+                  runtime: 4,
+                  lando: ">=99",
+                  services: { [ServiceName.make("web")]: { type: "node:lts" } },
+                },
+                providerLandoCapabilities,
+              ),
+            ).pipe(
+              Effect.provide(AppPlannerLive),
+              Effect.provide(PluginRegistryLive),
+              Effect.provide(CacheServiceLive),
+            ),
+          );
+
+          expect(result.name).toBe(appName);
+          expect(await Bun.file(appPlanCachePath(cacheRoot, appName, dir)).exists()).toBe(false);
+        } finally {
+          if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+          else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+          if (previousSkip === undefined)
+            Reflect.deleteProperty(process.env, "LANDO_SKIP_VERSION_CONSTRAINT");
+          else process.env.LANDO_SKIP_VERSION_CONSTRAINT = previousSkip;
           await rm(cacheRoot, { recursive: true, force: true });
         }
       });

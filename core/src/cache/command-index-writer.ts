@@ -11,6 +11,8 @@ import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
   getVersionConstraintEntries,
+  hasSkippedUnsatisfiedVersionConstraint,
+  isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
 import { findLandofilePath } from "../landofile/discovery.ts";
@@ -49,7 +51,7 @@ const versionConstraintsEqual = (
 ): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry> | undefined): boolean => {
-  if (!Array.isArray(entries)) return false;
+  if (!isVersionConstraintEntryArray(entries)) return false;
   const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
   if (evaluation.invalid.length > 0) return false;
   return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
@@ -280,6 +282,7 @@ const writeAppCommandCacheTask = async (
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
   const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
+  if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
   const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
 

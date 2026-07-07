@@ -45,6 +45,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ---
 
+## 2026-07-06 21:34 CDT - US-405 Review
+- Review fixed cache-provenance hardening and skip-mode cache mutation: malformed cached `lando:` provenance now invalidates app-plan/tooling caches as stale, and `LANDO_SKIP_VERSION_CONSTRAINT=1` no longer refreshes app-plan or command-index cache artifacts for unsatisfied constraints.
+- Review notes (deferred/rejected): Bugbot produced an empty report in this harness; OCLIF `command_not_found` tooling dispatch remains a pre-existing source-router stub outside this review fix; remote include resolution during cold app loading/doctor reporting is a broader include-policy concern, while the US-405 hot cache checks themselves remain provider/network-free.
+- Verification: typecheck, lint, focused cache/command-registry/app-planner/doctor/binary-cache/benchmark spot checks passed.
+---
+
 ## 2026-07-06 21:13 CDT - US-405
 - Shipped hot-path version-constraint enforcement for cached tooling/app-plan reads. App-plan and command-index cache payloads now carry normalized `lando:` constraint provenance, stale legacy caches refresh safely, unsatisfied cached constraints invalidate before tooling execution unless `LANDO_SKIP_VERSION_CONSTRAINT=1` is active, and local include bytes participate in warm tooling cache freshness without provider contact.
 - `lando doctor --app` now reports app version-constraint status, including unsatisfied ranges and skip-mode invocations, through text, YAML, NDJSON, and the central command result schema. The doctor report code was split into contract/render/NDJSON modules so the new section stays on the existing renderer and StreamFrame seams.

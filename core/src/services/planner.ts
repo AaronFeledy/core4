@@ -57,7 +57,11 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import { getVersionConstraintEntries } from "../config/version-constraint.ts";
+import {
+  getVersionConstraintEntries,
+  hasSkippedUnsatisfiedVersionConstraint,
+} from "../config/version-constraint.ts";
+import { CORE_VERSION } from "../version.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
@@ -1172,7 +1176,10 @@ const planApp = (
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
       })(),
     });
-    if (cacheService !== undefined) {
+    if (
+      cacheService !== undefined &&
+      !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
+    ) {
       yield* writeCachedAppPlan({
         cacheRoot,
         appName,

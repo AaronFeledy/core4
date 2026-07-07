@@ -443,6 +443,35 @@ describe("CacheServiceLive", () => {
     expect(read).toBeNull();
   });
 
+  test("treats app-plan caches with malformed version-constraint provenance as stale", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-malformed-version-"));
+    const appRoot = "/workspace/cache-plan";
+    const key = "app-plan-key";
+
+    const cachePath = await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "cache-plan",
+        appRoot,
+        key,
+        plan: appPlanFixture,
+        now: () => 1,
+      }),
+    );
+    const original = Buffer.from(await readFile(cachePath));
+    const payload = deserialize(original.subarray(APP_PLAN_CACHE_HEADER_BYTES)) as Record<string, unknown>;
+    const body = Buffer.from(serialize({ ...payload, versionConstraints: [{}] }));
+    const header = Buffer.from(original.subarray(0, APP_PLAN_CACHE_HEADER_BYTES));
+    createHash("sha256").update(body).digest().copy(header, 12);
+    await writeFile(cachePath, Buffer.concat([header, body]));
+
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key }),
+    );
+
+    expect(read).toBeNull();
+  });
+
   test("derives route global-service requirements when reading cached app plans", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-routed-cache-"));
     const appRoot = "/workspace/routed-cache-plan";

@@ -409,6 +409,36 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("does not write tooling caches while an unsatisfied version constraint is skipped", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const previousSkip = process.env.LANDO_SKIP_VERSION_CONSTRAINT;
+        try {
+          process.env.LANDO_SKIP_VERSION_CONSTRAINT = "1";
+          await writeFile(
+            join(dir, ".lando.yml"),
+            ["name: skipped-version-cache", "lando: >=99", "tooling:", "  build:", "    cmd: make", ""].join(
+              "\n",
+            ),
+          );
+          process.chdir(dir);
+
+          const commands = await listFromLive();
+
+          expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+          expect(await Bun.file(appCommandCachePath(cacheRoot, "skipped-version-cache", dir)).exists()).toBe(
+            false,
+          );
+          expect(await Bun.file(appToolingCompilationCachePath(cacheRoot, dir)).exists()).toBe(false);
+        } finally {
+          if (previousSkip === undefined)
+            Reflect.deleteProperty(process.env, "LANDO_SKIP_VERSION_CONSTRAINT");
+          else process.env.LANDO_SKIP_VERSION_CONSTRAINT = previousSkip;
+        }
+      });
+    });
+  });
+
   test("invalidates the warm tooling cache when .bun.sh scripts change", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {

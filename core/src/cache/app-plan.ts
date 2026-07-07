@@ -17,6 +17,7 @@ import { CacheService } from "@lando/sdk/services";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
+  isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -232,7 +233,7 @@ export const readCachedAppPlan = (input: {
     const payload = decode(bytes);
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
-    if (!Array.isArray(payload.versionConstraints)) return null;
+    if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
     if (!versionConstraintsUsable(payload.versionConstraints)) return null;
     return yield* Effect.try({
       try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
