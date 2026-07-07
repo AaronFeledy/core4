@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/ci.yml");
@@ -221,14 +222,18 @@ const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prere
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime bundle
+const landoRuntimeBundleSetupSteps = `${renderInstallPodman6Step()}
+
+${renderAssertPodman6Step()}
+
+      - name: Stage current-commit runtime bundle
         run: |
-          sudo apt-get install -y podman
           mkdir -p dist/cache/runtime-bundle
           STAGE="$(mktemp -d)"
           cp "$(command -v podman)" "$STAGE/podman"
-          for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
+          for helper in newuidmap newgidmap pasta passt rootlessport catatonit slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
             src="$(command -v "$helper" 2>/dev/null || true)"
+            if test -z "$src" && test -n "\${LANDO_CI_PODMAN_HELPER_DIR:-}" && test -x "\$LANDO_CI_PODMAN_HELPER_DIR/$helper"; then src="\$LANDO_CI_PODMAN_HELPER_DIR/$helper"; fi
             if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
             if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done

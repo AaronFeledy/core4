@@ -101,11 +101,65 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install Podman
+      - name: Install Podman 6 toolchain (Homebrew; Ubuntu/OBS lack Podman 6)
         run: |
           sudo apt-get update
-          sudo apt-get install -y podman
-          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! command -v brew >/dev/null 2>&1; then
+            test -x /home/linuxbrew/.linuxbrew/bin/brew
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          brew install podman
+          BREW_PREFIX="$(brew --prefix)"
+          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
+          sudo mkdir -p /etc/containers
+          if ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' | sudo tee /etc/containers/policy.json >/dev/null
+          fi
+          if ! grep -qs unqualified-search-registries /etc/containers/registries.conf; then
+            printf 'unqualified-search-registries = ["docker.io"]\n' | sudo tee -a /etc/containers/registries.conf >/dev/null
+          fi
+          # A system-level storage.conf left behind by a distro podman install pins the
+          # rootful runroot/graphroot, which Podman 6 honors literally for rootless
+          # users. Seed a rootless-safe user-level storage.conf so the default service
+          # always resolves user paths.
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/storage.conf"; then
+            printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
+              "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
+              "$HOME/.local/share/containers/storage" > "$HOME/.config/containers/storage.conf"
+          fi
+          podman --version
+
+      - name: Assert Podman 6 host contract
+        run: |
+          MINIMUM="6.0.0"
+          version_output="$(podman --version 2>/dev/null || true)"
+          numbers="$(printf '%s\n' "$version_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
+          remediation="Install Podman >= $MINIMUM (Homebrew formula: podman) before Podman-backed CI runs."
+          if test -z "$numbers"; then
+            echo "::error title=podman6-contract::Could not parse a Podman version from '${version_output:-<no podman on PATH>}'. $remediation"
+            exit 1
+          fi
+          major="${numbers%%.*}"
+          minor_patch="${numbers#*.}"
+          minor="${minor_patch%%.*}"
+          patch="${minor_patch#*.}"
+          floor_major="${MINIMUM%%.*}"
+          floor_minor_patch="${MINIMUM#*.}"
+          floor_minor="${floor_minor_patch%%.*}"
+          floor_patch="${floor_minor_patch#*.}"
+          observed=$((major * 1000000 + minor * 1000 + patch))
+          floor=$((floor_major * 1000000 + floor_minor * 1000 + floor_patch))
+          if test "$observed" -lt "$floor"; then
+            echo "::error title=podman6-contract::Podman $numbers (from '$version_output') does not satisfy the >= $MINIMUM host contract. $remediation"
+            exit 1
+          fi
+          echo "podman6-contract: $numbers satisfies >= $MINIMUM"
+
+      - name: Enable unprivileged port binding
+        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
 
       - name: Start Podman socket
         run: |

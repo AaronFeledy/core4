@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/nightly.yml");
@@ -31,11 +32,12 @@ const providerLandoE2eJob = `
       - uses: actions/checkout@v4
 ${bunSetupStep}
 
-      - name: Install Podman
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
-          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+${renderInstallPodman6Step()}
+
+${renderAssertPodman6Step()}
+
+      - name: Enable unprivileged port binding
+        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
 
       - name: Start Podman socket
         run: |
