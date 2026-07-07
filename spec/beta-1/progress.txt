@@ -908,3 +908,8 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Verification: typecheck, lint passed on review; version-gate + provider-lando setup/machine/runtime-bundle + core setup + provider-podman availability spot checks all passed.
 ---
 
+## 2026-07-07 14:55 CDT - US-413 Cleanup
+- Slop pass changed only one behavior-neutral readability detail in the version-gate test (two guards flipped to positive form); source hunks, shared parser, and exports were confirmed clean. Typecheck, lint, and the 8-test gate spot check stayed green.
+- Review notes (rejected): post-cleanup Bugbot High — "Linux gate checks system podman while the managed runtime uses the bundled binary, and managed setup skips the socket probe" — rejected as out-of-scope. The Linux CLI source selection in resolveSetupPodmanCommandRunner is pre-existing and is the exact CLI source this story's acceptance criteria anchor for gating; system and bundled Podman cannot diverge across the 6.0.0 floor until runtime bundles ship Podman 6, and aligning detection with bundled runtime content belongs to the runtime-bundle/CI stories later in the Podman 6 wave.
+---
+
