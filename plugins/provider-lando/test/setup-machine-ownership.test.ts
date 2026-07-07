@@ -72,7 +72,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("missing", []),
           skipSocketProbe: true,
           stateDir,
@@ -92,7 +92,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("running", []),
           skipSocketProbe: true,
           stateDir,
@@ -112,7 +112,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("missing", []),
           skipSocketProbe: true,
           stateDir,
@@ -122,7 +122,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("running", []),
           skipSocketProbe: true,
           stateDir,
@@ -142,7 +142,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("missing", []),
           skipSocketProbe: true,
           stateDir,
@@ -156,7 +156,7 @@ describe("provider-lando machine ownership recording", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("running", []),
           skipSocketProbe: true,
           stateDir,
@@ -185,7 +185,7 @@ describe("provider-lando machine ownership recording", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           skipSocketProbe: true,
           stateDir,
         }),

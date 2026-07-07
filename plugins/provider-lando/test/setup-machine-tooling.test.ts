@@ -38,7 +38,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBinDir,
           skipSocketProbe: true,
         }),
@@ -68,7 +68,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "win32",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBinDir,
           skipSocketProbe: true,
         }),
@@ -96,7 +96,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBinDir,
           socketPath: "/tmp/lando-managed.sock",
           skipSocketProbe: true,
@@ -128,7 +128,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "win32",
-          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBinDir,
           skipSocketProbe: true,
           _machineToolingExists: () => true,
@@ -203,7 +203,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
     const result = await Effect.runPromise(
       setupProviderLando({
         platform: "darwin",
-        podmanCommand: podmanCommand("podman version 5.2.0"),
+        podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("missing", calls),
         skipSocketProbe: true,
         // No runtimeBinDir: the injected runner must be used without a bundle probe.
@@ -211,6 +211,6 @@ describe("provider-lando bundled machine tooling resolution", () => {
     );
 
     expect(calls).toEqual(["inspect", "create", "start"]);
-    expect(result.podmanVersion).toBe("5.2.0");
+    expect(result.podmanVersion).toBe("6.0.2");
   });
 });

@@ -47,6 +47,18 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - To produce the SAME `CommandResultEnvelope` object a command emits over JSON (not the redacted JSON line), use `buildCommandResultEnvelope(options)` in `core/src/cli/result-encode.ts` (object form of the private `encodeCommandEnvelope`, with the same fallback-envelope catch-all as `encodeCommandResult`). The host-proxy dispatcher's `runOpenForHostProxy(plan, input)` reuses `openForPlan` + `buildCommandResultEnvelope` so a round-trip envelope is byte-identical to host-side `app:open` — the contract test asserts `toEqual` on both. Failure outcomes map to exit 1, success to exit 0, mirroring `runCompiledCommand`.
 
 
+## 2026-07-07 07:58 CDT - US-413
+- Enforced the Podman 6 runtime floor in provider-lando setup: `MINIMUM_PODMAN_VERSION` is now `6.0.0`, and setup rejects older runtimes from BOTH version sources — `podman --version` CLI output (gated inside the Detect Podman step, before any machine/socket action) and API `/info` `version.Version` (gated inside the Probe Podman API step). Rejection is a `PodmanVersionUnsupportedError` (ProviderUnavailableError family) with `providerId: "lando"`, `operation: "setup"`, details carrying the observed version + source + minimum, and remediation naming the `>= 6.0.0` floor through the constant.
+- Added the shared pure version-floor parser `plugins/provider-lando/src/version-floor.ts` (`parsePodmanVersionNumbers`, `podmanVersionMeetsFloor`): numeric major.minor.patch comparison, pre-release/build suffixes ignored (`6.1.0-rc1` accepts as `6.1.0`), unparseable versions fail closed. Exported from the package index so the provider-podman gate story can reuse it (provider-podman already depends on `@lando/provider-lando`).
+- Migrated setup-path test fixtures from `5.2.0` to `6.0.2` in provider-lando setup/machine/runtime-bundle/ensure-runtime tests and core `setup.test.ts`/`setup.scenario.test.ts`; persisted-state fixtures (`conflict.test.ts`, uninstall/doctor/managed-machine) and `/v5.0.0` transport prefixes were intentionally left for the libpod prefix/fixture migration story.
+- Verification: typecheck, lint passed; new `setup-version-gate.test.ts` (8 tests) plus spot checks across provider-lando non-integration suites (133 tests), core setup command tests (54 tests), and provider-podman suite (70 tests) all passed. Real-runtime QA in the `lando4-dev` sandbox: system Podman 5.4.2 via `makeSystemPodmanCommandRunner` was rejected with the exact tagged error/remediation.
+- **Learnings for future iterations:**
+  - Sibling stories in the Podman 6 wave (provider-podman gate) should import `podmanVersionMeetsFloor` from `@lando/provider-lando` rather than re-implementing the comparison — the PRD requires one shared floor parser to avoid policy drift.
+  - Gating inside `withStep` bodies (via `Effect.tap`) gets the `task.fail` event with remediation for free; gating between steps would lose that event.
+  - `spec/beta-1/prd.json` mixes literal and `\uXXXX`-escaped unicode; round-tripping it through `json.dumps` creates massive spurious diffs — flip `passes` flags with a targeted string edit instead.
+  - The real `lando setup` CLI path hits the runtime-bundle download step before the version gate (placeholder manifest fails first), so end-to-end gate verification needs the system-podman command-runner seam, not the full CLI.
+---
+
 ## 2026-07-07 03:05 CDT - US-406
 - Shipped the bundled `toolbox` canonical recipe: `recipes/toolbox/recipe.yml` (canonical on-disk copy, drift-gated against the embedded manifest by a unit test) plus the builtin manifest/renderer pair. The rendered Landofile has exactly one `type: lando` service on the version-pinned `debian:12.11-slim` image with `command: sleep infinity`, and the single `name` prompt defaults to `toolbox` so non-interactive init never blocks. Wired through `core/build.config.ts` + `codegen:bundled-recipes`, so the compiled binary embeds the recipe.
 - Added the missing raw `lando` service type to `@lando/service-lando` (base `"lando"`, requires a pinned `image:`, app mount by default with `appMount: false` opt-out, passthrough command/entrypoint/user/ports/dependsOn) — spec §1.1 lists it as the plugin's reason to exist and the toolbox recipe cannot plan without it.
@@ -977,5 +989,26 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review fixed two real blockers: the CI version assert compared packed integers (5.1000.0 falsely satisfied the 6.0.0 floor; leading-zero components hit bash octal arithmetic) and now compares major/minor/patch tuple-wise; the missing-podman test case now uses an exit-127 shim so a host podman on PATH can never leak into the result. Workflow contract tests in core/test/build/ci-workflow.test.ts were updated to pin the new Homebrew toolchain + host-contract assert steps — a legitimate contract move with the story (the old assertions pinned the distro-podman provisioning this story replaces), not a loosening: the manual-socket guards (`podman system service`, Start/Teardown Podman) all remain.
 - Review notes (deferred/rejected): unpinned `brew install podman` supply-chain hardening deferred (test-only read-permission jobs, no release artifacts consume these steps — release.yml untouched); CI floor constant intentionally separate from the runtime provider floor with a sync note, since they live in different languages and merge independently.
 - Verification: typecheck, lint passed; module suite (9 tests) and full core/test/build contract suite (106 tests) passed; post-fix Bugbot reported no bugs.
+## 2026-07-07 14:30 CDT - US-413 Review
+- Review (5-lane review-work + Bugbot manual fallback) found no in-scope defects; no code changes made. All acceptance criteria confirmed against the source PRD: floor constant routed through every setup error/remediation string, both CLI and API-info sources gated, numeric major.minor.patch comparison with suffix tolerance, tagged ProviderUnavailableError-family rejection with observed version/source details.
+- Review notes (deferred/rejected): Bugbot "gate runs after runtime-bundle download" rejected — by design, the bundle provides the podman binary being version-checked and no Podman-dependent action (machine/socket) precedes the gate at setup.ts:682-693 vs 696/721; Bugbot/security "API info missing version fails open" rejected as blocker — the mandatory CLI gate already enforced the floor and unparseable version strings still fail closed, only absent metadata skips; security LOWs (quadratic regex on adversarial digit-only megastrings, verbatim observed-version in error message, Number() overflow on absurd components) deferred — local dev-tool threat model, podman binary/socket are user-controlled.
+- Verification: typecheck, lint passed on review; version-gate + provider-lando setup/machine/runtime-bundle + core setup + provider-podman availability spot checks all passed.
+---
+
+## 2026-07-07 14:55 CDT - US-413 Cleanup
+- Slop pass changed only one behavior-neutral readability detail in the version-gate test (two guards flipped to positive form); source hunks, shared parser, and exports were confirmed clean. Typecheck, lint, and the 8-test gate spot check stayed green.
+- Review notes (rejected): post-cleanup Bugbot High — "Linux gate checks system podman while the managed runtime uses the bundled binary, and managed setup skips the socket probe" — rejected as out-of-scope. The Linux CLI source selection in resolveSetupPodmanCommandRunner is pre-existing and is the exact CLI source this story's acceptance criteria anchor for gating; system and bundled Podman cannot diverge across the 6.0.0 floor until runtime bundles ship Podman 6, and aligning detection with bundled runtime content belongs to the runtime-bundle/CI stories later in the Podman 6 wave.
+---
+
+## 2026-07-07 15:20 CDT - Babysit
+- PR: #540 https://github.com/AaronFeledy/core4/pull/540
+- CI outcome: fail (guide-scenarios-linux-x64, provider-integration-linux-x64 — both at "Prepare provider via lando setup": runners provision Podman 4.9.3 and the new >= 6.0.0 floor correctly rejects it)
+- Review feedback: fixed (guide-drift resolved with documented Guide-Coverage-Skip PR body line; other four guide-scenarios platforms went green on rerun); Bugbot posted no findings
+- Merge: deferred (Linux CI jobs cannot pass until provider-integration runners install/stage Podman >= 6.0.0 with passt/Netavark/Aardvark via the generated provider-matrix workflow — that is the CI Podman 6 provisioning story in this wave; do not weaken the gate to merge sooner)
+---
+
+## 2026-07-07 15:45 CDT - US-413
+- Story verified complete on branch (no new code): acceptance criteria remain satisfied, tree clean, PR #540 open awaiting Linux CI Podman 6 provisioning before it can merge.
+- Verification: typecheck, lint passed; version-gate and setup integration spot checks passed (39 tests).
 ---
 

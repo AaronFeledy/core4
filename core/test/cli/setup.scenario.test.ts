@@ -47,8 +47,8 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
   const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
   const provider = await Effect.runPromise(
     makeRuntimeProvider({
-      podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
-      podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+      podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+      podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
       runtimeBundleDownloader: {
         download: Effect.succeed({
           version: "0.0.0-test",
@@ -166,7 +166,7 @@ describe("meta:setup task tree progress", () => {
         info: Effect.suspend(() => {
           infoCalls += 1;
           if (infoCalls === 1) {
-            return Effect.succeed({ version: { Version: "5.2.0" } });
+            return Effect.succeed({ version: { Version: "6.0.2" } });
           }
           return Effect.fail(
             new ProviderUnavailableError({
@@ -180,7 +180,7 @@ describe("meta:setup task tree progress", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           podmanApi,
-          podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+          podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader: {
             download: Effect.succeed({
               version: "0.0.0-test",
