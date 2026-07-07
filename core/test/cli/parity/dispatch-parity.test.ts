@@ -891,10 +891,10 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     test("run with no command fails with ScratchAppError on the canonical id and both aliases", async () => {
       const cwd = mkdtempSync(join(tmpdir(), "lando-parity-scratchrun-"));
       try {
-        for (const token of ["apps:scratch:run", "scratch:run", "run"]) {
-          const source = await runSourceCli([token, "--format=json"], { cwd });
-          const compiled = await runCompiledCli([token, "--format=json"], { cwd });
-          expect(source.exitCode, `source(${token}) stderr: ${source.stderr}`).toBe(1);
+        for (const args of [["apps:scratch:run"], ["apps", "scratch", "run"], ["scratch:run"], ["run"]]) {
+          const source = await runSourceCli([...args, "--format=json"], { cwd });
+          const compiled = await runCompiledCli([...args, "--format=json"], { cwd });
+          expect(source.exitCode, `source(${args.join(" ")}) stderr: ${source.stderr}`).toBe(1);
           expect(compiled.exitCode).toBe(source.exitCode);
           const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
           const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));

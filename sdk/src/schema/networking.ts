@@ -192,7 +192,7 @@ export const ProviderCapabilities = Schema.Struct({
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
-export const IsolateMode = Schema.Literal("none", "full");
+export const IsolateMode = Schema.Literal("full", "baked", "cwd");
 export type IsolateMode = typeof IsolateMode.Type;
 
 // AppRef — shared identity field across App, Global, and Scratch event scopes.

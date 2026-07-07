@@ -227,6 +227,7 @@ export const scratchRun = (
       Effect.gen(function* () {
         const { handle, plan } = yield* deps.acquireWithPlan({
           source: { kind: "recipe", ref: options.from ?? DEFAULT_SCRATCH_RUN_RECIPE },
+          isolate: options.mount ? "cwd" : "baked",
           detached: false,
           ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
           ...(options.mount ? { mountCwd: {} } : {}),

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
+  type EventService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -27,12 +28,15 @@ import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { SecretStoreLive } from "../../src/services/secret-store.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
@@ -143,14 +147,25 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     },
     execStream: () => Stream.die("scratch run test provider should not call execStream"),
     run: () => die("run"),
+    runStream: () => Stream.die("scratch run test provider should not call runStream"),
     logs: () => Stream.empty,
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => die("snapshotVolume"),
+    restoreVolume: () => die("restoreVolume"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => die("removeVolume"),
+    copyToService: () => die("copyToService"),
+    copyFromService: () => Stream.die("scratch run test provider should not call copyFromService"),
+    exportArtifact: () => Stream.die("scratch run test provider should not call exportArtifact"),
+    importArtifact: () => die("importArtifact"),
   };
 
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
@@ -161,6 +176,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     LandofileServiceLive,
     plannerLive,
     registryLive,
+    eventLive,
+    redactionLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
     DataMoverLive.pipe(
@@ -174,6 +191,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
   );
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
+};
+
+const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
+  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
 };
 
 const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -285,7 +307,10 @@ describe("scratchRun", () => {
           keep: false,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" }))),
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStdout: "ok\n" })),
+          Effect.provide(testSupportLayer()),
+        ),
       );
 
       expect(recorded.appliedPlans).toHaveLength(1);
@@ -330,7 +355,7 @@ describe("scratchRun", () => {
           keep: false,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(makeHarnessLayer(recorded))),
+        }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       const plan = recorded.appliedPlans[0];
       if (plan === undefined) throw new Error("scratch run did not apply a plan");
@@ -350,7 +375,10 @@ describe("scratchRun", () => {
           keep: false,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(makeHarnessLayer(recorded, { execExitCode: 7 }))),
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execExitCode: 7 })),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(result.exitCode).toBe(7);
       expect(recorded.destroyCalls).toHaveLength(1);
@@ -369,7 +397,7 @@ describe("scratchRun", () => {
           keep: false,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(makeHarnessLayer(recorded))),
+        }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
@@ -393,7 +421,7 @@ describe("scratchRun", () => {
           keep: false,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(makeHarnessLayer(recorded))),
+        }).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
@@ -414,13 +442,15 @@ describe("scratchRun", () => {
           keep: true,
           answers: {},
           issues: [],
-        }).pipe(Effect.provide(layer)),
+        }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       expect(result.kept).toBe(true);
       expect(recorded.execCalls).toHaveLength(1);
       expect(recorded.destroyCalls).toHaveLength(0);
 
-      const summaries = await Effect.runPromise(scratchList().pipe(Effect.provide(layer)));
+      const summaries = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
       const summary = summaries.find((entry) => entry.id === result.scratchId);
       expect(summary?.status).toBe("detached");
     });
@@ -439,7 +469,7 @@ describe("scratchRun", () => {
               keep: false,
               answers: {},
               issues: [],
-            }).pipe(Effect.provide(layer)),
+            }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
           );
           yield* Effect.gen(function* () {
             for (let attempt = 0; attempt < 500 && recorded.execCalls.length === 0; attempt += 1) {
@@ -475,13 +505,41 @@ describe("scratchRun", () => {
               return defaultScratchRunDeps.acquireWithPlan(input);
             },
           },
-        ).pipe(Effect.provide(makeHarnessLayer(recorded))),
+        ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(captured).toHaveLength(1);
       expect(captured[0]?.source).toEqual({ kind: "recipe", ref: "toolbox" });
+      expect(captured[0]?.isolate).toBe("cwd");
       expect(captured[0]?.detached).toBe(false);
       expect(captured[0]?.mountCwd).toEqual({});
       expect(captured[0]?.answers).toEqual({ name: "toolbox" });
+    });
+  });
+
+  test("--no-mount requests baked scratch isolation without a cwd mount", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const captured: ScratchAcquireInput[] = [];
+      await Effect.runPromise(
+        scratchRun(
+          {
+            command: ["true"],
+            mount: false,
+            keep: false,
+            answers: {},
+            issues: [],
+          },
+          {
+            ...defaultScratchRunDeps,
+            acquireWithPlan: (input) => {
+              captured.push(input);
+              return defaultScratchRunDeps.acquireWithPlan(input);
+            },
+          },
+        ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
+      );
+      expect(captured[0]?.isolate).toBe("baked");
+      expect(captured[0]?.mountCwd).toBeUndefined();
     });
   });
 
@@ -498,7 +556,7 @@ describe("scratchRun", () => {
             issues: [],
           },
           { ...defaultScratchRunDeps, stdinIsTty: () => true },
-        ).pipe(Effect.provide(makeHarnessLayer(recorded))),
+        ).pipe(Effect.provide(makeHarnessLayer(recorded)), Effect.provide(testSupportLayer())),
       );
       expect(recorded.execCalls[0]?.tty).toBe(true);
       expect(recorded.execCalls[0]?.stdin).toBe("inherit");

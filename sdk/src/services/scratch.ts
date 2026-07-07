@@ -65,7 +65,7 @@ export interface ScratchSummary {
   readonly app: AppRef;
   /** Where the scratch app came from — a fork of the cwd app or a recipe. */
   readonly source: ScratchSource;
-  /** Isolation mode the scratch app was started in (`none` | `full`). */
+  /** Isolation mode the scratch app was started in (`full` | `baked` | `cwd`). */
   readonly mode: IsolateMode;
   /** ISO 8601 timestamp the scratch app was first registered. */
   readonly created: string;

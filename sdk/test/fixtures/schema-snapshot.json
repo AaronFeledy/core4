@@ -6507,7 +6507,7 @@
           "type": "string"
         },
         "mode": {
-          "enum": ["none", "full"],
+          "enum": ["full", "baked", "cwd"],
           "type": "string"
         },
         "mounts": {
@@ -6615,7 +6615,7 @@
             "type": "string"
           },
           "mode": {
-            "enum": ["none", "full"],
+            "enum": ["full", "baked", "cwd"],
             "type": "string"
           },
           "source": {
@@ -21178,7 +21178,7 @@
     },
     "IsolateMode": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "enum": ["none", "full"],
+      "enum": ["full", "baked", "cwd"],
       "type": "string"
     },
     "LandoEvent": {

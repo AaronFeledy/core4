@@ -1988,6 +1988,10 @@ const GLOBAL_CONFIG_VERBS = new Set(["set", "unset", "edit", "validate"]);
 const RECIPES_COMMAND_VERBS = new Set(["list", "describe", "validate"]);
 
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  if (argv[0] === "apps" && argv[1] === "scratch" && argv[2] === "run") {
+    return ["apps:scratch:run", ...argv.slice(3)];
+  }
+
   if (argv[0] === "meta" && argv[1] === "recipes") {
     const verb = argv[2];
     if (verb === undefined || !RECIPES_COMMAND_VERBS.has(verb)) return argv;

@@ -184,6 +184,12 @@ describe("dual-dispatch argv parser parity", () => {
   });
 
   test("compiled argv normalization mirrors space-separated global command phrases", () => {
+    expect(normalizeCompiledCommandArgv(["apps", "scratch", "run", "--", "echo", "ok"])).toEqual([
+      "apps:scratch:run",
+      "--",
+      "echo",
+      "ok",
+    ]);
     expect(normalizeCompiledCommandArgv(["global", "list", "--format=json"])).toEqual([
       "global:list",
       "--format=json",

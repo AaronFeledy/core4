@@ -351,6 +351,7 @@
 - `AgentEnvPatternError`
 - `ArchiveFormatError`
 - `ArtifactTransferError`
+- `CommandAliasConflictError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`
@@ -397,6 +398,7 @@
 - `DatasetBindingError`
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
+- `ScratchRunTargetError`
 - `SecretNotFoundError`
 - `InteractionRequiredError`
 - `PromptValidationError`

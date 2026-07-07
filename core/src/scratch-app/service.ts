@@ -330,7 +330,7 @@ const nowIso = (): string => new Date().toISOString();
 const makeRegistryEntry = (input: {
   readonly id: string;
   readonly source: ScratchAcquireInput["source"];
-  readonly isolate: "none" | "full";
+  readonly isolate: ScratchRegistryEntry["isolate"];
   readonly detached: boolean;
   readonly rootPath: string;
   readonly status: ScratchRegistryEntry["status"];
@@ -653,7 +653,7 @@ const makeScratchAppService = (
       const registryEntry = makeRegistryEntry({
         id: scratchId,
         source: input.source,
-        isolate: input.isolate ?? "none",
+        isolate: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
         detached: input.detached,
         rootPath: String(scratchPaths.root),
         status: "acquiring",
@@ -725,7 +725,7 @@ const makeScratchAppService = (
       const registryEntry = makeRegistryEntry({
         id: scratchId,
         source: input.source,
-        isolate: input.isolate ?? "none",
+        isolate: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
         detached: input.detached,
         rootPath: String(scratchPaths.root),
         status: "acquiring",

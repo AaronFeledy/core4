@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,7 +33,7 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
 const entry = (id: string): ScratchRegistryEntry => ({
   id,
   source: { kind: "fork" },
-  isolate: "none",
+  isolate: "full",
   detached: true,
   rootPath: join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id, "root"),
   status: "running",

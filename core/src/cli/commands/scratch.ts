@@ -38,7 +38,7 @@ export interface ScratchStartOptions {
 }
 
 export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
-  value === "none" || value === "full" ? value : undefined;
+  value === "full" || value === "baked" || value === "cwd" ? value : undefined;
 
 const MOUNT_CWD_FLAG = "--mount-cwd";
 
@@ -81,7 +81,7 @@ export const ScratchSummaryResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("none", "full"),
+  mode: Schema.Literal("full", "baked", "cwd"),
   created: Schema.String,
   status: Schema.Literal("attached", "detached", "orphan"),
 });
@@ -116,7 +116,7 @@ export const ScratchInfoResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("none", "full"),
+  mode: Schema.Literal("full", "baked", "cwd"),
   created: Schema.String,
   status: Schema.Literal("attached", "detached", "orphan"),
   mounts: Schema.Array(ScratchMountPointResultSchema),

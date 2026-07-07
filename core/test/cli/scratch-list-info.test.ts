@@ -38,7 +38,7 @@ const listFixtureInput: ReadonlyArray<ScratchSummary> = [
       root: AbsolutePath.make("/cache/scratch/scratch-drupal-abc123/root"),
     },
     source: { kind: "fork" },
-    mode: "none",
+    mode: "full",
     created: "2026-05-31T18:00:00.000Z",
     status: "attached",
   },
@@ -64,7 +64,7 @@ const infoFixtureInput: ScratchInfo = {
     root: AbsolutePath.make("/cache/scratch/scratch-drupal-abc123/root"),
   },
   source: { kind: "fork" },
-  mode: "none",
+  mode: "full",
   created: "2026-05-31T18:00:00.000Z",
   status: "attached",
   mounts: [
@@ -92,7 +92,7 @@ describe("scratch list/info JSON renderer snapshots", () => {
   test("list table renderer surfaces id / source / mode / created / status", () => {
     const table = renderScratchListResult(listFixtureInput, "table");
     expect(table.split("\n")[0]).toBe("ID\tSOURCE\tMODE\tCREATED\tSTATUS");
-    expect(table).toContain("scratch-drupal-abc123\tfork\tnone\t2026-05-31T18:00:00.000Z\tattached");
+    expect(table).toContain("scratch-drupal-abc123\tfork\tfull\t2026-05-31T18:00:00.000Z\tattached");
     expect(table).toContain("scratch-empty-def456\trecipe:empty\tfull\t2026-05-31T18:05:00.000Z\tdetached");
   });
 
@@ -126,7 +126,7 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
 
 const scratchRuntime = () => makeLandoRuntime({ bootstrap: "scratch" });
 
-const runScratch = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
+const runScratch = <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime())));
 
 const seedEntry = (cacheRoot: string, overrides: Partial<ScratchRegistryEntry>): ScratchRegistryEntry => {
@@ -134,7 +134,7 @@ const seedEntry = (cacheRoot: string, overrides: Partial<ScratchRegistryEntry>):
   return {
     id,
     source: { kind: "fork" },
-    isolate: "none",
+    isolate: "full",
     detached: false,
     rootPath: join(cacheRoot, "scratch", id, "root"),
     status: "running",
@@ -151,8 +151,10 @@ const metadata = {
 };
 
 const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
+  const appserverName = ServiceName.make("appserver");
+  const databaseName = ServiceName.make("database");
   const appserver: ServicePlan = {
-    name: ServiceName.make("appserver"),
+    name: appserverName,
     type: "php",
     provider: ProviderId.make("lando"),
     primary: true,
@@ -183,7 +185,7 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
     extensions: {},
   };
   const database: ServicePlan = {
-    name: ServiceName.make("database"),
+    name: databaseName,
     type: "mariadb",
     provider: ProviderId.make("lando"),
     primary: false,
@@ -203,7 +205,7 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
     slug: id,
     root: AbsolutePath.make(join(cacheRoot, "scratch", id, "root")),
     provider: ProviderId.make("lando"),
-    services: { appserver, database } as AppPlan["services"],
+    services: { [appserverName]: appserver, [databaseName]: database },
     routes: [],
     networks: [],
     stores: [],
@@ -212,7 +214,10 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
       perAppBridge: { name: `lando-${id}`, driver: "bridge" },
       sharedNetworkMembership: {
         name: "lando_bridge_network",
-        aliases: { appserver: [`appserver.${id}.internal`], database: [`database.${id}.internal`] },
+        aliases: {
+          [appserverName]: [`appserver.${id}.internal`],
+          [databaseName]: [`database.${id}.internal`],
+        },
       },
     },
     metadata,
@@ -240,7 +245,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
       expect(byId.get("scratch-detached-000002")?.status).toBe("detached");
       expect(byId.get("scratch-orphan-000003")?.status).toBe("orphan");
       expect(byId.get("scratch-detached-000002")?.source).toEqual({ kind: "fork" });
-      expect(byId.get("scratch-detached-000002")?.mode).toBe("none");
+      expect(byId.get("scratch-detached-000002")?.mode).toBe("full");
       expect(byId.get("scratch-attached-000001")?.created).toBe("2026-05-31T18:00:00.000Z");
     });
   });

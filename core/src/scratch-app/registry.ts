@@ -32,7 +32,7 @@ const ScratchSourceSchema = Schema.Union(
 const RegistryEntrySchema = Schema.Struct({
   id: Schema.String,
   source: ScratchSourceSchema,
-  isolate: Schema.Literal("none", "full"),
+  isolate: Schema.Literal("full", "baked", "cwd"),
   detached: Schema.Boolean,
   ownerPid: Schema.optional(Schema.Number),
   rootPath: Schema.String,

@@ -824,7 +824,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           id,
           app: appRefForScratch(id, paths.root),
           source: input.source,
-          mode: input.isolate ?? "none",
+          mode: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
           created: "2026-06-01T00:00:00.000Z",
           status: input.detached ? "detached" : "attached",
         };
