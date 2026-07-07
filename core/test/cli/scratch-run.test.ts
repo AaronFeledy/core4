@@ -452,6 +452,31 @@ describe("scratchRun", () => {
     });
   });
 
+  test("--keep does not detach when target resolution fails", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded);
+      const exit = await Effect.runPromiseExit(
+        scratchRun({
+          command: ["true"],
+          service: "nope",
+          mount: true,
+          keep: true,
+          answers: {},
+          issues: [],
+        }).pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(recorded.execCalls).toHaveLength(0);
+      expect(recorded.destroyCalls).toHaveLength(1);
+
+      const summaries = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(summaries).toEqual([]);
+    });
+  });
+
   test("an empty command fails before any scratch is acquired", async () => {
     await withTempProject(async () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
