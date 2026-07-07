@@ -24,10 +24,6 @@ import { getRecipeCatalog } from "../../recipes/catalog.ts";
 import { parseRecipe } from "../../recipes/manifest/service.ts";
 import { resolveRecipeRef } from "../../recipes/source.ts";
 
-// ---------------------------------------------------------------------------
-// meta:recipes:list
-// ---------------------------------------------------------------------------
-
 export const RecipesListEntrySchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -53,10 +49,6 @@ export const renderRecipesListResult = (result: RecipesListResult): string => {
   const lines = result.recipes.map((entry) => `${entry.id.padEnd(width)}  ${entry.title}`);
   return [`Bundled recipes (${result.recipes.length}):`, ...lines].join("\n");
 };
-
-// ---------------------------------------------------------------------------
-// meta:recipes:describe
-// ---------------------------------------------------------------------------
 
 export const RecipesPromptSchema = Schema.Struct({
   name: Schema.String,
@@ -170,10 +162,6 @@ export const renderRecipesDescribeResult = (result: RecipesDescribeResult): stri
   return lines.join("\n");
 };
 
-// ---------------------------------------------------------------------------
-// meta:recipes:validate
-// ---------------------------------------------------------------------------
-
 export const RecipesValidateResultSchema = Schema.Struct({
   valid: Schema.Literal(true),
   id: Schema.String,
@@ -268,10 +256,6 @@ export const renderRecipesValidateResult = (result: RecipesValidateResult): stri
   `${result.source} is a valid recipe manifest (id: ${result.id}, ${result.prompts} prompt${
     result.prompts === 1 ? "" : "s"
   }, ${result.files} file${result.files === 1 ? "" : "s"}).`;
-
-// ---------------------------------------------------------------------------
-// Input helpers shared by the OCLIF wrappers and the compiled dispatcher.
-// ---------------------------------------------------------------------------
 
 const argsFromInput = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};
