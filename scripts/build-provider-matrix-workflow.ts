@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
 
+import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/provider-matrix.yml");
 const GENERATED_HEADER =
@@ -113,11 +115,9 @@ ${setupBunSteps}
         run: |
           echo "::notice title=provider-matrix::\${{ matrix.engine }} skipped: \${{ matrix.notice }}"
 
-      - name: Install Podman
-        if: \${{ matrix.cell == 'podman-linux' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
+${renderInstallPodman6Step({ condition: "matrix.cell == 'podman-linux'" })}
+
+${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-linux'" })}
 
       - name: Start Podman socket
         if: \${{ matrix.cell == 'podman-linux' }}
