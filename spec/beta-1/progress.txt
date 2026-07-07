@@ -987,3 +987,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Bugbot's duplicate-stderr finding was confirmed and fixed. The loaded `review-work` skill returned orchestration instructions rather than an executable report in this harness, so the source PRD criteria were cross-checked with the focused streaming, conformance, and parity gates.
 - Verification: typecheck and lint passed; focused scratch-run, machine-output-conformance, and dispatch-parity spot checks passed.
 ---
+
+## 2026-07-07 12:40 CDT - US-408 Review
+- Post-fix Bugbot found and review fixed the plain/lando renderer regression: captured tool stderr remains visible outside JSON mode, while JSON streaming still suppresses the raw stderr side channel.
+- Review notes (deferred/rejected): no additional findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch-run, machine-output-conformance, renderer-boundary, and dispatch-parity spot checks passed.
+---

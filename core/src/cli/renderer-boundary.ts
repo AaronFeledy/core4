@@ -92,7 +92,10 @@ export const emitOptionalStdout = (chunk: string): Effect.Effect<void> =>
 
 export const emitOptionalStderr = (chunk: string): Effect.Effect<void> =>
   optionalRenderer.pipe(
-    Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
+    Effect.flatMap((option) => {
+      if (Option.isNone(option) || option.value.id === "json") return Effect.void;
+      return option.value.output.stderr(chunk);
+    }),
   );
 
 export const writeResultLine = (text: string): Effect.Effect<void> =>

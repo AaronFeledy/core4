@@ -37,7 +37,7 @@ import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
+import { makeJsonRendererServiceLive, makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -731,6 +731,29 @@ describe("scratch run rendering", () => {
 
       expect(result.stderr).toBe("warn\n");
       expect(io.stderr()).toBe("");
+    });
+  });
+
+  test("plain rendering keeps captured tool stderr on renderer stderr", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const io = createBufferedRendererIO();
+      const result = await Effect.runPromise(
+        scratchRun({
+          command: ["sh", "-c", "echo warn >&2"],
+          mount: true,
+          keep: false,
+          answers: {},
+          issues: [],
+        }).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
+          Effect.provide(testSupportLayer()),
+          Effect.provide(makePlainRendererServiceLive(io)),
+        ),
+      );
+
+      expect(result.stderr).toBe("warn\n");
+      expect(io.stderr()).toBe("warn\n");
     });
   });
 });
