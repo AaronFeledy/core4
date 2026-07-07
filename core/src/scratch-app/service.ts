@@ -14,6 +14,7 @@ import {
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  type IsolateMode,
   LandofileShape,
   type NetworkingPlan,
   PortablePath,
@@ -91,6 +92,9 @@ const scratchSourceUnresolvedError = (input: ScratchAcquireInput): ScratchSource
     attempts: [],
     remediation: scratchSourceRemediation(input),
   });
+
+export const resolveScratchAcquireIsolation = (input: ScratchAcquireInput): IsolateMode =>
+  input.isolate ?? (input.mountCwd !== undefined ? "cwd" : input.source.kind === "fork" ? "full" : "baked");
 
 const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({
@@ -650,7 +654,7 @@ const makeScratchAppService = (
       const base = input.name ?? landofile.name ?? sourcePlan.name;
       const scratchId = yield* synthesizeId(base);
       const scratchPaths = yield* paths(scratchId);
-      const isolate = input.isolate ?? (input.source.kind === "fork" ? "full" : "baked");
+      const isolate = resolveScratchAcquireIsolation(input);
       const registryEntry = makeRegistryEntry({
         id: scratchId,
         source: input.source,
@@ -726,7 +730,7 @@ const makeScratchAppService = (
       const registryEntry = makeRegistryEntry({
         id: scratchId,
         source: input.source,
-        isolate: input.isolate ?? (input.source.kind === "fork" ? "full" : "baked"),
+        isolate: resolveScratchAcquireIsolation(input),
         detached: input.detached,
         rootPath: String(scratchPaths.root),
         status: "acquiring",

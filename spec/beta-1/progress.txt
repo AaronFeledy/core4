@@ -950,3 +950,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
 - Verification: typecheck and lint passed; focused scratch registry and scratch-run spot checks passed.
 ---
+
+## 2026-07-07 08:00 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed the fork `--mount-cwd` isolation regression: mount-cwd now defaults scratch acquisition to `cwd` isolation unless an explicit `--isolate` value was provided, so fork planning avoids the full-copy path when cwd mounting is requested.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch recipe flag and scratch-run spot checks passed.
+---

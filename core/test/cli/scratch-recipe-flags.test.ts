@@ -9,6 +9,7 @@ import {
 } from "../../src/cli/commands/scratch.ts";
 import { parseScratchStartArgv } from "../../src/cli/run.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { resolveScratchAcquireIsolation } from "../../src/scratch-app/service.ts";
 
 const failureTag = async <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<string> => {
   const result = await Effect.runPromise(
@@ -119,5 +120,20 @@ describe("apps:scratch:start --mount-cwd / --share-global-storage flag mapping",
       "--fork",
       "--share-global-storage",
     ]);
+  });
+
+  test("mount-cwd defaults fork acquisition to cwd isolation", () => {
+    expect(resolveScratchAcquireIsolation({ source: { kind: "fork" }, detached: false })).toBe("full");
+    expect(resolveScratchAcquireIsolation({ source: { kind: "fork" }, detached: false, mountCwd: {} })).toBe(
+      "cwd",
+    );
+    expect(
+      resolveScratchAcquireIsolation({
+        source: { kind: "fork" },
+        detached: false,
+        isolate: "baked",
+        mountCwd: {},
+      }),
+    ).toBe("baked");
   });
 });
