@@ -113,6 +113,29 @@ jobs:
           BREW_PREFIX="$(brew --prefix)"
           echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
           echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
+          # The OCI runtime and monitor are separate Homebrew formulae that Homebrew does
+          # not link onto PATH, so a bundle-staging step that searches PATH would copy
+          # the runner's preinstalled (older) crun/conmon and Podman 6 would reject their
+          # OCI config version. Export the Podman 6 toolchain directories so staging can
+          # prefer them over the system copies.
+          toolchain_dirs="$BREW_PREFIX/opt/podman/libexec/podman:$BREW_PREFIX/bin"
+          for dep in crun conmon fuse-overlayfs; do
+            dep_prefix="$(brew --prefix "$dep" 2>/dev/null || true)"
+            if test -n "$dep_prefix" && test -d "$dep_prefix/bin"; then
+              toolchain_dirs="$dep_prefix/bin:$toolchain_dirs"
+            fi
+          done
+          echo "LANDO_CI_PODMAN_TOOLCHAIN_DIRS=$toolchain_dirs" >> "$GITHUB_ENV"
+          # The managed runtime resolves its OCI runtime from the default system search
+          # list (/usr/bin/crun first), not from the bundle or helper_binaries_dir, so a
+          # runner's preinstalled crun that predates Podman 6 makes container start fail
+          # with "crun: unknown version specified". Overwrite the default-path crun with
+          # the Podman 6 toolchain build (its interpreter/RPATH stay absolute to the
+          # Homebrew prefix, which persists on the runner).
+          crun_prefix="$(brew --prefix crun 2>/dev/null || true)"
+          if test -n "$crun_prefix" && test -x "$crun_prefix/bin/crun"; then
+            sudo install -m 0755 "$crun_prefix/bin/crun" /usr/bin/crun
+          fi
           # User-level container configs override any system files wholesale, so seed
           # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
           # can be v1-format TOML, and appending v2 keys to it makes every podman

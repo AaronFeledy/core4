@@ -232,8 +232,13 @@ ${renderAssertPodman6Step()}
           STAGE="$(mktemp -d)"
           cp "$(command -v podman)" "$STAGE/podman"
           for helper in newuidmap newgidmap pasta passt rootlessport catatonit slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
-            src="$(command -v "$helper" 2>/dev/null || true)"
-            if test -z "$src" && test -n "\${LANDO_CI_PODMAN_HELPER_DIR:-}" && test -x "\$LANDO_CI_PODMAN_HELPER_DIR/$helper"; then src="\$LANDO_CI_PODMAN_HELPER_DIR/$helper"; fi
+            src=""
+            IFS=":"
+            for dir in \${LANDO_CI_PODMAN_TOOLCHAIN_DIRS:-}; do
+              if test -x "$dir/$helper"; then src="$dir/$helper"; break; fi
+            done
+            unset IFS
+            if test -z "$src"; then src="$(command -v "$helper" 2>/dev/null || true)"; fi
             if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
             if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done
