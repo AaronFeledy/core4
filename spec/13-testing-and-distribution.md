@@ -252,7 +252,7 @@ Lando v4 ships in two forms, both built from the same source at the same version
 
 | Form | Audience | Built by | Installed as |
 |---|---|---|---|
-| **Single-executable CLI binary** | End users; no prerequisites | `bun build --compile` | One per platform: `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64` |
+| **Single-executable CLI binary** | End users; no prerequisites | `bun build --compile` | One per platform: `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64` |
 | **Library package** | Bun programs embedding Lando, plus end users who prefer a package-manager install | Standard `@lando/core` publish | `bun add @lando/core` (programmatic) or `bun add -g @lando/core` (CLI on PATH via `package.json#bin`) |
 
 **Single-executable binaries.** The default end-user release artifact is the Bun-compiled binary, one per platform target:
@@ -261,7 +261,7 @@ Lando v4 ships in two forms, both built from the same source at the same version
 bun build ./bin/lando.ts --compile --target=bun-${T} --outfile=dist/lando-${T} --minify --sourcemap=external
 ```
 
-Platforms shipped: `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`. The compiled binary embeds Bun and has no host prerequisites.
+Platforms shipped: `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`. The compiled binary embeds Bun and has no host prerequisites. Intel macOS is not a supported runtime host.
 
 **Library package.** `@lando/core` is published to npm (and any registry the project mirrors to) as a standard ESM package. The package contains the multiple-entry-point structure spec'd in §2.7 (default entry, `/schema`, `/errors`, `/events`, `/services`, `/testing`, `/cli`, `/oclif`). The library and the CLI binary ship at the same version — there is no separate release cadence.
 
@@ -291,13 +291,13 @@ CI runs at three cadences. Each cadence is a superset of the previous one in sco
 
 **Per-PR CI** — runs on every pull request on:
 
-- macOS x64 + arm64
+- macOS arm64
 - Linux x64 + arm64
 - Windows x64
 
 Per-PR CI executes: unit, Effect service, CLI, library API, plugin SDK contract, provider contract (against `TestRuntimeProvider` and the bundled provider), scenario, recipe, executable guides/generated scenarios (scenario-layer guide scenarios on every supported platform; e2e guide-scenario `@smoke` subset on Linux x64; §19.11), the perf-budget suite (Linux x64 gating; macOS/Windows advisory), and the `@smoke`-tagged subset of the end-to-end suite (Linux x64 only). Type, schema, lint, and docs-build gates from §13.4 also run on every PR — including the guide lint gate and the guide/scenario component schema gate.
 
-**Nightly CI** — runs once per day on Linux x64/arm64 and macOS x64/arm64:
+**Nightly CI** — runs once per day on Linux x64/arm64 and macOS arm64:
 
 - Full end-to-end suite against the Lando-managed runtime (the default provider).
 - Distribution rehearsal: `bun build --compile` for every platform target listed in §13.5, and a dry-run `bun publish --dry-run` of the library package.
@@ -307,7 +307,7 @@ Per-PR CI executes: unit, Effect service, CLI, library API, plugin SDK contract,
 - Lando-managed runtime (baseline, all platforms)
 - Docker Desktop (latest, macOS + Windows)
 - Docker Engine (Linux)
-- Podman Desktop (macOS + Windows)
+- Podman Desktop (Apple Silicon macOS + Windows 11+)
 - Podman (Linux)
 - Lima (macOS)
 - OrbStack (macOS)

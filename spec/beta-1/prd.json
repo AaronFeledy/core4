@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface — each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec §8/§12 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked).",
+  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface \u2014 each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec \u00a78/\u00a712 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked). Beta 1 additionally adds the Podman 6 runtime contract wave (PRD-11, US-413..US-424), covering provider version gates, libpod v6 API migration, managed machine behavior, runtime target fallout, CI provider integration, and Podman 6 pull/health/OOM/volume/trust/containers.conf semantics.",
   "userStories": [
     {
       "id": "US-372",
@@ -19,11 +19,11 @@
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-13 FR-3 ('temp + fsync + rename') — audit found zero fsync calls in either helper; cwd-app-map bypasses the helper entirely."
+      "notes": "Origin: PRD-ALPHA4-13 FR-3 ('temp + fsync + rename') \u2014 audit found zero fsync calls in either helper; cwd-app-map bypasses the helper entirely."
     },
     {
       "id": "US-373",
-      "title": "One durable-store implementation — retire json-bucket.ts",
+      "title": "One durable-store implementation \u2014 retire json-bucket.ts",
       "description": "As a maintainer, all durable, versioned, lockable Lando-owned writes flow through `StateStore`, so envelope/lock/quarantine semantics exist in exactly one place.",
       "acceptanceCriteria": [
         "The managed-file ledger (`core/src/managed-file/service.ts`) persists through `StateStore` (or a StateStore-backed bucket adapter) instead of `openJsonBucket`.",
@@ -44,8 +44,8 @@
       "description": "As a service author, healthchecks declared in a Landofile run through a real `HealthcheckRunner` built on `runProbe`, with retry/delay/timeout mapped onto a `RetryPolicy` and verdicts mapped onto `ProbeOutcome`.",
       "acceptanceCriteria": [
         "A live `HealthcheckRunner` implementation replaces `HealthcheckRunnerUnavailableLive` as the default wiring; the stub remains only as an explicit test/degraded-mode layer if still needed.",
-        "The implementation builds on `@lando/sdk/probe`'s `runProbe` — no hand-rolled `Effect.retry`/`Schedule` loop — and passes `check:probe-boundary`.",
-        "Healthcheck `retry`/`delay`/`timeout` config map onto `RetryPolicy` per §10.5; the runner's verdict maps onto `ProbeOutcome` (green/yellow/red).",
+        "The implementation builds on `@lando/sdk/probe`'s `runProbe` \u2014 no hand-rolled `Effect.retry`/`Schedule` loop \u2014 and passes `check:probe-boundary`.",
+        "Healthcheck `retry`/`delay`/`timeout` config map onto `RetryPolicy` per \u00a710.5; the runner's verdict maps onto `ProbeOutcome` (green/yellow/red).",
         "`ProbeResult.lastError` is redacted through `RedactionService` before it reaches any event, transcript, or readiness summary.",
         "Behavior is asserted deterministically under `TestClock` (attempt counts, backoff, timeout) with no wall-clock flake.",
         "Tests pass",
@@ -54,7 +54,7 @@
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-14 US-317 — audit found `core/src/subsystems/healthcheck/api.ts` is an Unavailable stub and zero runProbe call sites exist in core/src."
+      "notes": "Origin: PRD-ALPHA4-14 US-317 \u2014 audit found `core/src/subsystems/healthcheck/api.ts` is an Unavailable stub and zero runProbe call sites exist in core/src."
     },
     {
       "id": "US-375",
@@ -62,7 +62,7 @@
       "description": "As a user running `lando start`, URL scanning ('is this route responding yet?') runs through a real `UrlScanner` built on `runProbe`.",
       "acceptanceCriteria": [
         "A live `UrlScanner` implementation replaces `UrlScannerUnavailableLive` as the default wiring.",
-        "The implementation builds on `runProbe`, maps scanner config onto `RetryPolicy`, and returns `ProbeOutcome`-shaped verdicts per §10.5.",
+        "The implementation builds on `runProbe`, maps scanner config onto `RetryPolicy`, and returns `ProbeOutcome`-shaped verdicts per \u00a710.5.",
         "Outbound requests go through the `HttpClient` egress chokepoint (no ad-hoc fetch), honoring `network.proxy` / `network.ca`.",
         "`ProbeResult.lastError` is redacted through `RedactionService` before leaving the scanner.",
         "Deterministic `TestClock` coverage for attempts/backoff/timeout.",
@@ -72,12 +72,12 @@
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-14 US-317 — `core/src/subsystems/scanner/api.ts` is an Unavailable stub."
+      "notes": "Origin: PRD-ALPHA4-14 US-317 \u2014 `core/src/subsystems/scanner/api.ts` is an Unavailable stub."
     },
     {
       "id": "US-376",
       "title": "Migrate doctor, downloader, and setup readiness onto runProbe",
-      "description": "As a maintainer, the remaining PRD-ALPHA4-14 US-317 consumers — DoctorService shell checks, the Downloader retry path, and `lando setup` readiness waits — run their retry/timeout-to-verdict loops through `runProbe`, and `lando doctor` wires the real subsystems.",
+      "description": "As a maintainer, the remaining PRD-ALPHA4-14 US-317 consumers \u2014 DoctorService shell checks, the Downloader retry path, and `lando setup` readiness waits \u2014 run their retry/timeout-to-verdict loops through `runProbe`, and `lando doctor` wires the real subsystems.",
       "acceptanceCriteria": [
         "`DoctorService` shell checks with retry/timeout semantics run through `runProbe`.",
         "The `Downloader` retry path maps its retry policy onto `RetryPolicy` and executes attempts through `runProbe` (or documents, in the probe-boundary allowlist with justification, any loop that genuinely cannot map).",
@@ -107,7 +107,7 @@
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Origin: PRD-ALPHA4-14 FR-9 — audit found `waitForEvent` covered only by an export-existence assertion (`core/test/library/core-testing-export.test.ts`) while `expectEvent` has real runtime coverage."
+      "notes": "Origin: PRD-ALPHA4-14 FR-9 \u2014 audit found `waitForEvent` covered only by an export-existence assertion (`core/test/library/core-testing-export.test.ts`) while `expectEvent` has real runtime coverage."
     },
     {
       "id": "US-378",
@@ -167,7 +167,7 @@
       "description": "As an SDK consumer, the shipped `FileFormat` enum and the PRD-ALPHA4-18 contract say the same thing: either the JS/TS formats are formally adopted into the contract, or the schema is trimmed back to the frozen 7-value enum.",
       "acceptanceCriteria": [
         "A decision is recorded in this story's notes: adopt `javascript`/`typescript` into the contract, or remove them from `sdk/src/schema/managed-file.ts`.",
-        "If adopted: `spec/alpha-4/prd-alpha-4-18-managed-files.md` (and §10.13 if it enumerates formats) is updated to the 9-value enum, codec behavior for both formats is tested (write/read round-trip, marker handling), and the schema snapshot reflects the adopted surface.",
+        "If adopted: `spec/alpha-4/prd-alpha-4-18-managed-files.md` (and \u00a710.13 if it enumerates formats) is updated to the 9-value enum, codec behavior for both formats is tested (write/read round-trip, marker handling), and the schema snapshot reflects the adopted surface.",
         "If trimmed: the two values are removed, no shipped consumer references them (verified by search + tests), and the schema snapshot is refreshed.",
         "PRD text, schema, snapshot, and `sdk/API_COMPATIBILITY.md` agree after the change; no silent drift remains.",
         "Tests pass",
@@ -183,7 +183,7 @@
       "title": "@lando/renderer-lando owns the default renderer layer",
       "description": "As a renderer-plugin author, I can read `@lando/renderer-lando` as the reference implementation: its exported renderer layer IS the default TTY renderer, and core wires it via the bundled-plugin mechanism rather than assembling it.",
       "acceptanceCriteria": [
-        "`plugins/renderer-lando`'s renderer export is the real default TTY renderer layer (task-tree painter, event consumer, plain/json fallbacks) — no more `Layer.empty` placeholder.",
+        "`plugins/renderer-lando`'s renderer export is the real default TTY renderer layer (task-tree painter, event consumer, plain/json fallbacks) \u2014 no more `Layer.empty` placeholder.",
         "`core/src/cli/renderer/bundled-renderers.ts` no longer constructs the lando renderer from parts; it resolves the renderer contribution from the bundled plugin (shared primitives may live in `@lando/sdk/renderer`, but composition/ownership sits in the plugin).",
         "Fallback modes (non-TTY plain, `--renderer=json`) and renderer selection order are preserved; existing renderer golden/visual-QA tests stay green (goldens may move, not weaken).",
         "Cold-start discipline holds: the plugin's renderer layer stays off the cold-start static import graph and `@opentui/core` remains behind the dynamic-import boundary; import-boundary gates pass.",
@@ -218,7 +218,7 @@
     {
       "id": "US-384",
       "title": "Merge plugin setup.flags into lando setup",
-      "description": "As a provider-plugin author, flags I contribute through `setup.flags` appear in `lando setup --help`, parse correctly, and reach my setup subscriber — on both the OCLIF source path and the compiled binary path.",
+      "description": "As a provider-plugin author, flags I contribute through `setup.flags` appear in `lando setup --help`, parse correctly, and reach my setup subscriber \u2014 on both the OCLIF source path and the compiled binary path.",
       "acceptanceCriteria": [
         "Bundled provider plugins' `setup.flags` contributions are merged into the `meta:setup` command metadata (help output, flag parsing) at the static OCLIF command surface; runtime-discovered plugin contributions are collision-checked at plugin load and dynamic external-flag parsing is deferred to a later two-phase parser story.",
         "Parsed plugin flag values are delivered to the contributing plugin's setup handler.",
@@ -271,12 +271,12 @@
     {
       "id": "US-387",
       "title": "macOS/Windows managed runtime uses bundled Podman machine tooling",
-      "description": "As a macOS or Windows user, `lando setup` stands up the Lando-managed runtime with the bundled Podman machine tooling and the Lando-owned socket — never by falling back to system Podman machine tooling or a test environment variable.",
+      "description": "As a macOS or Windows user, `lando setup` stands up the Lando-managed runtime with the bundled Podman machine tooling and the Lando-owned socket \u2014 never by falling back to system Podman machine tooling or a test environment variable.",
       "acceptanceCriteria": [
-        "The mac/win ensureRuntime path in `plugins/provider-lando/src/setup.ts` resolves the machine runner from the installed runtime bundle (Paths-driven binaries), removing the `makeSystemPodmanMachineRunner(undefined, …)` production fallback.",
+        "The mac/win ensureRuntime path in `plugins/provider-lando/src/setup.ts` resolves the machine runner from the installed runtime bundle (Paths-driven binaries), removing the `makeSystemPodmanMachineRunner(undefined, \u2026)` production fallback.",
         "`process.env.LANDO_TEST_PODMAN_SOCKET` is honored only in explicit test wiring, never as a production fallback in the setup path (mirror the Linux socket-resolution precedence: explicit option > injected paths > managed default).",
         "Machine lifecycle (init/start/socket resolution/restart-on-stale) works from the bundled tooling; recorded setup state includes the machine identity and socket path needed for idempotent re-detection and for US-385 teardown.",
-        "When the runtime bundle lacks machine tooling for the host platform, setup fails with a tagged remediation error naming the bundle/platform — it does not silently use system tooling.",
+        "When the runtime bundle lacks machine tooling for the host platform, setup fails with a tagged remediation error naming the bundle/platform \u2014 it does not silently use system tooling.",
         "Unit/scenario coverage runs against fake runners for both platforms; live verification is recorded via the provider-integration CI jobs.",
         "Tests pass",
         "Typecheck passes",
@@ -289,7 +289,7 @@
     {
       "id": "US-388",
       "title": "Release-automation posture is decided and wired",
-      "description": "As a maintainer preparing 4.0.0-beta.N, CI can produce the full signed release (13-stage scripts/release.ts) — or, if beta releases are deliberately manual, that decision is recorded where the RC acceptance criteria will collect it.",
+      "description": "As a maintainer preparing 4.0.0-beta.N, CI can produce the full signed release (13-stage scripts/release.ts) \u2014 or, if beta releases are deliberately manual, that decision is recorded where the RC acceptance criteria will collect it.",
       "acceptanceCriteria": [
         "A decision record lands (in this story's notes and the PRD-ALPHA4-08 open-questions section): full pipeline in CI for Beta, or manual invocation until RC.",
         "If CI: `scripts/build-release-workflow.ts` emits a workflow that invokes the `scripts/release.ts` orchestrator with credential-gated signing stages (skipping cleanly with warnings when credentials are absent), committed via codegen with drift check clean.",
@@ -306,12 +306,12 @@
     {
       "id": "US-389",
       "title": "Config write surfaces (app config / meta config / meta global config)",
-      "description": "As a user, I can set, unset, edit, and validate configuration at all three scopes — app Landofile, global config, global-app stack — exactly as §8.2 specifies, with writes that are atomic and serializer-canonical.",
+      "description": "As a user, I can set, unset, edit, and validate configuration at all three scopes \u2014 app Landofile, global config, global-app stack \u2014 exactly as \u00a78.2 specifies, with writes that are atomic and serializer-canonical.",
       "acceptanceCriteria": [
         "`app config set/unset/edit/validate` operate on the app Landofile: set/unset accept the spec'd path grammar, `edit` opens $EDITOR with post-edit validation, `validate` reports schema errors with remediation.",
         "`meta config set/unset/edit/validate` operate on global config with the same semantics.",
         "`meta global config` gains the spec'd write verbs for the global-app stack.",
-        "Writes round-trip through the canonical `@lando/sdk/landofile` serializer (comment/format preservation per §7.8.1) and land via the atomic write helper (US-372).",
+        "Writes round-trip through the canonical `@lando/sdk/landofile` serializer (comment/format preservation per \u00a77.8.1) and land via the atomic write helper (US-372).",
         "Every write emits its result through the universal machine-output contract (faithful resultSchema, --json envelope) and honors --dry-run where the spec requires it.",
         "Rejecting writes (invalid path, schema violation) fail with tagged errors + remediation, exit non-zero, and leave the file untouched.",
         "Dual-dispatch parity tests cover the new verbs; command result schemas are frozen in the snapshot.",
@@ -321,17 +321,17 @@
       ],
       "priority": 18,
       "passes": true,
-      "notes": "Origin: spec §8.2.1/§8.2.2/§8.4 — audit found all three config surfaces read-only (plus a telemetry toggle)."
+      "notes": "Origin: spec \u00a78.2.1/\u00a78.2.2/\u00a78.4 \u2014 audit found all three config surfaces read-only (plus a telemetry toggle)."
     },
     {
       "id": "US-390",
       "title": "app config translate detect/list/from/file flow",
-      "description": "As a migrating user, `lando config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file — not just the cwd happy path.",
+      "description": "As a migrating user, `lando config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file \u2014 not just the cwd happy path.",
       "acceptanceCriteria": [
         "Autodetection: with no args, the command probes registered ConfigTranslators' detect surfaces against the cwd and picks the unambiguous match; ambiguity fails with a list + remediation.",
         "`--list` enumerates registered translators (id, source format) through the machine-output contract.",
         "`--from=<id>` forces a translator; `--file=<path>` translates an explicit file.",
-        "Output composes with the existing `--write` flag and the §7.8.1 serializer; non-write mode prints through the renderer/JSON seam.",
+        "Output composes with the existing `--write` flag and the \u00a77.8.1 serializer; non-write mode prints through the renderer/JSON seam.",
         "The translate command paths are exercised against the config-translator contract suite fixtures.",
         "Tests pass",
         "Typecheck passes",
@@ -339,15 +339,15 @@
       ],
       "priority": 19,
       "passes": true,
-      "notes": "Origin: spec §8.2.1 translate flow. Audit: core/src/cli/commands/app-config-translate.ts only supports cwd + --write."
+      "notes": "Origin: spec \u00a78.2.1 translate flow. Audit: core/src/cli/commands/app-config-translate.ts only supports cwd + --write."
     },
     {
       "id": "US-391",
       "title": "Source-scoped app includes update with --no-network",
-      "description": "As a user with many includes, I can refresh a single include source and run include updates offline against the lockfile/cache, per §8.2.3.",
+      "description": "As a user with many includes, I can refresh a single include source and run include updates offline against the lockfile/cache, per \u00a78.2.3.",
       "acceptanceCriteria": [
         "`app includes update [source]` accepts an optional source identifier and refreshes only that include; unknown sources fail with the known-source list.",
-        "`--no-network` performs the update strictly from cache/lock state, failing with remediation when a required artifact is absent — it never touches the network (asserted via the network-boundary test seam).",
+        "`--no-network` performs the update strictly from cache/lock state, failing with remediation when a required artifact is absent \u2014 it never touches the network (asserted via the network-boundary test seam).",
         "Default behavior (all sources, network allowed) is unchanged; `--check` composes with both new options.",
         "Result schema extends faithfully (per-source outcomes) and is snapshot-frozen.",
         "Tests pass",
@@ -356,15 +356,15 @@
       ],
       "priority": 20,
       "passes": true,
-      "notes": "Origin: spec §8.2.3. Audit: core/src/cli/commands/app-includes-update.ts always refreshes all includes; wrapper exposes only --check."
+      "notes": "Origin: spec \u00a78.2.3. Audit: core/src/cli/commands/app-includes-update.ts always refreshes all includes; wrapper exposes only --check."
     },
     {
       "id": "US-392",
       "title": "app shell spec parity (host default, ShellRunner, history/interactive flags)",
-      "description": "As a user, `lando shell` behaves as §8.2.4 specifies: host mode is the default, host execution runs through the Bun-Shell-backed ShellRunner service, and --no-history / --no-interactive are honored.",
+      "description": "As a user, `lando shell` behaves as \u00a78.2.4 specifies: host mode is the default, host execution runs through the Bun-Shell-backed ShellRunner service, and --no-history / --no-interactive are honored.",
       "acceptanceCriteria": [
-        "Default mode is host; `--service <name>` selects service mode explicitly (per §8.2.4 precedence — read the spec verbatim before flipping; amend the spec first if ambiguous). The default flip is routed through the deprecation governance surface.",
-        "Host execution routes through the `ShellRunner` service (`core/src/services/shell-runner.ts`), not `child_process.spawn` in the command body — command bodies stay side-effect-free per spec §1.2.",
+        "Default mode is host; `--service <name>` selects service mode explicitly (per \u00a78.2.4 precedence \u2014 read the spec verbatim before flipping; amend the spec first if ambiguous). The default flip is routed through the deprecation governance surface.",
+        "Host execution routes through the `ShellRunner` service (`core/src/services/shell-runner.ts`), not `child_process.spawn` in the command body \u2014 command bodies stay side-effect-free per spec \u00a71.2.",
         "`--no-history` prevents host shell-history persistence for the session; `--no-interactive` runs non-TTY (suitable for agents/CI) with deterministic exit-code propagation.",
         "Interactive TTY behavior (signal forwarding, exit codes, terminal restore) is covered by a tmux-driven integration test or an equivalent PTY harness.",
         "Dual-dispatch parity holds; renderer boundary passes.",
@@ -374,12 +374,12 @@
       ],
       "priority": 21,
       "passes": true,
-      "notes": "Origin: spec §8.2.4. Audit: core/src/cli/commands/shell.ts defaults to service mode and spawns host shells via child_process; flags limited to service/host."
+      "notes": "Origin: spec \u00a78.2.4. Audit: core/src/cli/commands/shell.ts defaults to service mode and spawns host shells via child_process; flags limited to service/host."
     },
     {
       "id": "US-393",
       "title": "app logs --follow and --since",
-      "description": "As a user debugging a service, I can stream logs live (--follow) and bound them by time (--since), per §8.2.5.",
+      "description": "As a user debugging a service, I can stream logs live (--follow) and bound them by time (--since), per \u00a78.2.5.",
       "acceptanceCriteria": [
         "`--follow` streams provider logs until interrupt, through the renderer in TTY mode and as StreamFrame NDJSON under --format json; cancellation cleans up the provider log stream under Scope.",
         "`--since` accepts the spec'd duration/timestamp grammar and filters accordingly; invalid grammar fails with remediation.",
@@ -392,7 +392,7 @@
       ],
       "priority": 22,
       "passes": true,
-      "notes": "Origin: spec §8.2.5. Audit: logs.ts honors only service/tail; the OCLIF wrapper marks follow/since as Beta-only — Beta is now."
+      "notes": "Origin: spec \u00a78.2.5. Audit: logs.ts honors only service/tail; the OCLIF wrapper marks follow/since as Beta-only \u2014 Beta is now."
     },
     {
       "id": "US-394",
@@ -400,9 +400,9 @@
       "description": "As a user of the global app (shipped in Alpha 3), the global-app management commands actually work instead of returning deferred-stub errors.",
       "acceptanceCriteria": [
         "`meta global list` enumerates global-app services with status through the machine-output contract.",
-        "`meta global info` reports the global app's resolved config/urls/services (parity with `app info` shape where §8.4 says so).",
+        "`meta global info` reports the global app's resolved config/urls/services (parity with `app info` shape where \u00a78.4 says so).",
         "`meta global logs` supports the same surface as `app logs` (including US-393 flags) scoped to the global app.",
-        "`meta global restart` restarts the global app deterministically (stop+start semantics per §8.4).",
+        "`meta global restart` restarts the global app deterministically (stop+start semantics per \u00a78.4).",
         "The deferred-stub helper is no longer referenced by these four commands; compiled-dispatch branches exist and parity tests cover them.",
         "Result schemas are added to the frozen snapshot; --json envelopes verified by the conformance suite.",
         "Tests pass",
@@ -411,16 +411,16 @@
       ],
       "priority": 23,
       "passes": true,
-      "notes": "Origin: spec §8.4 / §18 (global app shipped in Alpha 3). Audit: all four are makeDeferredStubCommand stubs. Share implementation with app-scoped commands via the global AppRef; do not fork logic."
+      "notes": "Origin: spec \u00a78.4 / \u00a718 (global app shipped in Alpha 3). Audit: all four are makeDeferredStubCommand stubs. Share implementation with app-scoped commands via the global AppRef; do not fork logic."
     },
     {
       "id": "US-395",
       "title": "Real version reporting",
-      "description": "As a user (or installer, or self-update flow), `lando version` and `lando --version` report the actual build version, embedded at build time — never 0.0.0.",
+      "description": "As a user (or installer, or self-update flow), `lando version` and `lando --version` report the actual build version, embedded at build time \u2014 never 0.0.0.",
       "acceptanceCriteria": [
         "`CORE_VERSION` (`core/src/version.ts`) and the `version` command result derive from the package version at build time: compiled binaries embed it via the build's define/injection step, and source dispatch reads the workspace package version.",
         "`lando version` reports core, Bun, and platform truthfully in both dispatch modes; `lando --version` stays within the cold-start budget (< 80ms cold) with no Effect/OCLIF import creep.",
-        "The release pipeline's version stamping (scripts/release.ts) and this embedding agree — one source of truth; a release-stage test asserts the built binary prints the stamped version.",
+        "The release pipeline's version stamping (scripts/release.ts) and this embedding agree \u2014 one source of truth; a release-stage test asserts the built binary prints the stamped version.",
         "A guard test fails if CORE_VERSION regresses to the 0.0.0 placeholder in a built artifact.",
         "Tests pass",
         "Typecheck passes",
@@ -428,7 +428,7 @@
       ],
       "priority": 24,
       "passes": true,
-      "notes": "Origin: spec §8.1/§17. Audit: core/src/version.ts is `export const CORE_VERSION = \"0.0.0\"` and core/src/cli/commands/version.ts hardcodes core: \"0.0.0\" with a TODO. Compiled-mode constraint: no import.meta.url for package metadata (core/AGENTS.md)."
+      "notes": "Origin: spec \u00a78.1/\u00a717. Audit: core/src/version.ts is `export const CORE_VERSION = \"0.0.0\"` and core/src/cli/commands/version.ts hardcodes core: \"0.0.0\" with a TODO. Compiled-mode constraint: no import.meta.url for package metadata (core/AGENTS.md)."
     },
     {
       "id": "US-396",
@@ -686,29 +686,29 @@
       "title": "Runtime-bundle publishing workflow (runtime-v* release series)",
       "description": "As a maintainer, bumping plugins/provider-lando/runtime-bundle-version triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a runtime-v<version> GitHub Release in this repository.",
       "acceptanceCriteria": [
-        "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by runtime host key: linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64 (the §13.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md).",
-        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): Podman + rootless helpers on Linux; the Podman remote client + machine/gvproxy helpers on macOS and Windows. Re-running against the same pins produces artifacts with identical SHA-256s.",
+        "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the existing build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: linux-x64, linux-arm64, darwin-arm64, win32-x64 (the §13.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md). Podman 6 drops Intel Mac support.",
+        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include Podman + rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
         "The workflow uploads the platform tarballs/zips (per the existing RUNTIME_BUNDLE_TARGETS naming) as assets on a runtime-v<version> GitHub Release in this repository, and fails rather than re-uploads if the tag or any asset already exists (immutability).",
         "scripts/build-runtime-bundle.ts release mode derives asset URLs from this repository's releases/download/runtime-v<version>/ path (the dead lando/runtime-bundles base URL is removed).",
-        "The workflow's final step regenerates runtime-bundle-versions.json against the published assets and surfaces the diff for landing (PR or same-change commit per §17.8), so a version bump and its manifest pin always travel together.",
+        "The workflow's final step regenerates runtime-bundle-versions.json against the published assets and surfaces the diff for landing (PR or same-change commit per \u00a717.8), so a version bump and its manifest pin always travel together.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
       ],
       "priority": 39,
       "passes": false,
-      "notes": "PRD-10 (spec §5.8.1 committed-manifest invariant, §13.5 in-repo hosting, §17.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
+      "notes": "PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
     },
     {
       "id": "US-411",
       "title": "Pin the committed manifest - local builds just work",
       "description": "As a developer, I can compile the binary locally (or run from source) and complete lando setup's runtime-bundle resolution with no LANDO_RUNTIME_BUNDLE_MANIFEST, no override flags, and no special setup - because the committed manifest pins real published artifacts.",
       "acceptanceCriteria": [
-        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all five host targets; the _comment placeholder disclaimer is gone.",
+        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all four host targets; the _comment placeholder disclaimer is gone.",
         "The manifest's runtimeVersion equals the runtime-bundle-version file's content.",
-        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, and installs. This published-manifest smoke check does not replace the §13.5 current-commit override verification, which remains as-is.",
+        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, and installs. This published-manifest smoke check does not replace the \u00a713.5 current-commit override verification, which remains as-is.",
         "Running from source (bun run path) resolves the identical manifest via the existing static JSON import - asserted by a test that the embedded/imported manifest passes the production schema (https-only, no placeholders).",
-        "No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to §5.8.1.",
+        "No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to \u00a75.8.1.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -722,9 +722,9 @@
       "title": "Committed-manifest invariant gates",
       "description": "As a maintainer, CI blocks any change that would regress the manifest to placeholders, off-repo URLs, or a version that drifts from the runtime-bundle-version file - so the local-builds-just-work property, once established, cannot silently rot.",
       "acceptanceCriteria": [
-        "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, the platform key set is exactly the five runtime host keys (linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64 - not the §13.5 release id windows-x64), and runtimeVersion matches plugins/provider-lando/runtime-bundle-version.",
+        "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, the platform key set is exactly the four runtime host keys (linux-x64, linux-arm64, darwin-arm64, win32-x64 - not the §13.5 release id windows-x64), and runtimeVersion matches plugins/provider-lando/runtime-bundle-version. Podman 6 drops Intel Mac support.",
         "The release pipeline (scripts/release.ts) gains a release-blocking stage gate that fails when the manifest violates the invariant, mirroring the placeholder-rejection pattern already used for update-manifest binaries (isPlaceholderBinary).",
-        "Per-PR CI runs only the offline invariant checks (no network); the live verification that each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length runs on the release path and a periodic job, per the §17.2 catalog row's offline/live gate split.",
+        "Per-PR CI runs only the offline invariant checks (no network); the live verification that each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length runs on the release path and a periodic job, per the \u00a717.2 catalog row's offline/live gate split.",
         "Placeholder-manifest regression is covered by a test fixture proving the check fails on the pre-US-411 placeholder manifest.",
         "Tests pass",
         "Typecheck passes",
@@ -733,6 +733,222 @@
       "priority": 41,
       "passes": false,
       "notes": "PRD-10. Mirrors the isPlaceholderBinary pattern from core/src/cli/commands/update.ts."
+    },
+    {
+      "id": "US-413",
+      "title": "provider-lando Podman 6 version gate",
+      "description": "As a Lando-managed runtime user, `lando setup --provider=lando` rejects Podman runtimes below 6.0.0 and reports a tagged remediation before any provider action depends on removed Podman 5 behavior.",
+      "acceptanceCriteria": [
+        "Future implementation bumps MINIMUM_PODMAN_VERSION in plugins/provider-lando/src/setup.ts:29-31 to 6.0.0 and routes every setup error/remediation string that names the Podman floor through that constant.",
+        "The version-floor parser covers both current setup sources: CLI output from podman --version (plugins/provider-lando/src/setup.ts:201-218, parsed at plugins/provider-lando/src/setup.ts:438-440) and API info version.Version (plugins/provider-lando/src/setup.ts:443-455, selected at plugins/provider-lando/src/setup.ts:694-707).",
+        "Version comparison is numeric over major.minor.patch; pre-release and build suffixes are ignored, so 5.2.0 rejects, 6.0.0 accepts, and 6.1.0-rc1 accepts as 6.1.0.",
+        "Rejection uses a ProviderUnavailableError-family tagged error with providerId: \"lando\", operation: \"setup\", details that include the observed version/source, and remediation telling the user to install or select Podman >= 6.0.0.",
+        "Tests cover CLI-version rejection/acceptance and API-info rejection/acceptance without shelling out to a real Podman binary.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/setup.ts:29-31, 201-218, 438-455, 657-707; Podman 6 floor and ProviderUnavailableError remediation."
+    },
+    {
+      "id": "US-414",
+      "title": "provider-podman Podman 6 version gate",
+      "description": "As a user-installed Podman provider user, provider selection/readiness rejects Podman below 6.0.0 using the `/libpod/info` server version and exposes the accepted runtime version through `getVersions.runtime`.",
+      "acceptanceCriteria": [
+        "Future implementation reads the server version from /libpod/info through the existing podmanApi.info path used by provider availability (plugins/provider-podman/src/index.ts:632-635) and does not execute podman version or any other shell command.",
+        "getVersions changes from the current provider-only shape at plugins/provider-podman/src/index.ts:638 to include runtime: <server version> after a successful info read, while preserving provider: \"0.0.0\" until the core version story changes provider versioning.",
+        "Provider selection/readiness fails closed for < 6.0.0 with a ProviderUnavailableError-family tagged error carrying providerId: \"podman\", operation: \"select\" or \"setup\", the observed server version, and remediation to upgrade Podman Desktop/system Podman to >= 6.0.0.",
+        "Tests cover /libpod/info server versions 5.2.0, 6.0.0, and 6.1.0-rc1; the test double proves no command-runner seam is invoked.",
+        "The provider capability matrix at plugins/provider-podman/src/index.ts:241-274 remains capability-only; version gating happens before capabilities are trusted.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-podman/src/index.ts:623-640 and 241-274; /libpod/info server-version gate and getVersions.runtime."
+    },
+    {
+      "id": "US-415",
+      "title": "libpod API prefix and fixture migration",
+      "description": "As a runtime maintainer, all Podman HTTP traffic targets the Podman 6 libpod API prefix and all Podman 5 fixture versions migrate to Podman 6 fixture versions, so API correctness is independent from version-gate enforcement.",
+      "acceptanceCriteria": [
+        "Future implementation updates the provider-lando socket transport/curl prefix from /v5.0.0 to /v6.0.0 at plugins/provider-lando/src/capabilities.ts:74-100 and plugins/provider-lando/src/capabilities.ts:172-200.",
+        "Future implementation updates the provider-podman named-pipe API prefix from /v5.0.0 to /v6.0.0 at plugins/provider-podman/src/named-pipe.ts:84-108.",
+        "Container-runtime transport tests and provider fixtures currently asserting /v5.0.0 or 5.2.0 migrate to /v6.0.0 and 6.0.2, except tests explicitly named to prove US-413/US-414 reject 5.2.0.",
+        "The story text and implementation comments make clear that the prefix bump is API-correctness work, while US-413 and US-414 are the enforcement stories for the runtime floor.",
+        "A focused grep gate fails if production provider code still constructs http://localhost/v5.0.0 or apiPrefix: \"/v5.0.0\" after the migration.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/capabilities.ts:74-100, 172-200 and plugins/provider-podman/src/named-pipe.ts:84-108; libpod /v6.0.0 prefix and fixture migration."
+    },
+    {
+      "id": "US-416",
+      "title": "managed machine v6 argv behavior",
+      "description": "As a macOS or Windows managed-runtime user, Lando's Podman 6 machine commands preserve the user's default connection, handle the OS-command spelling conflict conservatively, and avoid WSL-unsupported machine OS operations.",
+      "acceptanceCriteria": [
+        "Future implementation changes managed machine start argv at plugins/provider-lando/src/setup.ts:279-329 to pass podman machine start --update-connection=false lando (or the equivalent documented ordering if Podman requires the flag after the machine name), with seam tests asserting exact argv.",
+        "The machine OS operation carries the task-1 evidence caveat: Podman v6.0.0 release notes say podman machine os update, while v6.0.0/latest manpages expose podman machine os upgrade; implementation must either probe/accept both spellings or deliberately target upgrade with a test proving the chosen command is documented.",
+        "WSL-backed Windows machines do not run unsupported machine OS update/upgrade/apply paths; Lando either skips the operation with a typed readiness note or fails with remediation that explains the WSL limitation.",
+        "Existing machine ownership preservation (plugins/provider-lando/src/setup.ts:142-196 and plugins/provider-lando/src/setup.ts:709-728) remains intact: existing non-Lando machines are not reclassified as Lando-owned.",
+        "Seam tests cover create, start, OS update/upgrade/apply decision, stop, and teardown argv on both darwin and win32 without requiring real Podman machine tooling.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/setup.ts:279-329, 142-196, 709-728; managed machine argv, update/upgrade caveat, WSL limitation."
+    },
+    {
+      "id": "US-417",
+      "title": "drop `darwin-x64` from runtime targets and host gates",
+      "description": "As a release maintainer, every runtime-bundle, manifest, CI, and host-gate path reflects Podman 6's removal of Intel Mac support while preserving existing platform-token domains.",
+      "acceptanceCriteria": [
+        "Runtime-bundle targets and committed manifests are exactly linux-x64, linux-arm64, darwin-arm64, and win32-x64, matching PRD-10 US-410/US-412 and never including darwin-x64.",
+        "Generated release/CI workflows keep release artifact id windows-x64 separate from runtime host key win32-x64; no migration collapses those token domains.",
+        "Host detection gates fail on Intel macOS with tagged remediation that names Podman 6's upstream removal and points users to Apple Silicon macOS, Linux, or Windows 11+.",
+        "Future generated paths are updated through generators, not hand edits: a scripts/build-runtime-bundle-workflow.ts-style generator for runtime bundles and the existing CI/release workflow generators, followed by generated workflow drift checks.",
+        "Tests cover host-key set validation and Intel Mac remediation without requiring an Intel Mac runner.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": "PRD-11 anchors: PRD-10 US-410/US-412, spec \u00a713.5, \u00a717.2, \u00a717.8; four runtime host keys and Intel Mac removal."
+    },
+    {
+      "id": "US-418",
+      "title": "CI provider integration runs on Podman 6",
+      "description": "As a maintainer, provider integration CI proves the Podman 6 contract before running Podman-backed contract tests, rather than silently inheriting whatever Podman line the runner image provides.",
+      "acceptanceCriteria": [
+        "Future implementation updates the generated provider matrix path anchored at scripts/build-provider-matrix-workflow.ts:116-150 to install or stage Podman >= 6.0.0, passt/pasta, Netavark v2.x, and Aardvark v2.x on Linux provider-integration runners.",
+        "CI asserts podman version is >= 6.0.0 with the same numeric suffix-ignored policy before starting podman system service; a failed assertion exits before tests start and prints remediation in the job log.",
+        "Ubuntu 24.04 distro/OBS package selection is explicit in generated workflow input or docs; if OBS availability is unresolved, the workflow carries a temporary fallback comment and the Open Question remains active.",
+        "Generated workflow changes land through the generator and pass git diff --exit-code on the generated workflow path, plus any named generated workflow gate used by this repo.",
+        "docs/ci-runbook.md is updated in the future implementation change if CI setup commands change, and guide/runbook drift gates are run in that same change.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": "PRD-11 anchors: scripts/build-provider-matrix-workflow.ts:116-150 and docs/ci-runbook.md; Podman 6 provider-integration CI assertion."
+    },
+    {
+      "id": "US-419",
+      "title": "pull progress and typed pull failures",
+      "description": "As a user pulling artifacts through Podman 6, Lando requests streaming pull progress, routes all user-visible output through the renderer, and reports non-200 pull failures as typed provider errors with redacted details.",
+      "acceptanceCriteria": [
+        "Future implementation changes Podman image pull requests to include pullProgress=true, matching the Podman 6 Libpod Pull endpoint behavior from task-1 evidence.",
+        "Non-200 pull responses become typed ProviderUnavailableError or operation-specific pull errors instead of assuming Podman pull endpoints always return HTTP 200 on failure.",
+        "Pull progress is rendered only through the Renderer service; no new console.* or process.std*.write appears under core/src/** or plugins/**, and check:renderer-boundary passes.",
+        "Error bodies and progress details pass through RedactionService before events, transcripts, or structured output store registry/image names that may include credentials or private hosts; check:redaction-boundary passes.",
+        "Tests cover progress frames, non-200 failure mapping, renderer-only output, and redacted transcript/event payloads.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": "PRD-11 anchors: Podman 6 pullProgress evidence plus Renderer/Redaction boundaries; typed pull failures and progress rendering."
+    },
+    {
+      "id": "US-420",
+      "title": "service health uses Podman 6 `Health` and `runProbe`",
+      "description": "As a user inspecting app readiness on Podman 6, Lando derives service health from the container `Health` field and uses the shared probe primitive for polling.",
+      "acceptanceCriteria": [
+        "Future implementation maps the Podman 6 container Health field into ServiceRuntimeInfo health/readiness output instead of deriving readiness only from State.Running/State.Status as currently anchored in plugins/provider-lando/src/inspect.ts:12-19 and plugins/provider-lando/src/inspect.ts:61-132.",
+        "Polling/backoff/timeout behavior for health waits uses @lando/sdk/probe's runProbe; no new hand-rolled Effect.retry, Effect.repeat, or Schedule.* loop is introduced in provider health code, and check:probe-boundary passes.",
+        "Probe failures redact ProbeResult.lastError through RedactionService before events, transcripts, or readiness summaries; check:redaction-boundary passes.",
+        "Tests cover healthy, starting, unhealthy, missing-health, timeout, and redacted-last-error cases with a fake Podman API response.",
+        "Provider capabilities remain honest: any health capability change must update the provider contract suite and @lando/sdk schema/compatibility artifacts if public schema changes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 49,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/inspect.ts:12-19, 61-132 and @lando/sdk/probe runProbe; Podman 6 Health readiness mapping."
+    },
+    {
+      "id": "US-421",
+      "title": "OOMKilled died-event doctor surfacing",
+      "description": "As a user diagnosing a stopped service, `lando doctor` surfaces Podman 6 died events with `OOMKilled` and gives remediation to raise memory or reduce workload.",
+      "acceptanceCriteria": [
+        "Future implementation consumes Podman container died-event payloads that include the OOMKilled attribute described in task-1 evidence and correlates them to the affected app/service where possible.",
+        "Doctor output extends the runtime diagnostic model anchored at core/src/cli/commands/doctor.ts:60-92 with a warning/failure solution when OOMKilled is set, without leaking raw event payloads.",
+        "Remediation tells users to increase Podman machine/runtime memory, reduce service memory demand, or inspect the service logs; Windows/macOS remediation may mention Podman Desktop machine resource settings.",
+        "Event details are redacted before doctor NDJSON/text output and transcripts; check:redaction-boundary and check:renderer-boundary pass for any touched output paths.",
+        "Tests cover OOMKilled present, absent, malformed, and unrelated died events.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": "PRD-11 anchors: core/src/cli/commands/doctor.ts:60-92 and Podman died-event OOMKilled evidence; doctor remediation surfacing."
+    },
+    {
+      "id": "US-422",
+      "title": "volume prune and filter semantics",
+      "description": "As a user cleaning Podman volumes, Lando's prune behavior matches Podman 6 anonymous-only defaults, AND filter semantics, and explicit destructive intent.",
+      "acceptanceCriteria": [
+        "Future implementation never relies on Podman 5's broad podman volume prune behavior; anonymous-only default is preserved unless the user explicitly asks for named-volume cleanup.",
+        "Any Lando volume cleanup that intends to remove named unused volumes passes explicit --all/API equivalent and exposes a --dry-run or dry-run result path before destructive deletion.",
+        "Multiple filters use Podman 6's AND semantics, including label!= behavior called out in task-1 evidence; tests prove the selected filter set cannot delete volumes outside the current app/provider labels.",
+        "The existing destroy-volume pattern anchored in plugins/provider-docker/src/index.ts:936-1004 and provider-podman delegation at plugins/provider-podman/src/index.ts:651-661 remains explicit per app stores; no provider-wide prune happens as an incidental destroy side effect.",
+        "State updates for removed volumes use StateStore/existing app-plan persistence seams where state is durable, and check:state-store-boundary passes if those paths are touched.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-docker/src/index.ts:936-1004 and plugins/provider-podman/src/index.ts:651-661; Podman 6 volume prune/filter semantics."
+    },
+    {
+      "id": "US-423",
+      "title": "managed machine trust and Windows remediation",
+      "description": "As a macOS or Windows user, Lando imports native CA trust only into machines it owns and reports Windows Hyper-V prep as manual remediation rather than auto-elevating.",
+      "acceptanceCriteria": [
+        "Future implementation passes --import-native-ca only when creating or managing a Lando-owned machine, using the ownership state anchored at plugins/provider-lando/src/setup.ts:142-196 and plugins/provider-lando/src/setup.ts:709-728; user-owned machines are not modified implicitly.",
+        "Windows Hyper-V remediation may recommend podman system hyperv-prep and explain that admin privileges are required for prep, but Lando never auto-elevates or runs the prep command for the user.",
+        "The audit is narrow and multi-provider aware: @lando/provider-lando managed machine behavior is updated, while @lando/provider-podman user-installed Podman Desktop behavior remains advisory/readiness-only.",
+        "Tests cover Lando-owned machine create, existing user-owned machine, Windows missing Hyper-V prerequisites, and remediation text without requiring a Windows admin runner.",
+        "Any machine trust events/transcripts redact local certificate paths and host-specific details before output; check:redaction-boundary and check:renderer-boundary pass if output changes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/setup.ts:142-196, 709-728; managed-machine trust, --import-native-ca, Windows Hyper-V remediation."
+    },
+    {
+      "id": "US-424",
+      "title": "managed containers.conf loopback binding",
+      "description": "As a managed-runtime user, Lando writes a managed `containers.conf` that keeps default published ports on loopback once the upstream-canonical `default_host_ips` source is confirmed.",
+      "acceptanceCriteria": [
+        "Future implementation extends plugins/provider-lando/src/runtime-config.ts:17-29 so the managed containers.conf includes [network].default_host_ips set to loopback-only values for managed runtimes, while preserving [engine].helper_binaries_dir.",
+        "Because task-1 evidence confirmed default_host_ips existence but only partially confirmed the canonical upstream exact shape, implementation must first cite the upstream containers/common commit or canonical manpage for [network].default_host_ips = [\"127.0.0.1\", \"::1\"] or adjust the emitted shape to the confirmed source.",
+        "The generated config is owned by Lando's managed runtime only; user/system containers.conf files are not modified, and managed-file writes pass check:managed-file-boundary if the future implementation routes this through managed-file ownership.",
+        "Tests parse the emitted TOML and prove loopback defaults coexist with helper_binaries_dir; a regression test proves no LAN wildcard default is emitted for managed runtime config.",
+        "Network isolation/cross-app reachability behavior is tested or explicitly left behind the Open Question before changing shared network defaults.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": "PRD-11 anchors: plugins/provider-lando/src/runtime-config.ts:17-29 and task-1 default_host_ips caveat; managed containers.conf loopback binding."
     }
   ]
 }

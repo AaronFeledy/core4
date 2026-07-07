@@ -317,7 +317,7 @@ Complete the breadth surface — every canonical service type, both providers on
 **Provider matrix complete:**
 - `@lando/provider-lando` on macOS + Windows (managed Podman VM lifecycle, `lando setup` downloads runtime bundle, checksum verification per §5.8.1)
 - `@lando/provider-docker` on macOS + Windows (Docker Desktop)
-- `@lando/provider-podman` shipped (Linux + Podman Desktop on macOS/Windows)
+- `@lando/provider-podman` shipped (Linux + Podman Desktop on Apple Silicon macOS/Windows 11+)
 - All three pass the provider contract suite
 
 **File sync:**
@@ -406,14 +406,14 @@ Complete the breadth surface — every canonical service type, both providers on
 - Closes §14.2 "Renderer wiring at the CLI command boundary" and converts the §2.4 interim caveats into the originally-specified prohibitions.
 
 **Build / distribution:**
-- All 5 platform binaries: `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`
+- All 4 platform binaries: `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`
 - Codegen pipeline complete: `scripts/codegen.ts`, `scripts/build-bundled-plugins.ts`
 - `bundled.ts` populated with real Layer references
 - AOT bootstrap-layer codegen (§17.2)
 - Asset embedding (recipes, schemas, OCLIF manifest)
 
 **CI:**
-- Per-PR matrix on all 5 platforms (§13.6)
+- Per-PR matrix on all 4 supported release platforms (§13.6)
 - All test layers from §13.1 green per-PR
 - Nightly: full e2e against `@lando/provider-lando`, distribution rehearsal
 - Weekly provider matrix (Docker Desktop, Engine, Podman Desktop, Podman, Lima, OrbStack)
@@ -622,7 +622,7 @@ Stabilize Beta 1. Burn down the bug backlog from real-world Beta 1 adoption with
 
 ### Exit criteria for Beta 2
 
-The Beta 1 bug backlog is burned down to zero known blockers, the release machinery runs on all 5 platforms, and the candidate is ready to be promoted to RC. No new feature surface landed.
+The Beta 1 bug backlog is burned down to zero known blockers, the release machinery runs on all 4 supported release platforms, and the candidate is ready to be promoted to RC. No new feature surface landed.
 
 ---
 
@@ -729,7 +729,7 @@ These were called out in §14.2 and the canonical surface non-goals as **archite
 | **Compose subset creep** | Each accepted Compose key is a permanent compatibility commitment | Maintain an explicit allowlist file from MVP; reject anything not on it with a remediation message |
 | **`bundled.ts` codegen drift** | Bundled plugin set is bake-time only; a missing plugin breaks the binary silently | Ship `scripts/build-bundled-plugins.ts` in MVP even if hand-curated |
 | **Hot-path latency** | The promised ~150ms on `tooling` bootstrap is the perceived performance number | Add a benchmark gate in CI starting Alpha 3; track regression by commit |
-| **CI runner Podman drift** | MVP ships CI with Podman in the runner (PRD-07). GitHub-hosted runner image changes can break the private-socket setup silently. | Pin `ubuntu-24.04` (not `latest`); on every Bun/Podman bump, run the integration job manually before merging. |
+| **CI runner Podman drift** | MVP ships CI with Podman in the runner (PRD-07). GitHub-hosted runner image changes can break the private-socket setup silently. | Pin the runner image and assert the Podman 6 contract (`>= 6.0.0`, cgroups v2, nftables, Pasta + Netavark/Aardvark v2) before provider integration starts; on every Bun/Podman bump, run the integration job manually before merging. |
 | **Plugin trust UX** | Open decision at GA — wrong shape hurts plugin adoption | Don't ship plugin install (Alpha 3) without a stub; finalize at Alpha 4 |
 | **Telemetry default-on** | Privacy-sensitive default — wrong inventory becomes a public incident | Inventory must be reviewed at Alpha 4 by someone outside core eng |
 
