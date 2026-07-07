@@ -339,7 +339,21 @@ ${landoManagedPodmanTeardownCommands}
           for log in /tmp/lando-provider-test-logs/*.log; do
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
-          done`;
+          done
+          LANDO_RT="$HOME/.local/share/lando/runtime"
+          ls -la "$LANDO_RT/bin" > provider-diagnostics/runtime-bin.txt 2>&1 || true
+          ls -la "$LANDO_RT/run" >> provider-diagnostics/runtime-bin.txt 2>&1 || true
+          ps auxww | grep -i podman > provider-diagnostics/podman-processes.txt 2>&1 || true
+          cp -r "$HOME/.cache/lando/logs" provider-diagnostics/lando-logs 2>/dev/null || true
+          LP="$LANDO_RT/bin/podman"
+          if test -x "$LP"; then
+            ldd "$LP" > provider-diagnostics/managed-podman-ldd.txt 2>&1 || true
+            timeout 20 "$LP" --root "$LANDO_RT/storage" --runroot "$LANDO_RT/run" --log-level=debug info \
+              > provider-diagnostics/managed-podman-info.log 2>&1 || true
+            timeout 25 "$LP" --root "$LANDO_RT/storage" --runroot "$LANDO_RT/run" --log-level=debug \
+              system service --time=10 "unix:///tmp/diag-podman.sock" \
+              > provider-diagnostics/managed-podman-service.log 2>&1 || true
+          fi`;
 
 const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
   `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;
