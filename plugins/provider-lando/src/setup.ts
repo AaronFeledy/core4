@@ -21,13 +21,14 @@ import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
+import { podmanVersionMeetsFloor } from "./version-floor.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
 const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
 const PROVIDER_ID = "lando";
-const MINIMUM_PODMAN_VERSION = "4.9.0";
+const MINIMUM_PODMAN_VERSION = "6.0.0";
 
 const currentHostPlatform = (): HostPlatform =>
   process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
@@ -43,6 +44,30 @@ export class PodmanNotInstalledError extends ProviderUnavailableError {
     });
   }
 }
+
+export type PodmanVersionSource = "cli" | "api-info";
+
+export class PodmanVersionUnsupportedError extends ProviderUnavailableError {
+  constructor(observedVersion: string, source: PodmanVersionSource) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message: `Podman version "${observedVersion}" (reported by ${
+        source === "cli" ? "`podman --version`" : "the Podman API"
+      }) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+      details: { observedVersion, source, minimumVersion: MINIMUM_PODMAN_VERSION },
+      remediation: `Install or select Podman >= ${MINIMUM_PODMAN_VERSION} and rerun \`lando setup\`.`,
+    });
+  }
+}
+
+const enforcePodmanVersionFloor = (
+  observedVersion: string,
+  source: PodmanVersionSource,
+): Effect.Effect<void, PodmanVersionUnsupportedError> =>
+  podmanVersionMeetsFloor(observedVersion, MINIMUM_PODMAN_VERSION)
+    ? Effect.void
+    : Effect.fail(new PodmanVersionUnsupportedError(observedVersion, source));
 
 export class PodmanSocketUnreachableError extends ProviderUnavailableError {
   constructor(cause?: unknown) {
@@ -658,13 +683,14 @@ export const setupProviderLando = (
         options.eventService,
         podmanStep,
         counter,
-        options.podmanCommand !== undefined
+        (options.podmanCommand !== undefined
           ? options.podmanCommand.version
           : resolveSetupPodmanCommandRunner(
               platform,
               options.runtimeBinDir,
               options._machineToolingExists ?? existsSync,
-            ).pipe(Effect.flatMap((runner) => runner.version)),
+            ).pipe(Effect.flatMap((runner) => runner.version))
+        ).pipe(Effect.tap((output) => enforcePodmanVersionFloor(parsePodmanVersion(output), "cli"))),
       );
 
       if (platform === "darwin" && machineStep !== undefined) {
@@ -699,7 +725,15 @@ export const setupProviderLando = (
           counter,
           api === undefined
             ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
-            : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
+            : api.info.pipe(
+                Effect.mapError((cause) => new PodmanSocketUnreachableError(cause)),
+                Effect.tap((value) => {
+                  const apiVersion = infoPodmanVersion(value);
+                  return apiVersion === undefined
+                    ? Effect.void
+                    : enforcePodmanVersionFloor(apiVersion, "api-info");
+                }),
+              ),
         );
       }
 

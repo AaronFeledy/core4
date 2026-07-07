@@ -1869,8 +1869,8 @@ describe("meta:setup command", () => {
     const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
-        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
-        podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
             version: "0.0.0-test",
@@ -1894,7 +1894,7 @@ describe("meta:setup command", () => {
 
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
       expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
-        podmanVersion: "5.2.0",
+        podmanVersion: "6.0.2",
         runtimeBundleVersion: "0.0.0-test",
         runtimeBundleSha256: sha256(bundleBytes),
       });
@@ -1914,8 +1914,8 @@ describe("meta:setup command", () => {
     ]);
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
-        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
-        podmanCommand: { version: Effect.succeed("podman version 5.2.0") },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
             version: "0.0.0-test",
@@ -1942,7 +1942,7 @@ describe("meta:setup command", () => {
       expect((await stat(join(runtimeBinDir, "podman"))).mode & 0o111).not.toBe(0);
       expect((await stat(join(runtimeBinDir, "gvproxy"))).mode & 0o111).not.toBe(0);
       expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
-        podmanVersion: "5.2.0",
+        podmanVersion: "6.0.2",
         runtimeBundleVersion: "0.0.0-test",
         runtimeBundleSha256: sha256(bundleBytes),
         runtimeBinDir,
