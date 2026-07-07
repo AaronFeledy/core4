@@ -696,7 +696,7 @@
         "Lint passes"
       ],
       "priority": 39,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
     },
     {

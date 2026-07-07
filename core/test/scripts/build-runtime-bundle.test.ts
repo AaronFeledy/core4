@@ -9,9 +9,13 @@ import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
 import {
+  LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
   RUNTIME_BUNDLE_TARGETS,
   buildRuntimeBundleManifest,
   computeBundleEntry,
+  releaseBundleBaseUrl,
+  releaseBundleUrl,
+  resolveRuntimeBundleRepository,
 } from "../../../scripts/build-runtime-bundle.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientLive } from "../../src/http-client/live.ts";
@@ -114,6 +118,54 @@ describe("buildRuntimeBundleManifest (--local)", () => {
       expect(bundle.version).toBe("9.9.9-local");
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("release-mode URL derivation", () => {
+  test("resolveRuntimeBundleRepository honors GITHUB_REPOSITORY, else the in-repo default", () => {
+    expect(resolveRuntimeBundleRepository({ GITHUB_REPOSITORY: "octo/app" })).toBe("octo/app");
+    expect(resolveRuntimeBundleRepository({ GITHUB_REPOSITORY: "" })).toBe(
+      LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
+    );
+    expect(resolveRuntimeBundleRepository({})).toBe(LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT);
+    expect(LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT).toBe("lando-community/core4");
+  });
+
+  test("releaseBundleBaseUrl points at this repository's runtime-v<version> release path", () => {
+    expect(releaseBundleBaseUrl("0.1.0", "lando-community/core4")).toBe(
+      "https://github.com/lando-community/core4/releases/download/runtime-v0.1.0",
+    );
+  });
+
+  test("releaseBundleUrl derives the in-repo asset URL when no base URL override is given", () => {
+    const target = { key: "linux-x64", filename: "lando-runtime-linux-x64.tar.gz" };
+    expect(releaseBundleUrl(target, { runtimeVersion: "0.1.0", repository: "lando-community/core4" })).toBe(
+      "https://github.com/lando-community/core4/releases/download/runtime-v0.1.0/lando-runtime-linux-x64.tar.gz",
+    );
+  });
+
+  test("releaseBundleUrl honors an explicit base URL override and trims trailing slashes", () => {
+    const target = { key: "win32-x64", filename: "lando-runtime-win32-x64.zip" };
+    expect(
+      releaseBundleUrl(target, {
+        runtimeVersion: "0.1.0",
+        repository: "lando-community/core4",
+        baseUrl: "https://example.test/bundles///",
+      }),
+    ).toBe("https://example.test/bundles/lando-runtime-win32-x64.zip");
+  });
+
+  test("derived URLs are HTTPS for every runtime host target", () => {
+    for (const target of RUNTIME_BUNDLE_TARGETS) {
+      const url = releaseBundleUrl(target, {
+        runtimeVersion: "1.2.3",
+        repository: "lando-community/core4",
+      });
+      expect(
+        url.startsWith("https://github.com/lando-community/core4/releases/download/runtime-v1.2.3/"),
+      ).toBe(true);
+      expect(url.endsWith(target.filename)).toBe(true);
     }
   });
 });
