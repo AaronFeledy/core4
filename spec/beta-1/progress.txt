@@ -920,3 +920,8 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Merge: deferred (Linux CI jobs cannot pass until provider-integration runners install/stage Podman >= 6.0.0 with passt/Netavark/Aardvark via the generated provider-matrix workflow — that is the CI Podman 6 provisioning story in this wave; do not weaken the gate to merge sooner)
 ---
 
+## 2026-07-07 15:45 CDT - US-413
+- Story verified complete on branch (no new code): acceptance criteria remain satisfied, tree clean, PR #540 open awaiting Linux CI Podman 6 provisioning before it can merge.
+- Verification: typecheck, lint passed; version-gate and setup integration spot checks passed (39 tests).
+---
+
