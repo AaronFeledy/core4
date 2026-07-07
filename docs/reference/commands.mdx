@@ -571,6 +571,22 @@ Arguments:
 | --- | --- |
 | `id` | Scratch app id. |
 
+## `lando apps:scratch:run`
+
+Run a one-off command in a disposable scratch app.
+
+Aliases: `lando scratch:run`, `lando run`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--answer` | Recipe answer in key=value form (repeatable). |
+| `--from` | Recipe reference for the disposable scratch app (default: the bundled toolbox). |
+| `--keep` | Keep the scratch app after the command exits and print its id. |
+| `--no-mount` | Do not mount the current working directory into the scratch app. |
+| `--service` | Service to run the command in (default: the primary service). |
+
 ## `lando apps:scratch:start`
 
 Start a scratch Lando app.
@@ -587,7 +603,7 @@ Flags:
 | `--fork` | Use the current app as the scratch source. |
 | `--from` | Recipe reference to materialize as a scratch app. |
 | `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
-| `--isolate` | Fork isolation: 'none' shares the source app root, 'full' uses a content copy. (one of `none`, `full`) |
+| `--isolate` | Scratch isolation mode; 'none' is a legacy alias for 'cwd'. (one of `none`, `full`, `baked`, `cwd`) |
 | `--mount-cwd` | Mount the current working directory into the scratch app's primary service. |
 | `--name` | Base name for the generated scratch id. |
 | `--no-interactive` | Never prompt; recipe prompts must be satisfied by defaults or --answer. |

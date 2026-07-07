@@ -7,7 +7,7 @@
       "root": "/cache/scratch/scratch-drupal-abc123/root"
     },
     "source": { "kind": "fork" },
-    "mode": "none",
+    "mode": "full",
     "created": "2026-05-31T18:00:00.000Z",
     "status": "attached"
   },

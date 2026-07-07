@@ -26,6 +26,7 @@ import {
   publishTreeComplete,
   publishTreeStart,
 } from "../progress.ts";
+import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserved-aliases.ts";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
@@ -272,12 +273,24 @@ export const runTooling = (
         : yield* loadUserLandofileAt(landofileService, target.root);
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
     const task = landofile.tooling?.[toolingLookupKey];
+    const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
+
+    if (task !== undefined && reservedOwner !== undefined) {
+      return yield* Effect.fail(
+        commandAliasConflictError(toolingLookupKey, `tooling task ${toolingLookupKey}`),
+      );
+    }
 
     if (task === undefined) {
       const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
       if (appRoot !== undefined) {
         const scripts = yield* discoverBunShellScripts({ appRoot });
         const script = findBunShellScriptForName(scripts, options.name);
+        if (script !== undefined && reservedOwner !== undefined) {
+          return yield* Effect.fail(
+            commandAliasConflictError(toolingLookupKey, `script-backed tooling task ${script.id}`),
+          );
+        }
         if (script !== undefined) {
           const events =
             options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;

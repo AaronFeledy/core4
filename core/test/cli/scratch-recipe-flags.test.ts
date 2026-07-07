@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ScratchAppService } from "@lando/core/services";
 import { Effect } from "effect";
 
 import {
@@ -8,8 +9,9 @@ import {
 } from "../../src/cli/commands/scratch.ts";
 import { parseScratchStartArgv } from "../../src/cli/run.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { resolveScratchAcquireIsolation } from "../../src/scratch-app/service.ts";
 
-const failureTag = async <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<string> => {
+const failureTag = async <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<string> => {
   const result = await Effect.runPromise(
     effect.pipe(Effect.provide(makeLandoRuntime({ bootstrap: "scratch" })), Effect.either),
   );
@@ -70,7 +72,8 @@ describe("apps:scratch:start recipe flag mapping", () => {
 describe("apps:scratch:start --isolate flag mapping", () => {
   test("scratchStartOptionsFromInput reads a valid isolate mode and defaults to undefined", () => {
     expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "full" } }).isolate).toBe("full");
-    expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "none" } }).isolate).toBe("none");
+    expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "baked" } }).isolate).toBe("baked");
+    expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "none" } }).isolate).toBe("cwd");
     expect(scratchStartOptionsFromInput({ flags: { fork: true } }).isolate).toBeUndefined();
     expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "bogus" } }).isolate).toBeUndefined();
   });
@@ -78,7 +81,8 @@ describe("apps:scratch:start --isolate flag mapping", () => {
   test("parseScratchStartArgv mirrors --isolate parsing (dual-dispatch parity)", () => {
     expect(parseScratchStartArgv(["--fork", "--isolate", "full"]).isolate).toBe("full");
     expect(parseScratchStartArgv(["--fork", "--isolate=full"]).isolate).toBe("full");
-    expect(parseScratchStartArgv(["--fork", "--isolate=none"]).isolate).toBe("none");
+    expect(parseScratchStartArgv(["--fork", "--isolate=baked"]).isolate).toBe("baked");
+    expect(parseScratchStartArgv(["--fork", "--isolate=none"]).isolate).toBe("cwd");
     expect(parseScratchStartArgv(["--fork"]).isolate).toBeUndefined();
     expect(parseScratchStartArgv(["--fork", "--isolate=bogus"]).isolate).toBeUndefined();
   });
@@ -116,5 +120,20 @@ describe("apps:scratch:start --mount-cwd / --share-global-storage flag mapping",
       "--fork",
       "--share-global-storage",
     ]);
+  });
+
+  test("mount-cwd defaults fork acquisition to cwd isolation", () => {
+    expect(resolveScratchAcquireIsolation({ source: { kind: "fork" }, detached: false })).toBe("full");
+    expect(resolveScratchAcquireIsolation({ source: { kind: "fork" }, detached: false, mountCwd: {} })).toBe(
+      "cwd",
+    );
+    expect(
+      resolveScratchAcquireIsolation({
+        source: { kind: "fork" },
+        detached: false,
+        isolate: "baked",
+        mountCwd: {},
+      }),
+    ).toBe("baked");
   });
 });

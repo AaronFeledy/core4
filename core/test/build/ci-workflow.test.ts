@@ -74,7 +74,8 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Setup Bun");
     expect(providerContracts).toContain("          bun-version-file: .bun-version");
     expect(providerContracts).toContain("        run: bun install --frozen-lockfile");
-    expect(providerContracts).toContain("      - name: Install Podman");
+    expect(providerContracts).toContain("      - name: Install Podman 6 toolchain");
+    expect(providerContracts).toContain("      - name: Assert Podman 6 host contract");
     expect(providerContracts).toContain("      - name: Configure Docker socket");
     expect(providerContracts).toContain("      - name: Run provider contract tests");
     expect(providerContracts).toContain(
@@ -104,8 +105,9 @@ describe("ci workflow", () => {
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-24.04");
     expect(providerLandoE2e).toContain("    timeout-minutes: 60");
-    expect(providerLandoE2e).toContain("      - name: Install Podman");
-    expect(providerLandoE2e).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
+    expect(providerLandoE2e).toContain("      - name: Install Podman 6 toolchain");
+    expect(providerLandoE2e).toContain("      - name: Assert Podman 6 host contract");
+    expect(providerLandoE2e).toContain("        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerLandoE2e).toContain("      - name: Start Podman socket");
     expect(providerLandoE2e).toContain("      - name: Build Linux x64 binary");
     expect(providerLandoE2e).toContain("      - name: Run smoke e2e scenarios");
@@ -487,7 +489,8 @@ describe("ci workflow", () => {
     expect(guideScenarios).not.toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
-    expect(guideScenarios).not.toContain("      - name: Install Podman");
+    expect(guideScenarios).toContain("      - name: Install Podman 6 toolchain");
+    expect(guideScenarios).toContain("      - name: Assert Podman 6 host contract");
     expect(guideScenarios).not.toContain("podman system service");
     expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
     expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
@@ -667,7 +670,8 @@ describe("ci workflow", () => {
     expect(providerIntegration).not.toContain("LANDO_TEST_PODMAN_SOCKET");
     expect(providerIntegration).not.toContain("/tmp/podman.sock");
     expect(providerIntegration).not.toContain("/tmp/podman-service.pid");
-    expect(providerIntegration).not.toContain("      - name: Install Podman");
+    expect(providerIntegration).toContain("      - name: Install Podman 6 toolchain");
+    expect(providerIntegration).toContain("      - name: Assert Podman 6 host contract");
     expect(providerIntegration).not.toContain("      - name: Start Podman socket");
     expect(providerIntegration).not.toContain("      - name: Teardown Podman");
 

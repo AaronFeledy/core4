@@ -50,8 +50,8 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       default: false,
     }),
     isolate: Flags.string({
-      options: ["none", "full"],
-      description: "Fork isolation: 'none' shares the source app root, 'full' uses a content copy.",
+      options: ["none", "full", "baked", "cwd"],
+      description: "Scratch isolation mode; 'none' is a legacy alias for 'cwd'.",
     }),
     "mount-cwd": Flags.string({
       helpValue: "container-path",

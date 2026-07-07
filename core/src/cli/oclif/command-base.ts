@@ -10,6 +10,7 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
+import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
@@ -19,6 +20,7 @@ import {
   resolveCliRendererMode,
   runWithRendererHandling,
 } from "../renderer-boundary.ts";
+import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
@@ -115,6 +117,8 @@ export const validateCommandSpec = (spec: {
   readonly resultSchema?: unknown;
   readonly mcpAllowed?: boolean;
   readonly hostProxyAllowed?: boolean;
+  readonly topLevelAlias?: LandoTopLevelAlias;
+  readonly aliases?: ReadonlyArray<LandoAliasSpec>;
 }): void => {
   if (spec.resultSchema === undefined || spec.resultSchema === null) {
     throw new CommandRegistrationError({
@@ -125,6 +129,14 @@ export const validateCommandSpec = (spec: {
   }
   assertMcpAllowlistSafe(spec);
   assertHostProxyAllowlistSafe(spec);
+  assertTopLevelAliasesClaimable(
+    spec.id,
+    resolveTopLevelAliases({
+      id: spec.id,
+      ...(spec.topLevelAlias === undefined ? {} : { topLevelAlias: spec.topLevelAlias }),
+      ...(spec.aliases === undefined ? {} : { aliases: spec.aliases }),
+    }),
+  );
 };
 
 const MVP_COMMAND_IDS = new Set([
@@ -168,6 +180,7 @@ const MVP_COMMAND_IDS = new Set([
   "apps:scratch:info",
   "apps:scratch:list",
   "apps:scratch:logs",
+  "apps:scratch:run",
   "apps:scratch:start",
   "apps:scratch:stop",
   "meta:bun",
@@ -242,7 +255,9 @@ export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined 
     ? input.signal
     : undefined;
 
-export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
+export const resolveTopLevelAliases = (
+  spec: Pick<LandoCommandSpec, "id" | "topLevelAlias" | "aliases">,
+): ReadonlyArray<string> => {
   const explicit = (spec.aliases ?? []).map((alias) => (typeof alias === "string" ? alias : alias.name));
   const top = spec.topLevelAlias;
 
@@ -292,6 +307,12 @@ export abstract class LandoCommandBase extends Command {
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     validateCommandSpec(spec);
+    if (spec.id === "apps:scratch:run") {
+      const normalizedArgv = normalizeScratchRunArgvForParsing(this.argv);
+      this.argv.length = 0;
+      this.argv.push(...normalizedArgv);
+    }
+
     let rendererMode: RendererMode;
     try {
       const resolution = await resolveCliRendererMode({

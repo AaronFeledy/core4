@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/ci.yml");
@@ -221,14 +222,23 @@ const landoRootlessPrereqSteps = `      - name: Provision rootless runtime prere
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const landoRuntimeBundleSetupSteps = `      - name: Stage current-commit runtime bundle
+const landoRuntimeBundleSetupSteps = `${renderInstallPodman6Step()}
+
+${renderAssertPodman6Step()}
+
+      - name: Stage current-commit runtime bundle
         run: |
-          sudo apt-get install -y podman
           mkdir -p dist/cache/runtime-bundle
           STAGE="$(mktemp -d)"
           cp "$(command -v podman)" "$STAGE/podman"
-          for helper in newuidmap newgidmap slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
-            src="$(command -v "$helper" 2>/dev/null || true)"
+          for helper in newuidmap newgidmap pasta passt rootlessport catatonit slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
+            src=""
+            IFS=":"
+            for dir in \${LANDO_CI_PODMAN_TOOLCHAIN_DIRS:-}; do
+              if test -x "$dir/$helper"; then src="$dir/$helper"; break; fi
+            done
+            unset IFS
+            if test -z "$src"; then src="$(command -v "$helper" 2>/dev/null || true)"; fi
             if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
             if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
           done
@@ -334,7 +344,21 @@ ${landoManagedPodmanTeardownCommands}
           for log in /tmp/lando-provider-test-logs/*.log; do
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
-          done`;
+          done
+          LANDO_RT="$HOME/.local/share/lando/runtime"
+          ls -la "$LANDO_RT/bin" > provider-diagnostics/runtime-bin.txt 2>&1 || true
+          ls -la "$LANDO_RT/run" >> provider-diagnostics/runtime-bin.txt 2>&1 || true
+          ps auxww | grep -i podman > provider-diagnostics/podman-processes.txt 2>&1 || true
+          cp -r "$HOME/.cache/lando/logs" provider-diagnostics/lando-logs 2>/dev/null || true
+          LP="$LANDO_RT/bin/podman"
+          if test -x "$LP"; then
+            ldd "$LP" > provider-diagnostics/managed-podman-ldd.txt 2>&1 || true
+            timeout 20 "$LP" --root "$LANDO_RT/storage" --runroot "$LANDO_RT/run" --log-level=debug info \
+              > provider-diagnostics/managed-podman-info.log 2>&1 || true
+            timeout 25 "$LP" --root "$LANDO_RT/storage" --runroot "$LANDO_RT/run" --log-level=debug \
+              system service --time=10 "unix:///tmp/diag-podman.sock" \
+              > provider-diagnostics/managed-podman-service.log 2>&1 || true
+          fi`;
 
 const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
   `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;

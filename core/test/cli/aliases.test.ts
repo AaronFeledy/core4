@@ -16,6 +16,7 @@ import AppsScratchGcCommand from "../../src/cli/oclif/commands/apps/scratch/gc.t
 import AppsScratchInfoCommand from "../../src/cli/oclif/commands/apps/scratch/info.ts";
 import AppsScratchListCommand from "../../src/cli/oclif/commands/apps/scratch/list.ts";
 import AppsScratchLogsCommand from "../../src/cli/oclif/commands/apps/scratch/logs.ts";
+import AppsScratchRunCommand from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import AppsScratchStartCommand from "../../src/cli/oclif/commands/apps/scratch/start.ts";
 import AppsScratchStopCommand from "../../src/cli/oclif/commands/apps/scratch/stop.ts";
 
@@ -72,6 +73,7 @@ describe("app command aliases", () => {
     expect(commandAliases(AppsScratchInfoCommand)).toContain("scratch:info");
     expect(commandAliases(AppsScratchLogsCommand)).toContain("scratch:logs");
     expect(commandAliases(AppsScratchGcCommand)).toContain("scratch:gc");
+    expect(commandAliases(AppsScratchRunCommand)).toEqual(expect.arrayContaining(["scratch:run", "run"]));
   });
 
   test("register alias metadata in the OCLIF command manifest model", async () => {
@@ -98,6 +100,7 @@ describe("app command aliases", () => {
     expect(aliasesById.get("apps:scratch:info")).toContain("scratch:info");
     expect(aliasesById.get("apps:scratch:logs")).toContain("scratch:logs");
     expect(aliasesById.get("apps:scratch:gc")).toContain("scratch:gc");
+    expect(aliasesById.get("apps:scratch:run")).toEqual(expect.arrayContaining(["scratch:run", "run"]));
   });
 });
 

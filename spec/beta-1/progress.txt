@@ -902,6 +902,93 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (Bugbot findings were already addressed by branch commits; guide drift resolved with documented Guide-Coverage-Skip PR body line)
 - Merge: merged (squash)
 ---
+
+## [2026-07-07 04:53:06 CDT] - Babysit
+- PR: #539 https://github.com/AaronFeledy/core4/pull/539
+- CI outcome: pass
+- Review feedback: fixed (removed missing yaml test dependency and added guide coverage skip reason)
+- Merge: merged (squash)
+---
+
+## 2026-07-07 06:25 CDT - US-407
+- Shipped `apps:scratch:run` (aliases `scratch:run` and the reserved bare `run`, bootstrap `scratch`): a thin disposable tool runner over `ScratchAppService.acquire` — recipe source defaults to the bundled toolbox (`--from` overrides), cwd bind-mounted by default (`--no-mount` bakes), foreground lifetime, recipe postInit skipped. Everything after `--` passes verbatim to `RuntimeProvider.exec` in the recipe's primary service (`--service` selects; unknown service fails with the new `ScratchRunTargetError` listing available services) with TTY allocation when stdin is a TTY, and the tool's exit code propagates as the command's exit code — a non-zero tool exit is a successful result, never a tagged error.
+- Scope close destroys the scratch on normal exit, non-zero exit, and interrupt; `--keep` flips the registry entry to detached mid-scope (new `detachScratchApp`), the acquire finalizer re-reads the entry and skips the destroy, and the command prints the kept scratch id — ownership hands off to the registry/gc. `applyMountCwd` now drops service-mirrored app-root binds that no longer match the rewritten appMount so providers don't realize two mounts at one target.
+- Reserved the bare `run` top-level alias per spec 21.10.2 in a new `core/src/cli/reserved-aliases.ts` helper: `validateCommandSpec` rejects foreign command specs claiming `run`/`scratch`/`scratch:*` at registration, and `runTooling` rejects Landofile tooling tasks (and script-backed tasks) named `run` with the new SDK `CommandAliasConflictError`; user `commandAliases.custom` remaps still work. Dual-dispatch parity covers the new canonical id; `--answer` flows into recipe prompts as in apps:init.
+- Verification: typecheck, lint, renderer/paths/state-store/probe/redaction boundary gates passed; codegen (schema-snapshot, oclif-manifest) idempotent; spot checks green — scratch-run + reserved-aliases + aliases suites, dispatch-parity, oclif-manifest, sdk-backward-compatibility, scratch app/list/foreground/namespace/recipe-flags, gc/registry, tooling scenario, mcp/host-proxy allowlists. Manual CLI QA in the lando4-dev sandbox on BOTH dispatch paths (OCLIF source and compiled binary): happy path prints the tool's stdout from the cwd mount, `sh -c "exit 7"` exits 7 with no error, `--service bogus` exits 1 with ScratchRunTargetError listing `toolbox`, `--keep` prints the id and registers a detached entry, `--no-mount` hides the cwd, `--format json` emits the full result envelope, and scratch list/containers are empty after each run (cleanup verified via the managed podman socket).
+- **Learnings for future iterations:**
+  - provider-lando never pulls images at runtime (`pullArtifact` is unavailable; `bringUp.create` 404s with "image not known"); CI pre-pulls images and the lando4-dev sandbox must too. The provider talks to the MANAGED runtime podman at `~/.local/share/lando/runtime/run/podman.sock` with its own image store — pulling with the user's `/usr/bin/podman` does NOT help. Pre-pull via `curl -X POST --unix-socket ~/.local/share/lando/runtime/run/podman.sock "http://d/v4.0.0/images/create?fromImage=<image>&tag=<tag>"`.
+  - The compiled dispatcher matches scratch verbs only as `scratch:<verb>`/`apps:scratch:<verb>` colon forms (plus bare `scratch` and `run`); the `apps scratch <verb>` space form is OCLIF-path-only for the whole scratch family — match that pattern for new scratch verbs.
+  - A foreground scratch finalizer that must be skippable mid-scope (e.g. `--keep`) should re-read the registry entry inside the finalizer and branch on `detached`, rather than capturing the decision at acquire time.
+---
+
+## 2026-07-07 06:53 CDT - US-407 Review
+- Review fixed the scratch-run core blockers: disposable runs now acquire scratches with the spec's `cwd` isolation by default and `baked` isolation for `--no-mount`, the compiled dispatcher accepts the documented `lando apps scratch run` form, and new public SDK errors plus the widened `IsolateMode` schema surface are documented/generated.
+- Review notes (deferred/rejected): Bugbot could not produce a usable report in this harness (the command returned immediately with no findings); review-work's US-408 streaming/env and US-409 guide/GC/warm-repeat notes were deferred because they are later-story scope, not US-407 blockers.
+- Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
+---
+
+## 2026-07-07 07:01 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed remaining scratch-run parity issues: source OCLIF now honors structured `--from`/`--service`/`--no-mount`/`--answer`/`--keep` flags, fork default isolation now plans against the copied root it records, and legacy scratch registry entries with `isolate: "none"` migrate instead of being quarantined.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected.
+- Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
+---
+
+## 2026-07-07 07:15 CDT - US-407 Review
+- Follow-up Bugbot found and review fixed legacy/start edge cases: `--isolate=none` now maps to `cwd` instead of being silently dropped, StateStore-framed registry entries with legacy `none` isolation migrate before bucket open, and `lando run --keep` detaches immediately after acquisition so successful retention survives tool execution failures.
+- Review notes (deferred/rejected): no follow-up Bugbot findings were rejected.
+- Verification: typecheck and lint passed; focused scratch-run, scratch list/info, scratch registry/GC, test-runtime, scratch flag mapping, OCLIF manifest, dispatch parity, SDK backward-compatibility, public schema, and schema snapshot spot checks passed.
+---
+
+## 2026-07-07 07:29 CDT - US-407 Review
+- Review fixed two remaining scratch-run blockers: source and compiled dispatch now preserve tool-tail flags such as `node --version`/`node --help` once a tool command begins, and `--keep` now detaches only after target resolution and provider exec return a result so invalid services and pre-exec failures still clean up the foreground scratch.
+- Review notes (deferred/rejected): Bugbot again returned no usable report content in this harness; the previous progress-log decision to detach `--keep` immediately was rejected as stale because the source PRD/spec require ownership handoff after exec completion. US-408 streaming/env and US-409 guide/warm-repeat/GC notes remain later-story scope.
+- Verification: typecheck and lint passed; focused scratch-run, dual-dispatch parity, reserved-aliases, and scratch-run dispatch-parity spot checks passed.
+---
+
+## 2026-07-07 07:37 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed the OCLIF source-dispatch normalization bug introduced by the tool-tail flag repair: `apps:scratch:run` now snapshots normalized argv before mutating `this.argv`, so source-mode flags and tool commands are preserved.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch-run and dual-dispatch parity spot checks passed.
+---
+
+## 2026-07-07 07:45 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed the remaining universal-format boundary: `--format`, `--json`, and `-j` are now preserved as tool arguments after a scratch-run command tail begins while Lando-level format flags before the tool command still work.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch-run and dual-dispatch parity spot checks passed.
+---
+
+## 2026-07-07 07:52 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed registry migration churn from the legacy `isolate: none` repair: already-current StateStore-framed scratch registries are no longer rewritten on every registry touch, while StateStore frames that still contain legacy `none` entries continue to migrate.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch registry and scratch-run spot checks passed.
+---
+
+## 2026-07-07 08:00 CDT - US-407 Review
+- Post-fix Bugbot found and review fixed the fork `--mount-cwd` isolation regression: mount-cwd now defaults scratch acquisition to `cwd` isolation unless an explicit `--isolate` value was provided, so fork planning avoids the full-copy path when cwd mounting is requested.
+- Review notes (deferred/rejected): no post-Bugbot findings were rejected in this pass.
+- Verification: typecheck and lint passed; focused scratch recipe flag and scratch-run spot checks passed.
+---
+
+## 2026-07-07 08:58 CDT - US-407 Review
+- Review fixed the remaining source-dispatch JSON parity blocker for `apps:scratch:run`: source-mode scratch-run invocations now route through the same hand-rolled dispatcher as compiled mode, so `--format=json` failure envelopes and command-tail flag handling stay identical.
+- Review notes (deferred/rejected): Bugbot timed out in this harness; the loaded `review-work` skill returned orchestration instructions rather than an executable report, so findings were cross-checked manually against US-407 and the focused parity suite. US-408 streaming/env and US-409 hardening/docs remain later-story scope.
+- Verification: typecheck and lint passed; focused scratch-run, reserved-aliases, dual-dispatch parity, dispatch-parity, scratch recipe flags, scratch registry, and scratch GC spot checks passed.
+---
+## 2026-07-07 16:55 CDT - US-418
+- Provider integration CI now provisions and proves the Podman 6 host contract instead of inheriting the runner's Podman line: all Linux Podman-backed jobs (ci provider-integration + guide e2e, nightly e2e, weekly provider matrix) install the Homebrew `podman` formula (6.0.0 with Netavark/Aardvark-dns v2 in its helper dir; passt/crun/conmon deps) and run a fail-fast "Assert Podman 6 host contract" step (numeric major.minor.patch >= 6.0.0, suffixes ignored, unparseable fails closed with remediation) before any `podman system service` or `lando setup`. Ubuntu 24.04 apt ships 4.9.x and OBS Kubic xUbuntu_24.04 has no Podman 6, so the Homebrew selection is documented in the shared module and ci-runbook; the OBS packaging question stays open. Shared install/assert steps live in `scripts/ci-podman-install.ts` so the three workflow generators cannot drift; the bundle-staging helper list gained pasta/passt/rootlessport/catatonit plus a brew-helper-dir fallback via `LANDO_CI_PODMAN_HELPER_DIR`.
+- Note for the deferred provider-lando gate PR (#540): once this story merges to main, rerunning that PR's CI should turn its two red Linux jobs green.
+- Verification: typecheck, lint passed; new `scripts/ci-podman-install.test.ts` (8 tests: bash assert behavior via podman shims + generated-workflow contract) passed; generators re-ran with zero drift; emitted install+assert scripts rehearsed for real in the `lando4-dev` sandbox — Homebrew poured podman 6.0.0, assert accepted 6.0.0 and rejected system 5.4.2 with remediation, and a rootless `podman run alpine` succeeded with netavark v2.
+- **Learnings for future iterations:**
+  - The libpod HTTP API accepts older URL version prefixes: a 5.4.2 daemon answered /v3.0.0 through /v6.0.0 `/libpod/info` with 200, so `/v5.0.0` clients keep working against Podman 6 daemons and the prefix migration story is not CI-ordering-critical.
+  - A system-level `/usr/share/containers/storage.conf` (from any distro podman/containers-common install) pins rootful runroot/graphroot that Podman 6 honors literally for rootless users; the install step seeds a rootless-safe `$HOME/.config/containers/storage.conf` to stay deterministic on polluted hosts.
+  - Homebrew's podman formula compiles `HELPER_BINARIES_DIR` to `$(brew --prefix podman)/libexec/podman` (netavark/aardvark-dns/rootlessport/catatonit live there, NOT on PATH); anything staging helpers must look there explicitly.
+  - wsl.exe one-off commands mangle `$VAR` expansions; drive sandbox reruns through a script file on the shared mount instead.
+---
+
+## 2026-07-07 17:40 CDT - US-418 Review
+- Review fixed two real blockers: the CI version assert compared packed integers (5.1000.0 falsely satisfied the 6.0.0 floor; leading-zero components hit bash octal arithmetic) and now compares major/minor/patch tuple-wise; the missing-podman test case now uses an exit-127 shim so a host podman on PATH can never leak into the result. Workflow contract tests in core/test/build/ci-workflow.test.ts were updated to pin the new Homebrew toolchain + host-contract assert steps — a legitimate contract move with the story (the old assertions pinned the distro-podman provisioning this story replaces), not a loosening: the manual-socket guards (`podman system service`, Start/Teardown Podman) all remain.
+- Review notes (deferred/rejected): unpinned `brew install podman` supply-chain hardening deferred (test-only read-permission jobs, no release artifacts consume these steps — release.yml untouched); CI floor constant intentionally separate from the runtime provider floor with a sync note, since they live in different languages and merge independently.
+- Verification: typecheck, lint passed; module suite (9 tests) and full core/test/build contract suite (106 tests) passed; post-fix Bugbot reported no bugs.
 ## 2026-07-07 14:30 CDT - US-413 Review
 - Review (5-lane review-work + Bugbot manual fallback) found no in-scope defects; no code changes made. All acceptance criteria confirmed against the source PRD: floor constant routed through every setup error/remediation string, both CLI and API-info sources gated, numeric major.minor.patch comparison with suffix tolerance, tagged ProviderUnavailableError-family rejection with observed version/source details.
 - Review notes (deferred/rejected): Bugbot "gate runs after runtime-bundle download" rejected — by design, the bundle provides the podman binary being version-checked and no Podman-dependent action (machine/socket) precedes the gate at setup.ts:682-693 vs 696/721; Bugbot/security "API info missing version fails open" rejected as blocker — the mandatory CLI gate already enforced the floor and unparseable version strings still fail closed, only absent metadata skips; security LOWs (quadratic regex on adversarial digit-only megastrings, verbatim observed-version in error message, Number() overflow on absurd components) deferred — local dev-tool threat model, podman binary/socket are user-controlled.
