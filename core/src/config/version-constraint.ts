@@ -19,6 +19,28 @@ export interface VersionConstraintEntry {
   readonly source: string;
 }
 
+export const isVersionConstraintEntryArray = (
+  value: unknown,
+): value is ReadonlyArray<VersionConstraintEntry> =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "range" in entry &&
+      typeof entry.range === "string" &&
+      "source" in entry &&
+      typeof entry.source === "string",
+  );
+
+export const hasSkippedUnsatisfiedVersionConstraint = (
+  entries: ReadonlyArray<VersionConstraintEntry>,
+  runningVersion: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean =>
+  isVersionConstraintSkipped(env) &&
+  evaluateVersionConstraints(entries, runningVersion).unsatisfied.length > 0;
+
 const landofileVersionConstraintEntries = new WeakMap<object, ReadonlyArray<VersionConstraintEntry>>();
 
 export const rememberVersionConstraintEntries = <T extends object>(

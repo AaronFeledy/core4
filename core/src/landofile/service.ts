@@ -217,7 +217,9 @@ type LandofileLoadError =
   | LandofileTimeoutError
   | NotImplementedError;
 
-const loadLandofileFile = (filePath: string): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
+export const loadLandofileFile = (
+  filePath: string,
+): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   (filePath.endsWith(".ts") ? loadTsLandofile(filePath) : loadYamlLandofile(filePath)).pipe(
     Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
   );
@@ -291,7 +293,5 @@ const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoad
 const landofileService: Context.Tag.Service<typeof LandofileService> = {
   discover: discoverLandofile,
 };
-
-export { loadLandofileFile };
 
 export const LandofileServiceLive = Layer.succeed(LandofileService, landofileService);

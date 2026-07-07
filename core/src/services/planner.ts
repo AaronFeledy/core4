@@ -57,6 +57,11 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import {
+  getVersionConstraintEntries,
+  hasSkippedUnsatisfiedVersionConstraint,
+} from "../config/version-constraint.ts";
+import { CORE_VERSION } from "../version.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
@@ -887,12 +892,14 @@ const planApp = (
     // features activate over the resolved drafts). It is derived BEFORE plan
     // production so a warm cache still skips composition; a feature/base change
     // rolls the key even when the Landofile bytes are identical.
+    const versionConstraints = getVersionConstraintEntries(landofile, `${appRoot}/.lando.yml`);
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
+      versionConstraints,
       serviceInputs: {
         landofile: landofile.services ?? {},
         composition: {
@@ -1169,8 +1176,18 @@ const planApp = (
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
       })(),
     });
-    if (cacheService !== undefined) {
-      yield* writeCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey, plan }).pipe(
+    if (
+      cacheService !== undefined &&
+      !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
+    ) {
+      yield* writeCachedAppPlan({
+        cacheRoot,
+        appName,
+        appRoot,
+        key: cacheKey,
+        plan,
+        versionConstraints,
+      }).pipe(
         Effect.provideService(CacheService, cacheService),
         Effect.catchAll(() => Effect.void),
       );

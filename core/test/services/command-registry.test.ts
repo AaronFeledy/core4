@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
@@ -11,6 +11,7 @@ import type { PluginManifest } from "@lando/sdk/schema";
 import {
   invalidatePluginCommandCache,
   readAppCommandCache,
+  readFreshAppCommandCacheForCwd,
   readPluginCommandCache,
   writeAppCommandCache,
   writeAppCommandCacheStrict,
@@ -19,6 +20,7 @@ import {
 import {
   decodeAppCommandIndex,
   decodePluginCommandIndex,
+  encodeAppCommandIndex,
   encodePluginCommandIndex,
 } from "../../src/cache/command-index.ts";
 import {
@@ -374,6 +376,94 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("invalidates the warm tooling cache when version-constraint provenance is missing", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "version-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: version-cache", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        const toolingCachePath = appToolingCompilationCachePath(cacheRoot, dir);
+        const decoded = decodeAppCommandIndex(new Uint8Array(await readFile(toolingCachePath)));
+        if (decoded === null) throw new Error("expected app-command cache payload");
+        const { versionConstraints: _discard, ...legacyPayload } = decoded as typeof decoded & {
+          readonly versionConstraints?: unknown;
+        };
+        await writeFile(toolingCachePath, encodeAppCommandIndex(legacyPayload));
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+
+        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+      });
+    });
+  });
+
+  test("invalidates the warm tooling cache when cached version constraints differ from the current Landofile", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const staleLandofile = { name: "version-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: version-cache", "lando: >=99", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: staleLandofile,
+            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+        expect(fresh).toBeNull();
+      });
+    });
+  });
+
+  test("does not write tooling caches while an unsatisfied version constraint is skipped", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const previousSkip = process.env.LANDO_SKIP_VERSION_CONSTRAINT;
+        try {
+          process.env.LANDO_SKIP_VERSION_CONSTRAINT = "1";
+          await writeFile(
+            join(dir, ".lando.yml"),
+            ["name: skipped-version-cache", "lando: >=99", "tooling:", "  build:", "    cmd: make", ""].join(
+              "\n",
+            ),
+          );
+          process.chdir(dir);
+
+          const commands = await listFromLive();
+
+          expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+          expect(await Bun.file(appCommandCachePath(cacheRoot, "skipped-version-cache", dir)).exists()).toBe(
+            false,
+          );
+          expect(await Bun.file(appToolingCompilationCachePath(cacheRoot, dir)).exists()).toBe(false);
+        } finally {
+          if (previousSkip === undefined)
+            Reflect.deleteProperty(process.env, "LANDO_SKIP_VERSION_CONSTRAINT");
+          else process.env.LANDO_SKIP_VERSION_CONSTRAINT = previousSkip;
+        }
+      });
+    });
+  });
+
   test("invalidates the warm tooling cache when .bun.sh scripts change", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
@@ -404,6 +494,129 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         expect(commands.find((c) => c.id === "app:deploy")?.summary).toBe("Deploy the app");
       });
     });
+  });
+
+  test("invalidates the warm tooling cache when a templated local include target changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const previousInclude = process.env.LANDO_TEMPLATE_INCLUDE;
+        try {
+          process.env.LANDO_TEMPLATE_INCLUDE = "fragment-ok.yml";
+          await writeFile(join(dir, "fragment-ok.yml"), "lando: >=0\n");
+          await writeFile(join(dir, "fragment-bad.yml"), "lando: >=99\n");
+          await writeFile(
+            join(dir, ".lando.yml"),
+            [
+              "template: handlebars",
+              "name: include-warm-cache",
+              "includes:",
+              "  - {{env.LANDO_TEMPLATE_INCLUDE}}",
+              "tooling:",
+              "  build:",
+              "    cmd: make",
+              "",
+            ].join("\n"),
+          );
+          process.chdir(dir);
+
+          const cold = await listFromLive();
+          expect(cold.map((c) => c.id)).toEqual(["app:build"]);
+
+          const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+          expect(fresh).toBeNull();
+
+          process.env.LANDO_TEMPLATE_INCLUDE = "fragment-bad.yml";
+          const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+          expect(stale).toBeNull();
+
+          const commands = await listFromLive();
+
+          expect(commands).toEqual([]);
+        } finally {
+          if (previousInclude === undefined) Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_INCLUDE");
+          else process.env.LANDO_TEMPLATE_INCLUDE = previousInclude;
+        }
+      });
+    });
+  });
+
+  test("invalidates the warm tooling cache when a BOM-prefixed Landofile is templated", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "bom-template-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          [
+            "\uFEFFtemplate: none",
+            "name: bom-template-cache",
+            "tooling:",
+            "  build:",
+            "    cmd: make",
+            "",
+          ].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+        expect(fresh).toBeNull();
+      });
+    });
+  });
+
+  test("does not use cached tooling when a local include symlink escapes the app root", async () => {
+    const outsideRoot = await mkdtemp(join(tmpdir(), "lando-command-registry-outside-"));
+    try {
+      await withTempCacheRoot(async (cacheRoot) => {
+        await withTempCwd(async (dir) => {
+          const landofile = {
+            name: "symlink-include-cache",
+            includes: ["fragment.yml"],
+            tooling: { build: { cmd: "make" } },
+          };
+          await writeFile(
+            join(dir, ".lando.yml"),
+            [
+              "name: symlink-include-cache",
+              "includes:",
+              "  - fragment.yml",
+              "tooling:",
+              "  build:",
+              "    cmd: make",
+              "",
+            ].join("\n"),
+          );
+          await Effect.runPromise(
+            writeAppCommandCacheStrict({
+              landofile,
+              entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+              cwd: dir,
+              cacheRoot,
+              now: () => 100,
+            }),
+          );
+          const outsideFragment = join(outsideRoot, "fragment.yml");
+          await writeFile(outsideFragment, "lando: >=0\n");
+          await symlink(outsideFragment, join(dir, "fragment.yml"));
+          process.chdir(dir);
+
+          const commands = await listFromLive();
+
+          expect(commands).toEqual([]);
+        });
+      });
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
   });
 
   test("materializes the tooling-compilation cache when only the legacy app-command cache exists", async () => {
@@ -517,6 +730,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           join(dir, ".lando.lock.yml"),
           "checksum: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
         );
+        await writeFile(join(dir, "fragment.yml"), "lando: >=0\n");
         await Effect.runPromise(
           writeAppCommandCacheStrict({
             landofile,
@@ -662,13 +876,14 @@ describe("CommandRegistryLive cold-path cache writes", () => {
       );
       const oldPayload = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
       expect(oldPayload?.manifestFingerprint).toBeString();
+      if (oldPayload?.manifestFingerprint === undefined) throw new Error("expected manifest fingerprint");
       await writeFile(
         cachePath,
         encodePluginCommandIndex({
           schemaVersion: 1,
-          landoVersion: oldPayload?.landoVersion ?? "0.0.0",
+          landoVersion: oldPayload.landoVersion,
           pluginNames: ["@lando/a"],
-          manifestFingerprint: oldPayload?.manifestFingerprint,
+          manifestFingerprint: oldPayload.manifestFingerprint,
           generatedAtMs: 100,
           entries: [{ id: "a:one", summary: "", hidden: false }],
         }),
@@ -691,7 +906,13 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
       await Effect.runPromise(invalidatePluginCommandCache({ cacheRoot }));
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      let readFailure: unknown;
+      try {
+        await readFile(cachePath);
+      } catch (cause) {
+        readFailure = cause;
+      }
+      expect(readFailure).toMatchObject({ code: "ENOENT" });
     });
   });
 

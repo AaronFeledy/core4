@@ -11,6 +11,7 @@ tags: [beta, docs, landofile, includes, lockfile]
     <Step name="scaffold">
       <UseFixture name="includes-lockfile-demo" />
       <Variable name="include" value="./fragments/web.yml" display="A local relative Landofile fragment merged before the app's inline keys" />
+      <Variable name="localIncludeCache" value="local include paths are tracked as parser provenance" display="Command-index cache fingerprints include the resolved local include bytes, so changing a local fragment invalidates cached app commands even after the merged Landofile shape has dropped includes" />
       <Variable name="serializer" value="@lando/sdk/landofile" display="The published Landofile parser/emitter preserves encoded map order for round trips and fails closed on invalid map keys or non-serializable values before lockfile state is written" />
       <Variable name="lockfile" value=".lando.lock.yml" display="Remote git and npm includes are locked by resolved revision and SHA-256 content hash; local includes are not locked" />
     </Step>

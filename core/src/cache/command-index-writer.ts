@@ -1,13 +1,25 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, rm, stat } from "node:fs/promises";
-import { dirname, join, relative, sep } from "node:path";
+import { readFile, readdir, realpath, rm, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Effect } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+import {
+  type VersionConstraintEntry,
+  evaluateVersionConstraints,
+  getVersionConstraintEntries,
+  hasSkippedUnsatisfiedVersionConstraint,
+  isVersionConstraintEntryArray,
+  isVersionConstraintSkipped,
+} from "../config/version-constraint.ts";
 import { findLandofilePath } from "../landofile/discovery.ts";
+import { getLocalIncludePaths } from "../landofile/include-provenance.ts";
+import { resolveLandofileIncludes } from "../landofile/includes.ts";
+import { loadLandofileFile } from "../landofile/service.ts";
+import { detectTemplateDirective } from "../landofile/template-render.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
@@ -36,6 +48,18 @@ import {
 const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
 
+const versionConstraintsEqual = (
+  left: ReadonlyArray<VersionConstraintEntry> | undefined,
+  right: ReadonlyArray<VersionConstraintEntry>,
+): boolean => JSON.stringify(left) === JSON.stringify(right);
+
+const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry> | undefined): boolean => {
+  if (!isVersionConstraintEntryArray(entries)) return false;
+  const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
+  if (evaluation.invalid.length > 0) return false;
+  return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
+};
+
 const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
 const SCRIPTS_DIRNAME = join(".lando", "scripts");
 
@@ -53,7 +77,9 @@ interface AppCommandCacheSource {
     readonly mtimeMs: number;
     readonly size: number;
   };
-  readonly contentHash?: string;
+  readonly landofileBytes: Uint8Array;
+  readonly includeLockfileBytes: Uint8Array | null;
+  readonly scripts: ReadonlyArray<BunShellScriptSource>;
 }
 
 const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
@@ -65,10 +91,91 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
   }
 };
 
+const landofileUsesTemplate = (bytes: Uint8Array): boolean =>
+  detectTemplateDirective(Buffer.from(bytes).toString("utf8")) !== undefined;
+
 interface BunShellScriptSource {
   readonly relativePath: string;
   readonly bytes: Uint8Array;
 }
+
+interface LocalIncludeSource {
+  readonly relativePath: string;
+  readonly bytes: Uint8Array | null;
+}
+
+const isRemoteInclude = (source: string): boolean =>
+  source.startsWith("npm:") ||
+  source.startsWith("git@") ||
+  source.startsWith("github:") ||
+  /^https?:\/\//u.test(source);
+
+const includeEntrySource = (entry: NonNullable<LandofileShape["includes"]>[number]): string =>
+  typeof entry === "string" ? entry : entry.source;
+
+const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray<string> => {
+  const remembered = getLocalIncludePaths(landofile);
+  if (remembered.length > 0) return remembered;
+  return (landofile.includes ?? [])
+    .map((entry) => includeEntrySource(entry))
+    .filter((source) => !isRemoteInclude(source));
+};
+
+const pathIsUnderRoot = (root: string, path: string): boolean => {
+  const relativePath = relative(root, path);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+  );
+};
+
+const realpathIfPresent = async (path: string): Promise<string | undefined> => {
+  try {
+    return await realpath(path);
+  } catch (cause) {
+    if (isMissingFile(cause)) return undefined;
+    throw cause;
+  }
+};
+
+const localIncludePath = async (
+  appRoot: string,
+  source: string,
+): Promise<{ readonly filePath: string; readonly relativePath: string } | undefined> => {
+  if (isRemoteInclude(source)) return undefined;
+  const candidate = isAbsolute(source) ? source : resolve(appRoot, source);
+  if (!pathIsUnderRoot(appRoot, candidate)) return undefined;
+
+  const realRoot = await realpath(appRoot);
+  const realCandidate = await realpathIfPresent(candidate);
+  if (realCandidate === undefined) {
+    return { filePath: candidate, relativePath: relative(appRoot, candidate).split(sep).join("/") };
+  }
+  if (!pathIsUnderRoot(realRoot, realCandidate)) {
+    throw new CacheError({
+      message: `Local include ${source} resolves outside the app root.`,
+      key: "app-command",
+      path: candidate,
+    });
+  }
+  return { filePath: realCandidate, relativePath: relative(realRoot, realCandidate).split(sep).join("/") };
+};
+
+const localIncludeSourcesFor = async (
+  appRoot: string,
+  paths: ReadonlyArray<string>,
+): Promise<ReadonlyArray<LocalIncludeSource>> => {
+  const sources: LocalIncludeSource[] = [];
+  for (const source of [...new Set(paths)].sort((left, right) => left.localeCompare(right))) {
+    const includePath = await localIncludePath(appRoot, source);
+    if (includePath === undefined) continue;
+    sources.push({
+      relativePath: includePath.relativePath,
+      bytes: await readOptionalFile(includePath.filePath),
+    });
+  }
+  return sources;
+};
 
 const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray<BunShellScriptSource>> => {
   const scriptsRoot = join(appRoot, SCRIPTS_DIRNAME);
@@ -107,6 +214,7 @@ const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray
 const sourceHashFor = (
   landofileBytes: Uint8Array,
   includeLockfileBytes: Uint8Array | null,
+  localIncludes: ReadonlyArray<LocalIncludeSource>,
   scripts: ReadonlyArray<BunShellScriptSource>,
 ): string => {
   const hash = createHash("sha256");
@@ -114,6 +222,14 @@ const sourceHashFor = (
   hash.update(landofileBytes);
   hash.update("\0include-lock\0");
   if (includeLockfileBytes !== null) hash.update(includeLockfileBytes);
+  hash.update("\0local-includes\0");
+  for (const include of localIncludes) {
+    hash.update(include.relativePath);
+    hash.update("\0");
+    if (include.bytes === null) hash.update("<missing>");
+    else hash.update(include.bytes);
+    hash.update("\0");
+  }
   hash.update("\0bun-shell-scripts\0");
   for (const script of scripts) {
     hash.update(script.relativePath);
@@ -129,14 +245,29 @@ const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCach
   if (filePath === undefined) return undefined;
 
   const appRoot = dirname(filePath);
-  const [stats, bytes, includeLockfileBytes, scripts] = await Promise.all([
+  const [stats, landofileBytes, includeLockfileBytes, scripts] = await Promise.all([
     stat(filePath),
     readFile(filePath),
     readOptionalFile(join(appRoot, ".lando.lock.yml")),
     readBunShellScriptSources(appRoot),
   ]);
-  return { filePath, stats, contentHash: sourceHashFor(bytes, includeLockfileBytes, scripts) };
+  return { filePath, stats, landofileBytes, includeLockfileBytes, scripts };
 };
+
+const sourceContentHash = async (
+  source: AppCommandCacheSource,
+  appRoot: string,
+  localIncludePaths: ReadonlyArray<string>,
+): Promise<string> =>
+  sourceHashFor(
+    source.landofileBytes,
+    source.includeLockfileBytes,
+    await localIncludeSourcesFor(appRoot, localIncludePaths),
+    source.scripts,
+  );
+
+const pathsEqual = (left: ReadonlyArray<string> | undefined, right: ReadonlyArray<string>): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 const writeAppCommandCacheTask = async (
   options: WriteAppCommandCacheOptions,
@@ -153,6 +284,10 @@ const writeAppCommandCacheTask = async (
   const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
+  const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
+  if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
+  const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+  const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
 
   const cached = await readAppCommandCacheTask({
     ...options,
@@ -165,9 +300,11 @@ const writeAppCommandCacheTask = async (
     const payload: AppCommandIndexPayload = {
       ...cached,
       sourceFile: filePath,
-      ...(source.contentHash === undefined ? {} : { sourceContentHash: source.contentHash }),
+      sourceContentHash: contentHash,
+      sourceLocalIncludePaths,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
+      versionConstraints,
       toolingFingerprint,
       entriesFingerprint,
     };
@@ -180,9 +317,11 @@ const writeAppCommandCacheTask = async (
     landoVersion: CORE_VERSION,
     appName,
     sourceFile: filePath,
-    ...(source.contentHash === undefined ? {} : { sourceContentHash: source.contentHash }),
+    sourceContentHash: contentHash,
+    sourceLocalIncludePaths,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
+    versionConstraints,
     toolingFingerprint,
     entriesFingerprint,
     generatedAtMs: (options.now ?? Date.now)(),
@@ -274,7 +413,9 @@ const readAppCommandCacheTask = async (
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION) return null;
     if (payload.sourceFile !== filePath) return null;
-    if (payload.sourceContentHash !== undefined && payload.sourceContentHash !== source.contentHash)
+    const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
+    if (!pathsEqual(payload.sourceLocalIncludePaths, sourceLocalIncludePaths)) return null;
+    if (payload.sourceContentHash !== (await sourceContentHash(source, appRoot, sourceLocalIncludePaths)))
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
     if (
@@ -283,6 +424,8 @@ const readAppCommandCacheTask = async (
     ) {
       return null;
     }
+    const versionConstraints = getVersionConstraintEntries(options.landofile, filePath);
+    if (!versionConstraintsEqual(payload.versionConstraints, versionConstraints)) return null;
     if (
       (payload.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(payload.entries)) !==
       (options.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(options.entries))
@@ -296,6 +439,22 @@ const readAppCommandCacheTask = async (
   }
 };
 
+const currentVersionConstraintsForSource = async (
+  source: AppCommandCacheSource,
+): Promise<ReadonlyArray<VersionConstraintEntry> | null> => {
+  const appRoot = dirname(source.filePath);
+  const loaded = await Effect.runPromise(
+    loadLandofileFile(source.filePath).pipe(
+      Effect.flatMap((landofile) =>
+        resolveLandofileIncludes({ landofile, appRoot, sourcePath: source.filePath }),
+      ),
+      Effect.map((landofile) => getVersionConstraintEntries(landofile, source.filePath)),
+      Effect.either,
+    ),
+  );
+  return loaded._tag === "Left" ? null : loaded.right;
+};
+
 const readFreshAppCommandCacheForCwdTask = async (options: {
   readonly cwd?: string;
   readonly cacheRoot?: string;
@@ -303,6 +462,7 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
   const cwd = options.cwd ?? process.cwd();
   const source = await resolveAppCommandCacheSource(cwd);
   if (source === undefined) return null;
+  if (landofileUsesTemplate(source.landofileBytes)) return null;
   const appRoot = dirname(source.filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
@@ -312,9 +472,18 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION) return null;
     if (payload.sourceFile !== source.filePath) return null;
-    if (payload.sourceContentHash !== source.contentHash) return null;
+    if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
+    if (
+      payload.sourceContentHash !==
+      (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths))
+    )
+      return null;
     if (payload.sourceMtimeMs !== source.stats.mtimeMs || payload.sourceSize !== source.stats.size)
       return null;
+    const currentVersionConstraints = await currentVersionConstraintsForSource(source);
+    if (currentVersionConstraints === null) return null;
+    if (!versionConstraintsEqual(payload.versionConstraints, currentVersionConstraints)) return null;
+    if (!versionConstraintsUsable(currentVersionConstraints)) return null;
     return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;

@@ -3,6 +3,8 @@ import { deserialize, serialize } from "node:v8";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+import { type VersionConstraintEntry, getVersionConstraintEntries } from "../config/version-constraint.ts";
+
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
 
@@ -28,8 +30,10 @@ export interface AppCommandIndexPayload {
   readonly appName: string;
   readonly sourceFile: string;
   readonly sourceContentHash?: string;
+  readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
+  readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly toolingFingerprint?: string;
   readonly entriesFingerprint?: string;
   readonly generatedAtMs: number;
@@ -109,6 +113,7 @@ export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): s
     services: landofile.services ?? null,
     tooling: landofile.tooling ?? null,
     includes: landofile.includes ?? null,
+    versionConstraints: getVersionConstraintEntries(landofile, ".lando.yml"),
   });
 
 export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>

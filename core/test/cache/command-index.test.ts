@@ -19,6 +19,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       sourceFile: "/tmp/test/.lando.yml",
       sourceMtimeMs: 1_700_000_000_000,
       sourceSize: 256,
+      versionConstraints: [],
       generatedAtMs: 1_700_000_100_000,
       entries: [
         { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
@@ -39,6 +40,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       sourceFile: "/x/.lando.yml",
       sourceMtimeMs: 0,
       sourceSize: 0,
+      versionConstraints: [],
       generatedAtMs: 0,
       entries: [],
     };
@@ -77,6 +79,7 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       sourceFile: "/x/.lando.yml",
       sourceMtimeMs: 0,
       sourceSize: 0,
+      versionConstraints: [],
       generatedAtMs: 0,
       entries: [],
     };
@@ -128,6 +131,7 @@ describe("encodePluginCommandIndex / decodePluginCommandIndex", () => {
       sourceFile: "/x/.lando.yml",
       sourceMtimeMs: 0,
       sourceSize: 0,
+      versionConstraints: [],
       generatedAtMs: 0,
       entries: [],
     });
