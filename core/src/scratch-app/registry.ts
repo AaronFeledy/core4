@@ -32,7 +32,19 @@ const ScratchSourceSchema = Schema.Union(
 const RegistryEntrySchema = Schema.Struct({
   id: Schema.String,
   source: ScratchSourceSchema,
-  isolate: Schema.Literal("none", "full"),
+  isolate: Schema.Literal("full", "baked", "cwd"),
+  detached: Schema.Boolean,
+  ownerPid: Schema.optional(Schema.Number),
+  rootPath: Schema.String,
+  status: Schema.Literal("acquiring", "running", "stopping", "destroyed-pending-cleanup"),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+
+const LegacyRegistryEntrySchema = Schema.Struct({
+  id: Schema.String,
+  source: ScratchSourceSchema,
+  isolate: Schema.Literal("none", "full", "baked", "cwd"),
   detached: Schema.Boolean,
   ownerPid: Schema.optional(Schema.Number),
   rootPath: Schema.String,
@@ -42,10 +54,21 @@ const RegistryEntrySchema = Schema.Struct({
 });
 
 const RegistryEntriesSchema = Schema.Array(RegistryEntrySchema);
+const LegacyRegistryEntriesSchema = Schema.Array(LegacyRegistryEntrySchema);
 
 const RegistryEnvelopeSchema = Schema.Struct({
   version: Schema.Literal(REGISTRY_VERSION),
   entries: RegistryEntriesSchema,
+});
+
+const LegacyRegistryEnvelopeSchema = Schema.Struct({
+  version: Schema.Literal(REGISTRY_VERSION),
+  entries: LegacyRegistryEntriesSchema,
+});
+
+const LegacyStateFrameSchema = Schema.Struct({
+  version: Schema.Literal(REGISTRY_VERSION),
+  data: LegacyRegistryEntriesSchema,
 });
 
 export type ScratchRegistryEntry = typeof RegistryEntrySchema.Type;
@@ -89,11 +112,27 @@ const isMissing = (cause: unknown): boolean =>
 
 const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   try {
-    return Schema.decodeUnknownSync(RegistryEnvelopeSchema)(JSON.parse(content), {
+    const parsed = JSON.parse(content) as unknown;
+    const entries = Schema.decodeUnknownSync(LegacyRegistryEnvelopeSchema)(parsed, {
       onExcessProperty: "error",
     }).entries;
+    return entries.map((entry) => ({
+      ...entry,
+      isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
+    }));
   } catch {
-    return null;
+    try {
+      const entries = Schema.decodeUnknownSync(LegacyStateFrameSchema)(JSON.parse(content), {
+        onExcessProperty: "error",
+      }).data;
+      if (!entries.some((entry) => entry.isolate === "none")) return null;
+      return entries.map((entry) => ({
+        ...entry,
+        isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
+      }));
+    } catch {
+      return null;
+    }
   }
 };
 
@@ -190,10 +229,10 @@ export const makeScratchRegistry = (): ScratchRegistryService => {
     message: string,
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
-    openRegistryBucket().pipe(
-      Effect.flatMap((bucket) =>
-        migrateLegacyEnvelope().pipe(
-          Effect.zipRight(
+    migrateLegacyEnvelope().pipe(
+      Effect.zipRight(
+        openRegistryBucket().pipe(
+          Effect.flatMap((bucket) =>
             use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
           ),
         ),

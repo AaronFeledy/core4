@@ -13,6 +13,7 @@ tags: [beta, docs, scratch, mount, storage]
       <Variable name="default" value="primary appMount" display="Bare --mount-cwd rebinds the primary service's app mount to $PWD; the container path defaults to the service's app-mount destination (/app)" />
       <Variable name="target" value="--mount-cwd=/srv/site" display="An explicit container path mounts $PWD at that path as an additional bind mount, leaving the primary app mount in place" />
       <Variable name="recipe" value="apps:scratch:start --from lamp --mount-cwd" display="Works in recipe mode too: the rendered recipe runs against the scratch root while $PWD is bound into the primary service" />
+      <Variable name="run" value="apps:scratch:run --no-mount -- echo ok" display="apps:scratch:run uses the same scratch mount controls for one-off commands; --no-mount leaves $PWD out of the disposable app" />
     </Step>
   </Scenario>
 

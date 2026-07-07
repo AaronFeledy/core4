@@ -1,16 +1,19 @@
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect, Layer, Stream } from "effect";
 
-import { type ProviderCapabilities, ProviderId } from "@lando/core/schema";
+import { AbsolutePath, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
+  type EventService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
+  type ScratchHandle,
 } from "@lando/core/services";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
@@ -18,6 +21,7 @@ import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import {
   type ScratchRegistryEntry,
   ScratchRegistryLive,
@@ -26,8 +30,10 @@ import {
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { SecretStoreLive } from "../../src/services/secret-store.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
@@ -103,13 +109,24 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch gc test provider should not call execStream"),
     run: () => die("run"),
+    runStream: () => Stream.die("scratch gc test provider should not call runStream"),
     logs: () => Stream.empty,
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => die("snapshotVolume"),
+    restoreVolume: () => die("restoreVolume"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => die("removeVolume"),
+    copyToService: () => die("copyToService"),
+    copyFromService: () => Stream.die("scratch gc test provider should not call copyFromService"),
+    exportArtifact: () => Stream.die("scratch gc test provider should not call exportArtifact"),
+    importArtifact: () => die("importArtifact"),
   };
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
@@ -124,6 +141,8 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
     LandofileServiceLive,
     plannerLive,
     registryLive,
+    eventLive,
+    redactionLive,
     ScratchRegistryLive,
     scannerLive,
     DataMoverLive.pipe(
@@ -139,10 +158,15 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
 };
 
+const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
+  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
+};
+
 const registryEntry = (cacheRoot: string, id: string): ScratchRegistryEntry => ({
   id,
   source: { kind: "fork" },
-  isolate: "none",
+  isolate: "full",
   detached: false,
   ownerPid: 999_999_999,
   rootPath: join(cacheRoot, "scratch", id, "root"),
@@ -169,13 +193,17 @@ describe("ScratchAppServiceLive gc", () => {
       const layer = makeLayer([labelOrphan, registryStaleWithLabel, unsafeLabel], pruned);
 
       const dryRun = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.gc()).pipe(Effect.provide(layer)),
+        Effect.flatMap(ScratchAppService, (service) => service.gc()).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(dryRun).toEqual({ inspected: 5, reaped: [], errors: [] });
 
       const prunedRun = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
           Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
         ),
       );
       expect(prunedRun).toEqual({
@@ -190,6 +218,7 @@ describe("ScratchAppServiceLive gc", () => {
       const second = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
           Effect.provide(makeLayer([], pruned)),
+          Effect.provide(testSupportLayer()),
         ),
       );
       expect(second).toEqual({ inspected: 0, reaped: [], errors: [] });
@@ -207,28 +236,37 @@ describe("ScratchAppServiceLive gc", () => {
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
 
-      const handle = { id, app: { kind: "scratch", id, root } };
+      const handle: ScratchHandle = { id, app: { kind: "scratch", id, root: AbsolutePath.make(root) } };
 
       const listed = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.list()).pipe(Effect.provide(layer)),
+        Effect.flatMap(ScratchAppService, (service) => service.list()).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(listed).toEqual([
         {
           ...handle,
           source: { kind: "fork" },
-          mode: "none",
+          mode: "full",
           created: "2026-01-01T00:00:00.000Z",
           status: "detached",
         },
       ]);
 
       const resolved = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.resolveById(id)).pipe(Effect.provide(layer)),
+        Effect.flatMap(ScratchAppService, (service) => service.resolveById(id)).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(resolved).toEqual(handle);
 
       const stopped = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.stop(id)).pipe(Effect.provide(layer)),
+        Effect.flatMap(ScratchAppService, (service) => service.stop(id)).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(stopped).toEqual(handle);
       expect(pruned).toEqual([id]);
@@ -239,7 +277,10 @@ describe("ScratchAppServiceLive gc", () => {
         makeScratchRegistry().upsert({ ...registryEntry(cacheRoot, id), detached: true }),
       );
       const destroyed = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(Effect.provide(layer)),
+        Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
       );
       expect(destroyed).toEqual(handle);
     });
