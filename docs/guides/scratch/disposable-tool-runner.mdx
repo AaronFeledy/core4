@@ -1,0 +1,52 @@
+---
+id: disposable-tool-runner
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, run]
+---
+
+<Guide>
+  <Scenario id="run-default-toolbox" render={false} reason="Disposable tool runs boot a real container and exec a tool inside it, so this scenario documents the command surface without a live provider">
+    <Step name="run">
+      <Variable name="command" value="lando run -- composer install" display="Runs the tool tail in a one-shot toolbox scratch that lives exactly as long as the command" />
+      <Variable name="canonical" value="apps:scratch:run -- composer install" display="The top-level run alias reaches the canonical apps:scratch:run command" />
+      <Variable name="defaultRecipe" value="toolbox" display="With no --from, the bundled toolbox recipe supplies one general-purpose CLI service on a version-pinned image" />
+      <Variable name="passthrough" value="everything after -- is verbatim" display="Tokens after -- are passed to the tool unchanged and never parsed as Lando flags" />
+      <Variable name="teardown" value="destroyed on scope close" display="Normal exit, non-zero exit, and Ctrl+C all converge on the finalizer that destroys the scratch and its resources" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-source-and-service" render={false} reason="Selecting a recipe and target service resolves and starts a stack on a real provider, so this scenario documents the flags without booting containers">
+    <Step name="source">
+      <Variable name="from" value="--from lamp" display="Swaps the disposable recipe from the default toolbox to any recipe the standard source registry resolves" />
+      <Variable name="service" value="--service appserver" display="Runs the command in the named service; the default is the recipe's primary or only service" />
+      <Variable name="unknownService" value="ScratchRunTargetError" display="An unknown --service fails with ScratchRunTargetError listing the recipe's available services" />
+      <Variable name="answers" value="--answer key=value" display="Repeatable; supplies recipe prompt answers so the one-shot path never blocks on a prompt" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-mount" render={false} reason="cwd mounting binds real host files into a running container, which requires a live provider">
+    <Step name="mount">
+      <Variable name="default" value="cwd mounted read-write" display="By default the current working directory is bind-mounted into the scratch so tools operate on real project files" />
+      <Variable name="noMount" value="--no-mount" display="Switches to baked isolation so the run cannot see the current working directory" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-keep-and-gc" render={false} reason="Detaching a kept scratch and reaping it through gc touches the registry and provider resources, so this scenario documents the lifecycle without a live provider">
+    <Step name="keep">
+      <Variable name="keep" value="--keep" display="Converts the scratch to detached after exec completes instead of destroying it, and prints the kept scratch id" />
+      <Variable name="list" value="apps:scratch:list" display="A kept run appears here with its source, isolation mode, scratch id, and detached status" />
+      <Variable name="gc" value="apps:scratch:gc --prune" display="Reaps an orphaned kept scratch and its provider resources through the registry plus the provider-label scan" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-exit-and-streaming" render={false} reason="Exit-code propagation and JSON stream frames come from a live tool process, so this scenario documents the machine surface without executing a tool">
+    <Step name="exit">
+      <Variable name="exitCode" value="tool exit propagated" display="The tool process exit code becomes the command exit code; a non-zero tool exit is not a Lando tagged error" />
+      <Variable name="toolFailure" value="lando run -- sh -c 'exit 7'" display="Exits 7 with no tagged error and no remediation, just the propagated code" />
+      <Variable name="json" value="--format json" display="Emits StreamFrame NDJSON for stdout and stderr plus a terminal result frame carrying the exit code and scratch id" />
+      <Variable name="warmRepeat" value="content-addressed render" display="A second run against the same toolbox reuses the content-addressed recipe render and the standard buildKey up-to-date check, so it pays container start, not recipe resolution or image build" />
+    </Step>
+  </Scenario>
+</Guide>
