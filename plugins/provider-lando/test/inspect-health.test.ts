@@ -79,6 +79,17 @@ const inspectBody = (health?: string): string =>
     },
   });
 
+const stoppedInspectBody = (health?: string): string =>
+  JSON.stringify({
+    Id: "lando-healthapp-web-id",
+    State: {
+      Running: false,
+      Status: "exited",
+      StartedAt: "2026-05-14T00:00:01Z",
+      ...(health === undefined ? {} : { Health: { Status: health } }),
+    },
+  });
+
 const apiFromResponses = (responses: ReadonlyArray<PodmanHttpResponse>) => {
   let calls = 0;
   const api: PodmanApiClient = {
@@ -197,6 +208,36 @@ describe("waitForServiceHealth", () => {
 
     expect(info.health).toBeUndefined();
     expect(fake.calls()).toBe(1);
+  });
+
+  test("fails when a stopped service has no container healthcheck", async () => {
+    const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody() }]);
+
+    const exit = await Effect.runPromiseExit(
+      waitForServiceHealth(plan, target, {
+        podmanApi: fake.api,
+        policy: { maxAttempts: 1, delay: Duration.zero },
+      }),
+    );
+
+    const error = expectProviderUnavailable(exit);
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.message).toContain(String(serviceName));
+  });
+
+  test("fails when a stopped service reports stale healthy status", async () => {
+    const fake = apiFromResponses([{ status: 200, body: stoppedInspectBody("healthy") }]);
+
+    const exit = await Effect.runPromiseExit(
+      waitForServiceHealth(plan, target, {
+        podmanApi: fake.api,
+        policy: { maxAttempts: 1, delay: Duration.zero },
+      }),
+    );
+
+    const error = expectProviderUnavailable(exit);
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.message).toContain(String(serviceName));
   });
 
   test("maps probe timeout to ProviderUnavailableError", async () => {

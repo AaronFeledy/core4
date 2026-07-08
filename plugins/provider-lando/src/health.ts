@@ -32,6 +32,11 @@ const healthFromProbeValue = (value: unknown): ServiceRuntimeInfo["health"] | "i
   }
 };
 
+const statusFromProbeValue = (value: unknown): ServiceRuntimeInfo["status"] | undefined => {
+  if (typeof value !== "object" || value === null || !("status" in value)) return undefined;
+  return typeof value.status === "string" ? value.status : undefined;
+};
+
 export interface WaitForServiceHealthOptions {
   readonly podmanApi: PodmanApiClient;
   readonly policy?: RetryPolicy;
@@ -85,7 +90,9 @@ export const waitForServiceHealth = (
         classify: {
           success: (value) => {
             const health = healthFromProbeValue(value);
-            if (health === "healthy" || health === undefined) return "green";
+            if (statusFromProbeValue(value) === "running" && (health === "healthy" || health === undefined)) {
+              return "green";
+            }
             if (health === "starting") return "yellow";
             return "red";
           },
