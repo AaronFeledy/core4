@@ -5,6 +5,7 @@ import { Cause, Effect, Exit } from "effect";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import { isIntelMacHost } from "../src/host-support.ts";
+import { makeRuntimeProvider } from "../src/index.ts";
 import {
   IntelMacUnsupportedError,
   type PodmanMachineRunner,
@@ -88,5 +89,29 @@ describe("provider-lando setup Intel Mac host gate", () => {
 
     expect(calls).toEqual(["inspect", "create", "start"]);
     expect(result.podmanVersion).toBe("6.0.2");
+  });
+
+  test("provider setup passes the host arch into the Intel Mac gate", async () => {
+    const calls: string[] = [];
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "darwin",
+        arch: "x64",
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        podmanMachine: machineRunner("missing", calls),
+        socketPath: "/tmp/lando-test.sock",
+      }),
+    );
+
+    const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+    if (Exit.isSuccess(exit)) return;
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag === "None") return;
+    expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
   });
 });
