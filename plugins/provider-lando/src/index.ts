@@ -59,6 +59,22 @@ export {
   pullImage,
 } from "./image-pull.ts";
 export type { ImagePullFrame, PullImageDeps } from "./image-pull.ts";
+export {
+  buildLandoVolumeFilters,
+  buildVolumePruneRequest,
+  parseVolumePruneResult,
+  pruneVolumes,
+  volumeMatchesFilters,
+} from "./volume-prune.ts";
+export type {
+  LandoVolumeFilterOptions,
+  PrunedVolume,
+  VolumeFilterMap,
+  VolumePruneError,
+  VolumePruneOptions,
+  VolumePruneParse,
+  VolumePruneReport,
+} from "./volume-prune.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
 export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";
