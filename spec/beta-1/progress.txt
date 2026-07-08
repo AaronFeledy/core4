@@ -1315,3 +1315,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:**
   - See the new Codebase Patterns bullet: build Podman-6 doctor diagnostics as a pure classifier + redact-at-build-boundary check builder colocated with the doctor command; extend both `DoctorRuntime` and its mirrored report schema (snapshotted → codegen); avoid the doctor ⇆ doctor-oom import cycle by referencing the new check name as a string literal in `doctor.ts`.
 ---
+
+## 2026-07-08 14:29 CDT - US-421 Review
+- Fixed a review-blocking doctor wiring gap: the OOMKilled died-event classifier/check builder is now reachable from the real `doctor()` path via injected caller payloads or a provider-supplied died-event seam, so text and NDJSON doctor output can surface redacted `runtime-oom` diagnostics instead of only unit-constructed checks.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive; `cursor-agent --trust --yolo --print "/review-bugbot current branch"` timed out after five minutes with no report, so it was not counted as approval.
+- Review notes (deferred/rejected): Deferred low-risk text line-forging concern for hostile newline/control characters in redacted context values; no secret/raw payload leakage was found, NDJSON remains JSON-escaped, and this is broader renderer-context hardening rather than a US-421 blocker.
+- Verification: typecheck, lint, check:redaction-boundary, check:renderer-boundary passed; focused doctor/OOM spot checks passed (`doctor-oom`, `doctor-oom-collection`, `doctor`, `doctor-ndjson`, `doctor-report`, `doctor-check-contract`, `doctor-runtime-service`).
+---
