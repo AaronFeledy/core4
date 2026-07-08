@@ -181,6 +181,7 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
 import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } from "./mcp.ts";
@@ -360,6 +361,11 @@ const rawPublicSchemaRegistry = {
   ProviderCapabilities,
   LandofileShape,
   ServiceConfig,
+  LogSource,
+  LogSourceId,
+  LogSourceInput,
+  LogSourceStream,
+  LogSourceStrategy,
   EndpointInput,
   RouteInput,
   HealthcheckInput,
@@ -613,6 +619,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
+  LogSource: "Public Lando schema contract for Log Source.",
+  LogSourceId: "Public Lando schema contract for Log Source Id.",
+  LogSourceInput: "Public Lando schema contract for Log Source Input.",
+  LogSourceStream: "Public Lando schema contract for Log Source Stream.",
+  LogSourceStrategy: "Public Lando schema contract for Log Source Strategy.",
   EndpointInput: "Public Lando schema contract for Endpoint Input.",
   RouteInput: "Public Lando schema contract for Route Input.",
   HealthcheckInput: "Public Lando schema contract for Healthcheck Input.",

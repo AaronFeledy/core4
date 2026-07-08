@@ -74,6 +74,11 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ProviderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  LogSource: "sdk/test/schema/log-source.test.ts",
+  LogSourceId: "sdk/test/schema/log-source.test.ts",
+  LogSourceInput: "sdk/test/schema/log-source.test.ts",
+  LogSourceStream: "sdk/test/schema/log-source.test.ts",
+  LogSourceStrategy: "sdk/test/schema/log-source.test.ts",
   EndpointInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RouteInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HealthcheckInput: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -435,6 +440,14 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
       },
     ],
   },
+  LogSourceId: "slow-query",
+  LogSource: {
+    id: "error",
+    path: "/var/log/app.log",
+    stream: "stderr",
+    strategy: "follow",
+  },
+  LogSourceInput: { path: "/var/log/app.log" },
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {
