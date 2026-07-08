@@ -103,6 +103,9 @@ const SECRET_ASSIGNMENT_PATTERN =
 
 const URL_USERINFO_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
 
+const ENCODED_URL_USERINFO_PATTERN =
+  /([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
+
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
 
 const SIGNED_QUERY_PARAM_PATTERN =
@@ -112,6 +115,7 @@ const redactSecretsString = (text: string): string =>
   text
     .replace(SECRET_ASSIGNMENT_PATTERN, (_m, name: string) => `${name}=${REDACTED}`)
     .replace(URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}@`)
+    .replace(ENCODED_URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}%40`)
     .replace(BEARER_TOKEN_PATTERN, (_m, scheme: string) => `${scheme} ${REDACTED}`)
     .replace(SIGNED_QUERY_PARAM_PATTERN, (_m, prefix: string) => `${prefix}${REDACTED}`);
 
