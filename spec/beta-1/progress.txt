@@ -72,6 +72,18 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Blocker remains external to this branch's code: the installed bundled `podman` reports `podman version 6.0.0` but rejects the managed-service launch flags with `Error: unknown flag: --root`, matching the Review-documented remote-client Linux asset defect. End-to-end scenario and adjacent runtime smoke were blocked until US-410 publishes a corrected local-engine-capable Linux asset and US-411 repins it.
 ---
 
+## 2026-07-07 23:47 CDT - US-420 Verify
+- Rebuilt `core/dist/lando` and confirmed compiled `lando version --format json` runs inside `lando4-dev`, but the required compiled setup gate could not proceed to scenario testing in this sandbox.
+- Blocker recorded: compiled `lando setup --provider podman --yes --no-interactive --skip-file-sync` and `lando setup --provider lando --yes --no-interactive --skip-file-sync` both fail before setup because the sandbox only exposes Podman 5.4.2 and the current provider floor requires >= 6.0.0.
+- **Learnings for future iterations:** US-420's health probe remains API-level verifiable in this sandbox until `lando4-dev` has a Podman 6 runtime or a usable managed runtime bundle path; setup-gated compiled verification cannot be honestly completed against Podman 5.4.2.
+---
+
+## 2026-07-07 23:38 CDT - US-420 Review
+- Review fixed the service-health readiness blocker: `waitForServiceHealth` now requires the inspected container to be running before treating either `healthy` or missing healthcheck status as ready, so stopped containers cannot pass readiness because of absent or stale Podman health data.
+- Review notes (deferred/rejected): no Bugbot findings were rejected; the local `review-work` skill was loaded, but this harness returned its workflow instructions rather than an executable report, so Cursor Bugbot plus PRD/source cross-check drove the confirmed review repair.
+- Verification: typecheck and lint passed; focused inspect-health and SDK compatibility spot checks passed; probe and redaction boundary gates passed; post-fix Bugbot reported no bugs.
+---
+
 ## 2026-07-07 20:11 CDT - US-411 Review
 - Review fixed the Windows bundled-runtime path blocker: managed runtime Podman argv resolution is now platform-aware, so `win32` setup/runtime/probe/teardown paths use `runtime/bin/podman.exe` while Linux/macOS keep `runtime/bin/podman`; regression coverage now locks Windows setup version detection and core managed-service specs.
 - Review notes (deferred/rejected): Bugbot/review-work Linux asset finding confirmed and deferred as an external runtime-bundle publish blocker, not a local code fix — the pinned `runtime-v0.1.0` Linux asset is checksum-valid but contains a remote-only Podman that rejects `--root`/`--runroot`, so US-410 must publish a corrected local-engine-capable Linux asset and US-411 must repin it. Code-review `darwin-x64` concern rejected because PRD-10/Codebase Patterns intentionally scope the committed manifest to the four published Podman 6 host targets only.
@@ -1186,6 +1198,15 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - CI outcome: pass
 - Review feedback: fixed (added Guide-Coverage-Skip PR-body rationale and completed the runtime-bundle idempotence test fixture so same-version setup does not rewrite the marker)
 - Merge: merged (squash)
+
+## 2026-07-07 - US-420
+- provider-lando inspect now reads the Podman 6 container `State.Health.Status` field and surfaces it as an optional `health` ("healthy" | "starting" | "unhealthy") on `ServiceRuntimeInfo` (additive optional interface field in @lando/sdk; no schema-snapshot or API_COMPATIBILITY change needed — verified by the sdk backward-compat spot test). Existing running/stopped status derivation is unchanged.
+- Added `waitForServiceHealth` (plugins/provider-lando/src/health.ts, exported from the plugin barrel): a `runProbe`-backed health wait that classifies healthy/no-healthcheck as green, starting as yellow (retry), unhealthy as red, captures the last inspect result via Ref, and maps non-green/timeout outcomes to `ProviderUnavailableError` with attempts/elapsed/lastHealth details. `ProbeResult.lastError` is redacted through the canonical secrets redactor before it reaches error details.
+- Verification: typecheck, lint, check:probe-boundary, check:redaction-boundary passed; spot tests passed (inspect-health, redact, ensure-runtime, capabilities, runtime-status, sdk-backward-compatibility — 51 pass / 0 fail). No CLI output change, so no CLI transcript verification needed.
+- **Learnings for future iterations:**
+  - `ProbeResult` from `runProbe` carries no success value (only outcome/attempts/elapsedMs/lastError); when a probe consumer needs the final polled value, capture it in a `Ref` inside the probed effect (same pattern as core/src/subsystems/healthcheck/live.ts).
+  - Adding an optional field to a hand-written SDK service interface (e.g. `ServiceRuntimeInfo`) is compat-safe without API_COMPATIBILITY.md edits — the sdk-mvp-surface fixture snapshots service TAG method signatures, not payload interfaces. New exported type ALIASES would need compat bookkeeping; prefer inline literal unions.
+  - `spec/beta-1/prd.json` uses `\uXXXX` ASCII-escaped unicode; never round-trip it through JSON.stringify to flip one flag (it rewrites the whole file) — do a targeted line edit instead.
 ---
 ## [2026-07-07 22:43 CDT] - Babysit
 - PR: #548 https://github.com/AaronFeledy/core4/pull/548

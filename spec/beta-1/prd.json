@@ -875,7 +875,7 @@
         "Lint passes"
       ],
       "priority": 49,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: plugins/provider-lando/src/inspect.ts:12-19, 61-132 and @lando/sdk/probe runProbe; Podman 6 Health readiness mapping."
     },
     {
