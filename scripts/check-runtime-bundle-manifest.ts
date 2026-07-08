@@ -89,10 +89,11 @@ export const checkRuntimeBundleManifestInvariant = (
 
   const required = [...REQUIRED_RUNTIME_HOST_KEYS].sort();
   const present = Object.keys(bundleRecord).sort();
+  const requiredHosts = new Set<string>(required);
   for (const missing of required.filter((key) => !present.includes(key))) {
     add("manifest", `missing required host key "${missing}"`);
   }
-  for (const extra of present.filter((key) => !required.includes(key))) {
+  for (const extra of present.filter((key) => !requiredHosts.has(key))) {
     add(
       extra,
       `unexpected host key "${extra}" — the manifest must pin exactly ${required.join(", ")} (Podman 6 drops Intel Mac; Windows uses win32-x64)`,
@@ -136,24 +137,22 @@ export const checkRuntimeBundleManifestInvariant = (
   return { ok: violations.length === 0, violations };
 };
 
-export interface LiveVerifyInput {
-  readonly manifest: unknown;
-  /** Injectable for tests; defaults to the global `fetch`. */
-  readonly fetchImpl?: typeof fetch;
-}
-
 /**
  * Live verification (release path + periodic job, never per-PR): every manifest
- * URL MUST resolve over HTTPS to a 200 with a `Content-Length` matching the
- * recorded `sizeBytes`.
+ * URL MUST resolve over HTTPS and expose a byte length matching the recorded
+ * `sizeBytes`. GitHub release asset redirects can reject HEAD, so use a ranged
+ * GET and read either `Content-Range` (206) or `Content-Length` (200).
  */
-export const verifyRuntimeBundleManifestUrls = async (
-  input: LiveVerifyInput,
-): Promise<ManifestInvariantResult> => {
-  const fetchImpl = input.fetchImpl ?? fetch;
+export const verifyRuntimeBundleManifestUrls = async ({
+  manifest,
+  fetchImpl = fetch,
+}: {
+  readonly manifest: unknown;
+  /** Injectable for tests; defaults to the global `fetch`. */
+  readonly fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
+}): Promise<ManifestInvariantResult> => {
   const violations: ManifestInvariantViolation[] = [];
 
-  const manifest = input.manifest;
   const bundles =
     typeof manifest === "object" && manifest !== null
       ? ((manifest as Record<string, unknown>).bundles as Record<string, unknown> | undefined)
@@ -175,24 +174,33 @@ export const verifyRuntimeBundleManifestUrls = async (
 
     let response: Response;
     try {
-      response = await fetchImpl(url, { method: "HEAD", redirect: "follow" });
+      response = await fetchImpl(url, {
+        method: "GET",
+        redirect: "follow",
+        headers: { Range: "bytes=0-0" },
+      });
     } catch (cause) {
-      violations.push({ key, message: `HEAD ${url} failed: ${String(cause)}` });
+      violations.push({ key, message: `GET ${url} failed: ${String(cause)}` });
       continue;
     }
 
-    if (response.status !== 200) {
-      violations.push({ key, message: `HEAD ${url} returned ${response.status}, expected 200` });
+    if (response.status !== 200 && response.status !== 206) {
+      violations.push({ key, message: `GET ${url} returned ${response.status}, expected 200 or 206` });
       continue;
     }
 
-    const contentLength = response.headers.get("content-length");
-    if (contentLength === null) {
-      violations.push({ key, message: `HEAD ${url} response has no Content-Length header` });
-    } else if (typeof sizeBytes === "number" && Number(contentLength) !== sizeBytes) {
+    const contentRange = response.headers.get("content-range");
+    const rangeSize = contentRange?.match(/^bytes \d+-\d+\/(\d+)$/u)?.[1];
+    const observedSize = Number(rangeSize ?? response.headers.get("content-length"));
+    if (!Number.isInteger(observedSize) || observedSize <= 0) {
       violations.push({
         key,
-        message: `HEAD ${url} Content-Length ${contentLength} does not match recorded sizeBytes ${sizeBytes}`,
+        message: `GET ${url} response has no usable Content-Range or Content-Length header`,
+      });
+    } else if (typeof sizeBytes === "number" && observedSize !== sizeBytes) {
+      violations.push({
+        key,
+        message: `GET ${url} byte length ${observedSize} does not match recorded sizeBytes ${sizeBytes}`,
       });
     }
   }
@@ -207,11 +215,10 @@ const VERSION_PATH = resolve(repoRoot, "plugins/provider-lando/runtime-bundle-ve
 /** Parse an `owner/repo` slug from a GitHub SSH or HTTPS remote URL. */
 export const parseGitHubRepository = (remoteUrl: string): string | undefined => {
   const trimmed = remoteUrl.trim();
-  const ssh = trimmed.match(/^git@github\.com:(.+?)(?:\.git)?$/u);
-  if (ssh) return ssh[1];
-  const https = trimmed.match(/^https:\/\/github\.com\/(.+?)(?:\.git)?$/u);
-  if (https) return https[1];
-  return undefined;
+  return (
+    trimmed.match(/^git@github\.com:(.+?)(?:\.git)?$/u)?.[1] ??
+    trimmed.match(/^https:\/\/github\.com\/(.+?)(?:\.git)?$/u)?.[1]
+  );
 };
 
 const gitOriginRepository = async (): Promise<string | undefined> => {
@@ -260,9 +267,11 @@ const runCli = async (argv: ReadonlyArray<string>): Promise<number> => {
     return 1;
   }
 
-  const violations: ManifestInvariantViolation[] = [
-    ...checkRuntimeBundleManifestInvariant({ manifest, runtimeVersionFile, expectedRepository }).violations,
-  ];
+  const violations: ManifestInvariantViolation[] = checkRuntimeBundleManifestInvariant({
+    manifest,
+    runtimeVersionFile,
+    expectedRepository,
+  }).violations.slice();
 
   if (live) {
     const liveResult = await verifyRuntimeBundleManifestUrls({ manifest });

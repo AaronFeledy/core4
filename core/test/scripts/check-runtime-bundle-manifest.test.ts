@@ -197,12 +197,34 @@ describe("runtime-bundle manifest live verification", () => {
   const okResponse = (length: number): Response =>
     new Response(null, { status: 200, headers: { "content-length": String(length) } });
 
+  const partialResponse = (length: number): Response =>
+    new Response(null, { status: 206, headers: { "content-range": `bytes 0-0/${length}` } });
+
   test("passes when every URL returns 200 with a matching Content-Length", async () => {
     const result = await verifyRuntimeBundleManifestUrls({
       manifest: validManifest(),
       fetchImpl: async () => okResponse(36_666_820),
     });
     expect(result.ok, messages(result.violations)).toBe(true);
+  });
+
+  test("uses ranged GET so GitHub release asset redirects do not depend on HEAD", async () => {
+    const requests: RequestInit[] = [];
+    const result = await verifyRuntimeBundleManifestUrls({
+      manifest: validManifest(),
+      fetchImpl: async (_url, init) => {
+        requests.push(init ?? {});
+        return partialResponse(36_666_820);
+      },
+    });
+    expect(result.ok, messages(result.violations)).toBe(true);
+    expect(requests).toEqual(
+      Array.from({ length: 4 }, () => ({
+        method: "GET",
+        redirect: "follow",
+        headers: { Range: "bytes=0-0" },
+      })),
+    );
   });
 
   test("fails when a URL returns a non-200 status", async () => {
@@ -212,15 +234,15 @@ describe("runtime-bundle manifest live verification", () => {
         String(url).includes("linux-x64") ? new Response(null, { status: 404 }) : okResponse(36_666_820),
     });
     expect(result.ok).toBe(false);
-    expect(messages(result.violations)).toContain("returned 404, expected 200");
+    expect(messages(result.violations)).toContain("returned 404, expected 200 or 206");
   });
 
-  test("fails when Content-Length does not match the recorded sizeBytes", async () => {
+  test("fails when the live byte length does not match the recorded sizeBytes", async () => {
     const result = await verifyRuntimeBundleManifestUrls({
       manifest: validManifest(),
-      fetchImpl: async () => okResponse(999),
+      fetchImpl: async () => partialResponse(999),
     });
     expect(result.ok).toBe(false);
-    expect(messages(result.violations)).toContain("does not match recorded sizeBytes");
+    expect(messages(result.violations)).toContain("byte length 999 does not match recorded sizeBytes");
   });
 });
