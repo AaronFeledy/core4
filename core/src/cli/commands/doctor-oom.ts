@@ -99,10 +99,8 @@ const buildCorrelation = (event: Record<string, unknown>): DiedEventCorrelation 
 };
 
 /**
- * Classify a raw Podman container died-event payload. Pure and total: it never
- * throws and never redacts (redaction happens at the doctor-check boundary in
- * {@link buildOomDoctorCheck} so extraction and masking stay independently
- * testable, mirroring the image-pull seam).
+ * Classify a raw Podman container died-event payload. Pure and total: never
+ * throws; redaction happens in {@link buildOomDoctorCheck} at the doctor-check boundary.
  */
 export const classifyDiedEvent = (payload: unknown): DiedEventClassification => {
   const event = asRecord(payload);
