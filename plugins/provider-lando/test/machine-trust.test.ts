@@ -75,6 +75,11 @@ describe("provider-lando Windows Hyper-V prep remediation", () => {
     expect(remediation).toContain("podman system hyperv-prep");
   });
 
+  test("preserves WSL install and update guidance", () => {
+    expect(remediation).toContain("wsl --install");
+    expect(remediation).toContain("wsl --update");
+  });
+
   test("explains administrator privileges are required for prep", () => {
     expect(/admin/i.test(remediation)).toBe(true);
   });

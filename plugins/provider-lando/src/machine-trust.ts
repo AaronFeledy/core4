@@ -89,5 +89,6 @@ export const resolveMachineTrustImport = (input: MachineTrustInput): MachineTrus
  */
 export const windowsHyperVPrepRemediation = (): string =>
   "Windows requires Hyper-V, WSL2, and the Virtual Machine Platform for Podman machines. " +
+  "Enable those Windows features, run `wsl --install` if WSL is not installed, and then run `wsl --update`. " +
   "Preparing Hyper-V needs administrator privileges, so Lando never runs it or elevates for you. " +
   "In an elevated (Run as administrator) terminal run `podman system hyperv-prep`, then rerun `lando setup`.";
