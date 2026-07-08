@@ -222,11 +222,23 @@ const renderJob = (job: NightlyJob): string => `
 ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
+const runtimeBundleManifestLiveJob = `
+  runtime-bundle-manifest-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+${bunSetupStep}
+
+      - name: Verify committed runtime-bundle manifest resolves live
+        run: bun run check:runtime-bundle-manifest --live`;
+
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     publishedManifestSetupJob,
+    runtimeBundleManifestLiveJob,
     distributionRehearsalJob,
   ].join("\n");
 

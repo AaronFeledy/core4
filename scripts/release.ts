@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { relative, resolve } from "node:path";
 
 import { $ } from "bun";
 
@@ -9,6 +9,12 @@ import {
   type DeprecationReleaseResult,
   checkDeprecationReleaseGate,
 } from "./check-deprecations.ts";
+import {
+  type ManifestInvariantResult,
+  type ManifestInvariantViolation,
+  checkRuntimeBundleManifestInvariant,
+  resolveManifestRepository,
+} from "./check-runtime-bundle-manifest.ts";
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 import { releaseProvenancePathForArtifact } from "./release-provenance.ts";
@@ -65,6 +71,11 @@ export type DeprecationGate = (input: {
   readonly target: ArtifactTarget;
 }) => Promise<DeprecationReleaseResult>;
 
+export type ManifestGate = (input: {
+  readonly env: ReleaseEnvironment;
+  readonly target: ArtifactTarget;
+}) => Promise<ManifestInvariantResult>;
+
 interface ReleaseOptions {
   readonly target?: ArtifactTarget;
   readonly throughStage?: number | string;
@@ -72,6 +83,7 @@ interface ReleaseOptions {
   readonly runner?: ReleaseRunner;
   readonly logger?: (line: string) => void;
   readonly deprecationGate?: DeprecationGate;
+  readonly manifestGate?: ManifestGate;
   readonly now?: () => number;
 }
 
@@ -1505,6 +1517,55 @@ const defaultRunner: ReleaseRunner = {
   },
 };
 
+const RUNTIME_BUNDLE_MANIFEST_PATH = resolve(
+  import.meta.dirname,
+  "../plugins/provider-lando/runtime-bundle-versions.json",
+);
+const RUNTIME_BUNDLE_VERSION_PATH = resolve(
+  import.meta.dirname,
+  "../plugins/provider-lando/runtime-bundle-version",
+);
+
+const defaultManifestGate: ManifestGate = async ({ env }) => {
+  const [manifestText, runtimeVersionFile, expectedRepository] = await Promise.all([
+    readFile(RUNTIME_BUNDLE_MANIFEST_PATH, "utf8"),
+    readFile(RUNTIME_BUNDLE_VERSION_PATH, "utf8"),
+    resolveManifestRepository(env),
+  ]);
+  return checkRuntimeBundleManifestInvariant({
+    manifest: JSON.parse(manifestText) as unknown,
+    runtimeVersionFile,
+    expectedRepository,
+  });
+};
+
+const manifestGateRemediation =
+  "Regenerate plugins/provider-lando/runtime-bundle-versions.json against published runtime-v<version> release assets; placeholder checksums, sizeBytes: 0, off-repository or non-runtime-v* URLs, an unexpected platform set, or a runtimeVersion that drifts from runtime-bundle-version are release-blocking.";
+
+const formatManifestViolation = (violation: ManifestInvariantViolation): string =>
+  `  - ${violation.key}: ${violation.message}`;
+
+const runManifestGate = async (
+  gate: ManifestGate,
+  { env, target, logger }: ReleaseStageContext,
+): Promise<void> => {
+  const result = await gate({ env, target });
+  if (result.ok) {
+    logger("[release] runtime-bundle manifest gate passed (committed-manifest invariant holds).");
+    return;
+  }
+  const detail = result.violations.map(formatManifestViolation).join("\n");
+  throw new ReleaseStageError(
+    "runtime-bundle-manifest-gate",
+    artifactFamilyForStage({ forBinary: true, forLibrary: true }, target),
+    "bun run check:runtime-bundle-manifest",
+    manifestGateRemediation,
+    new Error(
+      `Runtime-bundle manifest gate blocked release; ${result.violations.length} invariant violation(s):\n${detail}`,
+    ),
+  );
+};
+
 const defaultDeprecationGate: DeprecationGate = ({ env }) => checkDeprecationReleaseGate({ env });
 
 const deprecationGateRemediation =
@@ -1545,6 +1606,7 @@ export const runRelease = async ({
   runner = defaultRunner,
   logger = console.log,
   deprecationGate = defaultDeprecationGate,
+  manifestGate = defaultManifestGate,
   now = () => Date.now(),
 }: ReleaseOptions = {}): Promise<void> => {
   const stages = stagePrefixLimit(throughStage);
@@ -1574,6 +1636,7 @@ export const runRelease = async ({
 
     if (stage.id === "1-codegen") {
       await runDeprecationGate(deprecationGate, context);
+      await runManifestGate(manifestGate, context);
     }
   }
 

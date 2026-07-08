@@ -731,7 +731,7 @@
         "Lint passes"
       ],
       "priority": 41,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-10. Mirrors the isPlaceholderBinary pattern from core/src/cli/commands/update.ts."
     },
     {

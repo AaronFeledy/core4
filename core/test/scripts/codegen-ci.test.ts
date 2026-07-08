@@ -160,6 +160,8 @@ describe("ci workflow codegen", () => {
         "dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
       );
       expect(firstWorkflow).toContain("Verify the published bundle downloaded, verified, and installed");
+      expect(firstWorkflow).toContain("runtime-bundle-manifest-live:");
+      expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
 
       await runCodegen();
 
@@ -218,7 +220,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(22);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(7);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(8);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(releaseWorkflow).not.toContain("bun-version: ");
@@ -352,6 +354,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Network boundary lint");
       expect(workflow).toContain("run: bun run check:network-boundary");
+      expect(workflow).toContain("- name: Runtime-bundle manifest invariant");
+      expect(workflow).toContain("run: bun run check:runtime-bundle-manifest");
       expect(workflow).toContain("- name: Static scope notice for portable static matrix");
       expect(workflow).toContain("follow-up portability effort");
       expect(workflow).not.toContain("if: ${{ matrix.platform == 'linux-x64' }}");

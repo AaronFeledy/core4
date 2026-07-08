@@ -79,6 +79,9 @@ ${setupBunSteps}
       - name: Machine output boundary lint
         run: bun run check:machine-output
 
+      - name: Runtime-bundle manifest invariant
+        run: bun run check:runtime-bundle-manifest
+
       - name: Static scope notice for portable static matrix
         run: |
           echo "::notice title=static-checks-scope::\${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64. Full cross-platform static test portability remains a follow-up portability effort."
