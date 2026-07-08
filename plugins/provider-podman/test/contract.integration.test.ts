@@ -88,7 +88,7 @@ const makeFakeApi = () => {
   const calls: PodmanHttpRequest[] = [];
 
   const api: PodmanApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ version: { Version: "6.0.2" } }),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -194,7 +194,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   let artifactCount = 0;
 
   const api: PodmanApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ version: { Version: "6.0.2" } }),
     request: (request) =>
       Effect.promise(async (): Promise<PodmanHttpResponse> => {
         calls.push(request);
@@ -384,7 +384,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
   const calls: PodmanHttpRequest[] = [];
 
   const api: PodmanApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ version: { Version: "6.0.2" } }),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);

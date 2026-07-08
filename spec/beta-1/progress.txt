@@ -60,13 +60,28 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:** Real setup must assert both the installed executable layout (`runtime/bin/podman`, not `runtime/bin/bin/podman`) and that the selected binary supports the managed service flags; schema-valid manifest pins can still point at an operationally unusable artifact.
 ---
 
+## 2026-07-07 17:25 CDT - Babysit
+- PR: #545 https://github.com/AaronFeledy/core4/pull/545
+- CI outcome: pass (guide-scenarios failed once on check:guide-drift; cleared)
+- Review feedback: fixed (merged origin/main to resolve prd.json/progress.txt metadata conflicts; appended Guide-Coverage-Skip line to the PR body for the enforcement-only version floor, matching the provider-lando gate PR precedent)
+- Merge: merged (squash)
+---
 ## 2026-07-07 15:45 CDT - US-409 Verify
 - Compiled `core/dist/lando` rebuilt successfully, and `lando setup --provider podman --yes --no-interactive --skip-file-sync` completed in `lando4-dev` after starting the sandbox user Podman socket.
 - Verification blocker: the first real compiled `lando run` scenario succeeded and cleaned the scratch registry, but it leaked provider resources (`lando-scratch-toolbox-*` network plus `scratch-toolbox-*` volumes). After that, fresh compiled and source-mode `lando run` invocations deterministically failed with `ScratchAppError` / `operation: start` before the tool command executed, even after removing the leaked network/volumes and rerunning setup; raw `podman run` still worked.
 - Adjacent checks reached before the blocker: compiled `lando run --format json -- sh -lc 'echo json-ok; exit 7'` emitted stdout/event/result frames and propagated exit 7 with a scratch id, but the repeat/keep/gc/interrupt/alias smoke could not be completed because subsequent scratch starts failed.
 - **Learnings for future iterations:** Real sandbox verification caught what the unit hardening did not: scratch-run cleanup must assert provider networks and volumes, not only registry entries, scratch roots, and containers; a leaked first-run provider resource can poison later scratch starts even when the registry is empty.
 ---
-
+## 2026-07-07 15:18 CDT - US-414
+- Enforced the Podman 6 runtime floor in provider-podman: provider construction (selection) now reads the server version from the `/libpod/info` payload it already fetches for availability, gates it through the shared `podmanVersionMeetsFloor`/`MINIMUM_PODMAN_VERSION` exports from `@lando/provider-lando`, and fails closed with `PodmanServerVersionUnsupportedError` (ProviderUnavailableError family; `providerId: "podman"`, `operation: "select"`, details carry observed version + `libpod-info` source + minimum, remediation names the >= 6.0.0 upgrade). Missing or unparseable server versions also fail closed. No `podman` CLI command is executed — the gate is API-only.
+- `getVersions` now reports `{ provider: "0.0.0", runtime: <server version> }` using the gated server version (pre-release strings like `6.1.0-rc1` are preserved verbatim). The platform capability matrix is untouched; gating happens before capabilities are returned.
+- Migrated provider-podman test info doubles from empty `{}` payloads to `{ version: { Version: "6.0.2" } }` so existing availability/conflict/capabilities/contract/desktop suites pass the new gate; no assertions were weakened.
+- Verification: typecheck, lint passed; new version-gate suite (5 tests: 5.2.0 reject, 6.0.0 accept, 6.1.0-rc1 accept, missing/unparseable fail closed, Bun.spawn spy proves no shell-out) plus provider-podman suite (75 tests), provider-lando version-gate/capabilities, core provider registry/conflict/contract-coverage and doctor spot checks all passed. Real-runtime QA in `lando4-dev`: system Podman 5.4.2's live socket was rejected with the exact tagged error/details/remediation via a minimal driver script.
+- **Learnings for future iterations:**
+  - provider-podman test doubles for `podmanApi.info` must now include `version.Version >= 6.0.0` or provider construction fails closed with the version gate; use `{ version: { Version: "6.0.2" } }` as the standard fixture payload.
+  - The `lando4-dev` sandbox path is identical to the host repo path, so `.local/agent2` worktrees are directly runnable inside it; `.local/bin/lando4-dev --exec bash -lc '...'` is the one-off form (args after `--exec` are passed through, quoting the whole script as one bash -lc string).
+  - `Bun.spawn` can be spied with `spyOn(Bun, "spawn")` from bun:test to prove a code path never shells out.
+---
 ## 2026-07-07 15:22 CDT - US-409
 - Hardened the disposable tool runner (`lando run` / `apps:scratch:run`) with coverage and docs; US-408 already shipped the command, streaming, `--keep` detach, and teardown finalizers, so this story added the missing invariant proofs and the executable guide (no production code changes).
 - Added tests to `core/test/cli/scratch-run.test.ts`: a `--keep` run lists as detached (source/mode/status) and is reaped by `apps:scratch:gc --prune` once orphaned (registry + provider `destroy`, cache dir gone, list empty); a Ctrl+C-interrupted run leaves no registry entry and no scratch root behind; and a warm-repeat proof that two non-kept toolbox runs acquire and destroy two distinct fresh scratches (no warm pool) with byte-identical content-addressed image build inputs (`artifact = debian:12.11-slim`), while `--keep` persists a scratch.
@@ -75,7 +90,6 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:**
   - See the three new Codebase Patterns above (warm-repeat content-addressed comparison, gc reaping of a kept run via directory-orphan, and the render=false scratch-guide authoring/gitignore/gate rules).
 ---
-
 ## 2026-07-07 13:10 CDT - US-408 Verify
 - Verified the rebuilt compiled binary in `lando4-dev`: `lando setup --provider podman --yes --no-interactive --skip-file-sync` completed, `lando run --format json` emitted decodable stdout/stderr/event/result frames with exit 7 and a scratch id, `scratch:run` and `apps scratch run` aliases returned exit 0 frames, and scratch containers were cleaned up.
 - Fixed the real-world JSON streaming redaction miss: forwarded agent env values now travel as command-scoped redaction tokens so stdout/stderr frames, event frames, and the terminal result envelope mask those values before emission.

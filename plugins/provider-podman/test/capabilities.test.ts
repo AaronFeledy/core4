@@ -241,21 +241,21 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({}) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
       }),
     );
     const macosProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "darwin",
         env: {},
-        podmanApi: { info: Effect.succeed({}) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
       }),
     );
     const windowsProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "win32",
         env: {},
-        podmanApi: { info: Effect.succeed({}) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
       }),
     );
 
@@ -273,7 +273,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         env: { XDG_RUNTIME_DIR: "/run/user/1000" },
         podmanApiFactory: (socketPath) => {
           createdHosts.push(socketPath);
-          return { info: Effect.succeed({}) };
+          return { info: Effect.succeed({ version: { Version: "6.0.2" } }) };
         },
       }),
     );
@@ -288,7 +288,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         env: {},
         podmanApiFactory: (socketPath) => {
           createdHosts.push(socketPath);
-          return { info: Effect.succeed({}) };
+          return { info: Effect.succeed({ version: { Version: "6.0.2" } }) };
         },
       }),
     );
@@ -303,7 +303,7 @@ describe("provider-podman RuntimeProvider layer", () => {
           XDG_RUNTIME_DIR: "/run/user/1000",
           LANDO_PODMAN_MACHINE: "bad;name",
         },
-        podmanApi: { info: Effect.succeed({}) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
       }),
     );
 

@@ -23,15 +23,16 @@ import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
   type BringUpOptions,
+  MINIMUM_PODMAN_VERSION,
   type PodmanApiClient,
   bringDown,
   bringUp,
   exec,
   execStream,
   inspect,
-  introspectProviderCapabilities,
   logs,
   makePodmanApiClient as makeUnixPodmanApiClient,
+  podmanVersionMeetsFloor,
   providerStatePath as providerLandoStatePath,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -526,6 +527,48 @@ const podmanUnavailable = (operation: string, socketPath: string, cause?: unknow
   });
 
 /**
+ * Tagged subclass of `ProviderUnavailableError` raised when the user-installed
+ * Podman server reports a version below the supported runtime floor. The
+ * server version comes from the `/libpod/info` payload already fetched for
+ * provider availability; no `podman` CLI command is executed.
+ */
+export class PodmanServerVersionUnsupportedError extends ProviderUnavailableError {
+  constructor(observedVersion: string) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: `Podman server version "${observedVersion}" (reported by the Podman API /libpod/info) does not satisfy the required minimum ${MINIMUM_PODMAN_VERSION}.`,
+      details: {
+        observedVersion,
+        source: "libpod-info",
+        minimumVersion: MINIMUM_PODMAN_VERSION,
+      },
+      remediation: `Upgrade Podman Desktop or your system Podman to >= ${MINIMUM_PODMAN_VERSION}, then retry.`,
+    });
+  }
+}
+
+const infoServerVersion = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const version = "version" in info ? info.version : undefined;
+  if (typeof version !== "object" || version === null || !("Version" in version)) return undefined;
+  const serverVersion = version.Version;
+  return typeof serverVersion === "string" ? serverVersion : undefined;
+};
+
+const enforceServerVersionFloor = (
+  info: unknown,
+): Effect.Effect<string, PodmanServerVersionUnsupportedError> => {
+  const observed = infoServerVersion(info);
+  if (observed === undefined) {
+    return Effect.fail(new PodmanServerVersionUnsupportedError("unknown"));
+  }
+  return podmanVersionMeetsFloor(observed, MINIMUM_PODMAN_VERSION)
+    ? Effect.succeed(observed)
+    : Effect.fail(new PodmanServerVersionUnsupportedError(observed));
+};
+
+/**
  * Construct a `RuntimeProvider` Live Layer service for the user-installed
  * Podman host. Fails closed with `ProviderLandoConflictError` if
  * `@lando/provider-lando`'s persisted setup-state claims the same socket.
@@ -572,9 +615,17 @@ export const makeRuntimeProvider = (
         ? noConflict()
         : detectProviderLandoConflict(options.stateDir, socketPath);
 
-  const capabilities = introspectProviderCapabilities(podmanApi, platform).pipe(
-    Effect.map(() => podmanCapabilitiesForPlatform(platform)),
+  const gatedRuntime = podmanApi.info.pipe(
+    Effect.flatMap((info) =>
+      enforceServerVersionFloor(info).pipe(
+        Effect.map((serverVersion) => ({
+          serverVersion,
+          capabilities: podmanCapabilitiesForPlatform(platform),
+        })),
+      ),
+    ),
     Effect.mapError((cause) => {
+      if (cause instanceof PodmanServerVersionUnsupportedError) return cause;
       if (cause instanceof ProviderUnavailableError) {
         if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
           return new PodmanMachineNotRunningError({
@@ -621,9 +672,9 @@ export const makeRuntimeProvider = (
     );
 
   return conflictCheck.pipe(
-    Effect.flatMap(() => capabilities),
+    Effect.flatMap(() => gatedRuntime),
     Effect.map(
-      (resolvedCapabilities): RuntimeProviderShape => ({
+      ({ serverVersion, capabilities: resolvedCapabilities }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
@@ -635,7 +686,7 @@ export const makeRuntimeProvider = (
         ),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
-        getVersions: Effect.succeed({ provider: "0.0.0" }),
+        getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
