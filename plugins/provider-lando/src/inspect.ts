@@ -12,6 +12,7 @@ const PROVIDER_ID = "lando";
 interface ContainerInspect {
   readonly Id?: string;
   readonly State?: {
+    readonly Health?: { readonly Status?: string };
     readonly Running?: boolean;
     readonly Status?: string;
     readonly StartedAt?: string;
@@ -63,6 +64,18 @@ const statusFromInspect = (inspect: ContainerInspect): string => {
     return "running";
   }
   return "stopped";
+};
+
+const healthFromInspect = (inspect: ContainerInspect): ServiceRuntimeInfo["health"] | undefined => {
+  const status = inspect.State?.Health?.Status?.trim().toLowerCase();
+  switch (status) {
+    case "healthy":
+    case "starting":
+    case "unhealthy":
+      return status;
+    default:
+      return undefined;
+  }
 };
 
 const lastStartedAt = (inspect: ContainerInspect): Date | undefined => {
@@ -119,6 +132,7 @@ export const inspect = (
 
     const decoded = (yield* parseJson(response)) as ContainerInspect;
     const status = statusFromInspect(decoded);
+    const health = healthFromInspect(decoded);
     const startedAt = lastStartedAt(decoded);
     return {
       app: plan.id,
@@ -126,6 +140,7 @@ export const inspect = (
       providerId: plan.provider,
       status,
       state: status,
+      ...(health === undefined ? {} : { health }),
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
       endpoints: service.endpoints,
       ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
