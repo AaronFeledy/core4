@@ -164,7 +164,10 @@ export const buildOomDoctorCheck = (
   if (correlation.app !== undefined) context.app = redact(correlation.app);
   if (correlation.service !== undefined) context.service = redact(correlation.service);
 
-  const solutions = platform === "linux" ? [baseSolution()] : [baseSolution(), podmanDesktopSolution()];
+  const solutions =
+    platform === "darwin" || platform === "win32"
+      ? [baseSolution(), podmanDesktopSolution()]
+      : [baseSolution()];
 
   return {
     name: OOM_CHECK_NAME,

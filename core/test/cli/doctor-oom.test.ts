@@ -11,6 +11,12 @@ import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/co
 const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
 const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };
 
+const solutionText = (solutions: ReadonlyArray<{ readonly description: string }>): string =>
+  solutions
+    .map((solution) => solution.description)
+    .join(" ")
+    .toLowerCase();
+
 const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   Type: "container",
   Action: "died",
@@ -142,11 +148,7 @@ describe("buildOomDoctorCheck", () => {
     expect(check.runtime.oomKilled).toBe(true);
     expect(check.providerId).toBe("lando");
     expect(check.providerKind).toBe("managed");
-    expect(check.solutions.length).toBeGreaterThan(0);
-    const joined = check.solutions
-      .map((s) => s.description)
-      .join(" ")
-      .toLowerCase();
+    const joined = solutionText(check.solutions);
     expect(joined).toContain("memory");
     expect(joined).toContain("logs");
     // correlation surfaced in context
@@ -163,40 +165,26 @@ describe("buildOomDoctorCheck", () => {
     expect(buildOomDoctorCheck(classifyDiedEvent(null), CONTEXT)).toBeUndefined();
   });
 
-  test("macOS remediation mentions Podman Desktop machine resource settings", () => {
-    const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-      ...CONTEXT,
-      platform: "darwin",
-    });
-    if (check === undefined) throw new Error("expected check");
-    const joined = check.solutions
-      .map((s) => s.description)
-      .join(" ")
-      .toLowerCase();
-    expect(joined).toContain("podman desktop");
+  test("macOS and Windows remediation mention Podman Desktop machine resource settings", () => {
+    for (const platform of ["darwin", "win32"] as const) {
+      const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
+        ...CONTEXT,
+        platform,
+      });
+      if (check === undefined) throw new Error("expected check");
+      expect(solutionText(check.solutions)).toContain("podman desktop");
+    }
   });
 
-  test("Windows remediation mentions Podman Desktop machine resource settings", () => {
-    const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-      ...CONTEXT,
-      platform: "win32",
-    });
-    if (check === undefined) throw new Error("expected check");
-    const joined = check.solutions
-      .map((s) => s.description)
-      .join(" ")
-      .toLowerCase();
-    expect(joined).toContain("podman desktop");
-  });
-
-  test("linux remediation does not mention Podman Desktop", () => {
-    const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), CONTEXT);
-    if (check === undefined) throw new Error("expected check");
-    const joined = check.solutions
-      .map((s) => s.description)
-      .join(" ")
-      .toLowerCase();
-    expect(joined).not.toContain("podman desktop");
+  test("linux and WSL remediation do not mention Podman Desktop", () => {
+    for (const platform of ["linux", "wsl"] as const) {
+      const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
+        ...CONTEXT,
+        platform,
+      });
+      if (check === undefined) throw new Error("expected check");
+      expect(solutionText(check.solutions)).not.toContain("podman desktop");
+    }
   });
 
   test("redacts credential-bearing image and correlation before output", () => {
