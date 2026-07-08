@@ -1787,6 +1787,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ProviderCapabilities.serviceFileCopy",
   "ProviderCapabilities.serviceHealth",
   "ProviderCapabilities.serviceLogs",
+  "ProviderCapabilities.serviceLogSources",
   "ProviderCapabilities.sharedCrossAppNetwork",
   "ProviderCapabilities.tlsCertificates",
   "ProviderCapabilities.volumeSnapshot",

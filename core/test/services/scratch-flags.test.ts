@@ -42,6 +42,7 @@ const makeCapabilities = (sharedCrossAppNetwork: boolean): ProviderCapabilities 
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "lando",
   hostReachability: "emulated",
   sharedCrossAppNetwork,

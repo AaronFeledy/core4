@@ -22,6 +22,7 @@ const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCa
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "lando",
   hostReachability: "emulated",
   sharedCrossAppNetwork: true,

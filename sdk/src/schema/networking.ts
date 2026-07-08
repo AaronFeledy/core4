@@ -169,6 +169,7 @@ export const ProviderCapabilities = Schema.Struct({
   multiServiceApply: Schema.Boolean,
   serviceExec: Schema.Boolean,
   serviceLogs: Schema.Boolean,
+  serviceLogSources: Schema.Boolean,
   serviceHealth: Schema.Literal("native", "lando", "none"),
   hostReachability: Schema.Literal("native", "emulated", "none"),
   sharedCrossAppNetwork: Schema.Boolean,

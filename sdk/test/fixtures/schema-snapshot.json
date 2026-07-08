@@ -35204,6 +35204,9 @@
         "serviceLogs": {
           "type": "boolean"
         },
+        "serviceLogSources": {
+          "type": "boolean"
+        },
         "sharedCrossAppNetwork": {
           "type": "boolean"
         },
@@ -35224,6 +35227,7 @@
         "multiServiceApply",
         "serviceExec",
         "serviceLogs",
+        "serviceLogSources",
         "serviceHealth",
         "hostReachability",
         "sharedCrossAppNetwork",

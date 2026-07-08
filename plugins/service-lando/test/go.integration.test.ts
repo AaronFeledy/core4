@@ -46,6 +46,7 @@ const capabilities: ProviderCapabilities = {
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "lando",
   hostReachability: "emulated",
   sharedCrossAppNetwork: true,

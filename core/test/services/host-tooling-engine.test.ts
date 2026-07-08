@@ -37,6 +37,7 @@ const stubCapabilities = {
   multiServiceApply: false,
   serviceExec: false,
   serviceLogs: false,
+  serviceLogSources: false,
   serviceHealth: "none" as const,
   hostReachability: "none" as const,
   sharedCrossAppNetwork: false,
