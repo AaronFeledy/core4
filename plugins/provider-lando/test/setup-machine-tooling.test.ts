@@ -139,7 +139,30 @@ describe("provider-lando bundled machine tooling resolution", () => {
         }),
       );
 
-      expect(commands).toEqual([`${runtimeBinDir}/podman`]);
+      expect(commands).toEqual([`${runtimeBinDir}/podman.exe`]);
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
+  test("win32 setup detects the Podman version from the bundled executable", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-version-win-"));
+    try {
+      await writeFile(join(runtimeBinDir, "podman.exe"), '#!/bin/sh\necho "podman version 9.9.9-bundled"\n', {
+        mode: 0o755,
+      });
+
+      const result = await Effect.runPromise(
+        setupProviderLando({
+          platform: "win32",
+          runtimeBinDir,
+          skipSocketProbe: true,
+          _machineToolingExists: () => true,
+          _machineRunnerFactory: () => machineRunner("running"),
+        }),
+      );
+
+      expect(result.podmanVersion).toBe("9.9.9-bundled");
     } finally {
       await rm(runtimeBinDir, { recursive: true, force: true });
     }

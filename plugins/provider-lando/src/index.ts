@@ -256,21 +256,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const podmanBin = runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir);
+  const platform = options.platform ?? currentHostPlatform();
+  if (platform === undefined) {
+    return Effect.fail(unsupportedHostPlatformError());
+  }
+  const podmanBin =
+    runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
   const skipSetupSocketProbe =
     externalSocketPath === undefined && managedSocketPath !== undefined && options.podmanApi === undefined;
   let runtimeVersion: string | undefined;
   let bundleVersion: string | undefined;
-  const platform = options.platform ?? currentHostPlatform();
-  if (platform === undefined) {
-    return Effect.fail(unsupportedHostPlatformError());
-  }
   const machineRunner =
     options.podmanMachine ??
     (platform === "linux" || runtimeBinDir === undefined
       ? undefined
-      : makeSystemPodmanMachineRunner(managedRuntimePodmanArgv0(runtimeBinDir), "lando", platform));
+      : makeSystemPodmanMachineRunner(managedRuntimePodmanArgv0(runtimeBinDir, platform), "lando", platform));
   const artifactDownloadMissing = (): ProviderUnavailableError =>
     new ProviderUnavailableError({
       providerId: "lando",
@@ -398,6 +399,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           options.runtimeConfigDir !== undefined &&
           options.providerPidPath !== undefined
             ? {
+                platform,
                 runtimeBinDir,
                 runtimeStorageDir: options.runtimeStorageDir,
                 runtimeRunDir: options.runtimeRunDir,

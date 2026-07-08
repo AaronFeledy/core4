@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import {
   buildManagedRuntimeServiceSpec,
   terminateOwnedRuntimeService,
@@ -61,8 +61,9 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
 };
 
 const stopManagedRuntimeService = (userDataRoot: string): Promise<RuntimeServiceStopResult> => {
-  const paths = makeLandoPaths({ userDataRoot });
-  const spec = buildManagedRuntimeServiceSpec(paths);
+  const platform = normalizeHostPlatform();
+  const paths = makeLandoPaths({ userDataRoot, platform });
+  const spec = buildManagedRuntimeServiceSpec({ ...paths, platform });
   return Effect.runPromise(terminateOwnedRuntimeService(spec));
 };
 

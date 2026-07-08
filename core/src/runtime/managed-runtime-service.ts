@@ -2,7 +2,10 @@ import { readFile, rm } from "node:fs/promises";
 
 import { Effect } from "effect";
 
+import type { HostPlatform } from "@lando/sdk/schema";
+
 export interface ManagedRuntimeServicePaths {
+  readonly platform: HostPlatform;
   readonly runtimeBinDir: string;
   readonly runtimeRunDir: string;
   readonly runtimeStorageDir: string;
@@ -147,12 +150,13 @@ export const buildManagedRuntimeServiceArgs = (
 
 // Forward slash is intentional: this is the exact argv[0] the provider spawns and
 // the same string matched against `/proc/<pid>/cmdline`, so it must not be re-normalized.
-export const managedRuntimePodmanArgv0 = (runtimeBinDir: string): string => `${runtimeBinDir}/podman`;
+export const managedRuntimePodmanArgv0 = (runtimeBinDir: string, platform: HostPlatform): string =>
+  `${runtimeBinDir}/${platform === "win32" ? "podman.exe" : "podman"}`;
 
 export const buildManagedRuntimeServiceSpec = (
   paths: ManagedRuntimeServicePaths,
 ): ManagedRuntimeServiceSpec => ({
-  command: managedRuntimePodmanArgv0(paths.runtimeBinDir),
+  command: managedRuntimePodmanArgv0(paths.runtimeBinDir, paths.platform),
   args: buildManagedRuntimeServiceArgs(paths),
   socketPath: paths.providerSocketPath,
   pidPath: paths.providerPidPath,

@@ -379,7 +379,7 @@ const resolveSetupPodmanCommandRunner = (
     return Effect.succeed(makeSystemPodmanCommandRunner());
   }
 
-  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir);
+  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir, platform);
   if (!toolingExists(podmanBin)) {
     return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
   }
@@ -396,7 +396,7 @@ const resolveSetupMachineRunner = (
   const runtimeBinDir = options.runtimeBinDir;
   if (runtimeBinDir === undefined) return Effect.fail(missingBundledMachineToolingError(platform));
 
-  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir);
+  const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const toolingExists = (options._machineToolingExists ?? existsSync)(podmanBin);
   if (!toolingExists) return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
 

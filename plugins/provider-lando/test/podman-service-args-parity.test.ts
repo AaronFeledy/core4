@@ -12,9 +12,9 @@ import { buildPodmanServiceArgs } from "../src/podman-service-runner.ts";
 
 test("buildPodmanServiceArgs stays byte-identical to the core managed runtime service argv", () => {
   const paths = makeLandoPaths({ userDataRoot: "/tmp/lando-provider-parity" });
-  const coreSpec = buildManagedRuntimeServiceSpec(paths);
+  const coreSpec = buildManagedRuntimeServiceSpec({ ...paths, platform: "linux" });
   // argv[0] match key must equal the exact spawned string, never a join-normalized path.
-  const podmanBin = managedRuntimePodmanArgv0(paths.runtimeBinDir);
+  const podmanBin = managedRuntimePodmanArgv0(paths.runtimeBinDir, "linux");
   const providerSpec = buildPodmanServiceArgs({
     podmanBin,
     storageDir: paths.runtimeStorageDir,
@@ -34,7 +34,7 @@ test("the production provider launch uses the shared managed-runtime argv0 helpe
   const source = readFileSync(join(import.meta.dir, "../src/index.ts"), "utf8");
 
   // Source guard: launched bin must come from the shared helper so argv[0] cannot drift.
-  expect(source).toContain("managedRuntimePodmanArgv0(runtimeBinDir)");
+  expect(source).toContain("managedRuntimePodmanArgv0(runtimeBinDir, platform)");
   expect(source).not.toContain("`${runtimeBinDir}/podman`");
 });
 

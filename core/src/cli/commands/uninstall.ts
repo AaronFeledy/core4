@@ -146,7 +146,8 @@ const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: tru
 const defaultTeardownRuntimeService = (
   userDataRoot: string,
 ): Promise<{ readonly terminated: boolean; readonly pid?: number }> => {
-  const spec = buildManagedRuntimeServiceSpec(makeLandoPaths({ userDataRoot }));
+  const platform = normalizeHostPlatform();
+  const spec = buildManagedRuntimeServiceSpec({ ...makeLandoPaths({ userDataRoot, platform }), platform });
   return Effect.runPromise(terminateOwnedRuntimeService(spec));
 };
 

@@ -45,7 +45,7 @@ const makeProcessSeam = (overrides: Partial<ProcessSeam> = {}): ProcessSeam => (
 describe("managed runtime service spec", () => {
   test("builds the canonical managed Podman service argv from Lando paths", () => {
     const paths = makeLandoPaths({ userDataRoot: "/tmp/udr" });
-    const spec = buildManagedRuntimeServiceSpec(paths);
+    const spec = buildManagedRuntimeServiceSpec({ ...paths, platform: "linux" });
 
     expect(spec.command).toEndWith("/runtime/bin/podman");
     expect(spec.command).toBe("/tmp/udr/runtime/bin/podman");
@@ -65,6 +65,13 @@ describe("managed runtime service spec", () => {
     ]);
     expect(spec.socketPath).toBe("/tmp/udr/runtime/run/podman.sock");
     expect(spec.pidPath).toBe("/tmp/udr/runtime/run/podman.pid");
+  });
+
+  test("uses the Windows runtime executable name on win32", () => {
+    const paths = makeLandoPaths({ userDataRoot: "/tmp/udr", platform: "win32" });
+    const spec = buildManagedRuntimeServiceSpec({ ...paths, platform: "win32" });
+
+    expect(spec.command).toBe(`${paths.runtimeBinDir}/podman.exe`);
   });
 });
 
