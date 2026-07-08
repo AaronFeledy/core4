@@ -85,6 +85,7 @@ export type {
   RootlessProbes,
 } from "./rootless-preflight.ts";
 export {
+  IntelMacUnsupportedError,
   MINIMUM_PODMAN_VERSION,
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
@@ -93,6 +94,7 @@ export {
   WindowsMachineOsUnsupportedError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
+  isIntelMacHost,
   ensureWindowsPodmanMachine,
   makeSystemPodmanMachineRunner,
   makeSystemPodmanCommandRunner,

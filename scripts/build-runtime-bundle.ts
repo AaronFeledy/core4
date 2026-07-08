@@ -41,7 +41,6 @@ export interface RuntimeBundleManifest {
 export const RUNTIME_BUNDLE_TARGETS: ReadonlyArray<RuntimeBundleTarget> = [
   { key: "linux-x64", filename: "lando-runtime-linux-x64.tar.gz" },
   { key: "linux-arm64", filename: "lando-runtime-linux-arm64.tar.gz" },
-  { key: "darwin-x64", filename: "lando-runtime-darwin-x64.tar.gz" },
   { key: "darwin-arm64", filename: "lando-runtime-darwin-arm64.tar.gz" },
   { key: "win32-x64", filename: "lando-runtime-win32-x64.zip" },
 ];

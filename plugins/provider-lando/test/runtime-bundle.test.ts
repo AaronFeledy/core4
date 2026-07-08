@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
 import {
+  IntelMacUnsupportedError,
   ProviderBundleChecksumError,
   RUNTIME_BUNDLE_MANIFEST,
   RUNTIME_BUNDLE_MANIFEST_ENV,
@@ -144,6 +145,14 @@ describe("resolveRuntimeBundleEntry", () => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect((failure as ProviderUnavailableError).message).toContain("win32-arm64");
     expect((failure as ProviderUnavailableError).remediation).toContain("lando setup");
+  });
+
+  test("rejects Intel macOS with the Podman 6 removal remediation", async () => {
+    const exit = await Effect.runPromiseExit(resolveRuntimeBundleEntry("darwin", "x64"));
+    const failure = expectFailure(exit);
+    expect(failure).toBeInstanceOf(IntelMacUnsupportedError);
+    expect((failure as IntelMacUnsupportedError).message).toContain("Podman 6");
+    expect((failure as IntelMacUnsupportedError).remediation).toContain("Apple Silicon");
   });
 });
 
