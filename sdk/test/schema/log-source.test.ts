@@ -27,7 +27,7 @@ describe("LogSource", () => {
       strategy: "redirect",
     });
 
-    expect(decoded.id).toBe("error");
+    expect(String(decoded.id)).toBe("error");
     expect(decoded.required).toBe(false);
     expect(decoded.timestamps).toBe(false);
     expect(decoded.label).toBeUndefined();
@@ -78,7 +78,7 @@ describe("LogSourceInput", () => {
       path: "/var/log/apache2/error.log",
     });
 
-    expect(decoded.id).toBe("error.log");
+    expect(String(decoded.id)).toBe("error.log");
     expect(decoded.stream).toBe("stderr");
     expect(decoded.strategy).toBe("follow");
     expect(decoded.timestamps).toBe(false);
@@ -93,7 +93,7 @@ describe("LogSourceInput", () => {
       stream: "stdout",
     });
 
-    expect(decoded.id).toBe("app");
+    expect(String(decoded.id)).toBe("app");
     expect(decoded.label).toBe("Application log");
     expect(decoded.stream).toBe("stdout");
     expect(decoded.strategy).toBe("follow");
@@ -105,5 +105,40 @@ describe("LogSourceInput", () => {
     });
 
     expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("rejects encoding sources that cannot be represented in Landofile logs input", () => {
+    const source = Schema.decodeUnknownSync(LogSource)({
+      id: "error",
+      path: "/var/log/app.log",
+      stream: "stderr",
+      strategy: "redirect",
+      required: true,
+      timestamps: true,
+    });
+    const result = Schema.encodeEither(LogSourceInput)(source);
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) expect(String(result.left)).toContain("Landofile log source input");
+  });
+
+  test("encodes decoded Landofile input and decodes it back to the same source", () => {
+    const decoded = Schema.decodeUnknownSync(LogSourceInput)({
+      id: "app",
+      label: "Application log",
+      path: "/var/log/app.log",
+      stream: "stdout",
+    });
+
+    const encoded = Schema.encodeSync(LogSourceInput)(decoded);
+    const decodedAgain = Schema.decodeUnknownSync(LogSourceInput)(encoded);
+
+    expect(encoded).toEqual({
+      id: "app",
+      label: "Application log",
+      path: "/var/log/app.log",
+      stream: "stdout",
+    });
+    expect(decodedAgain).toEqual(decoded);
   });
 });

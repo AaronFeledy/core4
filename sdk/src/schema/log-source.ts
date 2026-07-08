@@ -1,6 +1,6 @@
 import { posix } from "node:path";
 
-import { Schema } from "effect";
+import { ParseResult, Schema } from "effect";
 
 import { AbsolutePath } from "./primitives.ts";
 
@@ -40,32 +40,54 @@ export type LogSourceStrategy = typeof LogSourceStrategy.Type;
  */
 export const LogSource = Schema.Struct({
   /** Unique within the service; `console` is reserved. */
-  id: LogSourceId,
+  id: LogSourceId.annotations({
+    description: "Unique source id within the service; `console` is reserved for the implicit engine stream.",
+  }),
   /** Human-facing label, e.g. "apache error log". */
-  label: Schema.optional(Schema.String),
+  label: Schema.optional(Schema.String).annotations({
+    description: "Human-readable label shown when presenting this log source.",
+  }),
   /** Single in-container file (no globs in v4.0). */
-  path: AbsolutePath,
+  path: AbsolutePath.annotations({
+    description: "Single absolute in-container file path for this log source; globs are not supported.",
+  }),
   /** Render/exit classification of this source's lines. */
-  stream: LogSourceStream,
+  stream: LogSourceStream.annotations({
+    description: "Render and exit classification for this source's lines.",
+  }),
   /** How the source is reified (§6.14.3). */
-  strategy: LogSourceStrategy,
+  strategy: LogSourceStrategy.annotations({
+    description: "How Lando reifies the declared source: build-time redirect or runtime follower.",
+  }),
   /** When true, an unavailable source fails planning instead of degrading. */
-  required: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  required: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+    description: "Whether an unavailable source fails planning instead of degrading.",
+  }),
   /** When true, lines carry parseable leading timestamps, enabling `--since`. */
-  timestamps: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  timestamps: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+    description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+  }),
 });
 export type LogSource = typeof LogSource.Type;
 
 /** The Landofile-facing input shape for a user-declared source. */
 const LogSourceInputFields = Schema.Struct({
   /** Single in-container file path (required). */
-  path: AbsolutePath,
+  path: AbsolutePath.annotations({
+    description: "Single absolute in-container file path declared under `services.<name>.logs`.",
+  }),
   /** Human-facing label. */
-  label: Schema.optional(Schema.String),
+  label: Schema.optional(Schema.String).annotations({
+    description: "Optional human-readable label for this Landofile log source.",
+  }),
   /** Render/exit classification; defaults to stderr. */
-  stream: Schema.optionalWith(LogSourceStream, { default: () => "stderr" as const }),
+  stream: Schema.optionalWith(LogSourceStream, { default: () => "stderr" as const }).annotations({
+    description: "Render and exit classification for this source's lines; defaults to stderr.",
+  }),
   /** Source id; defaults to the path basename. */
-  id: Schema.optional(LogSourceId),
+  id: Schema.optional(LogSourceId).annotations({
+    description: "Optional source id; defaults to the path basename.",
+  }),
 });
 
 /**
@@ -74,22 +96,35 @@ const LogSourceInputFields = Schema.Struct({
  * to `strategy: "follow"` (Lando does not own a user's arbitrary image build)
  * and `timestamps: false`; the id defaults to the path basename.
  */
-export const LogSourceInput = Schema.transform(LogSourceInputFields, LogSource, {
+export const LogSourceInput = Schema.transformOrFail(LogSourceInputFields, LogSource, {
   strict: true,
-  decode: (input) => ({
-    id: input.id ?? posix.basename(input.path),
-    ...(input.label === undefined ? {} : { label: input.label }),
-    path: input.path,
-    stream: input.stream,
-    strategy: "follow" as const,
-    required: false,
-    timestamps: false,
-  }),
-  encode: (_encoded, source) => ({
-    path: source.path,
-    ...(source.label === undefined ? {} : { label: source.label }),
-    stream: source.stream,
-    id: source.id,
-  }),
+  decode: (input) =>
+    ParseResult.succeed({
+      id: input.id ?? posix.basename(input.path),
+      ...(input.label === undefined ? {} : { label: input.label }),
+      path: input.path,
+      stream: input.stream,
+      strategy: "follow" as const,
+      required: false,
+      timestamps: false,
+    }),
+  encode: (_encoded, _options, ast, source) => {
+    if (source.strategy !== "follow" || source.required !== false || source.timestamps !== false) {
+      return ParseResult.fail(
+        new ParseResult.Type(
+          ast,
+          source,
+          "Landofile log source input can only encode follow sources with required=false and timestamps=false.",
+        ),
+      );
+    }
+
+    return ParseResult.succeed({
+      path: source.path,
+      ...(source.label === undefined ? {} : { label: source.label }),
+      stream: source.stream,
+      id: source.id,
+    });
+  },
 });
 export type LogSourceInput = typeof LogSourceInput.Type;
