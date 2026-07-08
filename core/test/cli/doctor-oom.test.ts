@@ -103,6 +103,11 @@ describe("classifyDiedEvent", () => {
     );
   });
 
+  test("accepts libpod die action spellings for container death events", () => {
+    expect(classifyDiedEvent({ Type: "container", Action: "die", OOMKilled: true }).kind).toBe("oom");
+    expect(classifyDiedEvent({ Type: "container", status: "die", OOMKilled: true }).kind).toBe("oom");
+  });
+
   test("correlates app/service from compose labels when lando labels absent", () => {
     const result = classifyDiedEvent(
       diedEvent({

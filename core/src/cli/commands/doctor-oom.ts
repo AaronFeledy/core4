@@ -68,8 +68,14 @@ const readOomKilled = (
   return false;
 };
 
-const eventAction = (event: Record<string, unknown>): string | undefined =>
-  stringAttr(event.Action) ?? stringAttr(event.Status) ?? stringAttr(event.podman_event_name);
+const eventAction = (event: Record<string, unknown>): string | undefined => {
+  const action =
+    stringAttr(event.Action) ??
+    stringAttr(event.Status) ??
+    stringAttr(event.status) ??
+    stringAttr(event.podman_event_name);
+  return action?.trim().toLowerCase();
+};
 
 const isRecognizableEvent = (event: Record<string, unknown>): boolean =>
   eventAction(event) !== undefined || stringAttr(event.Type) !== undefined;
@@ -77,7 +83,8 @@ const isRecognizableEvent = (event: Record<string, unknown>): boolean =>
 const isContainerDiedEvent = (event: Record<string, unknown>): boolean => {
   const type = stringAttr(event.Type);
   const isContainer = type === undefined || type === "container";
-  return isContainer && eventAction(event) === "died";
+  const action = eventAction(event);
+  return isContainer && (action === "died" || action === "die");
 };
 
 const buildCorrelation = (event: Record<string, unknown>): DiedEventCorrelation => {

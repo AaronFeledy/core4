@@ -1329,3 +1329,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Deferred low-risk text line-forging concern for hostile newline/control characters in redacted context values; no secret/raw payload leakage was found, NDJSON remains JSON-escaped, and this is broader renderer-context hardening rather than a US-421 blocker.
 - Verification: typecheck, lint, check:redaction-boundary, check:renderer-boundary passed; focused doctor/OOM spot checks passed (`doctor-oom`, `doctor-oom-collection`, `doctor`, `doctor-ndjson`, `doctor-report`, `doctor-check-contract`, `doctor-runtime-service`).
 ---
+
+## 2026-07-08 15:55 CDT - US-421 Review
+- Fixed the confirmed Bugbot blocker: OOMKilled died-event classification now accepts libpod/Docker `die` action spellings (including lowercase `status: "die"`), so real HTTP events API death frames surface the `runtime-oom` doctor remediation instead of being skipped as unrelated.
+- Review notes (deferred/rejected): `review-work` was invoked as requested, but this harness returned the skill workflow instructions rather than an automated findings report; no `review-work` findings were available to fix or reject.
+- Verification: typecheck, lint, check:redaction-boundary, and check:renderer-boundary passed; focused OOM doctor tests passed (24); adjacent doctor spot checks passed (55 pass/1 skip).
+---
