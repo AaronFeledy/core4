@@ -1351,3 +1351,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:**
   - See the two new Codebase Patterns bullets: the mechanical blast radius of adding a required `ProviderCapabilities` field (buildProviderCapabilities + test/fake + bootstrap stub + ~40 runtime-only test literals that `tsc -b` never checks + the field-set-lock gate + the annotation-exemption gate + the API_COMPATIBILITY additive-export gate + schema-snapshot regen), and the Effect `Schema.transform` encode signature gotcha for branded fields.
 ---
+
+## 2026-07-08 17:45 CDT - US-425 Review
+- Fixed review-blocking gaps: `PROVIDER_CAPABILITY_KEYS` now derives from `ProviderCapabilities.fields` (so `serviceLogSources` and other schema fields are accepted for global-service requires); `LogSourceInput` encode rejects non-Landofile projections (`redirect`/`required`/`timestamps`) instead of silently lossy-encoding; `LogSource*` schemas are registered in the public JSON Schema registry with refreshed snapshot/docs artifacts; export-boundary tests assert the new surface.
+- Review notes (deferred/rejected): AbsolutePath brand does not enforce absolute/safe path segments — pre-existing primitive, out of scope for this SDK-contract story (harden when follow/redirect wire-up lands). Cursor Bugbot was inconclusive (empty/hung local report); not counted as approval.
+- Verification: typecheck, lint passed; focused spot checks green (log-source, provider-capabilities, public-schema-contracts, exports, sdk-backward-compatibility, global-services, schema-snapshot).
+---
