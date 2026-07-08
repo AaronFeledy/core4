@@ -21,12 +21,7 @@ export interface LandoVolumeFilterOptions {
   readonly excludeCaches?: boolean;
 }
 
-/**
- * Build the Lando-scoped Podman 6 volume filter set. The mandatory
- * `label=dev.lando.app=<appId>` entry means the filter can only ever select
- * volumes this app owns; foreign apps, global stores, and unlabeled volumes
- * are structurally excluded by Podman 6's AND label semantics.
- */
+/** Lando-scoped volume filters; always includes `dev.lando.app=<appId>` so prune cannot cross apps. */
 export const buildLandoVolumeFilters = (
   appId: string,
   options: LandoVolumeFilterOptions = {},
@@ -50,14 +45,7 @@ const matchesLabel = (labels: Readonly<Record<string, string>>, criterion: strin
   return value === undefined ? true : labels[key] === value;
 };
 
-/**
- * Pure Podman 6 filter matcher for `label` / `label!`. `label` criteria are
- * ANDed (every one must match); `label!` criteria are ANDed too, rejecting the
- * volume if it matches any negated criterion. Non-label keys (`all`,
- * `anonymous`, `until`) govern anonymous scope, not label selection, so they
- * are ignored here. This proves a selected filter set cannot delete volumes
- * outside the current app/provider labels.
- */
+/** Pure matcher for `label` / `label!` criteria; ignores non-label filter keys. */
 export const volumeMatchesFilters = (
   labels: Readonly<Record<string, string>>,
   filters: VolumeFilterMap,
@@ -72,25 +60,15 @@ export const volumeMatchesFilters = (
 };
 
 export interface VolumePruneOptions {
-  /**
-   * Required Lando-scoped filter set. Making this mandatory prevents building a
-   * Podman 5-style unscoped broad prune by accident.
-   */
+  /** Required scoped filter set (prevents unscoped prune requests). */
   readonly filters: VolumeFilterMap;
-  /**
-   * Opt into removing named unused volumes (`all=true`). Omitted keeps Podman
-   * 6's anonymous-only default so named volumes are never removed implicitly.
-   */
+  /** When true, add `all=true` for named unused volumes; default is anonymous-only. */
   readonly all?: boolean;
-  /** Preview the prune (`dryrun=true`) without deleting anything. */
+  /** When true, forward `dryrun=true` for a non-destructive preview. */
   readonly dryRun?: boolean;
 }
 
-/**
- * Build the Podman 6 libpod volume-prune request. Anonymous-only is the default
- * (no `all` key); `all=true` is added only when explicitly requested, and
- * `dryrun=true` is forwarded for a non-destructive preview.
- */
+/** Build `POST /libpod/volumes/prune` with JSON-encoded `filters` and optional `dryrun`. */
 export const buildVolumePruneRequest = (options: VolumePruneOptions): PodmanHttpRequest => {
   const filters: Record<string, ReadonlyArray<string>> = { ...options.filters };
   if (options.all === true) filters.all = ["true"];
@@ -160,11 +138,8 @@ const parseDockerCompat = (record: Record<string, unknown>): VolumePruneParse =>
 };
 
 /**
- * Parse a Podman 6 volume-prune response. Accepts the libpod array of
- * `{Id, Err?, Size?}` reports and the Docker-compat `{VolumesDeleted,
- * SpaceReclaimed}` shape, returning an empty report for malformed output. This
- * is pure and never redacts; redaction happens at the error boundary in
- * {@link pruneVolumes} so extraction stays unit-testable.
+ * Parse libpod array or Docker-compat prune JSON. Pure (no redaction); failures
+ * are redacted in {@link pruneVolumes}.
  */
 export const parseVolumePruneResult = (body: string): VolumePruneParse => {
   let parsed: unknown;
@@ -197,12 +172,7 @@ const pruneFailure = (status: number, body: string): ProviderUnavailableError =>
     remediation: PRUNE_REMEDIATION,
   });
 
-/**
- * Prune volumes through the Podman 6 libpod endpoint. Honors anonymous-only
- * default vs explicit `all`, previews under `dryRun`, and maps non-2xx
- * responses to a redacted {@link ProviderUnavailableError}. Returns a structured
- * report; this module never writes to console or the process std streams.
- */
+/** Call libpod volume prune; maps non-2xx to a redacted {@link ProviderUnavailableError}. */
 export const pruneVolumes = (
   api: PodmanApiClient,
   options: VolumePruneOptions,
