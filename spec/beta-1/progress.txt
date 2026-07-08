@@ -1371,3 +1371,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - US-425 is SDK-contract only (no CLI/runtime wire-up): exercised public `@lando/sdk/schema` LogSource/LogSourceInput/LogChunk/LogOptions/ProviderCapabilities.serviceLogSources and public JSON Schema registration end-to-end; adjacent smoke of compiled `lando --version`/`--help` and focused schema/global-services spot checks all green.
 - Blocker recorded: setup failed before any provider-dependent scenario because sandbox `/usr/bin/podman` reports `5.4.2`, below the required `6.0.0` floor; environment prerequisite, not a US-425 regression (same as prior SDK/provider-seam verifies).
 ---
+
+## 2026-07-08 18:25 CDT - Babysit
+- PR: #555 https://github.com/AaronFeledy/core4/pull/555
+- CI outcome: pass (after triage)
+- Review feedback: fixed guide-drift via Guide-Coverage-Skip on PR body; updated doctor provider-status NDJSON fixtures for serviceLogSources
+- Merge: merged (squash)
+---
