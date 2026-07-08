@@ -27,6 +27,7 @@ import {
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
+import { collectOomDoctorChecks } from "./doctor-oom.ts";
 import {
   type SetupReadinessRuntimeService,
   type SetupReadinessSummary,
@@ -127,6 +128,7 @@ export interface DoctorOptions {
    */
   readonly app?: boolean | undefined;
   readonly deprecations?: boolean | undefined;
+  readonly diedEventPayloads?: ReadonlyArray<unknown> | undefined;
   readonly format?: "text" | "json" | "yaml" | undefined;
 }
 
@@ -356,6 +358,11 @@ interface RuntimeServiceCapableProvider {
   readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusShape, unknown>;
 }
 
+interface ContainerDiedEventCapableProvider {
+  readonly id: string;
+  readonly getContainerDiedEvents?: Effect.Effect<ReadonlyArray<unknown>, unknown>;
+}
+
 const runtimeServiceStatusFromProviderStatus = (status: {
   readonly running: boolean;
 }): RuntimeServiceStatusShape => ({
@@ -374,6 +381,16 @@ const runtimeServiceStatusFor = (
   const fallback = Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
   if (candidate !== undefined) return candidate.pipe(Effect.catchAll(() => fallback));
   return fallback;
+};
+
+const containerDiedEventPayloadsFor = (
+  provider: ContainerDiedEventCapableProvider,
+  payloads: ReadonlyArray<unknown> | undefined,
+): Effect.Effect<ReadonlyArray<unknown>> => {
+  if (payloads !== undefined) return Effect.succeed(payloads);
+  const candidate = provider.getContainerDiedEvents;
+  if (candidate !== undefined) return candidate.pipe(Effect.catchAll(() => Effect.succeed([])));
+  return Effect.succeed([]);
 };
 
 const orphanRemediation = (orphanPids: ReadonlyArray<number>): DoctorSolution => ({
@@ -562,6 +579,18 @@ export const doctor = (
           })
         : [];
 
+    const oomChecks = collectOomDoctorChecks(
+      yield* containerDiedEventPayloadsFor(
+        provider as ContainerDiedEventCapableProvider,
+        options.diedEventPayloads,
+      ),
+      {
+        provider,
+        providerKind,
+        platform: options.platform ?? provider.platform,
+      },
+    );
+
     return {
       checks: [
         primaryCheck,
@@ -569,6 +598,7 @@ export const doctor = (
         ...fileSyncChecks,
         ...setupReadinessChecks,
         ...runtimeServiceChecks,
+        ...oomChecks,
       ],
     };
   });

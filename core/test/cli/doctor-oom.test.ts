@@ -9,7 +9,7 @@ import {
 import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 
 const PROVIDER = { id: "lando", displayName: "Lando Managed Runtime", version: "0.0.0" } as const;
-const CONTEXT = { provider: PROVIDER, platform: "linux" as const };
+const CONTEXT = { provider: PROVIDER, providerKind: "managed" as const, platform: "linux" as const };
 
 const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   Type: "container",
@@ -160,7 +160,7 @@ describe("buildOomDoctorCheck", () => {
 
   test("macOS remediation mentions Podman Desktop machine resource settings", () => {
     const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-      provider: PROVIDER,
+      ...CONTEXT,
       platform: "darwin",
     });
     if (check === undefined) throw new Error("expected check");
@@ -173,7 +173,7 @@ describe("buildOomDoctorCheck", () => {
 
   test("Windows remediation mentions Podman Desktop machine resource settings", () => {
     const check = buildOomDoctorCheck(classifyDiedEvent(diedEvent({ OOMKilled: true })), {
-      provider: PROVIDER,
+      ...CONTEXT,
       platform: "win32",
     });
     if (check === undefined) throw new Error("expected check");

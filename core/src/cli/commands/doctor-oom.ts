@@ -1,8 +1,7 @@
 import type { HostPlatform } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import type { DoctorCheck, DoctorSolution } from "./doctor.ts";
-import { providerKindFor } from "./doctor.ts";
+import type { DoctorCheck, DoctorProviderKind, DoctorSolution } from "./doctor.ts";
 
 /**
  * Best-effort correlation of a Podman container died event to the affected
@@ -118,6 +117,7 @@ export const classifyDiedEvent = (payload: unknown): DiedEventClassification => 
 
 export interface OomDoctorContext {
   readonly provider: { readonly id: string; readonly displayName: string; readonly version: string };
+  readonly providerKind: DoctorProviderKind;
   readonly platform: HostPlatform;
 }
 
@@ -148,7 +148,7 @@ const podmanDesktopSolution = (): DoctorSolution => ({
  */
 export const buildOomDoctorCheck = (
   classification: DiedEventClassification,
-  { provider, platform }: OomDoctorContext,
+  { provider, providerKind, platform }: OomDoctorContext,
 ): DoctorCheck | undefined => {
   if (classification.kind !== "oom") return undefined;
   const { correlation } = classification;
@@ -168,7 +168,7 @@ export const buildOomDoctorCheck = (
     providerId: provider.id,
     providerName: provider.displayName,
     providerVersion: provider.version,
-    providerKind: providerKindFor(provider.id),
+    providerKind,
     runtimeStatus: "oom-killed",
     runtime: { running: false, message: "oom-killed", oomKilled: true },
     capabilities: {},
