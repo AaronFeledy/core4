@@ -1357,3 +1357,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): AbsolutePath brand does not enforce absolute/safe path segments — pre-existing primitive, out of scope for this SDK-contract story (harden when follow/redirect wire-up lands). Cursor Bugbot was inconclusive (empty/hung local report); not counted as approval.
 - Verification: typecheck, lint passed; focused spot checks green (log-source, provider-capabilities, public-schema-contracts, exports, sdk-backward-compatibility, global-services, schema-snapshot).
 ---
+
+## 2026-07-08 17:50 CDT - US-425 Verify
+- Compiled binary build completed (`cd core && bun run build` produced `core/dist/lando`). Setup was run against the compiled binary inside `lando4-dev` with `./core/dist/lando setup --yes --no-interactive`.
+- US-425 is SDK-contract only (no CLI/runtime wire-up): exercised public `@lando/sdk/schema` LogSource/LogSourceInput/LogChunk/LogOptions/ProviderCapabilities.serviceLogSources and public JSON Schema registration end-to-end; adjacent smoke of compiled `lando --version`/`--help` and focused schema/global-services spot checks all green.
+- Blocker recorded: setup failed before any provider-dependent scenario because sandbox `/usr/bin/podman` reports `5.4.2`, below the required `6.0.0` floor; environment prerequisite, not a US-425 regression (same as prior SDK/provider-seam verifies).
+---
