@@ -85,9 +85,9 @@ const allTsFiles = async (root: string): Promise<string[]> => {
 };
 
 describe("RUNTIME_BUNDLE_MANIFEST", () => {
-  test("declares pinned entries for every supported platform/arch", () => {
+  test("declares pinned entries for every published host target", () => {
     const keys = Object.keys(RUNTIME_BUNDLE_MANIFEST.bundles).sort();
-    expect(keys).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]);
+    expect(keys).toEqual(["darwin-arm64", "linux-arm64", "linux-x64", "win32-x64"]);
   });
 
   test("every entry carries a 64-char hex SHA-256, a non-empty filename, and an https URL", () => {
@@ -101,6 +101,23 @@ describe("RUNTIME_BUNDLE_MANIFEST", () => {
   test("schema version + runtime version are populated", () => {
     expect(RUNTIME_BUNDLE_MANIFEST.schemaVersion).toBe(1);
     expect(RUNTIME_BUNDLE_MANIFEST.runtimeVersion.length).toBeGreaterThan(0);
+  });
+
+  test("runtimeVersion equals the runtime-bundle-version file content", async () => {
+    const pinned = (await readFile(join(import.meta.dir, "..", "runtime-bundle-version"), "utf8")).trim();
+    expect(RUNTIME_BUNDLE_MANIFEST.runtimeVersion).toBe(pinned);
+  });
+
+  test("the static-imported manifest pins real published artifacts (no placeholders)", () => {
+    const version = RUNTIME_BUNDLE_MANIFEST.runtimeVersion;
+    const releaseBase = `https://github.com/AaronFeledy/core4/releases/download/runtime-v${version}/`;
+    const entries = Object.entries(RUNTIME_BUNDLE_MANIFEST.bundles);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [key, entry] of entries) {
+      expect(entry.url, `${key} url`).toBe(`${releaseBase}${entry.filename}`);
+      expect(entry.sha256, `${key} sha256 is not a placeholder`).not.toMatch(/^0{64}$/);
+      expect(entry.sizeBytes, `${key} sizeBytes`).toBeGreaterThan(0);
+    }
   });
 });
 

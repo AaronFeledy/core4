@@ -153,6 +153,13 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("Run non-smoke e2e scenarios");
       expect(firstWorkflow).toContain("distribution-rehearsal-linux-x64:");
       expect(firstWorkflow).toContain("Verify SHA256SUMS match the binaries");
+      expect(firstWorkflow).toContain("published-manifest-setup-linux-x64:");
+      expect(firstWorkflow).toContain("Prepare provider via lando setup against the published manifest");
+      expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+      expect(firstWorkflow).toContain(
+        "dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
+      );
+      expect(firstWorkflow).toContain("Verify the published bundle downloaded, verified, and installed");
 
       await runCodegen();
 
@@ -211,7 +218,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(22);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(6);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(7);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(releaseWorkflow).not.toContain("bun-version: ");

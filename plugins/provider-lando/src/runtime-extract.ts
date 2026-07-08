@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
 import { Effect } from "effect";
@@ -341,6 +341,20 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
     ),
   );
 
+const runtimeEntrypointName = (platform: HostPlatform): string =>
+  platform === "win32" ? "podman.exe" : "podman";
+
+const hasInstalledRuntimeEntrypoint = (
+  runtimeBinDir: string,
+  platform: HostPlatform,
+): Effect.Effect<boolean, never> =>
+  Effect.promise(() =>
+    access(stringJoin(runtimeBinDir, runtimeEntrypointName(platform))).then(
+      () => true,
+      () => false,
+    ),
+  );
+
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>
   cause instanceof ProviderRuntimeExtractError ? cause : new ProviderRuntimeExtractError(message, cause);
 
@@ -374,12 +388,22 @@ const replaceRuntimeBinDir = async (tempDir: string, runtimeBinDir: string): Pro
   }
 };
 
+const stripRuntimeBinPrefix = (safePath: string, stripTopLevelBin: boolean): string => {
+  if (!stripTopLevelBin) return safePath;
+  if (safePath === "bin") return "";
+  return safePath.startsWith("bin/") ? safePath.slice("bin/".length) : safePath;
+};
+
 export const installRuntimeBundle = (
   options: InstallRuntimeBundleOptions,
 ): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
   Effect.gen(function* () {
     const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
-    if (installedVersion === options.version) {
+    const entrypointReady =
+      installedVersion === options.version
+        ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform)
+        : false;
+    if (entrypointReady) {
       return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
     }
 
@@ -392,11 +416,18 @@ export const installRuntimeBundle = (
           const entries = extractImpl(options.archiveBytes, {
             maxDecompressedBytes: options.maxDecompressedBytes,
           });
+          const normalizedEntries = entries.map((entry) => ({
+            ...entry,
+            safePath: normalizeArchivePath(entry.path),
+          }));
+          const stripTopLevelBin =
+            normalizedEntries.length > 0 &&
+            normalizedEntries.every((entry) => entry.safePath === "bin" || entry.safePath.startsWith("bin/"));
           let fileCount = 0;
           await rm(tempDir, { recursive: true, force: true });
           await mkdir(tempDir, { recursive: true });
-          for (const entry of entries) {
-            const safePath = normalizeArchivePath(entry.path);
+          for (const entry of normalizedEntries) {
+            const safePath = stripRuntimeBinPrefix(entry.safePath, stripTopLevelBin);
             if (safePath === "") continue;
             const target = stringJoin(tempDir, safePath);
             await mkdir(stringParentDir(target), { recursive: true });

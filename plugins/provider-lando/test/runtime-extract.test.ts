@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { deflateRawSync, gzipSync } from "node:zlib";
@@ -188,6 +188,26 @@ describe("installRuntimeBundle", () => {
       if (process.platform !== "win32") {
         expect(statSync(join(runtimeBinDir, "podman")).mode & 0o111).not.toBe(0);
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("installs published bundles packaged under a top-level bin directory", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const archiveBytes = buildTarGz([
+        { path: "bin/podman", bytes: encoder.encode("podman") },
+        { path: "bin/fuse-overlayfs", bytes: encoder.encode("fuse-overlayfs") },
+      ]);
+
+      await Effect.runPromise(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
+      expect(existsSync(join(runtimeBinDir, "fuse-overlayfs"))).toBe(true);
+      expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -410,6 +430,54 @@ describe("installRuntimeBundle", () => {
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
         "1.0.0",
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("repairs the old nested bin layout even when the version marker matches", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(join(runtimeBinDir, "bin"), { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, "bin", "podman"), "old-podman");
+      const archiveBytes = buildTarGz([{ path: "bin/podman", bytes: encoder.encode("new-podman") }]);
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
+      expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts an existing windows podman.exe when the version marker matches", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, "podman.exe"), "podman");
+      let calls = 0;
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "win32",
+          extractImpl: () => {
+            calls += 1;
+            return [{ path: "bin/podman.exe", bytes: encoder.encode("new-podman"), mode: 0o755 }];
+          },
+        }),
+      );
+
+      expect(result).toEqual({ installed: false, runtimeBinDir, version: "1.0.0" });
+      expect(calls).toBe(0);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

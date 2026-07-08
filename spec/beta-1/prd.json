@@ -714,7 +714,7 @@
         "Lint passes"
       ],
       "priority": 40,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-10. Depends on US-410 having published the first runtime-v release."
     },
     {
