@@ -45,7 +45,7 @@ describe("provider-podman provider-lando conflict detection", () => {
   });
 
   test("returns success when setup state has no socketPath", async () => {
-    await writeProviderLandoState(stateDir, { podmanVersion: "5.2.0" });
+    await writeProviderLandoState(stateDir, { podmanVersion: "6.0.2" });
     await expect(
       Effect.runPromise(detectProviderLandoConflict(stateDir, "/run/user/1000/podman/podman.sock")),
     ).resolves.toBeUndefined();
@@ -87,7 +87,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
   test("returns success when recorded socket differs from resolved socket", async () => {
     await writeProviderLandoState(stateDir, {
-      podmanVersion: "5.2.0",
+      podmanVersion: "6.0.2",
       socketPath: "/different/socket.sock",
     });
     await expect(
@@ -98,7 +98,7 @@ describe("provider-podman provider-lando conflict detection", () => {
   test("fails with ProviderLandoConflictError when recorded socket matches", async () => {
     const recorded = "/run/user/1000/podman/podman.sock";
     const statePath = await writeProviderLandoState(stateDir, {
-      podmanVersion: "5.2.0",
+      podmanVersion: "6.0.2",
       socketPath: recorded,
     });
 
@@ -142,7 +142,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
   test("makeRuntimeProvider rejects opt-in when provider-lando conflict is recorded", async () => {
     await writeProviderLandoState(stateDir, {
-      podmanVersion: "5.2.0",
+      podmanVersion: "6.0.2",
       socketPath: "/run/test/podman.sock",
     });
 

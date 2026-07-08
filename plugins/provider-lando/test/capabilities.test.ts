@@ -75,7 +75,7 @@ describe("provider-lando capabilities", () => {
     expect(request.socketUrl).toBe("unix:///tmp/podman.sock");
     expect(request.args).toContain("--unix-socket");
     expect(request.args).toContain("/tmp/podman.sock");
-    expect(request.args).toContain("http://localhost/v5.0.0/libpod/info");
+    expect(request.args).toContain("http://localhost/v6.0.0/libpod/info");
   });
 
   test("decodes capabilities through the SDK schema", async () => {

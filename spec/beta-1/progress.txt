@@ -1187,3 +1187,18 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed (added Guide-Coverage-Skip PR-body rationale and completed the runtime-bundle idempotence test fixture so same-version setup does not rewrite the marker)
 - Merge: merged (squash)
 ---
+## [2026-07-07 22:43 CDT] - Babysit
+- PR: #548 https://github.com/AaronFeledy/core4/pull/548
+- CI outcome: pass
+- Review feedback: fixed (added justified Guide-Coverage-Skip PR-body marker for release manifest invariant plumbing; rerun guide-scenario checks passed)
+- Merge: merged (squash)
+---
+## 2026-07-07 23:40 CDT - US-415
+- Migrated all Podman HTTP traffic to the Podman 6 libpod API prefix, decoupling API correctness from version-floor enforcement. Both provider-lando socket/curl transports (streaming client, `makePodmanInfoRequest`, and the general curl request builder) and the provider-podman named-pipe client now target `/v6.0.0`; each carries a comment stating the prefix is API-correctness work while the runtime floor is enforced separately at setup/selection.
+- Added a CI grep gate (`check:libpod-prefix`, wired into the generated ci.yml static-checks job) that fails if any production provider source under `plugins/*/src` constructs a Podman 5 libpod prefix (`/v5.x.x`), scanning production `.ts` only (skips `.test.ts` and `test/` dirs).
+- Migrated the container-runtime transport test and provider-lando capabilities test from `/v5.0.0` to `/v6.0.0`, and the Podman-5 `5.2.0` state fixtures in the podman conflict test, managed-provider-machine test, and uninstall-machines scenario to `6.0.2`. Deliberately left `5.2.0` intact in the two version-gate tests (`setup-version-gate.test.ts`, `version-gate.test.ts`) that exist to prove the runtime floor rejects Podman 5.
+- Verification: typecheck, lint passed; full `bun run codegen` produced zero drift beyond the intended new ci.yml step. Spot checks green (102 tests across 11 files): new gate test, transport, capabilities, conflict, named-pipe, managed-provider-machine, uninstall-machines scenario, both version-gate rejection tests, plus ci-workflow and codegen-ci generator contract tests. Real-surface QA: the new `check:libpod-prefix` CLI reported all four production offenders while v5 remained then passed after migration; a live driver against the actual `makePodmanInfoRequest` emitted `http://localhost/v6.0.0/libpod/info`.
+- **Learnings for future iterations:**
+  - New grep/boundary gates follow one shape: an exported `check<Name>({ root }) => { ok, offenders }` function in `scripts/check-*.ts` (with `import.meta.main` CLI block writing to stderr + `process.exitCode = 1`), a `scripts/check-*.test.ts` driving a temp `root`, a `check:*` entry in `package.json`, and a step in `scripts/build-ci-workflow.ts` — then regenerate `.github/workflows/ci.yml`. Model on `check-network-boundary.ts`.
+  - `spec/beta-1/prd.json` is hand-maintained with mixed unicode escaping (some `\u00a7`, some literal `§`); do NOT reserialize it with `json.dumps` (either `ensure_ascii` setting mangles unrelated lines). Flip a single story's `passes` with a surgical text edit anchored on its unique `priority`/`notes` lines.
+---

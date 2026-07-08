@@ -83,7 +83,7 @@ export const npipeSocketPath = normalizeNamedPipePath;
 
 const makeNamedPipeClient = (pipePath: string) =>
   makeSocketHttpClient({
-    apiPrefix: "/v5.0.0",
+    apiPrefix: "/v6.0.0",
     operation: "podman-api",
     connect: async () => {
       const socket = createConnection({ path: pipePath });

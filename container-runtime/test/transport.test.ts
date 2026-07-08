@@ -52,7 +52,7 @@ describe("socket HTTP transport", () => {
       bytes(" OK\r\nContent-Length: 2\r\n\r\n{}"),
     ]);
     const client = makeSocketHttpClient({
-      apiPrefix: "/v5.0.0",
+      apiPrefix: "/v6.0.0",
       connect: async () => connection,
       hostHeader: "localhost",
     });
@@ -60,7 +60,7 @@ describe("socket HTTP transport", () => {
     const response = await client.request({ method: "POST", path: "/libpod/info", body: { ok: true } });
 
     expect(response).toEqual({ status: 200, body: "{}" });
-    expect(connection.writes[0]).toStartWith("POST /v5.0.0/libpod/info HTTP/1.1\r\n");
+    expect(connection.writes[0]).toStartWith("POST /v6.0.0/libpod/info HTTP/1.1\r\n");
     expect(connection.writes[0]).toContain("Host: localhost\r\n");
     expect(connection.writes[0]).toContain("Content-Type: application/json\r\n");
     expect(connection.writes[0]).toContain("Content-Length: 11\r\n");

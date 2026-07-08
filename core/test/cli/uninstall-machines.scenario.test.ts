@@ -11,7 +11,7 @@ import { metaUninstallSpec } from "../../src/cli/oclif/commands/meta/uninstall.t
 const seedSetupState = (userDataRoot: string, machine: unknown): void => {
   const dir = join(userDataRoot, "providers", "provider-lando");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "setup-state.json"), JSON.stringify({ podmanVersion: "5.2.0", machine }), "utf-8");
+  writeFileSync(join(dir, "setup-state.json"), JSON.stringify({ podmanVersion: "6.0.2", machine }), "utf-8");
 };
 
 const makeRoots = () => {
