@@ -18,6 +18,8 @@ type ReleaseStage = (typeof RELEASE_STAGES)[number];
 
 const passingDeprecationGate = async () => ({ ok: true as const, offenders: [] });
 
+const passingManifestGate = async () => ({ ok: true as const, violations: [] });
+
 const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-release-deprecations-"));
   try {
@@ -95,6 +97,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "all",
       env: localRehearsalEnv,
       runner: {
@@ -137,6 +140,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "all",
         env: localRehearsalEnv,
         runner: {
@@ -162,12 +166,69 @@ describe("release orchestrator", () => {
     expect(observed).toEqual(["1-codegen", "2-typecheck", "3-lint-format", "4-test-gates"]);
   });
 
+  test("blocks the release when the runtime-bundle manifest gate reports violations", async () => {
+    const observed: Array<string> = [];
+
+    await expect(
+      runRelease({
+        deprecationGate: passingDeprecationGate,
+        manifestGate: async () => ({
+          ok: false,
+          violations: [{ key: "linux-x64", message: "sizeBytes must be a positive integer, got 0" }],
+        }),
+        target: "all",
+        env: localRehearsalEnv,
+        runner: {
+          spawn: async ({ stageId }) => {
+            observed.push(stageId);
+          },
+          shell: async ({ stageId }) => {
+            observed.push(stageId);
+          },
+        },
+        logger: () => {},
+        now: () => 0,
+      }),
+    ).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "runtime-bundle-manifest-gate",
+      commandSummary: "bun run check:runtime-bundle-manifest",
+    });
+
+    expect(observed).toEqual(["1-codegen"]);
+  });
+
+  test("the default manifest gate accepts the committed manifest", async () => {
+    const observed: Array<string> = [];
+
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      // Intentionally no manifestGate override: exercise the real default gate.
+      target: "all",
+      throughStage: "2-typecheck",
+      env: localRehearsalEnv,
+      runner: {
+        spawn: async ({ stageId }) => {
+          observed.push(stageId);
+        },
+        shell: async ({ stageId }) => {
+          observed.push(stageId);
+        },
+      },
+      logger: () => {},
+      now: () => 0,
+    });
+
+    expect(observed).toEqual(["1-codegen", "2-typecheck"]);
+  });
+
   test("uses spawn for argv-precise stages and shell for shell-shaped manifest work", async () => {
     const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const shellStages: Array<string> = [];
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "library",
       throughStage: "11-manifest",
       env: {
@@ -203,6 +264,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       env: localRehearsalEnv,
       runner: {
@@ -336,6 +398,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "all",
       env: localRehearsalEnv,
       runner: {
@@ -378,6 +441,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "9-sign",
         env: {
@@ -404,6 +468,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "9-sign",
       env: { ...macosSigningEnv, LANDO_RELEASE_PLATFORM: "darwin-x64" },
@@ -418,6 +483,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "9-sign",
       env: { ...windowsSigningEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
@@ -439,6 +505,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "9-sign",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
@@ -488,6 +555,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "10-notarize",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
@@ -537,6 +605,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "10-notarize",
       env: {
@@ -566,6 +635,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "10-notarize",
         env: {
@@ -596,6 +666,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "9-sign",
         env: { ...macosSigningEnv, ...windowsSigningEnv },
@@ -618,6 +689,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "library",
         throughStage: "12-provenance-sbom",
         env: manifestGpgOnlyEnv,
@@ -646,6 +718,7 @@ describe("release orchestrator", () => {
       await expect(
         runRelease({
           deprecationGate: passingDeprecationGate,
+          manifestGate: passingManifestGate,
           target: "binary",
           throughStage: "12-provenance-sbom",
           env,
@@ -669,6 +742,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "library",
         throughStage: "11-manifest",
         env: manifestGpgOnlyEnv,
@@ -704,6 +778,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "11-manifest",
         env: { ...macosSigningEnv, ...windowsSigningEnv, ...manifestSigningEnv },
@@ -805,6 +880,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "all",
         throughStage: "12-provenance-sbom",
         env: {
@@ -864,6 +940,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "12-provenance-sbom",
         env: {
@@ -896,6 +973,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "12-provenance-sbom",
         env: {
@@ -1051,6 +1129,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "12-provenance-sbom",
         env: {
@@ -1085,6 +1164,7 @@ describe("release orchestrator", () => {
       await expect(
         runRelease({
           deprecationGate: passingDeprecationGate,
+          manifestGate: passingManifestGate,
           target: "binary",
           throughStage: "12-provenance-sbom",
           env: {
@@ -1123,6 +1203,7 @@ describe("release orchestrator", () => {
       await expect(
         runRelease({
           deprecationGate: passingDeprecationGate,
+          manifestGate: passingManifestGate,
           target: "binary",
           throughStage: "12-provenance-sbom",
           env: {
@@ -1168,6 +1249,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "12-provenance-sbom",
         env: {
@@ -1254,6 +1336,7 @@ describe("release orchestrator", () => {
       await expect(
         runRelease({
           deprecationGate: passingDeprecationGate,
+          manifestGate: passingManifestGate,
           target: "binary",
           throughStage: "12-provenance-sbom",
           env: {
@@ -1654,6 +1737,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "11-manifest",
         env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
@@ -1716,6 +1800,7 @@ describe("release orchestrator", () => {
 
       await runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "binary",
         throughStage: "9-sign",
         env: {
@@ -1757,6 +1842,7 @@ describe("release orchestrator", () => {
       await expect(
         runRelease({
           deprecationGate: passingDeprecationGate,
+          manifestGate: passingManifestGate,
           target: "binary",
           throughStage: "9-sign",
           env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
@@ -1806,6 +1892,7 @@ describe("release orchestrator", () => {
     await expect(
       runRelease({
         deprecationGate: passingDeprecationGate,
+        manifestGate: passingManifestGate,
         target: "library",
         throughStage: "13-publish",
         env: { GITHUB_TOKEN: "token" },
@@ -1828,6 +1915,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "library",
       throughStage: "13-publish",
       env: { LOCAL_REHEARSAL: "1", GITHUB_TOKEN: "token" },
@@ -1846,6 +1934,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "library",
       throughStage: "13-publish",
       env: { LOCAL_REHEARSAL: "1", GH_TOKEN: "github-token", ...manifestSigningEnv, ...libraryPublishEnv },
@@ -2198,6 +2287,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "7-compile",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
@@ -2244,6 +2334,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "7-compile",
       env: {},
@@ -2292,6 +2383,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "7-compile",
       env: {
@@ -2318,6 +2410,7 @@ describe("release orchestrator", () => {
     let now = 0;
     const failure = await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "7-compile",
       env: {},
@@ -2354,6 +2447,7 @@ describe("release orchestrator", () => {
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
       target: "binary",
       throughStage: "10-notarize",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },

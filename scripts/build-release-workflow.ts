@@ -59,6 +59,9 @@ jobs:
         with:
           bun-version-file: .bun-version
 
+      - name: Verify committed runtime-bundle manifest resolves live
+        run: bun run check:runtime-bundle-manifest --live
+
       - name: Download Linux x64 binary artifact
         env:
           GH_TOKEN: \${{ github.token }}
