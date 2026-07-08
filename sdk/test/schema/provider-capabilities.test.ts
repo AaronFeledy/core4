@@ -12,6 +12,7 @@ const BOOLEAN_FIELDS = [
   "multiServiceApply",
   "serviceExec",
   "serviceLogs",
+  "serviceLogSources",
   "sharedCrossAppNetwork",
   "persistentStorage",
   "bindMounts",
@@ -48,6 +49,7 @@ const providerLandoFixture: typeof ProviderCapabilities.Encoded = {
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "native",
   hostReachability: "native",
   sharedCrossAppNetwork: true,
@@ -78,6 +80,7 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "native",
   hostReachability: "native",
   sharedCrossAppNetwork: true,
@@ -118,7 +121,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(27);
+    expect(actual).toHaveLength(28);
   });
 
   test("every boolean capability accepts only booleans", () => {

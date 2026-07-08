@@ -16,6 +16,7 @@ const providerCapabilities = {
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "native",
   hostReachability: "native",
   sharedCrossAppNetwork: true,

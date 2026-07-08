@@ -505,6 +505,51 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Log Source.",
+    "docsPath": "docs/reference/schemas/log-source.mdx",
+    "id": "LogSource",
+    "jsonSchemaPath": "dist/schemas/log-source.json",
+    "packageExport": "@lando/sdk/schema#LogSource",
+    "title": "Log Source"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Log Source Id.",
+    "docsPath": "docs/reference/schemas/log-source-id.mdx",
+    "id": "LogSourceId",
+    "jsonSchemaPath": "dist/schemas/log-source-id.json",
+    "packageExport": "@lando/sdk/schema#LogSourceId",
+    "title": "Log Source Id"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Log Source Input.",
+    "docsPath": "docs/reference/schemas/log-source-input.mdx",
+    "id": "LogSourceInput",
+    "jsonSchemaPath": "dist/schemas/log-source-input.json",
+    "packageExport": "@lando/sdk/schema#LogSourceInput",
+    "title": "Log Source Input"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Log Source Stream.",
+    "docsPath": "docs/reference/schemas/log-source-stream.mdx",
+    "id": "LogSourceStream",
+    "jsonSchemaPath": "dist/schemas/log-source-stream.json",
+    "packageExport": "@lando/sdk/schema#LogSourceStream",
+    "title": "Log Source Stream"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Log Source Strategy.",
+    "docsPath": "docs/reference/schemas/log-source-strategy.mdx",
+    "id": "LogSourceStrategy",
+    "jsonSchemaPath": "dist/schemas/log-source-strategy.json",
+    "packageExport": "@lando/sdk/schema#LogSourceStrategy",
+    "title": "Log Source Strategy"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Endpoint Input.",
     "docsPath": "docs/reference/schemas/endpoint-input.mdx",
     "id": "EndpointInput",

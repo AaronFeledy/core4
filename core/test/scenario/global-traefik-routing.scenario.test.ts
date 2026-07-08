@@ -46,6 +46,7 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   multiServiceApply: true,
   serviceExec: true,
   serviceLogs: true,
+  serviceLogSources: true,
   serviceHealth: "lando",
   hostReachability: "emulated",
   sharedCrossAppNetwork: true,

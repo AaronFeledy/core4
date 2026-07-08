@@ -32,6 +32,12 @@ describe("@lando/sdk package exports", () => {
     expect(schema.ServicePlan).toBeDefined();
     expect(schema.ProviderCapabilities).toBeDefined();
     expect(schema.LandofileShape).toBeDefined();
+    expect(schema.LogSource).toBeDefined();
+    expect(schema.LogSourceId).toBeDefined();
+    expect(schema.LogSourceInput).toBeDefined();
+    expect(schema.LogSourceStream).toBeDefined();
+    expect(schema.LogSourceStrategy).toBeDefined();
+    expect(schema.RESERVED_LOG_SOURCE_ID).toBeDefined();
     expect(schema.IncludeEntry).toBeDefined();
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
@@ -148,6 +154,11 @@ describe("@lando/sdk package exports", () => {
       "ServicePlan",
       "ProviderCapabilities",
       "LandofileShape",
+      "LogSource",
+      "LogSourceId",
+      "LogSourceInput",
+      "LogSourceStream",
+      "LogSourceStrategy",
       "GlobalConfig",
       "ConfigLintViolation",
       "ConfigLintResult",
