@@ -160,6 +160,8 @@ export interface ServiceRuntimeInfo {
   readonly service: ServiceName;
   readonly providerId: ProviderId;
   readonly status: string;
+  /** Container healthcheck status when the provider exposes one. */
+  readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
   readonly endpoints?: ReadonlyArray<EndpointPlan>;

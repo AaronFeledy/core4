@@ -62,6 +62,8 @@ export { ensureRuntime } from "./ensure-runtime.ts";
 export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
 export { exec, execStream } from "./exec.ts";
 export type { ExecOptions } from "./exec.ts";
+export { waitForServiceHealth } from "./health.ts";
+export type { WaitForServiceHealthOptions } from "./health.ts";
 export { inspect } from "./inspect.ts";
 export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
