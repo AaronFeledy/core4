@@ -22,6 +22,14 @@ const capturingSpawn = (): CapturingSpawn => {
   return { spawn, calls };
 };
 
+const streamOf = (text: string): ReadableStream<Uint8Array> =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(text));
+      controller.close();
+    },
+  });
+
 const runnerFor = (platform: HostPlatform, spawn: MachineSpawn) =>
   makeSystemPodmanMachineRunner("podman", "lando", platform, spawn);
 
@@ -33,10 +41,10 @@ describe("provider-lando system machine runner argv", () => {
       expect(calls).toEqual([["podman", "machine", "start", "--update-connection=false", "lando"]]);
     });
 
-    test(`${platform} create argv is unchanged`, async () => {
+    test(`${platform} create imports the host native CA trust for the Lando-owned machine`, async () => {
       const { spawn, calls } = capturingSpawn();
       await Effect.runPromise(runnerFor(platform, spawn).create);
-      expect(calls).toEqual([["podman", "machine", "init", "lando"]]);
+      expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
     });
 
     test(`${platform} stop argv is unchanged`, async () => {
@@ -73,5 +81,37 @@ describe("provider-lando system machine runner argv", () => {
         expect(`${error.message} ${error.remediation ?? ""}`.toLowerCase()).toContain("wsl");
       }
     }
+  });
+
+  test("win32 create with missing Hyper-V prerequisites recommends manual prep and never runs it", async () => {
+    const calls: string[][] = [];
+    const failingSpawn: MachineSpawn = (argv) => {
+      calls.push([...argv]);
+      return {
+        stdout: streamOf(""),
+        stderr: streamOf("Error: hyper-v is not enabled; virtual machine platform is required"),
+        exited: Promise.resolve(1),
+      };
+    };
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        const error = failure.value as ProviderUnavailableError;
+        const remediation = error.remediation ?? "";
+        expect(remediation).toContain("podman system hyperv-prep");
+        expect(/admin/i.test(remediation)).toBe(true);
+        expect(/never|does not|will not|won't/i.test(remediation)).toBe(true);
+      }
+    }
+
+    // Lando attempts create with native CA import but never spawns prep/elevation itself.
+    expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
+    expect(calls.some((argv) => argv.includes("hyperv-prep"))).toBe(false);
   });
 });

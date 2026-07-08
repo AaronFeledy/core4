@@ -19,6 +19,7 @@ import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+import { buildManagedMachineInitArgs, windowsHyperVPrepRemediation } from "./machine-trust.ts";
 
 export { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
@@ -104,8 +105,7 @@ export class WindowsMachinePrerequisiteError extends ProviderUnavailableError {
       operation: "setup",
       message:
         "Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required.",
-      remediation:
-        "Enable Hyper-V, WSL2, and Virtual Machine Platform in Windows Features, then run `wsl --install` and rerun `lando setup`.",
+      remediation: windowsHyperVPrepRemediation(),
       cause,
     });
   }
@@ -369,9 +369,13 @@ export const makeSystemPodmanMachineRunner = (
         : Effect.fail(cause);
     }),
   ),
-  create: runMachineCommand(spawn, command, ["machine", "init", machineName], "create", platform).pipe(
-    Effect.asVoid,
-  ),
+  create: runMachineCommand(
+    spawn,
+    command,
+    buildManagedMachineInitArgs(machineName),
+    "create",
+    platform,
+  ).pipe(Effect.asVoid),
   start: runMachineCommand(
     spawn,
     command,
