@@ -36,7 +36,7 @@ export type LogSourceStrategy = typeof LogSourceStrategy.Type;
 
 /**
  * A declared log source — a statement that a service also produces logs at an
- * in-container file path, plus how Lando should surface them (§6.14.1).
+ * in-container file path, plus how Lando should surface them.
  */
 export const LogSource = Schema.Struct({
   /** Unique within the service; `console` is reserved. */
@@ -47,7 +47,7 @@ export const LogSource = Schema.Struct({
   label: Schema.optional(Schema.String).annotations({
     description: "Human-readable label shown when presenting this log source.",
   }),
-  /** Single in-container file (no globs in v4.0). */
+  /** Single in-container file (no globs). */
   path: AbsolutePath.annotations({
     description: "Single absolute in-container file path for this log source; globs are not supported.",
   }),
@@ -55,7 +55,7 @@ export const LogSource = Schema.Struct({
   stream: LogSourceStream.annotations({
     description: "Render and exit classification for this source's lines.",
   }),
-  /** How the source is reified (§6.14.3). */
+  /** How the source is reified: build-time redirect, or a runtime follower. */
   strategy: LogSourceStrategy.annotations({
     description: "How Lando reifies the declared source: build-time redirect or runtime follower.",
   }),
