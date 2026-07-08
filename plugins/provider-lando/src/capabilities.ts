@@ -76,7 +76,10 @@ async function* streamPodmanRequest(
   request: PodmanHttpRequest,
 ): AsyncGenerator<Uint8Array> {
   const client = makeSocketHttpClient({
-    apiPrefix: "/v5.0.0",
+    // API correctness: target the Podman 6 libpod API prefix. This is
+    // independent of the runtime version floor, which is enforced separately
+    // during setup and provider selection.
+    apiPrefix: "/v6.0.0",
     operation: "podman-api",
     connect: async () => {
       const socket = createConnection({ path: socketPath });
@@ -95,7 +98,7 @@ export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => (
     "--fail",
     "--unix-socket",
     socketPath,
-    "http://localhost/v5.0.0/libpod/info",
+    "http://localhost/v6.0.0/libpod/info",
   ],
   socketUrl: `unix://${socketPath}`,
 });
@@ -197,7 +200,7 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
         args.push("--data-binary", "@-");
       }
 
-      args.push(`http://localhost/v5.0.0${request.path}`);
+      args.push(`http://localhost/v6.0.0${request.path}`);
 
       const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
         try: async () => {

@@ -16,7 +16,7 @@ const enoent = (): never => {
 
 const readerReturning = (contents: string) => (): string => contents;
 
-const stateWith = (machine: unknown): string => JSON.stringify({ podmanVersion: "5.2.0", machine });
+const stateWith = (machine: unknown): string => JSON.stringify({ podmanVersion: "6.0.2", machine });
 
 describe("classifyManagedProviderMachine", () => {
   test("owned when the recorded machine was created by Lando", () => {
@@ -182,7 +182,7 @@ describe("teardownManagedProviderMachine", () => {
       await chmod(podmanStub, 0o700);
       await writeFile(
         join(userDataRoot, "providers", "provider-lando", "setup-state.json"),
-        JSON.stringify({ podmanVersion: "5.2.0", machine: { name: "lando", createdByLando: true } }),
+        JSON.stringify({ podmanVersion: "6.0.2", machine: { name: "lando", createdByLando: true } }),
         "utf-8",
       );
 

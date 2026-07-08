@@ -76,6 +76,9 @@ ${setupBunSteps}
       - name: Network boundary lint
         run: bun run check:network-boundary
 
+      - name: Libpod API prefix lint
+        run: bun run check:libpod-prefix
+
       - name: Machine output boundary lint
         run: bun run check:machine-output
 
