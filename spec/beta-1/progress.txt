@@ -1287,3 +1287,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:**
   - See the new Codebase Patterns bullet: build container-runtime "future implementation" work as a typed, unit-tested seam (fake `PodmanApiClient`) rather than live wiring; redact at the event/error boundary and keep the frame parser pure; assert event union membership with `Schema.is(LandoEvent)` because `.make()` yields Type-side values (`DateTime.Utc` timestamp), not the encoded string form `decodeUnknownSync` expects.
 ---
+
+## 2026-07-08 12:08 CDT - US-419 Review
+- Fixed a review-blocking redaction gap: percent-encoded URL userinfo in Podman pull request paths is now masked by the shared secrets redactor, so non-2xx image-pull transport errors cannot preserve encoded registry credentials in structured details.
+- Review notes (deferred/rejected): Rejected the production-wiring concern for `pullImage`; the story's established Codebase Patterns entry scopes this Podman pull work as a typed, unit-tested seam and forbids live pull wiring in this environment.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive; `cursor-agent --trust --yolo --print "/review-bugbot current branch"` hung with empty stdout/stderr for five minutes and was stopped.
+- Verification: typecheck passed; lint output showed Biome/deprecation checks passed; renderer/redaction/libpod boundary gates passed; focused spot checks passed (65 tests across SDK redaction contract/profile tests, provider-lando redaction/image-pull tests, SDK image-pull event test, provider capabilities, and schema snapshot).
+---
