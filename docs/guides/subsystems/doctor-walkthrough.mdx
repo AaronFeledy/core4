@@ -61,6 +61,16 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-runtime-oom" render={false} reason="The runtime-oom check consumes recorded provider died events; unit tests cover the event classification, redaction, and text/NDJSON rendering without requiring a live container runtime">
+    <Step name="runtime-oom">
+      <Variable name="eventSource" value="provider container died events" display="lando doctor reads provider-recorded died events and only reports containers with OOMKilled set" />
+      <Variable name="checkName" value="runtime-oom" display="An OOM-killed container adds a failing runtime-oom check to the doctor report" />
+      <Variable name="runtimeStatus" value="oom-killed" display="The check marks runtime.running=false and runtime.oomKilled=true for machine-output consumers" />
+      <Variable name="context" value="containerName, image, exitCode, app, service" display="Structured context correlates the died event to the affected app/service while redacting credential-bearing values" />
+      <Variable name="remediation" value="Increase runtime memory or inspect the affected service with `lando logs`." display="Doctor gives an OOM-specific memory remediation instead of a generic provider-not-running message" />
+    </Step>
+  </Scenario>
+
   <Scenario id="doctor-deprecations-report" render={false} reason="The deprecation registry state is covered by doctor-report unit tests; this guide records the user-facing doctor flags and output shapes">
     <Step name="deprecations-report">
       <Variable name="command" value="lando doctor --deprecations" display="Adds the deprecations section to the combined doctor report" />
