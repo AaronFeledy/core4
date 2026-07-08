@@ -83,9 +83,6 @@ export const npipeSocketPath = normalizeNamedPipePath;
 
 const makeNamedPipeClient = (pipePath: string) =>
   makeSocketHttpClient({
-    // API correctness: target the Podman 6 libpod API prefix. This is
-    // independent of the runtime version floor, which is enforced separately
-    // during provider selection.
     apiPrefix: "/v6.0.0",
     operation: "podman-api",
     connect: async () => {

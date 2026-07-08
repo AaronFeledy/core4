@@ -32,8 +32,6 @@ const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
     for (const entry of entries) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        // Only production source is in scope; test fixtures may reference the
-        // Podman 5 prefix to prove the runtime floor rejects it.
         if (entry.name === "test") continue;
         files.push(...(await collectTsFiles(full)));
         continue;
