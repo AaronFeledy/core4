@@ -285,8 +285,7 @@ const machineFailure = (
   });
 };
 
-// Minimal subprocess shape the machine runner consumes, so tests can inject a spawn seam
-// that captures argv without a real Podman binary.
+// Subprocess shape for injectable spawn seams (tests capture argv without a real Podman binary).
 interface MachineProcess {
   readonly stdout: ReadableStream<Uint8Array> | number | null | undefined;
   readonly stderr: ReadableStream<Uint8Array> | number | null | undefined;
@@ -413,8 +412,7 @@ const missingBundledMachineToolingError = (
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
 
-// Checks bundled-tooling existence before spawning it, so a missing bundle fails with
-// `missingBundledMachineToolingError` rather than the PATH-install-flavored `PodmanNotInstalledError`.
+// Require bundled Podman on disk before spawn so failures use missingBundledMachineToolingError, not PodmanNotInstalledError.
 const resolveSetupPodmanCommandRunner = (
   platform: HostPlatform,
   runtimeBinDir: string | undefined,
