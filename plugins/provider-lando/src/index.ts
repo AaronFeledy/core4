@@ -85,6 +85,7 @@ export type {
   RootlessProbes,
 } from "./rootless-preflight.ts";
 export {
+  IntelMacUnsupportedError,
   MINIMUM_PODMAN_VERSION,
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
@@ -93,6 +94,7 @@ export {
   WindowsMachineOsUnsupportedError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
+  isIntelMacHost,
   ensureWindowsPodmanMachine,
   makeSystemPodmanMachineRunner,
   makeSystemPodmanCommandRunner,
@@ -223,6 +225,7 @@ export interface ProviderLayerOptions {
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
+  readonly arch?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
@@ -263,6 +266,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
+  const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
   const podmanBin =
     runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
@@ -429,6 +433,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   ? {}
                   : { artifactDownload: options.artifactDownload }),
                 platform,
+                ...(arch === undefined ? {} : { arch }),
                 ...(() => {
                   const setupRuntimeBundleDownloader =
                     setupOptions.runtimeBundleUrl === undefined

@@ -8,6 +8,8 @@ import type { HostPlatform } from "@lando/sdk/schema";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
+import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+
 import type { RuntimeBundle, RuntimeBundleDownloader } from "./setup.ts";
 
 const PROVIDER_ID = "lando";
@@ -113,7 +115,7 @@ const unsupportedHostPlatformError = () =>
     operation: "setup",
     message: `No pinned runtime-bundle entry for unsupported host platform ${process.platform}.`,
     remediation:
-      "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest.",
+      "Run `lando setup` on a supported host (Linux x64/arm64, Apple Silicon macOS arm64, Windows x64) or update the bundled manifest.",
   });
 
 /**
@@ -127,21 +129,23 @@ export const resolveRuntimeBundleEntry = (
   platform: HostPlatform,
   arch: string,
 ): Effect.Effect<RuntimeBundleEntry, ProviderUnavailableError> =>
-  Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
-    Effect.flatMap((entry) =>
-      entry === undefined
-        ? Effect.fail(
-            new ProviderUnavailableError({
-              providerId: PROVIDER_ID,
-              operation: "setup",
-              message: `No pinned runtime-bundle entry for ${platformArchKey(platform, arch)}.`,
-              remediation:
-                "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest.",
-            }),
-          )
-        : Effect.succeed(entry),
-    ),
-  );
+  isIntelMacHost(platform, arch)
+    ? Effect.fail(new IntelMacUnsupportedError(arch))
+    : Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
+        Effect.flatMap((entry) =>
+          entry === undefined
+            ? Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: PROVIDER_ID,
+                  operation: "setup",
+                  message: `No pinned runtime-bundle entry for ${platformArchKey(platform, arch)}.`,
+                  remediation:
+                    "Run `lando setup` on a supported host (Linux x64/arm64, Apple Silicon macOS arm64, Windows x64) or update the bundled manifest.",
+                }),
+              )
+            : Effect.succeed(entry),
+        ),
+      );
 
 export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(entry.filename)) {

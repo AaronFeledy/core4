@@ -31,14 +31,14 @@ const coreArtifactDownload = Effect.gen(function* () {
 }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(HttpClientLive))));
 
 describe("RUNTIME_BUNDLE_TARGETS", () => {
-  test("covers every supported host platform key with a basename-only filename", () => {
+  test("covers exactly the four supported host platform keys and never darwin-x64", () => {
     expect(RUNTIME_BUNDLE_TARGETS.map((target) => target.key).sort()).toEqual([
       "darwin-arm64",
-      "darwin-x64",
       "linux-arm64",
       "linux-x64",
       "win32-x64",
     ]);
+    expect(RUNTIME_BUNDLE_TARGETS.map((target) => target.key)).not.toContain("darwin-x64");
     for (const target of RUNTIME_BUNDLE_TARGETS) {
       expect(target.filename).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
     }

@@ -18,6 +18,9 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
+import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
+
+export { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
@@ -150,6 +153,7 @@ export interface SetupOptions {
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
+  readonly arch?: string;
   readonly socketPath?: string;
   readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
@@ -662,6 +666,10 @@ export const setupProviderLando = (
 ): Effect.Effect<SetupResult, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const platform = options.platform ?? currentHostPlatform();
+    const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
+    if (isIntelMacHost(platform, arch)) {
+      return yield* Effect.fail(new IntelMacUnsupportedError(arch ?? "x64"));
+    }
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
     const probesSocket = options.skipSocketProbe !== true;
