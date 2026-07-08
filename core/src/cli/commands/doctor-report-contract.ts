@@ -53,6 +53,7 @@ const DoctorRuntimeSchema = Schema.Struct({
   running: Schema.Boolean,
   message: Schema.optional(Schema.String),
   version: Schema.optional(Schema.String),
+  oomKilled: Schema.optional(Schema.Boolean),
 });
 const DoctorSelectionRecordSchema = Schema.Struct({
   providerId: Schema.String,

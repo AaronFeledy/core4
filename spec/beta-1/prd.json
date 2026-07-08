@@ -893,7 +893,7 @@
         "Lint passes"
       ],
       "priority": 50,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: core/src/cli/commands/doctor.ts:60-92 and Podman died-event OOMKilled evidence; doctor remediation surfacing."
     },
     {

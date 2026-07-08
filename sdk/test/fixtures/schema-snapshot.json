@@ -7300,6 +7300,9 @@
                       "message": {
                         "type": "string"
                       },
+                      "oomKilled": {
+                        "type": "boolean"
+                      },
                       "running": {
                         "type": "boolean"
                       },

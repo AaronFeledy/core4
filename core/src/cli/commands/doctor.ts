@@ -48,7 +48,7 @@ export type DoctorProviderKind = "managed" | "user-installed";
 
 const MANAGED_PROVIDER_IDS: ReadonlySet<string> = new Set(["lando"]);
 
-const providerKindFor = (providerId: string): DoctorProviderKind =>
+export const providerKindFor = (providerId: string): DoctorProviderKind =>
   MANAGED_PROVIDER_IDS.has(providerId) ? "managed" : "user-installed";
 
 export interface DoctorSolution {
@@ -61,6 +61,8 @@ export interface DoctorRuntime {
   readonly running: boolean;
   readonly message?: string;
   readonly version?: string;
+  // Present only when a container died event reported the OOMKilled attribute.
+  readonly oomKilled?: boolean;
 }
 
 export interface DoctorSelectionRecord {
@@ -604,8 +606,10 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
     `runtimeStatus: ${check.runtimeStatus}`,
   ];
   if (check.runtime.version !== undefined) lines.push(`runtimeVersion: ${check.runtime.version}`);
+  if (check.runtime.oomKilled === true) lines.push("oomKilled: true");
   if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
-  if (check.name === "setup-readiness" || check.name === "runtime-service") {
+  // "runtime-oom" mirrors the name in doctor-oom.ts; a literal avoids a runtime import cycle.
+  if (check.name === "setup-readiness" || check.name === "runtime-service" || check.name === "runtime-oom") {
     for (const [field, value] of Object.entries(check.context)) {
       if (field === "providerId" || field === "providerKind" || field === "providerVersion") continue;
       lines.push(`${field}: ${value}`);
@@ -663,6 +667,11 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "lastRecordedSocketPath",
   "lastRecordedPid",
   "lastRecordedRuntimeVersion",
+  "containerName",
+  "image",
+  "exitCode",
+  "app",
+  "service",
 ];
 
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
@@ -694,6 +703,7 @@ const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => {
       running: check.runtime.running,
       ...(check.runtime.message === undefined ? {} : { message: check.runtime.message }),
       ...(check.runtime.version === undefined ? {} : { version: check.runtime.version }),
+      ...(check.runtime.oomKilled === undefined ? {} : { oomKilled: check.runtime.oomKilled }),
     },
     capabilities: orderCapabilityKeys(check.capabilities),
     context: orderContextKeys(check.context),
