@@ -67,6 +67,7 @@ export const ServiceConfig = Schema.extend(ComposeServiceConfig, Schema.Struct({
   routes: Schema.optional(Schema.Array(RouteInput)),
 
   healthcheck: Schema.optional(HealthcheckInput),
+  logs: Schema.optional(Schema.Array(LogSourceInput)),  // declared in-container log files (§6.14)
   certs: Schema.optional(CertsInput),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   security: Schema.optional(Schema.Struct({
@@ -130,6 +131,11 @@ services:
       command: curl -fsS http://localhost:8080/health
       retry: 25
       delay: 1000
+
+    logs:
+      - path: /var/log/myapp/error.log
+        stream: stderr
+        label: myapp error log
 
     certs: true
     hostnames:
@@ -649,6 +655,7 @@ Every `ServiceType` (canonical or plugin-contributed) MUST satisfy all of the fo
 - A `base: "lando"` service receives the `lando.env` feature (and therefore the `/etc/lando/environment` env layer and the standard `LANDO_*` identity env of §6.9).
 - A `base: "l337"` service receives **no** injected `LANDO_*` env layer and no `/etc/lando` scaffolding; its environment contains only Compose-level / user-authored keys plus any env a feature it explicitly lists contributes.
 - The env-layer helper (`buildLandoEnv` / the `lando.env` feature body) is reachable only through the `lando.env` feature. A service type MUST NOT import or call the env-layer helper directly; the §13.4 boundary gate forbids it.
+- Any `logSources` it contributes (§6.14) are valid `LogSource`s: unique `id` per service (with `console` reserved for the implicit container stdout/stderr source), an absolute in-container `path`, and a `strategy` the service's `base` can honor (a `redirect` source requires a Lando-built image — `base: "lando"` or a build phase that owns the daemon config; a `base: "l337"`/BYO service may declare only `follow` sources). Emitting `logSources` is provider-neutral plan intent; the service type MUST NOT itself follow files or spawn a collector.
 - Feature priority order and `extends:` depth (≤ 4, no cycles) are stable across replays.
 
 **Service types** are resolvers that turn `type: <name>` into normalized config + a list of features to apply.
@@ -669,6 +676,7 @@ export interface ServiceTypeResolution {
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
   readonly tooling?: ReadonlyRecord<string, ToolingTask>;  // §6.11.3, see §8.5 for the ToolingTask shape
+  readonly logSources?: ReadonlyArray<LogSource>;          // §6.14 declared in-container log files
   readonly metadata?: Record<string, unknown>;
 }
 ```
@@ -1046,5 +1054,87 @@ export class BuildOrchestratorUnavailableError extends Schema.TaggedError<BuildO
 ```
 
 `BuildOrchestratorUnavailableError` exists because the service is `Layer.suspend`-wrapped (§3.4): an embedding host that constructs the runtime at level `app` but never references `BuildOrchestrator` MUST still see a typed failure if a downstream subsystem tries to publish a `Build` event without going through the orchestrator. (The orchestrator is the only publisher of the `Build` event scope; manifest validation rejects plugin subscribers that try to publish into the scope.)
+
+---
+
+### 6.14 Service log sources
+
+`RuntimeProvider.logs` (§5.3) streams a service's **container stdout/stderr** — the PID-1 output the engine's native log API captures. That is the correct default and covers the common infrastructure case: the official `httpd`, `nginx`, and `php-fpm` images already redirect their access/error logs to `/proc/self/fd/{1,2}` or symlink them to `/dev/stdout` / `/dev/stderr`, and default `mysql` / `mariadb` write their error log to stderr in the foreground. But many services — and most application frameworks (Symfony `var/log/dev.log`, Laravel `storage/logs/*.log`), enabled DB slow/general logs, and legacy daemons — write to **files inside the container** that never reach stdout, so `lando logs <service>` shows nothing useful for them.
+
+A **log source** is a declarative statement that a service also produces logs at an in-container file path, plus how Lando should surface them. Log sources let a service type wire up any service once, and let a user attach an ad-hoc file to a bespoke service, without either party choosing a collection *architecture* — the mechanism is owned by core and the provider.
+
+#### 6.14.1 The `LogSource` schema
+
+```ts
+export const LogSourceId = Schema.String.pipe(Schema.brand("LogSourceId"));  // "console" is reserved
+
+export const LogSource = Schema.Struct({
+  id: LogSourceId,                                    // unique within the service
+  label: Schema.optional(Schema.String),             // human label, e.g. "apache error log"
+  path: AbsolutePath,                                 // single in-container file (no globs in v4.0)
+  stream: Schema.Literal("stdout", "stderr"),         // render/exit classification of this source
+  strategy: Schema.Literal("redirect", "follow"),     // how the source is reified (§6.14.3)
+  required: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  timestamps: Schema.optionalWith(Schema.Boolean, { default: () => false }),  // lines carry parseable leading timestamps → enables `--since`
+});
+export type LogSource = typeof LogSource.Type;
+```
+
+- **Implicit console source.** Every service has an implicit source with `id: "console"` backed by the native engine log stream. It is never declared; declaring `console` is rejected at validation. `console` is `timestamps: true` (the engine stamps each line).
+- **One path per source.** A source names exactly one file. Globs and multi-path sources are out of scope for v4.0 because per-line source attribution and per-file lifecycle must stay unambiguous (declare multiple sources for multiple files).
+- **`stream` is classification, not provenance.** A file source is neither the container's stdout nor its stderr; `stream` only tells the renderer/exit path how to treat the source's lines. Provenance rides `LogChunk.source` (§6.14.2), not `stream`.
+- **`LogSourceInput`** is the Landofile-facing shape: `path` (required), plus optional `label`, `stream` (default `stderr`), and `id` (defaulted from the path basename). User-declared sources always resolve to `strategy: "follow"` (Lando does not own a user's arbitrary image build) and `timestamps: false` unless the user opts in — user config *tunes* which files are surfaced; it does not choose the collection strategy (§1.2 "flags tune, interfaces choose"). Service types own the richer declaration including `redirect`.
+
+#### 6.14.2 `LogChunk.source` (additive)
+
+`LogChunk` gains an optional `source`:
+
+```ts
+export interface LogChunk {
+  readonly service: ServiceName;
+  readonly source?: LogSourceId;        // absent ⇒ "console"; additive, back-compatible
+  readonly stream: "stdout" | "stderr";
+  readonly line: string;
+  readonly timestamp?: Date;
+}
+```
+
+The field is **optional** so every existing provider, fixture, and consumer that constructs the four-field shape stays valid (the additive-export discipline in `sdk/AGENTS.md` applies: `sdk/API_COMPATIBILITY.md` note + `codegen:schema-snapshot` refresh). An absent `source` means the container stdout/stderr source; renderers label chunks by `source` so interleaved sources remain distinguishable.
+
+#### 6.14.3 Reification: two capability-gated strategies
+
+Declared sources are provider-neutral intent. Core reifies each one by its `strategy`, chosen so the 90% case (Lando-built web/DB service types) pays **zero runtime cost** and BYO images still work:
+
+- **`redirect` (preferred, for Lando-built images).** At build/scaffold time (§6.13), core points the daemon's log path at `/dev/stdout` or `/dev/stderr` — the canonical Docker idiom (`ln -sf /dev/stdout …`, or a daemon-config directive where a symlink is unsafe). The lines then flow through the **existing console source** with no runtime follower, correct history/retention from the engine ring buffer, and composition with `--since` / `--tail`. `redirect` requires Lando to own the image build (a `base: "lando"` service or a service with a build phase); it does **not** require the `serviceLogSources` capability. A source that a daemon refuses to write through a redirected fd (MySQL's error/slow logs famously reopen and `fsync`) MUST be declared `strategy: "follow"` instead.
+- **`follow` (fallback, for BYO images and non-redirectable logs).** The source is realized at `lando logs` time by the **provider** inside `RuntimeProvider.logs` (§5.3) — not by a core `execStream(tail -F …)` shell-out, which would assume a `tail` dialect (GNU vs BusyBox `-F`), make remote/VM providers second-class, and leak children. The provider follows the file with the defined semantics in §6.14.4 and tags each `LogChunk` with the source `id`. `follow` requires the active provider to declare `serviceLogSources: true` (§5.4).
+
+**Capability degradation.** When the active provider reports `serviceLogSources: false`:
+- a `required: true` follow source fails planning up front with a tagged `CapabilityError` whose remediation names the redirect alternative and the providers that support following (§5.5 validate-before-plan);
+- a non-required follow source is reported as unavailable in `lando logs` / `lando info` output and skipped — console and any `redirect` sources still stream. A source is **never silently dropped**; unavailability is always surfaced.
+
+#### 6.14.4 Follow semantics (normative)
+
+A provider that declares `serviceLogSources: true` MUST implement file following with these semantics, asserted by the §5.3 `logs` contract suite (§13.1):
+
+- **Finite vs follow.** With `follow: false`, a file source is a snapshot: it emits up to `tail` lines from the file's current tail and then reaches EOF so the merged stream terminates. It MUST NOT wait for a not-yet-created file. With `follow: true`, it backfills up to `tail` lines then follows appended writes.
+- **Missing file.** A missing path in follow mode produces a structured per-source *pending* diagnostic and a bounded readiness wait, never an infinite silent wait; in finite mode it produces an *unavailable* diagnostic (or fails when `required`).
+- **Rotation.** Following survives `logrotate` rename+create and copytruncate via device/inode/offset tracking: the old inode is drained to EOF where possible, the name is reopened, and a rotation marker is emitted. Duplication/loss around the rotate window is bounded and documented; the provider's own follower diagnostics (e.g. "file truncated") are **not** emitted as service `LogChunk`s.
+- **Line framing.** Bytes are decoded with an incremental UTF-8 decoder that never splits a multi-byte codepoint across chunks, handles CRLF, and flushes a final partial line at EOF. Redaction (§6.14.5) runs on complete framed lines, never on raw byte chunks.
+- **Bounds.** A per-source `maxLineBytes` truncates over-long lines with a `truncated` marker and bounded buffering; invalid UTF-8 uses replacement or is classified as binary. An unbounded line (a MySQL blob, a binary file) can never exhaust CLI/renderer memory.
+- **`since`.** Honored only for `timestamps: true` sources (and `console`). For a `timestamps: false` source, `--since` is reported as unsupported for that source (a per-source diagnostic), never silently ignored.
+- **`tail`.** Applied **per source**; the merged output of N sources is not a single global "last N". Global-total semantics are not offered in v4.0 (they would require orderable timestamps on every source).
+- **Ordering.** Per-source order is preserved; the merged stream is arrival-order. Because file sources may lack timestamps, `lando logs` makes **no** global-chronological guarantee — renderers label lines by `source` and MUST NOT claim a merged total ordering.
+- **Lifecycle.** Every follower is acquired in the `logs` stream's scope; `Effect.interrupt` (Ctrl+C) reaps every follower within the §3.6 cancellation budget, and a dropped/partially-consumed `logs` stream terminates its followers at scope close — identical to the reaping contract already on `RuntimeProvider.logs` (§5.3).
+
+#### 6.14.5 Redaction
+
+Providers emit **raw** `LogChunk`s, exactly as build transcripts are written unredacted to disk (§6.13.6). Redaction is applied **once, at the boundary** — the renderer, lifecycle events, and `--format json` machine output route every `LogChunk.line` through the canonical `RedactionService` (§3.7); the raw `logs` Stream returned to library callers is pre-redaction, unchanged from today's `RuntimeProvider.logs` contract. There is no mid-pipeline scrubber and no double-redaction: a declared file on disk stays raw (a local diagnostic artifact under the app's control), and no unredacted secret crosses the CLI/event/telemetry boundary.
+
+#### 6.14.6 Catalog defaults
+
+Because the common official images already route logs to stdout/stderr, the bundled §6.12 service types declare sources sparingly and prefer `redirect` where Lando owns the image:
+- `apache` / `nginx` / `php-fpm`: declare access/error sources as `strategy: "redirect"` (matching upstream's own `/dev/stdout` idiom) so they surface with zero runtime cost even on a stripped base image.
+- `mysql` / `mariadb`: the error log defaults to stderr (already `console`); the **slow-query** and **general** logs, when the user enables them, are declared `strategy: "follow"` because the server reopens them.
+- Application frameworks are surfaced by the recipe/service type that knows the path (e.g. a Symfony/Laravel service type declaring `storage/logs` or `var/log`), always as `follow`.
 
 ---

@@ -56,6 +56,7 @@ import {
   ListFilter,
   LogChunk,
   LogOptions,
+  LogSource,
   LogTarget,
   ProviderCapabilities,
   ProviderError,
@@ -140,6 +141,22 @@ defined in `@lando/sdk` (`schema/data-transfer.ts`) and detailed in §10.11.
 
 **`exec` vs `execStream`.** `exec` returns a collected `ExecResult` (stdout / stderr buffered, exit code) and is the right primitive for short, structured calls (a single `psql -c "select 1"`, a healthcheck probe). `execStream` returns a `Stream<ExecChunk>` where each chunk is `{ stream: "stdout" | "stderr", data: Uint8Array }` followed by a terminal `{ exit: number }` chunk; it is the right primitive for long-running output that must be observable while it runs (the build orchestrator's `composer install` / `npm ci` steps; `lando logs --follow`'s sibling for one-shot exec; tooling tasks with `interactive: false` that the renderer needs to stream into a tail panel). `exec` MUST be implemented as a thin collector over `execStream` (`Stream.runFold`) — providers do not duplicate spawn logic. `Effect.interrupt` MUST propagate through `execStream` to the underlying `kill()` and the service's `Scope` MUST reap the child before resolving, identical to the contract on `RuntimeProvider.logs`. Unlike `logs`, `execStream` is `Scope`-bounded: a stream that is dropped without being consumed to completion still terminates the underlying exec at scope close.
 
+**`logs` and declared log sources.** `logs` streams the service's container stdout/stderr (the implicit `console` source) from the engine's native log API. `LogOptions` additionally carries the target's resolved **declared log sources** (§6.14) and an optional single-source filter:
+
+```ts
+export interface LogTarget extends ServiceSelector {}
+
+export interface LogOptions {
+  readonly follow: boolean;
+  readonly tail?: number;
+  readonly since?: string;
+  readonly sources?: ReadonlyArray<LogSource>;   // resolved declared file sources; `console` is always implicit
+  readonly source?: LogSourceId;                 // optional: restrict the stream to one source id
+}
+```
+
+When `sources` contains any `strategy: "follow"` entry, the provider merges the console stream with a follower per file source and tags every emitted chunk with its `LogChunk.source`. Following such a source requires `serviceLogSources: true` (§5.4); a provider that declares it false MUST still stream `console` (and any `redirect` sources, which arrive on the console stream because they were pointed at `/dev/stdout`/`/dev/stderr` at build time). The provider — not a core `execStream(tail -F …)` shim — owns following, so remote/VM providers are first-class and no `tail` dialect is assumed. Followers honor the finite/follow, missing-file, rotation, line-framing, bounding, per-source `since`/`tail`, ordering, and scope-reaping semantics defined normatively in §6.14.4. Like today, `logs` emits **raw** `LogChunk`s; redaction is applied once at the renderer/event/machine-output boundary (§6.14.5).
+
 ### 5.4 Capabilities
 
 Capabilities are a typed manifest of what the provider can do. Planning consults capabilities before assembling an `AppPlan`, and emits actionable errors when a feature is requested that the provider can't honor.
@@ -153,6 +170,7 @@ export const ProviderCapabilities = Schema.Struct({
   multiServiceApply: Schema.Boolean,
   serviceExec: Schema.Boolean,
   serviceLogs: Schema.Boolean,
+  serviceLogSources: Schema.Boolean,   // can follow declared in-container log files (§6.14) inside `logs`
   serviceHealth: Schema.Literal("native", "lando", "none"),
   hostReachability: Schema.Literal("native", "emulated", "none"),
   sharedCrossAppNetwork: Schema.Boolean,

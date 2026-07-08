@@ -547,7 +547,7 @@ Rules:
 
 - Core logs live under `<userCacheRoot>/logs/`.
 - App logs are discoverable by app id and app root.
-- Service logs stream via `RuntimeProvider.logs`.
+- Service logs stream via `RuntimeProvider.logs`. By default this is the service's container stdout/stderr; a service (via its service type, or a user via `services.<name>.logs:`) MAY additionally declare in-container **log sources** (§6.14) — file paths such as an Apache error log or a MySQL slow-query log — which are surfaced through the same `lando logs` stream, either by build-time redirect to `/dev/stdout`/`/dev/stderr` (preferred, zero runtime cost) or by a provider-owned file follower gated on the `serviceLogSources` capability. Declared sources are labeled by `LogChunk.source`; an unavailable source is reported, never silently dropped.
 - Debug mode includes provider operation names and redacted command inputs.
 - Users should never need provider-native commands for normal diagnosis.
 - Effect's structured logger annotations propagate through provider operations so a single `traceId` follows the lifecycle.
