@@ -1223,3 +1223,23 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - New grep/boundary gates follow one shape: an exported `check<Name>({ root }) => { ok, offenders }` function in `scripts/check-*.ts` (with `import.meta.main` CLI block writing to stderr + `process.exitCode = 1`), a `scripts/check-*.test.ts` driving a temp `root`, a `check:*` entry in `package.json`, and a step in `scripts/build-ci-workflow.ts` — then regenerate `.github/workflows/ci.yml`. Model on `check-network-boundary.ts`.
   - `spec/beta-1/prd.json` is hand-maintained with mixed unicode escaping (some `\u00a7`, some literal `§`); do NOT reserialize it with `json.dumps` (either `ensure_ascii` setting mangles unrelated lines). Flip a single story's `passes` with a surgical text edit anchored on its unique `priority`/`notes` lines.
 ---
+
+## 2026-07-07 23:44 CDT - US-415 Verify
+- Compiled binary build completed (`cd core && bun run build` produced `core/dist/lando`), but compiled-binary setup could not complete inside `lando4-dev`: `./core/dist/lando setup --yes --no-interactive` failed because sandbox `/usr/bin/podman` reports `5.4.2`, below the required Podman `6.0.0` floor.
+- Blocker recorded: real-world scenario and adjacent compiled-binary smoke were not run because setup must complete first; this is an environment prerequisite blocker, not a confirmed US-415 libpod prefix regression.
+---
+
+## [2026-07-08 00:30 CDT] - Babysit
+- PR: #550 https://github.com/AaronFeledy/core4/pull/550
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip PR-body rationale for internal libpod API prefix plumbing; rerun guide-scenario checks passed)
+- Merge: merged (squash)
+---
+
+## 2026-07-08 00:50 CDT - US-416
+- Reworked the managed Podman machine argv in `@lando/provider-lando` for Podman 6. `podman machine start` now passes `--update-connection=false` so bringing up the Lando-owned machine never hijacks the user's default Podman connection; the machine OS operation targets the manpage-documented `podman machine os upgrade` (replacing the image-oriented `os apply`); and WSL-backed Windows machines no longer run the unsupported OS path — the win32 runner's upgrade fails fast with a typed `WindowsMachineOsUnsupportedError` (WSL remediation) and never spawns. Added a `MachineSpawn` seam to `makeSystemPodmanMachineRunner` so exact create/start/stop/teardown/upgrade argv is asserted on darwin and win32 without real Podman. Machine ownership preservation is untouched.
+- Verification: typecheck, lint passed; spot checks green — new setup-machine-argv seam suite plus setup-machine-tooling, setup-machine-ownership, ensure-runtime, and setup.integration regression suites. No CLI surface changes (provider-internal machine argv only); real `podman machine` tooling is macOS/Windows-only, so the spawn-seam suite is the functional surface.
+- **Learnings for future iterations:**
+  - The system machine runner spawns via an injectable `MachineSpawn` seam (`makeSystemPodmanMachineRunner(command, name, platform, spawn)`, default `Bun.spawn`); assert real argv by passing a capturing spawn rather than mocking the whole `PodmanMachineRunner`. The `_machineRunnerFactory` setup seam keeps its 3-arg shape because the 4th spawn param is defaulted.
+  - Platform-specific machine behavior belongs in the REAL runner (`makeSystemPodmanMachineRunner`), not the thin `upgrade{MacOS,Windows}PodmanMachine` wrappers — those only delegate `machine.upgrade` and are exercised with fake runners in `setup.integration.test.ts`, so putting the WSL guard in the wrapper would have broken that fake-runner path.
+---

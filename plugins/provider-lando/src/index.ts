@@ -90,6 +90,7 @@ export {
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
   PodmanVersionUnsupportedError,
+  WindowsMachineOsUnsupportedError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,

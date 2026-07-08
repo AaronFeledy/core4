@@ -803,7 +803,7 @@
         "Lint passes"
       ],
       "priority": 45,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: plugins/provider-lando/src/setup.ts:279-329, 142-196, 709-728; managed machine argv, update/upgrade caveat, WSL limitation."
     },
     {
