@@ -24909,6 +24909,36 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
+              "enum": ["image-pull-progress"],
+              "type": "string"
+            },
+            "current": {
+              "type": "number"
+            },
+            "eventName": {
+              "enum": ["image-pull-progress"],
+              "type": "string"
+            },
+            "reference": {
+              "type": "string"
+            },
+            "stream": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "total": {
+              "type": "number"
+            }
+          },
+          "required": ["_tag", "eventName", "reference", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
               "enum": ["pre-http-call"],
               "type": "string"
             },

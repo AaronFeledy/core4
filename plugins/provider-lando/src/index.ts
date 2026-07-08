@@ -53,6 +53,12 @@ export {
 } from "./applied-state.ts";
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export { withApiReason } from "./redact.ts";
+export {
+  buildImagePullRequest,
+  parseImagePullFrame,
+  pullImage,
+} from "./image-pull.ts";
+export type { ImagePullFrame, PullImageDeps } from "./image-pull.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
 export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";

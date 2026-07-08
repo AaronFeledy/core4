@@ -12,6 +12,7 @@ export * from "./mcp.ts";
 export * from "./message.ts";
 export * from "./open.ts";
 export * from "./host-proxy.ts";
+export * from "./image-pull.ts";
 export * from "./provider.ts";
 export * from "./renderer.ts";
 export * from "./sync.ts";
