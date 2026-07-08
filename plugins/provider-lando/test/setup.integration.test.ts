@@ -820,7 +820,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
   test("is version-idempotent and replaces the bin tree atomically on a version change", async () => {
     const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-idem-")), "runtime", "bin");
     try {
-      const v1 = buildTarGz([{ path: "old-only", bytes: new TextEncoder().encode("old") }]);
+      const v1 = buildTarGz([
+        { path: "podman", bytes: new TextEncoder().encode("podman") },
+        { path: "old-only", bytes: new TextEncoder().encode("old") },
+      ]);
       const setupV1 = () =>
         setupProviderLando({
           platform: "linux",
@@ -839,7 +842,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       expect(statSync(markerPath).mtimeMs).toBe(firstMtime);
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(true);
 
-      const v2 = buildTarGz([{ path: "new-only", bytes: new TextEncoder().encode("new") }]);
+      const v2 = buildTarGz([
+        { path: "podman", bytes: new TextEncoder().encode("podman") },
+        { path: "new-only", bytes: new TextEncoder().encode("new") },
+      ]);
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
