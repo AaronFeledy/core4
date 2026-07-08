@@ -1335,3 +1335,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): `review-work` was invoked as requested, but this harness returned the skill workflow instructions rather than an automated findings report; no `review-work` findings were available to fix or reject.
 - Verification: typecheck, lint, check:redaction-boundary, and check:renderer-boundary passed; focused OOM doctor tests passed (24); adjacent doctor spot checks passed (55 pass/1 skip).
 ---
+
+## 2026-07-08 15:55 CDT - US-421 Review Follow-up
+- Fixed the post-fix Bugbot remediation issue: WSL now receives the Linux-style OOM memory/logs guidance only, while Podman Desktop machine-resource guidance is limited to macOS and Windows. The doctor walkthrough guide also records the new `runtime-oom` diagnostic fields for guide-owned doctor coverage.
+- Review notes (deferred/rejected): no post-fix Bugbot findings were rejected.
+- Verification: typecheck, lint, check:redaction-boundary, check:renderer-boundary, lint:guides, check:guide-coverage, and focused doctor walkthrough guide pass passed; focused OOM doctor tests passed (23); adjacent doctor spot checks passed (55 pass/1 skip).
+---
