@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface \u2014 each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec \u00a78/\u00a712 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked). Beta 1 additionally adds the Podman 6 runtime contract wave (PRD-11, US-413..US-424), covering provider version gates, libpod v6 API migration, managed machine behavior, runtime target fallout, CI provider integration, and Podman 6 pull/health/OOM/volume/trust/containers.conf semantics.",
+  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface \u2014 each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec \u00a78/\u00a712 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked). Beta 1 additionally adds the Podman 6 runtime contract wave (PRD-11, US-413..US-424), covering provider version gates, libpod v6 API migration, managed machine behavior, runtime target fallout, CI provider integration, and Podman 6 pull/health/OOM/volume/trust/containers.conf semantics. Beta 1 additionally adds the service-log-sources primitive (PRD-12, US-425..US-429), the last new SDK surface before freeze: a declarative LogSource on service types and Landofiles (spec 6.14), an additive LogChunk.source and a serviceLogSources provider capability (spec 5.3, 5.4), build-time redirect reification to /dev/stdout|stderr for Lando-built images, provider-owned follow-strategy file following inside RuntimeProvider.logs with defined rotation/framing/finite-vs-follow/since semantics, and lando logs --source labeling with redaction applied only at the renderer/event/machine-output boundary (spec 10.9).",
   "userStories": [
     {
       "id": "US-372",
@@ -949,6 +949,100 @@
       "priority": 53,
       "passes": false,
       "notes": "PRD-11 anchors: plugins/provider-lando/src/runtime-config.ts:17-29 and task-1 default_host_ips caveat; managed containers.conf loopback binding."
+    },
+    {
+      "id": "US-425",
+      "title": "LogSource SDK surface — schema, LogChunk.source, serviceLogSources capability",
+      "description": "As an SDK consumer, @lando/sdk publishes the LogSource schema, the additive LogChunk.source field, the extended LogOptions, and the serviceLogSources provider capability, so providers and core share one typed contract for declared log sources.",
+      "acceptanceCriteria": [
+        "`LogSource` and branded `LogSourceId` are exported from @lando/sdk per §6.14.1: `{ id, label?, path, stream, strategy, required, timestamps }` with `strategy: \"redirect\" | \"follow\"`, `stream: \"stdout\" | \"stderr\"`, `required`/`timestamps` defaulting to false; `console` is a reserved id and validation rejects a declared source using it.",
+        "`LogSourceInput` (Landofile shape) is exported: `path` required; `label`, `stream` (default stderr), `id` (defaulted from path basename) optional; decoding yields a `strategy: \"follow\"`, `timestamps: false` LogSource.",
+        "`LogChunk` gains optional `source?: LogSourceId` (§6.14.2); the existing four-field shape still decodes and every current LogChunk construction site compiles unchanged.",
+        "`LogOptions` gains optional `sources?: readonly LogSource[]` and `source?: LogSourceId` (§5.3); follow/tail/since unchanged.",
+        "`ProviderCapabilities` gains `serviceLogSources: boolean` (§5.4); bundled provider capability matrices and the test/fake provider declare it.",
+        "sdk/API_COMPATIBILITY.md records the additive exports/fields; `bun run codegen:schema-snapshot` refreshed with `git diff --exit-code` clean on the snapshot; export/import-boundary tests updated.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": "Feature wave PRD-12 (spec §6.14.1, §6.14.2, §5.4). Additive SDK surface; mirror the LogChunk/LogOptions/ProviderCapabilities shapes in sdk/src/services/provider.ts. Last new SDK surface before freeze."
+    },
+    {
+      "id": "US-426",
+      "title": "Declared log sources become plan intent (service-type + Landofile)",
+      "description": "As a service author or user, the logSources a service type returns and the services.<name>.logs: a user writes are validated and carried onto the resolved plan as provider-neutral intent, with the bundled catalog service types declaring their known sources.",
+      "acceptanceCriteria": [
+        "`ServiceTypeResolution` accepts `logSources?: readonly LogSource[]`; the AppPlanner per-service phase (§6.11.0) collects them and merges user `services.<name>.logs:` sources, precedence user `logs:` > service-type `logSources` on a colliding id.",
+        "The §13.1 runServiceCompositionContract suite enforces the §6.11.0.1 bullet: unique id per service, absolute path, and a strategy the base can honor — a `redirect` source on a non-Lando-built (base l337/BYO, no build phase) service is rejected with a tagged error + remediation; a service type that follows files or spawns a collector itself fails the boundary.",
+        "Resolved logSources are part of the app-plan cache composition input (§12.1) so adding/removing a source invalidates the plan.",
+        "Bundled §6.12 catalog service types declare sources per §6.14.6: apache/nginx/php-fpm access+error as redirect; mysql/mariadb slow/general query logs (when enabled) as follow; error log stays on console.",
+        "Landofile round-trips a `logs:` block through the §7.8.1 serializer without reformatting unrelated content.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": "Feature wave PRD-12 (spec §6.11.0.1, §6.14.1, §6.14.6, §6.2 logs:). Plan intent only; reification is US-427/US-428."
+    },
+    {
+      "id": "US-427",
+      "title": "redirect-strategy reification for Lando-built services",
+      "description": "As a user of a Lando-built web/DB service, my declared redirect log files appear in lando logs with no runtime follower, because Lando points the daemon's log path at /dev/stdout|/dev/stderr when it builds the image.",
+      "acceptanceCriteria": [
+        "For every resolved `strategy: \"redirect\"` source on a Lando-built service, the planner emits a deterministic build/scaffold step (§6.13) redirecting the path to /dev/stdout (stream stdout) or /dev/stderr (stream stderr) — symlink, or a daemon-config directive where a symlink is unsafe.",
+        "After redirect the source's lines arrive on the implicit console stream (verified against the test provider); no follower is started and serviceLogSources is not consulted for redirect sources.",
+        "The redirect step is idempotent across rebuilds and included in the buildKey up-to-date check (§6.13.5) so a changed source re-runs it.",
+        "A redirect source declared on a service Lando does not build fails planning (shared with US-426 conformance), never silently downgrades.",
+        "Tests cover redirect emission for stdout and stderr sources and the console-stream round-trip on the test provider.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": "Feature wave PRD-12 (spec §6.14.3 redirect, §6.13). Zero-runtime-cost path; reuses build orchestration + buildKey, does not add a separate apply step."
+    },
+    {
+      "id": "US-428",
+      "title": "follow-strategy provider realization inside RuntimeProvider.logs",
+      "description": "As a user with a bring-your-own image or a non-redirectable log (MySQL slow log), lando logs follows the declared file with correct semantics, implemented by the provider — not a core tail -F shell-out.",
+      "acceptanceCriteria": [
+        "`RuntimeProvider.logs` in @lando/provider-lando (and provider-docker/provider-podman) consumes `LogOptions.sources`, merges console with a follower per follow source, and tags each LogChunk with its source id.",
+        "§6.14.4 semantics are asserted by the SDK logs contract suite against the fake provider and, env-gated, a live provider: finite (follow:false) snapshots up to tail then EOFs and the merged stream terminates; follow backfills then follows; a missing file yields pending (follow)/unavailable (finite) diagnostics and never hangs; rotation (rename+create and copytruncate) survived via inode/offset tracking with a rotation marker and no follower-diagnostic leakage.",
+        "Line framing: incremental UTF-8 decode never splits a multi-byte codepoint, handles CRLF, flushes a final partial line at EOF; bounds: per-source maxLineBytes truncates over-long/binary lines with a truncated marker and bounded buffering.",
+        "since honored only for timestamps:true sources and console; a timestamps:false source reports --since unsupported (per-source diagnostic), never silently ignored; tail applied per source (no faked global total); ordering per-source preserved, merged arrival-order, no global-chronological guarantee claimed.",
+        "Lifecycle: every follower acquired in the logs stream scope; a TestClock/interrupt test with >=6 services x >=3 sources asserts followers are reaped on Effect.interrupt within the §3.6 budget and a dropped partially-consumed logs stream terminates its followers at scope close.",
+        "Capability degradation: serviceLogSources:false still streams console and redirect sources; a required follow source fails planning up front with a tagged CapabilityError naming the redirect alternative; a non-required follow source is reported unavailable, never silently dropped.",
+        "check:probe-boundary stays green — no hand-rolled Effect.retry/Schedule readiness loop outside runProbe where §10.5 requires it.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 57,
+      "passes": false,
+      "notes": "Feature wave PRD-12 (spec §5.3 logs semantics, §6.14.3 follow, §6.14.4). Provider-owned follower, NOT core execStream(tail -F). Incorporates the correctness-adversary failure-mode set (rotation, framing, finite-vs-follow, since lie, leaks, huge lines)."
+    },
+    {
+      "id": "US-429",
+      "title": "lando logs source surface, redaction boundary, and lando info reporting",
+      "description": "As a user, lando logs shows my declared sources with clear labels, --source filters to one, secrets are redacted at the boundary, and lando info tells me which sources resolved or are unavailable.",
+      "acceptanceCriteria": [
+        "`app:logs` resolves the target service's declared sources and passes them as `LogOptions.sources`; a new `--source <id>` restricts to one source (unknown id fails with the known-source list); existing --service/--follow/--tail/--since compose with it.",
+        "TTY rendering labels each line by source (console lines keep today's appearance); --format json emits per-line StreamFrames carrying source through the central §8.11 StreamFrame seam, not raw JSON.stringify.",
+        "Redaction at the boundary only: providers emit raw LogChunks; renderer, lifecycle events, and --format json route every line through RedactionService (§3.7). A test proves a registered secret in a followed file's line is masked in rendered/JSON output while the on-disk file stays raw; check:redaction-boundary covers the path.",
+        "lando info (or --deep per §6.10) reports each service's resolved log sources with id, path, strategy, and availability (available / redirected-to-console / unavailable-with-reason).",
+        "Provider log-streaming capability validated before planning (US-393 behavior preserved); source-follow unavailability degrades per US-428, not mid-stream.",
+        "Dual-dispatch parity: OCLIF and runCompiledCli identical for --source, labeling, and JSON output; app:logs result/stream schema updates snapshot-frozen.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 58,
+      "passes": false,
+      "notes": "Feature wave PRD-12 (spec §6.14.5 redaction, §10.9, §8.2.5, §8.11). Extends US-393 (app logs --follow/--since); do not fork logs command logic."
     }
   ]
 }
