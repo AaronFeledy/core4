@@ -91,6 +91,11 @@ tags: [beta, docs, providers, setup, selection]
         value="LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES"
         display="Runtime bundle extraction fails closed before install when gzip or zip inflation exceeds the default decompressed-size cap; tests may override the cap with this environment variable"
       />
+      <Variable
+        name="runtimeBundleHosts"
+        value="darwin-arm64, linux-x64, linux-arm64, win32-x64"
+        display="provider-lando ships managed runtime bundles only for hosts supported by Podman 6; Intel macOS (darwin-x64) fails setup with remediation instead of downloading a bundle"
+      />
     </Step>
   </Scenario>
 
