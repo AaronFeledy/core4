@@ -911,7 +911,7 @@
         "Lint passes"
       ],
       "priority": 51,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: plugins/provider-docker/src/index.ts:936-1004 and plugins/provider-podman/src/index.ts:651-661; Podman 6 volume prune/filter semantics."
     },
     {
