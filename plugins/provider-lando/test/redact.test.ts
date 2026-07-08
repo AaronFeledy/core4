@@ -59,4 +59,12 @@ describe("redactDetails", () => {
     expect(out.message).toContain("[redacted]");
     expect(out.message).not.toContain("hunter2");
   });
+
+  test("masks percent-encoded URL userinfo in Podman request paths", () => {
+    const out = redactDetails({
+      path: "/libpod/images/pull?reference=https%3A%2F%2Fuser%3As3cr3tPass%40registry.internal%2Fteam%2Fimg%3A1.0&pullProgress=true",
+    }) as { path: string };
+    expect(out.path).not.toContain("s3cr3tPass");
+    expect(out.path).toContain("https%3A%2F%2F[redacted]%40registry.internal");
+  });
 });

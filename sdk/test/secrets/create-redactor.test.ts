@@ -56,6 +56,14 @@ describe("secrets profile (pattern layer)", () => {
     expect(r.redactString("https://user:pw@proxy:3128/x")).toBe("https://[redacted]@proxy:3128/x");
   });
 
+  test("masks percent-encoded URL userinfo credentials", () => {
+    const out = r.redactString(
+      "/libpod/images/pull?reference=https%3A%2F%2Fuser%3As3cr3tPass%40registry.internal%2Fteam%2Fimg%3A1.0&pullProgress=true",
+    );
+    expect(out).not.toContain("s3cr3tPass");
+    expect(out).toContain("https%3A%2F%2F[redacted]%40registry.internal");
+  });
+
   test("masks Bearer tokens but keeps the scheme word", () => {
     expect(r.redactString("Authorization: Bearer xyz.tok-123")).toBe("Authorization: Bearer [redacted]");
   });

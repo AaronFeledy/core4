@@ -857,7 +857,7 @@
         "Lint passes"
       ],
       "priority": 48,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-11 anchors: Podman 6 pullProgress evidence plus Renderer/Redaction boundaries; typed pull failures and progress rendering."
     },
     {

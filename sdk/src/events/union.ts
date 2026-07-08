@@ -31,6 +31,7 @@ import {
 } from "./global.ts";
 import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "./host-proxy.ts";
 import { PostHttpCallEvent, PreHttpCallEvent } from "./http-call.ts";
+import { ImagePullProgressEvent } from "./image-pull.ts";
 import {
   PostDestroyEvent,
   PostInitEvent,
@@ -128,6 +129,7 @@ export const LandoEvent = Schema.Union(
   PreDownloadEvent,
   DownloadProgressEvent,
   PostDownloadEvent,
+  ImagePullProgressEvent,
   PreHttpCallEvent,
   PostHttpCallEvent,
   PreMcpCallEvent,
