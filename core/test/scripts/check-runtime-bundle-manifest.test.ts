@@ -66,7 +66,7 @@ describe("runtime-bundle manifest offline invariant", () => {
     expect(result.ok, messages(result.violations)).toBe(true);
   });
 
-  test("the pre-US-411 placeholder manifest fails on every invariant class", async () => {
+  test("placeholder manifest fixture fails on every invariant class", async () => {
     const manifest = JSON.parse(await readFile(PLACEHOLDER_FIXTURE_PATH, "utf8"));
     const result = checkRuntimeBundleManifestInvariant({
       manifest,

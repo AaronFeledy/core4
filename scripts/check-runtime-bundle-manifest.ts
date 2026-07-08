@@ -4,10 +4,9 @@ import { resolve } from "node:path";
 import { LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT } from "./build-runtime-bundle.ts";
 
 /**
- * The exact runtime host-key set the committed manifest MUST cover — one entry
- * per supported host target (spec §13.5 expressed as runtime host keys). Podman
- * 6 drops Intel-Mac support, so `darwin-x64` is intentionally absent; the §13.5
- * release platform id `windows-x64` corresponds to manifest host key
+ * Runtime host keys the committed manifest must cover — one bundle entry per
+ * supported host. Intel Mac (`darwin-x64`) is omitted because Podman 6 no longer
+ * ships for it. CI release platform id `windows-x64` maps to manifest key
  * `win32-x64`.
  */
 export const REQUIRED_RUNTIME_HOST_KEYS = ["linux-x64", "linux-arm64", "darwin-arm64", "win32-x64"] as const;
@@ -47,8 +46,8 @@ const isPlaceholderSha256 = (sha: unknown): boolean => {
 };
 
 /**
- * Validate the committed runtime-bundle manifest against the §5.8.1
- * committed-manifest invariant using only offline, in-repo inputs (no network).
+ * Validate the committed runtime-bundle manifest offline using only in-repo
+ * inputs (no network).
  */
 export const checkRuntimeBundleManifestInvariant = (
   input: CheckManifestInvariantInput,
