@@ -12,6 +12,7 @@ import {
 import {
   materializeGlobalServices,
   resolveGlobalServiceContributions,
+  validateGlobalServiceContributions,
 } from "../../src/services/global-services.ts";
 
 const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
@@ -113,6 +114,34 @@ describe("global service contribution resolution", () => {
 });
 
 describe("global service materialization", () => {
+  test("accepts service log source contributions only when the provider advertises serviceLogSources", () => {
+    const contribution = {
+      contribution: {
+        id: "log-source-reader",
+        module: "/tmp/log-source-reader.mjs",
+        requires: { providerCapabilities: ["serviceLogSources"] },
+      },
+      plugin: "@lando/log-source-reader",
+    } satisfies { readonly contribution: GlobalServiceContribution; readonly plugin: string };
+
+    const accepted = validateGlobalServiceContributions({
+      contributions: [contribution],
+      providerCapabilities: capabilities({ serviceLogSources: true }),
+      providerId: "lando",
+    });
+    const rejected = validateGlobalServiceContributions({
+      contributions: [contribution],
+      providerCapabilities: capabilities({ serviceLogSources: false }),
+      providerId: "lando",
+    });
+
+    expect(accepted.accepted.map((entry) => entry.contribution.id)).toEqual(["log-source-reader"]);
+    expect(accepted.rejected).toEqual([]);
+    expect(rejected.accepted).toEqual([]);
+    expect(rejected.rejected).toHaveLength(1);
+    expect(rejected.rejected[0]?.missing).toEqual(["serviceLogSources"]);
+  });
+
   test("drops capability-rejected and disabled contributions and returns an id-sorted service map", async () => {
     const loaded: string[] = [];
     const loadServiceConfig = (entry: { readonly contribution: { readonly id: string } }) => {

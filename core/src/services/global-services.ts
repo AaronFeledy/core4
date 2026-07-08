@@ -4,7 +4,7 @@ import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionErr
 import {
   type GlobalServiceContribution,
   type PluginManifest,
-  type ProviderCapabilities,
+  ProviderCapabilities,
   ServiceConfig,
 } from "@lando/sdk/schema";
 
@@ -26,29 +26,9 @@ export const collectGlobalServiceContributions = (
   return out;
 };
 
-const PROVIDER_CAPABILITY_KEYS: ReadonlySet<keyof ProviderCapabilities> = new Set([
-  "artifactBuild",
-  "artifactPull",
-  "buildSecrets",
-  "buildSsh",
-  "multiServiceApply",
-  "serviceExec",
-  "serviceLogs",
-  "serviceHealth",
-  "hostReachability",
-  "sharedCrossAppNetwork",
-  "persistentStorage",
-  "bindMounts",
-  "bindMountPerformance",
-  "copyMounts",
-  "hostPortPublish",
-  "routeProvider",
-  "tlsCertificates",
-  "rootless",
-  "privilegedServices",
-  "composeSpec",
-  "providerExtensions",
-]);
+const PROVIDER_CAPABILITY_KEYS: ReadonlySet<keyof ProviderCapabilities> = new Set(
+  Object.keys(ProviderCapabilities.fields) as ReadonlyArray<keyof ProviderCapabilities>,
+);
 
 const isCapabilitySatisfied = (
   providerCapabilities: ProviderCapabilities,
