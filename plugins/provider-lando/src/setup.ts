@@ -108,6 +108,18 @@ export class WindowsMachinePrerequisiteError extends ProviderUnavailableError {
   }
 }
 
+export class WindowsMachineOsUnsupportedError extends ProviderUnavailableError {
+  constructor() {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "upgrade",
+      message: "Podman machine OS upgrade is not supported for WSL-backed Windows machines.",
+      remediation:
+        "Windows Podman machines run on WSL2, so their OS is managed by WSL; update it with `wsl --update` instead of `podman machine os upgrade`.",
+    });
+  }
+}
+
 export interface PodmanCommandRunner {
   readonly version: Effect.Effect<string, PodmanNotInstalledError>;
 }
@@ -273,7 +285,19 @@ const machineFailure = (
   });
 };
 
-const readProcess = async (proc: ReturnType<typeof Bun.spawn>) => {
+// Minimal subprocess shape the machine runner consumes, so tests can inject a spawn seam
+// that captures argv without a real Podman binary.
+interface MachineProcess {
+  readonly stdout: ReadableStream<Uint8Array> | number | null | undefined;
+  readonly stderr: ReadableStream<Uint8Array> | number | null | undefined;
+  readonly exited: Promise<number>;
+}
+
+export type MachineSpawn = (argv: ReadonlyArray<string>) => MachineProcess;
+
+const defaultMachineSpawn: MachineSpawn = (argv) => Bun.spawn([...argv], { stderr: "pipe", stdout: "pipe" });
+
+const readProcess = async (proc: MachineProcess) => {
   const stdoutStream = proc.stdout instanceof ReadableStream ? proc.stdout : null;
   const stderrStream = proc.stderr instanceof ReadableStream ? proc.stderr : null;
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -285,6 +309,7 @@ const readProcess = async (proc: ReturnType<typeof Bun.spawn>) => {
 };
 
 const runMachineCommand = (
+  spawn: MachineSpawn,
   command: string,
   args: ReadonlyArray<string>,
   operation: string,
@@ -292,7 +317,7 @@ const runMachineCommand = (
 ) =>
   Effect.tryPromise({
     try: async () => {
-      const result = await readProcess(Bun.spawn([command, ...args], { stderr: "pipe", stdout: "pipe" }));
+      const result = await readProcess(spawn([command, ...args]));
       if (result.exitCode !== 0) {
         throw result;
       }
@@ -305,8 +330,9 @@ export const makeSystemPodmanMachineRunner = (
   command = "podman",
   machineName = "lando",
   platform: HostPlatform = currentHostPlatform(),
+  spawn: MachineSpawn = defaultMachineSpawn,
 ): PodmanMachineRunner => ({
-  inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect", platform).pipe(
+  inspect: runMachineCommand(spawn, command, ["machine", "inspect", machineName], "inspect", platform).pipe(
     Effect.flatMap((stdout) =>
       Effect.try({
         try: (): PodmanMachineStatus => {
@@ -340,17 +366,36 @@ export const makeSystemPodmanMachineRunner = (
         : Effect.fail(cause);
     }),
   ),
-  create: runMachineCommand(command, ["machine", "init", machineName], "create", platform).pipe(
+  create: runMachineCommand(spawn, command, ["machine", "init", machineName], "create", platform).pipe(
     Effect.asVoid,
   ),
-  start: runMachineCommand(command, ["machine", "start", machineName], "start", platform).pipe(Effect.asVoid),
-  stop: runMachineCommand(command, ["machine", "stop", machineName], "stop", platform).pipe(Effect.asVoid),
-  upgrade: runMachineCommand(command, ["machine", "os", "apply", machineName], "upgrade", platform).pipe(
+  start: runMachineCommand(
+    spawn,
+    command,
+    ["machine", "start", "--update-connection=false", machineName],
+    "start",
+    platform,
+  ).pipe(Effect.asVoid),
+  stop: runMachineCommand(spawn, command, ["machine", "stop", machineName], "stop", platform).pipe(
     Effect.asVoid,
   ),
-  teardown: runMachineCommand(command, ["machine", "rm", "--force", machineName], "teardown", platform).pipe(
-    Effect.asVoid,
-  ),
+  upgrade:
+    platform === "win32"
+      ? Effect.fail(new WindowsMachineOsUnsupportedError())
+      : runMachineCommand(
+          spawn,
+          command,
+          ["machine", "os", "upgrade", machineName],
+          "upgrade",
+          platform,
+        ).pipe(Effect.asVoid),
+  teardown: runMachineCommand(
+    spawn,
+    command,
+    ["machine", "rm", "--force", machineName],
+    "teardown",
+    platform,
+  ).pipe(Effect.asVoid),
 });
 
 const MANAGED_MACHINE_NAME = "lando";
