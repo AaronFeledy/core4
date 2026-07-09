@@ -1513,3 +1513,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): `review-work` was invoked with `origin/main`, but this harness returned the skill workflow instructions rather than automated findings, so that lane was treated as inconclusive and not counted as approval.
 - Verification: typecheck and lint passed; focused spot checks passed (`cache.test.ts`, `redirect-log-sources.test.ts`, `redirect-log-round-trip.test.ts`, `app-planner.test.ts`, `log-sources.test.ts`, SDK service contract, and service-lando log-sources).
 ---
+
+## 2026-07-09 03:03 CDT - Babysit
+- PR: #560 https://github.com/AaronFeledy/core4/pull/560
+- CI outcome: pass (after triage)
+- Review feedback: fixed stale app-plan binary cache fixture after schema bump
+- Merge: merged (squash)
+---
