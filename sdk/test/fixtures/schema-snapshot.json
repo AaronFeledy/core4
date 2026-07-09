@@ -5412,6 +5412,33 @@
                 },
                 "type": "array"
               },
+              "logSources": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "availability": {
+                      "enum": ["available", "redirected-to-console", "unavailable"],
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "enum": ["redirect", "follow"],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "path", "strategy", "availability"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "primary": {
                 "type": "boolean"
               },
@@ -12469,6 +12496,33 @@
               "endpoints": {
                 "items": {
                   "type": "string"
+                },
+                "type": "array"
+              },
+              "logSources": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "availability": {
+                      "enum": ["available", "redirected-to-console", "unavailable"],
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "enum": ["redirect", "follow"],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "path", "strategy", "availability"],
+                  "type": "object"
                 },
                 "type": "array"
               },
@@ -38429,6 +38483,9 @@
             },
             "service": {
               "type": "string"
+            },
+            "source": {
+              "type": "string"
             }
           },
           "required": ["_tag", "chunk"],
@@ -38445,6 +38502,9 @@
               "type": "string"
             },
             "service": {
+              "type": "string"
+            },
+            "source": {
               "type": "string"
             }
           },

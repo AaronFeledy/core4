@@ -92,6 +92,13 @@ describe("dual-dispatch argv parser parity", () => {
     expect(logsFollowFromInput(compiledInput("app:logs", ["--follow"]))).toBe(true);
   });
 
+  test("app:logs parses --source identically in compiled dispatch", () => {
+    const input = compiledInput("app:logs", ["--service", "db", "--source", "slow-query", "--follow"]);
+
+    expect(logsOptionsFromInput(input)).toEqual({ service: "db", source: "slow-query" });
+    expect(logsFollowFromInput(input)).toBe(true);
+  });
+
   test("app:logs drops a non-numeric --tail instead of forwarding a string", () => {
     const input = compiledInput("app:logs", ["--tail", "abc"]);
 

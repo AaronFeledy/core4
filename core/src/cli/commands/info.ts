@@ -1,9 +1,3 @@
-/**
- * `lando info` — provider-neutral runtime info.
- *
- * Supports `--deep`, repeated `--filter`, `--path`, `--service`,
- * `--format json|table|yaml`.
- */
 import { Effect, Schema } from "effect";
 
 import type {
@@ -11,6 +5,7 @@ import type {
   InfoAppOptions,
   InfoAppResult,
   InfoAppService,
+  InfoLogSource,
   InfoServiceStatus,
 } from "@lando/sdk/app";
 import type { AppPlan, EndpointPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
@@ -46,6 +41,14 @@ const InfoServiceStatusSchema = Schema.Literal(
   "error",
 );
 
+const AppInfoLogSourceSchema = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  strategy: Schema.Literal("redirect", "follow"),
+  availability: Schema.Literal("available", "redirected-to-console", "unavailable"),
+  reason: Schema.optional(Schema.String),
+});
+
 export const AppInfoServiceSchema = Schema.Struct({
   app: Schema.String,
   service: Schema.String,
@@ -55,6 +58,7 @@ export const AppInfoServiceSchema = Schema.Struct({
   primary: Schema.Boolean,
   status: InfoServiceStatusSchema,
   endpoints: Schema.Array(Schema.String),
+  logSources: Schema.optional(Schema.Array(AppInfoLogSourceSchema)),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -114,6 +118,12 @@ const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
   }
 };
 
+const logSourceText = (source: InfoLogSource): string => {
+  const availability =
+    source.reason === undefined ? source.availability : `${source.availability}: ${source.reason}`;
+  return `${source.id} ${source.path} (${source.strategy}, ${availability})`;
+};
+
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const rows: SummaryRow[] = result.services.map((service) => ({
     label: service.service,
@@ -126,6 +136,9 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         label: "endpoints",
         value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
       },
+      ...(service.logSources === undefined
+        ? []
+        : [{ label: "log sources", value: service.logSources.map(logSourceText).join(", ") }]),
     ],
   }));
   const agentEnvSection =
@@ -178,10 +191,15 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
   if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), { columns: ctx?.columns });
   const extra = agentEnvLines(result);
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
-  const rows = result.services.map((service) => {
+  const rows = result.services.flatMap((service) => {
     const endpoints = service.endpoints;
     const renderedEndpoints = endpoints.length === 0 ? "no endpoints" : endpoints.join(", ");
-    return `${service.service}\t${service.status}\t${renderedEndpoints}`;
+    const base = `${service.service}\t${service.status}\t${renderedEndpoints}`;
+    const logRows = (service.logSources ?? []).map((source) => {
+      const reason = source.reason === undefined ? "" : `\t${source.reason}`;
+      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+    });
+    return [base, ...logRows];
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
 };
@@ -191,16 +209,33 @@ const toServiceInfo = (
   service: ServicePlan,
   status: InfoServiceStatus,
   endpoints: ReadonlyArray<string>,
-): InfoAppService => ({
-  app: String(plan.id),
-  service: String(service.name),
-  api: 4,
-  type: service.type,
-  provider: String(service.provider),
-  primary: service.primary,
-  status,
-  endpoints,
-});
+  serviceLogSources: boolean,
+): InfoAppService => {
+  const logSources = (service.logSources ?? []).map((source) => {
+    const base = { id: String(source.id), path: String(source.path), strategy: source.strategy };
+    if (source.strategy === "redirect") {
+      return { ...base, availability: "redirected-to-console" as const };
+    }
+    if (serviceLogSources) return { ...base, availability: "available" as const };
+    return {
+      ...base,
+      availability: "unavailable" as const,
+      reason:
+        "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+    };
+  });
+  return {
+    app: String(plan.id),
+    service: String(service.name),
+    api: 4,
+    type: service.type,
+    provider: String(service.provider),
+    primary: service.primary,
+    status,
+    endpoints,
+    ...(logSources.length === 0 ? {} : { logSources }),
+  };
+};
 
 // Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
 // out-of-band plan resolvers (global-app commands) reuse this without pulling
@@ -212,6 +247,7 @@ export const infoForPlan = (
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(plan);
 
+    const serviceLogSources = provider.capabilities.serviceLogSources === true;
     const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
       provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
         Effect.map((runtime) => {
@@ -225,6 +261,7 @@ export const infoForPlan = (
               : (runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
                   endpointText(service, endpoint),
                 ),
+            serviceLogSources,
           );
         }),
       ),

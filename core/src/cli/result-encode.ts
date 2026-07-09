@@ -26,6 +26,7 @@ export interface EncodeStreamEventFrameOptions {
 export interface EncodeStreamChunkFrameOptions {
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
   readonly redactor: Redactor;
 }
 
@@ -151,26 +152,24 @@ export const encodeStreamEventFrame = (
 ): Effect.Effect<string, never> =>
   encodeStreamFrame({ _tag: "event", event: options.event, payload: options.payload }, options.redactor);
 
-export const encodeStreamStdoutFrame = (
+const encodeStreamChunkFrame = (
+  tag: "stdout" | "stderr",
   options: EncodeStreamChunkFrameOptions,
 ): Effect.Effect<string, never> =>
   encodeStreamFrame(
     {
-      _tag: "stdout",
+      _tag: tag,
       chunk: options.chunk,
       ...(options.service === undefined ? {} : { service: options.service }),
+      ...(options.source === undefined ? {} : { source: options.source }),
     },
     options.redactor,
   );
 
+export const encodeStreamStdoutFrame = (
+  options: EncodeStreamChunkFrameOptions,
+): Effect.Effect<string, never> => encodeStreamChunkFrame("stdout", options);
+
 export const encodeStreamStderrFrame = (
   options: EncodeStreamChunkFrameOptions,
-): Effect.Effect<string, never> =>
-  encodeStreamFrame(
-    {
-      _tag: "stderr",
-      chunk: options.chunk,
-      ...(options.service === undefined ? {} : { service: options.service }),
-    },
-    options.redactor,
-  );
+): Effect.Effect<string, never> => encodeStreamChunkFrame("stderr", options);

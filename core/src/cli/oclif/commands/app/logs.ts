@@ -15,6 +15,7 @@ export interface LogsFlags {
   readonly follow?: boolean;
   readonly tail?: number;
   readonly since?: string;
+  readonly source?: string;
 }
 
 const flagsFromInput = (input: unknown): LogsFlags =>
@@ -26,6 +27,7 @@ export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>
     ...(flags.service === undefined ? {} : { service: flags.service }),
     ...(flags.tail === undefined ? {} : { tail: flags.tail }),
     ...(flags.since === undefined ? {} : { since: flags.since }),
+    ...(flags.source === undefined ? {} : { source: flags.source }),
   };
 };
 
@@ -57,13 +59,14 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
       _tag: line.stream,
       service: line.service,
       chunk: `${line.line}\n`,
+      ...(line.source === undefined ? {} : { source: line.source }),
     }));
   },
   render: (result) => renderLogsAppResult(result as LogsAppResult),
 };
 
 // Type intentionally left inferred: an explicit `LandoCommandSpec` annotation makes the
-// machine-output gate read this spread variant as a spec missing a literal `resultSchema`.
+// machine-output gate read this spread variant as a command definition missing `resultSchema`.
 const followLogsSpec = { ...logsSpec, streamingMode: "live" as const };
 
 export default class LogsCommand extends LandoCommandBase {
@@ -75,6 +78,9 @@ export default class LogsCommand extends LandoCommandBase {
     tail: Flags.integer({ description: "Show last N lines per service." }),
     since: Flags.string({
       description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+    }),
+    source: Flags.string({
+      description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
     }),
   };
   static override landoSpec: LandoCommandSpec = logsSpec;

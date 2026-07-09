@@ -1041,7 +1041,7 @@
         "Lint passes"
       ],
       "priority": 58,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-12 (spec \u00a76.14.5 redaction, \u00a710.9, \u00a78.2.5, \u00a78.11). Extends US-393 (app logs --follow/--since); do not fork logs command logic."
     }
   ]

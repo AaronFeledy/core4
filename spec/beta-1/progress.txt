@@ -1550,3 +1550,31 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed Docker contract `serviceLogSources` fixture mismatch and guide-drift coverage for provider/SDK log-follow surfaces
 - Merge: merged (squash)
 ---
+
+## 2026-07-09 13:40 CDT - US-429
+- Completed the declared-log-source surface: `lando logs` now accepts `--source <id>` (a declared source id or the implicit `console`); an unknown id fails up front listing the known sources, and it composes with `--service`/`--follow`/`--tail`/`--since`. A file-source request filters the resolved sources to that one and tells providers to suppress the container console stream (Docker/Lando/Podman `logs` now return the file stream only when `options.source` is set), so the stream is truly restricted to one source; `--source console` yields console-only.
+- Line labeling + machine output: every log line now carries its source. TTY rendering labels declared-source lines as `service stream [source]: line` while console lines keep today's appearance; `--format json` rides the central §8.11 StreamFrame seam with an additive optional `source` on the `stdout`/`stderr` frames (spec, SDK schema, and public schema snapshot regenerated).
+- Redaction at the boundary: providers keep emitting raw `LogChunk`s; the follow StreamFrameSink now routes every line through `RedactionService` for BOTH the TTY and JSON surfaces (previously only JSON redacted — the TTY follow path printed raw). A new boundary test proves a registered secret in a followed file's line is masked in rendered and JSON output while the on-disk file stays raw.
+- `lando info` reports each service's resolved log sources with id, path, strategy, and availability (available / redirected-to-console / unavailable-with-reason), derived from the service plan's declared sources and the provider's `serviceLogSources` capability; rendered in both the decorated summary and the plain table, and added to the info result schema.
+- Capability gating from US-393/US-428 is preserved: `serviceLogs` still fails up front, and follow-source availability still degrades during planning, not mid-stream.
+- Verification: typecheck and lint passed; check:redaction-boundary and check:renderer-boundary passed; schema snapshot regenerated (schema-snapshot.test green); 288 focused tests green across logs/info scenarios, the new redaction boundary test, result-encode, dual-dispatch parity, machine-output, provider log-follow/capabilities, provider contract, and app-planner/log-sources. CLI QA: the compiled binary's `lando logs --help` lists `--source` and accepts it end-to-end.
+- **Learnings for future iterations:**
+  - The log `source` plumbing was already end-to-end from US-425..428 (LogChunk.source set inside `@lando/sdk/log-follow`, `followLogSources` honoring `options.source`); US-429 was mostly surfacing it at the CLI/renderer/info boundaries, not new stream machinery.
+  - GOTCHA: `LogSourceId` is a brand that REJECTS the reserved id `console`, so `LogOptions.source` is file-only. `--source console` must map to `sources: []` (console-only via the provider default), NOT `LogOptions.source`.
+  - GOTCHA: the follow-mode StreamFrameSink (`makeStreamFrameSinkLive` in renderer-boundary.ts) previously built a redactor only for `--format json`; the TTY branch printed the raw chunk. Any command streaming user/file content through the sink must redact the TTY branch too, not just JSON.
+  - Providers merge console + file streams for follow sources; to "restrict to one source" you must suppress console when `options.source` is set (return the file stream only, or `Stream.empty` if the requested file source is unavailable) — the command-level `sources` filter alone does not stop the container console stream.
+  - Adding an optional field to the public `StreamFrame` requires regenerating the schema snapshot (`codegen:schema-snapshot`) AND updating the spec §8.11.3 block plus `sdk/API_COMPATIBILITY.md`; the OCLIF `--source` flag needs `codegen:oclif-manifest` so the compiled `$bunfs` dispatch parses it.
+---
+
+## 2026-07-09 14:55 CDT - US-429 Review
+- Fixed a review-blocking `lando info` reporting gap: unavailable follow log sources now show their unavailable reason in both the plain/table-style output and the decorated summary, instead of only in the structured result.
+- Review notes (deferred/rejected): `review-work` was invoked with `HEAD`, but this harness returned the skill workflow instructions rather than automated findings; treated as inconclusive, not approval.
+- Review notes (deferred/rejected): Cursor Bugbot was invoked twice before fixes and produced no substantive report before timing out/exiting; treated as inconclusive, not approval.
+- Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for info, logs, logs-redaction, and machine-output schema.
+---
+
+## 2026-07-09 15:03 CDT - US-429 Review
+- Fixed post-fix Bugbot blockers in `lando logs --source`: redirected sources now keep their console-backed stream instead of being suppressed to empty output, and unavailable follow sources fail up front when the provider lacks `serviceLogSources` instead of silently returning no lines.
+- Review notes (deferred/rejected): None; both post-fix Bugbot findings were confirmed in scope and fixed.
+- Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for logs, info, logs-redaction, and machine-output schema.
+---

@@ -1610,8 +1610,8 @@ Commands that declare `LandoCommandSpec.streaming` (`app:logs`, `app:exec`, buil
 
 ```ts
 export const StreamFrame = Schema.Union(
-  Schema.TaggedStruct("stdout", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
-  Schema.TaggedStruct("stderr", { chunk: Schema.String, service: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("stdout", { chunk: Schema.String, service: Schema.optional(Schema.String), source: Schema.optional(Schema.String) }),
+  Schema.TaggedStruct("stderr", { chunk: Schema.String, service: Schema.optional(Schema.String), source: Schema.optional(Schema.String) }),
   Schema.TaggedStruct("event",  { event: Schema.String, payload: Schema.Unknown }),  // redacted lifecycle frame
   Schema.TaggedStruct("result", { envelope: CommandResultEnvelope }),                 // terminal frame
 );

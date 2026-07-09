@@ -865,6 +865,13 @@ export const COMPILED_OCLIF_MANIFEST = {
           multiple: false,
           type: "option",
         },
+        source: {
+          description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
+          name: "source",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,
