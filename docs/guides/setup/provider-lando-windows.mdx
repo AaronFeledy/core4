@@ -14,6 +14,15 @@ tags: [beta, docs, provider-lando, setup, windows]
     </Step>
   </Scenario>
 
+  <Scenario id="windows-managed-machine-trust" render={false} reason="Managed-machine trust decisions and Windows Hyper-V remediation are exercised by plugins/provider-lando unit tests; the rendered path requires a Windows Podman machine">
+    <Step name="managed-machine-trust">
+      <Variable name="machineInit" value="podman machine init --import-native-ca lando" display="Lando-owned machine creation imports the host native CA trust store" />
+      <Variable name="machineTrustSync" value="podman machine set --import-native-ca lando" display="Existing machines get native CA trust sync only when setup state proves Lando created them" />
+      <Variable name="userOwnedMachine" value="createdByLando=false" display="User-owned machines are left untouched by setup trust remediation" />
+      <Variable name="hypervPrep" value="podman system hyperv-prep" display="Manual Administrator-terminal remediation; Lando never auto-elevates or runs Hyper-V prep for you" />
+    </Step>
+  </Scenario>
+
   <Scenario id="windows-runtime-bundle" render={false} reason="Runtime-bundle download paths are exercised by plugins/provider-lando unit tests; the Windows host path remains opt-in until release artifacts are pinned">
     <Step name="runtime-bundle-download">
       <Variable name="bundleManifest" value="plugins/provider-lando/runtime-bundle-versions.json" display="Pinned manifest carries the URL and SHA-256 for every supported host" />

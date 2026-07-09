@@ -60,6 +60,18 @@ export {
 } from "./image-pull.ts";
 export type { ImagePullFrame, PullImageDeps } from "./image-pull.ts";
 export {
+  IMPORT_NATIVE_CA_FLAG,
+  buildManagedMachineInitArgs,
+  buildManagedMachineTrustSyncArgs,
+  resolveMachineTrustImport,
+  windowsHyperVPrepRemediation,
+} from "./machine-trust.ts";
+export type {
+  MachineTrustDecision,
+  MachineTrustInput,
+  RecordedMachineOwnership,
+} from "./machine-trust.ts";
+export {
   buildLandoVolumeFilters,
   buildVolumePruneRequest,
   parseVolumePruneResult,
