@@ -684,6 +684,36 @@
               "image": {
                 "type": "string"
               },
+              "logs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Single absolute in-container file path declared under `services.<name>.logs`.",
+                      "type": "string"
+                    },
+                    "stream": {
+                      "description": "Render and exit classification for this source's lines; defaults to stderr.",
+                      "enum": [
+                        "stdout",
+                        "stderr"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "mounts": {
                 "items": {
                   "anyOf": [

@@ -1,12 +1,40 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type LogSource,
+  LogSourceId,
+  PortablePath,
+  type ServiceConfig,
+  ServiceName,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+
+const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
+  {
+    id: LogSourceId.make("access"),
+    label: "nginx access log",
+    path: AbsolutePath.make("/var/log/nginx/access.log"),
+    stream: "stdout",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+  {
+    id: LogSourceId.make("error"),
+    label: "nginx error log",
+    path: AbsolutePath.make("/var/log/nginx/error.log"),
+    stream: "stderr",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+];
 
 export const NGINX_FEATURE_ID = "service-lando.nginx" as const;
 export const NGINX_FEATURE_PRIORITY = 600;
@@ -83,6 +111,7 @@ export const nginxServiceType: ServiceType = {
     Effect.succeed({
       base: "lando" as const,
       normalizedConfig: normalizedService(input.service),
+      logSources: NGINX_LOG_SOURCES,
       features: [
         { id: NGINX_FEATURE_ID },
         {

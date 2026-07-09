@@ -7,6 +7,7 @@ import type {
   ServiceTypeError,
 } from "../errors/index.ts";
 import type {
+  LogSource,
   PlanMetadata,
   PluginManifest,
   ProviderId,
@@ -74,6 +75,7 @@ export interface ServiceTypeResolution {
   readonly base: "l337" | "lando";
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
+  readonly logSources?: ReadonlyArray<LogSource>;
   readonly tooling?: Readonly<Record<string, ToolingTaskShape>>;
   readonly metadata?: Record<string, unknown>;
 }

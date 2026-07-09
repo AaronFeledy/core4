@@ -19,6 +19,7 @@ import {
   type FileSyncPlan,
   type FileSyncSessionSpec,
   type LandofileShape,
+  type LogSource,
   type NetworkPlan,
   type NetworkingPlan,
   PortablePath,
@@ -68,6 +69,7 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
+import { mergeLogSources } from "./log-sources.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -578,6 +580,7 @@ interface ResolvedService {
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly serviceType: ServiceType;
   readonly resolution: ServiceTypeResolution;
+  readonly logSources: ReadonlyArray<LogSource>;
   readonly baseDefaultIds: ReadonlyArray<string>;
   readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
   readonly resolvedArtifactTag: string | undefined;
@@ -588,6 +591,7 @@ type PlannedServiceDraft = {
   readonly hostnames: ReadonlyArray<string>;
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly draft: AppFeatureServiceDraft;
+  readonly logSources: ReadonlyArray<LogSource>;
   readonly routes: ServicePlan["routes"];
   readonly extensions: ServicePlan["extensions"];
 };
@@ -859,6 +863,17 @@ const planApp = (
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
 
+      const mergedLogSources = mergeLogSources({
+        appRoot,
+        serviceName: name,
+        base: resolution.base,
+        typeSources: resolution.logSources ?? [],
+        userSources: service.logs ?? [],
+      });
+      const logSources = yield* Either.isLeft(mergedLogSources)
+        ? Effect.fail(mergedLogSources.left)
+        : Effect.succeed(mergedLogSources.right);
+
       const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
       // The base's default feature stack seeds the draft alongside the
       // resolution's explicit features; an id the resolution already lists
@@ -881,6 +896,7 @@ const planApp = (
         authored,
         serviceType,
         resolution,
+        logSources,
         baseDefaultIds,
         featureRefs,
         resolvedArtifactTag,
@@ -908,6 +924,7 @@ const planApp = (
             serviceType: entry.serviceType.id,
             base: entry.resolution.base,
             normalizedConfig: entry.resolution.normalizedConfig,
+            logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             ...(entry.resolvedArtifactTag === undefined
               ? {}
@@ -937,7 +954,15 @@ const planApp = (
     // Phase B (cache miss only): produce the per-service plans from the reused
     // resolutions, then run the app-feature pass and finalization.
     const plannedServiceDrafts: PlannedServiceDraft[] = [];
-    for (const { name, service, authored, serviceType, resolution, baseDefaultIds } of resolvedServices) {
+    for (const {
+      name,
+      service,
+      authored,
+      serviceType,
+      resolution,
+      logSources,
+      baseDefaultIds,
+    } of resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const features = yield* Effect.forEach(resolution.features, (featureRef) =>
           pluginRegistry.loadServiceFeature(featureRef.id).pipe(
@@ -987,6 +1012,7 @@ const planApp = (
         hostnames: service.hostnames ?? [],
         authored,
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
+        logSources,
         routes: servicePlan.routes,
         extensions: servicePlan.extensions,
       });
@@ -1010,8 +1036,11 @@ const planApp = (
       yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
     }
 
-    for (const { name, hostnames, authored, draft, routes, extensions } of plannedServiceDrafts) {
-      const servicePlan = servicePlanFromDraft(draft, routes, metadata, extensions);
+    for (const { name, hostnames, authored, draft, logSources, routes, extensions } of plannedServiceDrafts) {
+      const servicePlan = {
+        ...servicePlanFromDraft(draft, routes, metadata, extensions),
+        ...(logSources.length === 0 ? {} : { logSources }),
+      };
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&

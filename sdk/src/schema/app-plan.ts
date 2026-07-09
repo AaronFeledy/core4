@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { LogSource } from "./log-source.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
 import {
   CertificatePlan,
@@ -46,6 +47,7 @@ export const ServicePlan = Schema.Struct({
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optional(HealthcheckPlan),
+  logSources: Schema.optional(Schema.Array(LogSource)),
   certs: Schema.optional(CertificatePlan),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
