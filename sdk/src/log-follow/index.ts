@@ -1,17 +1,17 @@
 /**
- * Provider-owned log follower engine (§6.14.4).
+ * Provider-owned log follower engine.
  *
  * A provider that declares `serviceLogSources: true` realizes each declared
  * `strategy: "follow"` source at `lando logs` time by following the declared
  * in-container file. This module is the provider-neutral engine that owns the
- * normative §6.14.4 semantics — finite-vs-follow, missing-file readiness,
+ * shared follow semantics — finite-vs-follow, missing-file readiness,
  * rotation (rename+create and copytruncate), incremental UTF-8 line framing,
  * per-source `maxLineBytes` bounding, `since`/`tail`, ordering, and
  * scope-reaping — so every provider (and the SDK fake provider) shares one
  * tested implementation instead of a `tail -F` shell-out.
  *
  * File access is a low-level scoped seam ({@link LogFileAccess}); the real
- * container adapter is a later live wave, while the engine and the in-memory
+ * container adapter is provider-specific, while the engine and the in-memory
  * seam ({@link makeMemoryLogFileAccess}) are live and deterministically
  * testable under Effect's `TestClock`.
  *
@@ -288,7 +288,7 @@ const waitForFile = (
 
 /**
  * Follow (or snapshot) a single declared `follow` source, emitting source-tagged
- * line events and follower diagnostics per §6.14.4.
+ * line events and follower diagnostics (pending, unavailable, rotated, truncated).
  */
 export const followLogSource = (
   input: FollowLogSourceInput,
@@ -460,7 +460,7 @@ export const followLogSource = (
  * Follow every `strategy: "follow"` source declared on a service (optionally
  * restricted to one `source` id), merged in arrival order. `redirect`/other
  * strategies are ignored here — they ride the console stream. Non-follow-source
- * ids and unknown ids yield no follower (the caller/US-429 surfaces those).
+ * ids and unknown ids yield no follower (callers surface those as unavailable).
  */
 export const followLogSources = (
   input: FollowLogSourcesInput,

@@ -59,7 +59,7 @@ const runFinite = (
     ) as Effect.Effect<ReadonlyArray<LogFollowEvent>, ProviderError, never>,
   );
 
-describe("makeLineFramer (§6.14.4 framing + bounds)", () => {
+describe("makeLineFramer (framing + bounds)", () => {
   test("S6 splits multi-byte UTF-8 across reads without corruption", () => {
     const framer = makeLineFramer();
     // "héllo\n" — é is 0xC3 0xA9; split it across two feeds.
@@ -87,7 +87,7 @@ describe("makeLineFramer (§6.14.4 framing + bounds)", () => {
   });
 });
 
-describe("followLogSource finite (§6.14.4)", () => {
+describe("followLogSource finite", () => {
   test("S1 snapshots up to tail lines then EOFs", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/var/log/mysql/slow.log", "l1\nl2\nl3\nl4\n");
@@ -145,7 +145,7 @@ describe("followLogSource finite (§6.14.4)", () => {
   });
 });
 
-describe("followLogSource since (§6.14.4)", () => {
+describe("followLogSource since", () => {
   test("S7 timestamps:false + since emits since-unsupported diagnostic", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/var/log/mysql/slow.log", "raw1\nraw2\n");
@@ -199,7 +199,7 @@ const collectFollow = (
     }).pipe(Effect.provide(TestContext.TestContext)),
   );
 
-describe("followLogSource follow (§6.14.4)", () => {
+describe("followLogSource follow", () => {
   test("S2 backfills tail then follows appended writes", async () => {
     const { events, handles } = await collectFollow(
       (fs) => {
@@ -367,7 +367,7 @@ describe("followLogSource follow (§6.14.4)", () => {
   });
 });
 
-describe("followLogSources merge + lifecycle (§6.14.4)", () => {
+describe("followLogSources merge + lifecycle", () => {
   test("S8 merges only follow sources and honors the source filter", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/a.log", "a\n");
