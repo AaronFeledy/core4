@@ -318,6 +318,20 @@ describe("CacheServiceLive", () => {
     expect(
       deriveAppPlanCacheKey({
         ...base,
+        landofile: {
+          name: "cache-plan",
+          services: {
+            [ServiceName.make("web")]: {
+              type: "node",
+              logs: [{ id: "app", path: "/app/var/log/app.log", stream: "stderr" }],
+            },
+          },
+        },
+      }),
+    ).not.toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
         pluginManifests: [
           {
             name: PluginName.make("@lando/node"),

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, LogSourceId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -136,6 +136,61 @@ describe("runServiceCompositionContract", () => {
         } satisfies ServiceTypeResolution),
     };
     await expectCompositionFailure(badFeature, "resolution feature declares a non-empty id");
+  });
+
+  test("fails with ContractFailure when a service type declares duplicate log source ids", async () => {
+    const badLogSources: ServiceType = {
+      ...TestServiceType,
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({
+          base: "lando",
+          normalizedConfig: input.service,
+          features: [],
+          logSources: [
+            {
+              id: LogSourceId.make("error"),
+              path: AbsolutePath.make("/var/log/service/error.log"),
+              stream: "stderr",
+              strategy: "redirect",
+              required: false,
+              timestamps: false,
+            },
+            {
+              id: LogSourceId.make("error"),
+              path: AbsolutePath.make("/var/log/service/error-2.log"),
+              stream: "stderr",
+              strategy: "redirect",
+              required: false,
+              timestamps: false,
+            },
+          ],
+        } satisfies ServiceTypeResolution),
+    };
+    await expectCompositionFailure(badLogSources, "resolution logSource ids are unique within the service");
+  });
+
+  test("fails with ContractFailure when a l337 service type declares redirect log sources", async () => {
+    const badStrategy: ServiceType = {
+      ...TestServiceType,
+      base: "l337",
+      resolve: (input: ServiceTypeInput) =>
+        Effect.succeed({
+          base: "l337",
+          normalizedConfig: input.service,
+          features: [],
+          logSources: [
+            {
+              id: LogSourceId.make("error"),
+              path: AbsolutePath.make("/var/log/service/error.log"),
+              stream: "stderr",
+              strategy: "redirect",
+              required: false,
+              timestamps: false,
+            },
+          ],
+        } satisfies ServiceTypeResolution),
+    };
+    await expectCompositionFailure(badStrategy, "resolution logSource strategy is supported by the base");
   });
 
   test("fails with ContractFailure when resolve fails", async () => {

@@ -686,7 +686,7 @@
       "title": "Runtime-bundle publishing workflow (runtime-v* release series)",
       "description": "As a maintainer, bumping plugins/provider-lando/runtime-bundle-version triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a runtime-v<version> GitHub Release in this repository.",
       "acceptanceCriteria": [
-        "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the existing build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: linux-x64, linux-arm64, darwin-arm64, win32-x64 (the §13.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md). Podman 6 drops Intel Mac support.",
+        "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the existing build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: linux-x64, linux-arm64, darwin-arm64, win32-x64 (the \u00a713.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md). Podman 6 drops Intel Mac support.",
         "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include Podman + rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
         "The workflow uploads the platform tarballs/zips (per the existing RUNTIME_BUNDLE_TARGETS naming) as assets on a runtime-v<version> GitHub Release in this repository, and fails rather than re-uploads if the tag or any asset already exists (immutability).",
         "scripts/build-runtime-bundle.ts release mode derives asset URLs from this repository's releases/download/runtime-v<version>/ path (the dead lando/runtime-bundles base URL is removed).",
@@ -722,7 +722,7 @@
       "title": "Committed-manifest invariant gates",
       "description": "As a maintainer, CI blocks any change that would regress the manifest to placeholders, off-repo URLs, or a version that drifts from the runtime-bundle-version file - so the local-builds-just-work property, once established, cannot silently rot.",
       "acceptanceCriteria": [
-        "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, the platform key set is exactly the four runtime host keys (linux-x64, linux-arm64, darwin-arm64, win32-x64 - not the §13.5 release id windows-x64), and runtimeVersion matches plugins/provider-lando/runtime-bundle-version. Podman 6 drops Intel Mac support.",
+        "A check script (wired into CI like the existing check:* gates) validates the committed manifest: every entry is HTTPS under this repository's releases/download/runtime-v<version>/ path, no placeholder checksums (all-zero-style SHA-256) and no sizeBytes: 0, the platform key set is exactly the four runtime host keys (linux-x64, linux-arm64, darwin-arm64, win32-x64 - not the \u00a713.5 release id windows-x64), and runtimeVersion matches plugins/provider-lando/runtime-bundle-version. Podman 6 drops Intel Mac support.",
         "The release pipeline (scripts/release.ts) gains a release-blocking stage gate that fails when the manifest violates the invariant, mirroring the placeholder-rejection pattern already used for update-manifest binaries (isPlaceholderBinary).",
         "Per-PR CI runs only the offline invariant checks (no network); the live verification that each manifest URL resolves over HTTPS to a 200 with the recorded Content-Length runs on the release path and a periodic job, per the \u00a717.2 catalog row's offline/live gate split.",
         "Placeholder-manifest regression is covered by a test fixture proving the check fails on the pre-US-411 placeholder manifest.",
@@ -952,14 +952,14 @@
     },
     {
       "id": "US-425",
-      "title": "LogSource SDK surface — schema, LogChunk.source, serviceLogSources capability",
+      "title": "LogSource SDK surface \u2014 schema, LogChunk.source, serviceLogSources capability",
       "description": "As an SDK consumer, @lando/sdk publishes the LogSource schema, the additive LogChunk.source field, the extended LogOptions, and the serviceLogSources provider capability, so providers and core share one typed contract for declared log sources.",
       "acceptanceCriteria": [
-        "`LogSource` and branded `LogSourceId` are exported from @lando/sdk per §6.14.1: `{ id, label?, path, stream, strategy, required, timestamps }` with `strategy: \"redirect\" | \"follow\"`, `stream: \"stdout\" | \"stderr\"`, `required`/`timestamps` defaulting to false; `console` is a reserved id and validation rejects a declared source using it.",
+        "`LogSource` and branded `LogSourceId` are exported from @lando/sdk per \u00a76.14.1: `{ id, label?, path, stream, strategy, required, timestamps }` with `strategy: \"redirect\" | \"follow\"`, `stream: \"stdout\" | \"stderr\"`, `required`/`timestamps` defaulting to false; `console` is a reserved id and validation rejects a declared source using it.",
         "`LogSourceInput` (Landofile shape) is exported: `path` required; `label`, `stream` (default stderr), `id` (defaulted from path basename) optional; decoding yields a `strategy: \"follow\"`, `timestamps: false` LogSource.",
-        "`LogChunk` gains optional `source?: LogSourceId` (§6.14.2); the existing four-field shape still decodes and every current LogChunk construction site compiles unchanged.",
-        "`LogOptions` gains optional `sources?: readonly LogSource[]` and `source?: LogSourceId` (§5.3); follow/tail/since unchanged.",
-        "`ProviderCapabilities` gains `serviceLogSources: boolean` (§5.4); bundled provider capability matrices and the test/fake provider declare it.",
+        "`LogChunk` gains optional `source?: LogSourceId` (\u00a76.14.2); the existing four-field shape still decodes and every current LogChunk construction site compiles unchanged.",
+        "`LogOptions` gains optional `sources?: readonly LogSource[]` and `source?: LogSourceId` (\u00a75.3); follow/tail/since unchanged.",
+        "`ProviderCapabilities` gains `serviceLogSources: boolean` (\u00a75.4); bundled provider capability matrices and the test/fake provider declare it.",
         "sdk/API_COMPATIBILITY.md records the additive exports/fields; `bun run codegen:schema-snapshot` refreshed with `git diff --exit-code` clean on the snapshot; export/import-boundary tests updated.",
         "Tests pass",
         "Typecheck passes",
@@ -967,34 +967,34 @@
       ],
       "priority": 54,
       "passes": true,
-      "notes": "Feature wave PRD-12 (spec §6.14.1, §6.14.2, §5.4). Additive SDK surface; mirror the LogChunk/LogOptions/ProviderCapabilities shapes in sdk/src/services/provider.ts. Last new SDK surface before freeze."
+      "notes": "Feature wave PRD-12 (spec \u00a76.14.1, \u00a76.14.2, \u00a75.4). Additive SDK surface; mirror the LogChunk/LogOptions/ProviderCapabilities shapes in sdk/src/services/provider.ts. Last new SDK surface before freeze."
     },
     {
       "id": "US-426",
       "title": "Declared log sources become plan intent (service-type + Landofile)",
       "description": "As a service author or user, the logSources a service type returns and the services.<name>.logs: a user writes are validated and carried onto the resolved plan as provider-neutral intent, with the bundled catalog service types declaring their known sources.",
       "acceptanceCriteria": [
-        "`ServiceTypeResolution` accepts `logSources?: readonly LogSource[]`; the AppPlanner per-service phase (§6.11.0) collects them and merges user `services.<name>.logs:` sources, precedence user `logs:` > service-type `logSources` on a colliding id.",
-        "The §13.1 runServiceCompositionContract suite enforces the §6.11.0.1 bullet: unique id per service, absolute path, and a strategy the base can honor — a `redirect` source on a non-Lando-built (base l337/BYO, no build phase) service is rejected with a tagged error + remediation; a service type that follows files or spawns a collector itself fails the boundary.",
-        "Resolved logSources are part of the app-plan cache composition input (§12.1) so adding/removing a source invalidates the plan.",
-        "Bundled §6.12 catalog service types declare sources per §6.14.6: apache/nginx/php-fpm access+error as redirect; mysql/mariadb slow/general query logs (when enabled) as follow; error log stays on console.",
-        "Landofile round-trips a `logs:` block through the §7.8.1 serializer without reformatting unrelated content.",
+        "`ServiceTypeResolution` accepts `logSources?: readonly LogSource[]`; the AppPlanner per-service phase (\u00a76.11.0) collects them and merges user `services.<name>.logs:` sources, precedence user `logs:` > service-type `logSources` on a colliding id.",
+        "The \u00a713.1 runServiceCompositionContract suite enforces the \u00a76.11.0.1 bullet: unique id per service, absolute path, and a strategy the base can honor \u2014 a `redirect` source on a non-Lando-built (base l337/BYO, no build phase) service is rejected with a tagged error + remediation; a service type that follows files or spawns a collector itself fails the boundary.",
+        "Resolved logSources are part of the app-plan cache composition input (\u00a712.1) so adding/removing a source invalidates the plan.",
+        "Bundled \u00a76.12 catalog service types declare sources per \u00a76.14.6: apache/nginx/php-fpm access+error as redirect; mysql/mariadb slow/general query logs (when enabled) as follow; error log stays on console.",
+        "Landofile round-trips a `logs:` block through the \u00a77.8.1 serializer without reformatting unrelated content.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
       ],
       "priority": 55,
-      "passes": false,
-      "notes": "Feature wave PRD-12 (spec §6.11.0.1, §6.14.1, §6.14.6, §6.2 logs:). Plan intent only; reification is US-427/US-428."
+      "passes": true,
+      "notes": "Feature wave PRD-12 (spec \u00a76.11.0.1, \u00a76.14.1, \u00a76.14.6, \u00a76.2 logs:). Plan intent only; reification is US-427/US-428."
     },
     {
       "id": "US-427",
       "title": "redirect-strategy reification for Lando-built services",
       "description": "As a user of a Lando-built web/DB service, my declared redirect log files appear in lando logs with no runtime follower, because Lando points the daemon's log path at /dev/stdout|/dev/stderr when it builds the image.",
       "acceptanceCriteria": [
-        "For every resolved `strategy: \"redirect\"` source on a Lando-built service, the planner emits a deterministic build/scaffold step (§6.13) redirecting the path to /dev/stdout (stream stdout) or /dev/stderr (stream stderr) — symlink, or a daemon-config directive where a symlink is unsafe.",
+        "For every resolved `strategy: \"redirect\"` source on a Lando-built service, the planner emits a deterministic build/scaffold step (\u00a76.13) redirecting the path to /dev/stdout (stream stdout) or /dev/stderr (stream stderr) \u2014 symlink, or a daemon-config directive where a symlink is unsafe.",
         "After redirect the source's lines arrive on the implicit console stream (verified against the test provider); no follower is started and serviceLogSources is not consulted for redirect sources.",
-        "The redirect step is idempotent across rebuilds and included in the buildKey up-to-date check (§6.13.5) so a changed source re-runs it.",
+        "The redirect step is idempotent across rebuilds and included in the buildKey up-to-date check (\u00a76.13.5) so a changed source re-runs it.",
         "A redirect source declared on a service Lando does not build fails planning (shared with US-426 conformance), never silently downgrades.",
         "Tests cover redirect emission for stdout and stderr sources and the console-stream round-trip on the test provider.",
         "Tests pass",
@@ -1003,27 +1003,27 @@
       ],
       "priority": 56,
       "passes": false,
-      "notes": "Feature wave PRD-12 (spec §6.14.3 redirect, §6.13). Zero-runtime-cost path; reuses build orchestration + buildKey, does not add a separate apply step."
+      "notes": "Feature wave PRD-12 (spec \u00a76.14.3 redirect, \u00a76.13). Zero-runtime-cost path; reuses build orchestration + buildKey, does not add a separate apply step."
     },
     {
       "id": "US-428",
       "title": "follow-strategy provider realization inside RuntimeProvider.logs",
-      "description": "As a user with a bring-your-own image or a non-redirectable log (MySQL slow log), lando logs follows the declared file with correct semantics, implemented by the provider — not a core tail -F shell-out.",
+      "description": "As a user with a bring-your-own image or a non-redirectable log (MySQL slow log), lando logs follows the declared file with correct semantics, implemented by the provider \u2014 not a core tail -F shell-out.",
       "acceptanceCriteria": [
         "`RuntimeProvider.logs` in @lando/provider-lando (and provider-docker/provider-podman) consumes `LogOptions.sources`, merges console with a follower per follow source, and tags each LogChunk with its source id.",
-        "§6.14.4 semantics are asserted by the SDK logs contract suite against the fake provider and, env-gated, a live provider: finite (follow:false) snapshots up to tail then EOFs and the merged stream terminates; follow backfills then follows; a missing file yields pending (follow)/unavailable (finite) diagnostics and never hangs; rotation (rename+create and copytruncate) survived via inode/offset tracking with a rotation marker and no follower-diagnostic leakage.",
+        "\u00a76.14.4 semantics are asserted by the SDK logs contract suite against the fake provider and, env-gated, a live provider: finite (follow:false) snapshots up to tail then EOFs and the merged stream terminates; follow backfills then follows; a missing file yields pending (follow)/unavailable (finite) diagnostics and never hangs; rotation (rename+create and copytruncate) survived via inode/offset tracking with a rotation marker and no follower-diagnostic leakage.",
         "Line framing: incremental UTF-8 decode never splits a multi-byte codepoint, handles CRLF, flushes a final partial line at EOF; bounds: per-source maxLineBytes truncates over-long/binary lines with a truncated marker and bounded buffering.",
         "since honored only for timestamps:true sources and console; a timestamps:false source reports --since unsupported (per-source diagnostic), never silently ignored; tail applied per source (no faked global total); ordering per-source preserved, merged arrival-order, no global-chronological guarantee claimed.",
-        "Lifecycle: every follower acquired in the logs stream scope; a TestClock/interrupt test with >=6 services x >=3 sources asserts followers are reaped on Effect.interrupt within the §3.6 budget and a dropped partially-consumed logs stream terminates its followers at scope close.",
+        "Lifecycle: every follower acquired in the logs stream scope; a TestClock/interrupt test with >=6 services x >=3 sources asserts followers are reaped on Effect.interrupt within the \u00a73.6 budget and a dropped partially-consumed logs stream terminates its followers at scope close.",
         "Capability degradation: serviceLogSources:false still streams console and redirect sources; a required follow source fails planning up front with a tagged CapabilityError naming the redirect alternative; a non-required follow source is reported unavailable, never silently dropped.",
-        "check:probe-boundary stays green — no hand-rolled Effect.retry/Schedule readiness loop outside runProbe where §10.5 requires it.",
+        "check:probe-boundary stays green \u2014 no hand-rolled Effect.retry/Schedule readiness loop outside runProbe where \u00a710.5 requires it.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
       ],
       "priority": 57,
       "passes": false,
-      "notes": "Feature wave PRD-12 (spec §5.3 logs semantics, §6.14.3 follow, §6.14.4). Provider-owned follower, NOT core execStream(tail -F). Incorporates the correctness-adversary failure-mode set (rotation, framing, finite-vs-follow, since lie, leaks, huge lines)."
+      "notes": "Feature wave PRD-12 (spec \u00a75.3 logs semantics, \u00a76.14.3 follow, \u00a76.14.4). Provider-owned follower, NOT core execStream(tail -F). Incorporates the correctness-adversary failure-mode set (rotation, framing, finite-vs-follow, since lie, leaks, huge lines)."
     },
     {
       "id": "US-429",
@@ -1031,9 +1031,9 @@
       "description": "As a user, lando logs shows my declared sources with clear labels, --source filters to one, secrets are redacted at the boundary, and lando info tells me which sources resolved or are unavailable.",
       "acceptanceCriteria": [
         "`app:logs` resolves the target service's declared sources and passes them as `LogOptions.sources`; a new `--source <id>` restricts to one source (unknown id fails with the known-source list); existing --service/--follow/--tail/--since compose with it.",
-        "TTY rendering labels each line by source (console lines keep today's appearance); --format json emits per-line StreamFrames carrying source through the central §8.11 StreamFrame seam, not raw JSON.stringify.",
-        "Redaction at the boundary only: providers emit raw LogChunks; renderer, lifecycle events, and --format json route every line through RedactionService (§3.7). A test proves a registered secret in a followed file's line is masked in rendered/JSON output while the on-disk file stays raw; check:redaction-boundary covers the path.",
-        "lando info (or --deep per §6.10) reports each service's resolved log sources with id, path, strategy, and availability (available / redirected-to-console / unavailable-with-reason).",
+        "TTY rendering labels each line by source (console lines keep today's appearance); --format json emits per-line StreamFrames carrying source through the central \u00a78.11 StreamFrame seam, not raw JSON.stringify.",
+        "Redaction at the boundary only: providers emit raw LogChunks; renderer, lifecycle events, and --format json route every line through RedactionService (\u00a73.7). A test proves a registered secret in a followed file's line is masked in rendered/JSON output while the on-disk file stays raw; check:redaction-boundary covers the path.",
+        "lando info (or --deep per \u00a76.10) reports each service's resolved log sources with id, path, strategy, and availability (available / redirected-to-console / unavailable-with-reason).",
         "Provider log-streaming capability validated before planning (US-393 behavior preserved); source-follow unavailability degrades per US-428, not mid-stream.",
         "Dual-dispatch parity: OCLIF and runCompiledCli identical for --source, labeling, and JSON output; app:logs result/stream schema updates snapshot-frozen.",
         "Tests pass",
@@ -1042,7 +1042,7 @@
       ],
       "priority": 58,
       "passes": false,
-      "notes": "Feature wave PRD-12 (spec §6.14.5 redaction, §10.9, §8.2.5, §8.11). Extends US-393 (app logs --follow/--since); do not fork logs command logic."
+      "notes": "Feature wave PRD-12 (spec \u00a76.14.5 redaction, \u00a710.9, \u00a78.2.5, \u00a78.11). Extends US-393 (app logs --follow/--since); do not fork logs command logic."
     }
   ]
 }

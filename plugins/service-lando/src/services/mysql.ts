@@ -4,13 +4,34 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type LogSource, LogSourceId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "mysql:8.0";
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
+
+const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
+  {
+    id: LogSourceId.make("slow-query"),
+    label: "MySQL slow query log",
+    path: AbsolutePath.make("/var/lib/mysql/slow.log"),
+    stream: "stderr",
+    strategy: "follow",
+    required: false,
+    timestamps: false,
+  },
+  {
+    id: LogSourceId.make("general-query"),
+    label: "MySQL general query log",
+    path: AbsolutePath.make("/var/lib/mysql/general.log"),
+    stream: "stdout",
+    strategy: "follow",
+    required: false,
+    timestamps: false,
+  },
+];
 
 const defaultRootPassword = (appId: string, serviceName: string): string =>
   `lando-${createHash("sha256").update(`${appId}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
@@ -72,6 +93,7 @@ export const mysqlServiceType: ServiceType = {
     Effect.succeed({
       base: "lando",
       normalizedConfig: { ...input.service, type: "mysql" },
+      logSources: MYSQL_LOG_SOURCES,
       features: [{ id: MYSQL_FEATURE_ID }],
     }),
 };

@@ -976,6 +976,55 @@
                     },
                     "type": "array"
                   },
+                  "logSources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "Single absolute in-container file path for this log source; globs are not supported.",
+                          "type": "string"
+                        },
+                        "required": {
+                          "description": "Whether an unavailable source fails planning instead of degrading.",
+                          "type": "boolean"
+                        },
+                        "strategy": {
+                          "description": "How Lando reifies the declared source: build-time redirect or runtime follower.",
+                          "enum": [
+                            "redirect",
+                            "follow"
+                          ],
+                          "type": "string"
+                        },
+                        "stream": {
+                          "description": "Render and exit classification for this source's lines.",
+                          "enum": [
+                            "stdout",
+                            "stderr"
+                          ],
+                          "type": "string"
+                        },
+                        "timestamps": {
+                          "description": "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "path",
+                        "stream",
+                        "strategy"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "metadata": {
                     "additionalProperties": false,
                     "properties": {
@@ -1724,6 +1773,55 @@
                       "required": [
                         "hostname",
                         "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "logSources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "Single absolute in-container file path for this log source; globs are not supported.",
+                          "type": "string"
+                        },
+                        "required": {
+                          "description": "Whether an unavailable source fails planning instead of degrading.",
+                          "type": "boolean"
+                        },
+                        "strategy": {
+                          "description": "How Lando reifies the declared source: build-time redirect or runtime follower.",
+                          "enum": [
+                            "redirect",
+                            "follow"
+                          ],
+                          "type": "string"
+                        },
+                        "stream": {
+                          "description": "Render and exit classification for this source's lines.",
+                          "enum": [
+                            "stdout",
+                            "stderr"
+                          ],
+                          "type": "string"
+                        },
+                        "timestamps": {
+                          "description": "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "path",
+                        "stream",
+                        "strategy"
                       ],
                       "type": "object"
                     },
@@ -2771,6 +2869,55 @@
                     },
                     "type": "array"
                   },
+                  "logSources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "Single absolute in-container file path for this log source; globs are not supported.",
+                          "type": "string"
+                        },
+                        "required": {
+                          "description": "Whether an unavailable source fails planning instead of degrading.",
+                          "type": "boolean"
+                        },
+                        "strategy": {
+                          "description": "How Lando reifies the declared source: build-time redirect or runtime follower.",
+                          "enum": [
+                            "redirect",
+                            "follow"
+                          ],
+                          "type": "string"
+                        },
+                        "stream": {
+                          "description": "Render and exit classification for this source's lines.",
+                          "enum": [
+                            "stdout",
+                            "stderr"
+                          ],
+                          "type": "string"
+                        },
+                        "timestamps": {
+                          "description": "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "path",
+                        "stream",
+                        "strategy"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "metadata": {
                     "additionalProperties": false,
                     "properties": {
@@ -3530,6 +3677,55 @@
                       "required": [
                         "hostname",
                         "ip"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "logSources": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "Single absolute in-container file path for this log source; globs are not supported.",
+                          "type": "string"
+                        },
+                        "required": {
+                          "description": "Whether an unavailable source fails planning instead of degrading.",
+                          "type": "boolean"
+                        },
+                        "strategy": {
+                          "description": "How Lando reifies the declared source: build-time redirect or runtime follower.",
+                          "enum": [
+                            "redirect",
+                            "follow"
+                          ],
+                          "type": "string"
+                        },
+                        "stream": {
+                          "description": "Render and exit classification for this source's lines.",
+                          "enum": [
+                            "stdout",
+                            "stderr"
+                          ],
+                          "type": "string"
+                        },
+                        "timestamps": {
+                          "description": "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "path",
+                        "stream",
+                        "strategy"
                       ],
                       "type": "object"
                     },

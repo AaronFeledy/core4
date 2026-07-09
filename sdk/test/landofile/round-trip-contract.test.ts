@@ -51,6 +51,33 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
     expect(await roundTrip(value)).toEqual(value);
   });
 
+  test("service logs blocks round-trip without changing sibling fields", async () => {
+    const value = {
+      name: "app",
+      services: {
+        web: {
+          type: "apache",
+          environment: { FOO: "bar" },
+          logs: [
+            {
+              id: "error",
+              label: "custom error log",
+              path: "/app/var/log/error.log",
+              stream: "stderr",
+            },
+          ],
+        },
+      },
+      tooling: { test: { service: "web", cmd: "echo ok" } },
+    };
+
+    const parsed = await roundTrip(value);
+    expect(parsed).toEqual(value);
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(parsed, { onExcessProperty: "error" });
+    expect(decoded.services?.web?.logs?.[0]?.strategy).toBe("follow");
+    expect(decoded.tooling?.test?.cmd).toBe("echo ok");
+  });
+
   test("scalar arrays", async () => {
     const value = { name: "app", tags: ["a", "b", "c"], ports: [80, 443] };
     expect(await roundTrip(value)).toEqual(value);

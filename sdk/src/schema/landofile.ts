@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";
+import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
@@ -137,6 +138,7 @@ export const ServiceConfig = Schema.Struct({
   routes: Schema.optional(Schema.Array(RouteInput)),
 
   healthcheck: Schema.optional(HealthcheckInput),
+  logs: Schema.optional(Schema.Array(LogSourceInput)),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   dependsOn: Schema.optional(Schema.Array(Schema.String)),
 
