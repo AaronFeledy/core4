@@ -1251,7 +1251,7 @@ const logs = (
   if (options.since !== undefined) {
     query.set("since", options.since);
   }
-  const logSources = service.logSources ?? options.sources ?? [];
+  const logSources = options.sources ?? service.logSources ?? [];
   const logFileAccess = runtime.logFileAccess;
   const hasFollowSources = logSources.some((source) => source.strategy === "follow");
   const since = options.since === undefined ? undefined : Number(options.since);

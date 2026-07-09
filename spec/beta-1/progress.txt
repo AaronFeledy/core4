@@ -74,6 +74,12 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - See the new Codebase Patterns bullet. Key traps: keep the provider `logs` return type at `Stream<LogChunk,ProviderError>` (R=never) by owning handle lifetime in the engine (explicit `close` + `Stream.ensuring`) rather than `Scope`/`acquireRelease` — a construction scope closes early and the in-memory seam hides the resulting real-handle leak. Follow loops must avoid `Effect.retry/repeat/schedule/Schedule` (probe-boundary); use `Stream.paginateChunkEffect` + `Effect.sleep`/`Clock`. `ServicePlan.extensions` accepts arbitrary namespaced records with no snapshot change, so plan-time diagnostics ride there.
 ---
 
+## 2026-07-09 10:33 CDT - US-428 Review
+- Review fixed the Bugbot-confirmed provider precedence blocker: `@lando/provider-lando` and `@lando/provider-docker` now treat fresh `LogOptions.sources` from the caller as authoritative before falling back to plan-cached `ServicePlan.logSources`, so `lando logs` cannot follow stale removed paths or miss newly resolved follow sources after a Landofile `logs:` change.
+- Review notes (deferred/rejected): none.
+- Verification: typecheck, lint passed; focused spot checks passed for both provider follow suites, `core/test/cli/logs.scenario.test.ts`, and `sdk/test/log-follow/log-follow.test.ts`.
+---
+
 ## 2026-07-08 23:11 CDT - US-426
 - Shipped declared log sources as plan intent: `ServiceTypeResolution.logSources`, Landofile `services.<name>.logs`, and `ServicePlan.logSources` are schema-backed; the planner validates/merges service-type and user sources with user precedence, rejects duplicate ids/relative paths/`redirect` on `base: "l337"`, and includes resolved sources in the app-plan cache composition fingerprint.
 - Bundled catalog service types now declare log source intent per §6.14.6: apache/nginx/php access+error as `redirect`; mysql/mariadb slow/general query logs as optional `follow`; DB error logs remain on the implicit console stream. Landofile serializer coverage proves `logs:` round-trips while sibling fields stay unchanged.

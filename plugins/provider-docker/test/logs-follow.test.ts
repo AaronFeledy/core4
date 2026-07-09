@@ -132,6 +132,30 @@ describe("provider-docker log followers", () => {
     expect(fileChunk?.stream).toBe("stderr");
   });
 
+  test("uses caller-provided log sources before plan-cached service sources", async () => {
+    const staleSource = source({ id: "stale", path: "/var/log/stale.log" });
+    const freshSource = source({ id: "fresh", path: "/var/log/fresh.log" });
+    const plan = makePlan([staleSource]);
+    const fs = makeMemoryLogFileAccess();
+    fs.writeFile(staleSource.path, "stale line\n");
+    fs.writeFile(freshSource.path, "fresh line\n");
+    const fake = makeFakeApi(rawConsole("console ready"));
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+        ),
+      ),
+    );
+
+    const chunks = await collect(
+      provider.logs({ app: appId, service: node.name, plan }, { follow: false, sources: [freshSource] }),
+    );
+
+    expect(chunks.some((chunk) => chunk.line === "fresh line" && chunk.source === freshSource.id)).toBe(true);
+    expect(chunks.some((chunk) => chunk.line === "stale line")).toBe(false);
+  });
+
   test("streams only console logs when a service has no follow sources", async () => {
     const redirectSource = source({
       id: "redirected",

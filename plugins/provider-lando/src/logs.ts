@@ -86,7 +86,7 @@ export const logs = (
 
   const podmanApi = runtime.podmanApi;
   const logFileAccess = runtime.logFileAccess;
-  const logSources = service.logSources ?? options.sources ?? [];
+  const logSources = options.sources ?? service.logSources ?? [];
   const hasFollowSources = logSources.some((source) => source.strategy === "follow");
   const since = options.since === undefined ? undefined : Number(options.since);
 
