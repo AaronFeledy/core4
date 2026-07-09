@@ -7,6 +7,8 @@ import { Effect } from "effect";
 
 import { writeManagedRuntimeContainersConf } from "../src/runtime-config.ts";
 
+const MANAGED_LOOPBACK_IPS = ["127.0.0.1", "::1"] as const;
+
 interface ManagedContainersConf {
   readonly engine?: { readonly helper_binaries_dir?: ReadonlyArray<string> };
   readonly network?: { readonly default_host_ips?: ReadonlyArray<string> };
@@ -38,17 +40,17 @@ describe("writeManagedRuntimeContainersConf", () => {
   test("emits parseable TOML with loopback default_host_ips coexisting with helper_binaries_dir", async () => {
     const { runtimeBinDir, parsed } = await writeAndParse();
     expect(parsed.engine?.helper_binaries_dir).toEqual([runtimeBinDir]);
-    expect(parsed.network?.default_host_ips).toEqual(["127.0.0.1", "::1"]);
+    expect(parsed.network?.default_host_ips).toEqual(MANAGED_LOOPBACK_IPS);
   });
 
   test("binds default published ports to loopback only for the managed runtime", async () => {
     const { parsed } = await writeAndParse();
     const hostIps = parsed.network?.default_host_ips ?? [];
     for (const ip of hostIps) {
-      expect(["127.0.0.1", "::1"]).toContain(ip);
+      expect(MANAGED_LOOPBACK_IPS as readonly string[]).toContain(ip);
     }
-    expect(hostIps).toContain("127.0.0.1");
-    expect(hostIps).toContain("::1");
+    expect(hostIps).toContain(MANAGED_LOOPBACK_IPS[0]);
+    expect(hostIps).toContain(MANAGED_LOOPBACK_IPS[1]);
   });
 
   test("never emits a LAN wildcard default for the managed runtime", async () => {
