@@ -1543,3 +1543,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Initial follow backfill flushing a partial line was not changed because the US-428 contract test explicitly asserts that behavior.
 - Verification: typecheck and lint passed; focused spot checks passed across SDK log-follow, Docker/Lando provider follow tests, app-planner, and Docker/Lando/Podman capability tests (145 tests).
 ---
+
+## 2026-07-09 12:58 CDT - Babysit
+- PR: #561 https://github.com/AaronFeledy/core4/pull/561
+- CI outcome: pass (after triage)
+- Review feedback: fixed Docker contract `serviceLogSources` fixture mismatch and guide-drift coverage for provider/SDK log-follow surfaces
+- Merge: merged (squash)
+---
