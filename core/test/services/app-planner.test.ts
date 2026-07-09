@@ -13,7 +13,7 @@ import {
 import {
   AbsolutePath,
   AppPlan,
-  type LandofileShape,
+  LandofileShape,
   PluginManifest,
   PluginName,
   PortablePath,
@@ -258,6 +258,53 @@ describe("AppPlannerLive", () => {
       if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       else process.env.LANDO_PROVIDER = previous;
     }
+  });
+
+  test("carries bundled service-type log sources onto the service plan", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: { web: { type: "apache" } },
+        }),
+      );
+
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(web?.logSources?.map((source) => String(source.id))).toEqual(["access", "error"]);
+      expect(web?.logSources?.map((source) => source.strategy)).toEqual(["redirect", "redirect"]);
+    });
+  });
+
+  test("lets user logs override service-type log source ids", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: {
+            web: {
+              type: "apache",
+              logs: [
+                {
+                  id: "error",
+                  label: "custom app error log",
+                  path: "/app/var/log/error.log",
+                  stream: "stderr",
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      const web = appPlan.services[ServiceName.make("web")];
+      const errorSource = web?.logSources?.find((source) => String(source.id) === "error");
+      expect(errorSource?.label).toBe("custom app error log");
+      expect(String(errorSource?.path)).toBe("/app/var/log/error.log");
+      expect(errorSource?.strategy).toBe("follow");
+      expect(web?.logSources?.map((source) => String(source.id))).toEqual(["access", "error"]);
+    });
   });
 
   test("uses config defaultProviderId when no Landofile or env provider is set", async () => {

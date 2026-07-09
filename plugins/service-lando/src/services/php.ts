@@ -1,7 +1,14 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type LogSource,
+  LogSourceId,
+  PortablePath,
+  type ServiceConfig,
+  ServiceName,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 export const SUPPORTED_PHP_VERSIONS = ["8.2", "8.3"] as const;
@@ -15,6 +22,27 @@ export const PHP_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const HEALTHCHECK_PORT = 80;
+
+const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
+  {
+    id: LogSourceId.make("access"),
+    label: "php-fpm access log",
+    path: AbsolutePath.make("/var/log/php-fpm/access.log"),
+    stream: "stdout",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+  {
+    id: LogSourceId.make("error"),
+    label: "php-fpm error log",
+    path: AbsolutePath.make("/var/log/php-fpm/error.log"),
+    stream: "stderr",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+];
 
 export const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
   drupal: "web",
@@ -146,6 +174,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         return {
           base: "lando" as const,
           normalizedConfig: normalizedService(input.service, resolvedVersion),
+          logSources: PHP_FPM_LOG_SOURCES,
           features: [
             { id: PHP_FEATURE_ID, config: { framework, version: resolvedVersion, webroot } },
             {

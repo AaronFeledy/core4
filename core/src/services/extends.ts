@@ -56,9 +56,39 @@ const mergeOptionalRecord = <T>(
 };
 
 /**
+ * Log sources merge by id: parent sources come first; a child source with the
+ * same id overrides the parent. New child sources append in declared order.
+ */
+const mergeLogSources = (
+  parent: ServiceTypeResolution["logSources"],
+  child: ServiceTypeResolution["logSources"],
+): ServiceTypeResolution["logSources"] => {
+  if (parent === undefined) return child;
+  if (child === undefined) return parent;
+  const order: Array<string> = [];
+  const byId = new Map<string, NonNullable<ServiceTypeResolution["logSources"]>[number]>();
+  for (const source of parent) {
+    const id = String(source.id);
+    if (!byId.has(id)) order.push(id);
+    byId.set(id, source);
+  }
+  for (const source of child) {
+    const id = String(source.id);
+    if (!byId.has(id)) order.push(id);
+    byId.set(id, source);
+  }
+  const merged: Array<NonNullable<ServiceTypeResolution["logSources"]>[number]> = [];
+  for (const id of order) {
+    const source = byId.get(id);
+    if (source !== undefined) merged.push(source);
+  }
+  return merged;
+};
+
+/**
  * Overlay a child resolution onto its parent: deep-merge normalized config,
- * merge features by id, child-wins for tooling/metadata. The child's declared
- * `base` is authoritative.
+ * merge features by id, merge logSources by id (child wins), child-wins for
+ * tooling/metadata. The child's declared `base` is authoritative.
  */
 export const mergeResolutionOverParent = (
   parent: ServiceTypeResolution,
@@ -68,10 +98,12 @@ export const mergeResolutionOverParent = (
   const metadata = mergeOptionalRecord(parent.metadata, child.metadata) as
     | Record<string, unknown>
     | undefined;
+  const logSources = mergeLogSources(parent.logSources, child.logSources);
   return {
     base: child.base,
     normalizedConfig: mergeServiceConfig(parent.normalizedConfig, child.normalizedConfig),
     features: mergeFeatures(parent.features, child.features),
+    ...(logSources === undefined ? {} : { logSources }),
     ...(tooling === undefined ? {} : { tooling }),
     ...(metadata === undefined ? {} : { metadata }),
   };

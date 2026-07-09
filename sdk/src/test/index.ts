@@ -58,6 +58,7 @@ import {
   type HostPlatform,
   type HttpRequest,
   LandofileShape,
+  LogSource,
   type ManagedFile,
   type ManagedFileInfo,
   type ManagedFilePlan,
@@ -1546,6 +1547,36 @@ export const runServiceCompositionContract = (
       );
     }
 
+    const logSources = resolution.logSources ?? [];
+    yield* requireServiceComposition(
+      Array.isArray(logSources),
+      "resolution logSources is an array of LogSources",
+      resolution.logSources,
+    );
+    const sourceIds = new Set<string>();
+    for (const [index, source] of logSources.entries()) {
+      yield* requireServiceComposition(
+        Schema.is(LogSource)(source),
+        "resolution logSource is a valid LogSource",
+        { index, source },
+      );
+      yield* requireServiceComposition(
+        !sourceIds.has(String(source.id)),
+        "resolution logSource ids are unique within the service",
+        { index, source },
+      );
+      sourceIds.add(String(source.id));
+      yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
+        index,
+        source,
+      });
+      yield* requireServiceComposition(
+        resolution.base === "lando" || source.strategy !== "redirect",
+        "resolution logSource strategy is supported by the base",
+        { base: resolution.base, index, source },
+      );
+    }
+
     const second = yield* serviceType
       .resolve(makeInput())
       .pipe(
@@ -1567,6 +1598,11 @@ export const runServiceCompositionContract = (
         second.features.every((feature, index) => feature.id === resolution.features[index]?.id),
       "resolution feature list is stable across replays",
       { first: resolution.features, second: second.features },
+    );
+    yield* requireServiceComposition(
+      stableJson(second.logSources ?? []) === stableJson(logSources),
+      "resolution logSources are stable across replays",
+      { first: logSources, second: second.logSources ?? [] },
     );
   });
 

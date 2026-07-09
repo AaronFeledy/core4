@@ -1,12 +1,33 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type LogSource, LogSourceId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+
+const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
+  {
+    id: LogSourceId.make("access"),
+    label: "Apache access log",
+    path: AbsolutePath.make("/usr/local/apache2/logs/access_log"),
+    stream: "stdout",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+  {
+    id: LogSourceId.make("error"),
+    label: "Apache error log",
+    path: AbsolutePath.make("/usr/local/apache2/logs/error_log"),
+    stream: "stderr",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+];
 
 export const APACHE_FEATURE_ID = "service-lando.apache" as const;
 export const APACHE_FEATURE_PRIORITY = 600;
@@ -78,6 +99,7 @@ export const apacheServiceType: ServiceType = {
     Effect.succeed({
       base: "lando" as const,
       normalizedConfig: { ...input.service, type: "apache" },
+      logSources: APACHE_LOG_SOURCES,
       features: [
         { id: APACHE_FEATURE_ID },
         {
