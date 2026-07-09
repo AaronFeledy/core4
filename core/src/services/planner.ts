@@ -70,6 +70,7 @@ import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
 import { mergeLogSources } from "./log-sources.ts";
+import { redirectLogSourceBuildSteps } from "./redirect-log-sources.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -1037,8 +1038,13 @@ const planApp = (
     }
 
     for (const { name, hostnames, authored, draft, logSources, routes, extensions } of plannedServiceDrafts) {
+      const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
+      const draftForPlan =
+        redirectSteps.length === 0
+          ? draft
+          : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
       const servicePlan = {
-        ...servicePlanFromDraft(draft, routes, metadata, extensions),
+        ...servicePlanFromDraft(draftForPlan, routes, metadata, extensions),
         ...(logSources.length === 0 ? {} : { logSources }),
       };
 

@@ -307,6 +307,77 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("emits redirect log build steps for bundled redirect sources (stdout + stderr)", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: { web: { type: "apache" } },
+        }),
+      );
+
+      const web = appPlan.services[ServiceName.make("web")];
+      const buildSteps = (
+        web?.extensions["@lando/core/service-features"] as
+          | { readonly buildSteps?: ReadonlyArray<unknown> }
+          | undefined
+      )?.buildSteps;
+      expect(buildSteps).toEqual([
+        {
+          id: "lando-log-redirect:access",
+          phase: "build",
+          command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+        },
+        {
+          id: "lando-log-redirect:error",
+          phase: "build",
+          command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+        },
+      ]);
+    });
+  });
+
+  test("emits redirect build steps for nginx bundled log sources", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: { web: { type: "nginx" } },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      const buildSteps = (
+        web?.extensions["@lando/core/service-features"] as
+          | { readonly buildSteps?: ReadonlyArray<{ readonly id: string }> }
+          | undefined
+      )?.buildSteps;
+      expect(buildSteps?.every((step) => step.id.startsWith("lando-log-redirect:"))).toBe(true);
+      expect((buildSteps?.length ?? 0) > 0).toBe(true);
+    });
+  });
+
+  test("emits no redirect build steps for a service without redirect sources", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: {
+            web: {
+              type: "compose",
+              image: "docker.io/library/nginx:1.27",
+              appMount: false,
+            },
+          },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(web?.extensions["@lando/core/service-features"]).toBeUndefined();
+    });
+  });
+
   test("uses config defaultProviderId when no Landofile or env provider is set", async () => {
     const previous = process.env.LANDO_PROVIDER;
     Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
