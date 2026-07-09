@@ -7,7 +7,13 @@ import { Effect, Stream } from "effect";
 
 import type { LogsAppError, LogsAppOptions } from "@lando/sdk/app";
 import { CapabilityError, ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  LogSourceId,
+  type ProviderCapabilities,
+  RESERVED_LOG_SOURCE_ID,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   LandofileService,
@@ -38,6 +44,7 @@ export interface LogsAppLine {
   readonly service: string;
   readonly stream: "stdout" | "stderr";
   readonly line: string;
+  readonly source?: string;
   readonly timestamp?: number;
 }
 
@@ -50,7 +57,13 @@ type LogsAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
 
 export const renderLogsAppResult = (result: LogsAppResult): string => {
   if (result.lines.length === 0) return `${result.app} (no log lines)`;
-  return result.lines.map((line) => `${line.service} ${line.stream}: ${line.line}`).join("\n");
+  return result.lines
+    .map((line) =>
+      line.source === undefined
+        ? `${line.service} ${line.stream}: ${line.line}`
+        : `${line.service} ${line.stream} [${line.source}]: ${line.line}`,
+    )
+    .join("\n");
 };
 
 const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError => {
@@ -75,6 +88,29 @@ const selectServices = (
   const matched = services.filter((service) => String(service.name) === filter);
   if (matched.length === 0) return Effect.fail(unknownServiceError(filter, plan));
   return Effect.succeed(matched);
+};
+
+const knownSourceIds = (services: ReadonlyArray<ServicePlan>): ReadonlyArray<string> => {
+  const ids = new Set<string>([RESERVED_LOG_SOURCE_ID]);
+  for (const service of services) {
+    for (const source of service.logSources ?? []) ids.add(String(source.id));
+  }
+  return [...ids].sort();
+};
+
+const validateSource = (
+  requested: string | undefined,
+  services: ReadonlyArray<ServicePlan>,
+): Effect.Effect<void, ToolingExecError> => {
+  if (requested === undefined) return Effect.void;
+  const known = knownSourceIds(services);
+  if (known.includes(requested)) return Effect.void;
+  return Effect.fail(
+    new ToolingExecError({
+      message: `logs: unknown log source "${requested}" (available: ${known.join(", ")}).`,
+      tool: "app:logs",
+    }),
+  );
 };
 
 const SINCE_DURATION = /^(\d+)(s|m|h|d)$/u;
@@ -150,6 +186,7 @@ const servicesForPlan = (
     }
 
     const services = yield* selectServices(plan, options.service);
+    yield* validateSource(options.source, services);
     return { services, provider };
   });
 
@@ -196,10 +233,19 @@ const logOptionsForService = (
   logOptions: LogOptions,
   service: ServicePlan,
   serviceLogSources: boolean,
-): LogOptions => ({
-  ...logOptions,
-  sources: service.logSources?.filter((source) => serviceLogSources || source.strategy !== "follow") ?? [],
-});
+  requestedSource: string | undefined,
+): LogOptions => {
+  const capable = (service.logSources ?? []).filter(
+    (source) => serviceLogSources || source.strategy !== "follow",
+  );
+  if (requestedSource === undefined) return { ...logOptions, sources: capable };
+  if (requestedSource === RESERVED_LOG_SOURCE_ID) return { ...logOptions, sources: [] };
+  return {
+    ...logOptions,
+    sources: capable.filter((source) => String(source.id) === requestedSource),
+    source: LogSourceId.make(requestedSource),
+  };
+};
 
 const waitForAbort = (signal: AbortSignal): Effect.Effect<void> =>
   Effect.async<void>((resume) => {
@@ -223,13 +269,14 @@ const collectLogLines = (
   services: ReadonlyArray<ServicePlan>,
   provider: RuntimeProviderShape,
   logOptions: LogOptions,
+  requestedSource: string | undefined,
 ): Effect.Effect<LogsAppResult, LogsAppError, never> =>
   Effect.gen(function* () {
     const perService = yield* Effect.forEach(services, (service) =>
       provider
         .logs(
           { app: plan.id, service: service.name },
-          logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources),
+          logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
         )
         .pipe(Stream.runCollect),
     );
@@ -241,6 +288,7 @@ const collectLogLines = (
           service: String(entry.service),
           stream: entry.stream,
           line: entry.line,
+          ...(entry.source === undefined ? {} : { source: String(entry.source) }),
           ...(entry.timestamp === undefined ? {} : { timestamp: entry.timestamp.getTime() }),
         });
       }
@@ -254,6 +302,7 @@ const drainLogFollow = (
   services: ReadonlyArray<ServicePlan>,
   provider: RuntimeProviderShape,
   logOptions: LogOptions,
+  requestedSource: string | undefined,
   signal: AbortSignal | undefined,
 ): Effect.Effect<LogsAppResult, LogsAppError, StreamFrameSink> =>
   Effect.gen(function* () {
@@ -261,13 +310,18 @@ const drainLogFollow = (
     const streams = services.map((service) =>
       provider.logs(
         { app: plan.id, service: service.name },
-        logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources),
+        logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources, requestedSource),
       ),
     );
     const drain = Stream.runForEach(
       Stream.mergeAll(streams, { concurrency: "unbounded" }),
       (chunk: LogChunk) =>
-        sink.emit({ _tag: chunk.stream, chunk: chunk.line, service: String(chunk.service) }),
+        sink.emit({
+          _tag: chunk.stream,
+          chunk: chunk.line,
+          service: String(chunk.service),
+          ...(chunk.source === undefined ? {} : { source: String(chunk.source) }),
+        }),
     );
 
     yield* raceAbort(signal, Effect.scoped(drain));
@@ -281,7 +335,13 @@ export const logsForPlan = (
   Effect.gen(function* () {
     const since = yield* validateSince(options.since);
     const { services, provider } = yield* servicesForPlan(plan, options);
-    return yield* collectLogLines(plan, services, provider, logOptionsFor(options, false, since));
+    return yield* collectLogLines(
+      plan,
+      services,
+      provider,
+      logOptionsFor(options, false, since),
+      options.source,
+    );
   });
 
 export const followLogsForPlan = (
@@ -296,6 +356,7 @@ export const followLogsForPlan = (
       services,
       provider,
       logOptionsFor(options, true, since),
+      options.source,
       options.signal,
     );
   });
@@ -312,6 +373,7 @@ export const logsApp = (
       services,
       provider,
       logOptionsFor(options, options.follow ?? false, since),
+      options.source,
     );
   });
 
@@ -327,6 +389,7 @@ export const followLogsApp = (
       services,
       provider,
       logOptionsFor(options, true, since),
+      options.source,
       options.signal,
     );
   });

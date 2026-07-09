@@ -171,4 +171,16 @@ describe("StreamFrame", () => {
       ParseResult.ParseError,
     );
   });
+
+  test("carries an optional source on stdout/stderr frames", () => {
+    for (const tag of ["stdout", "stderr"] as const) {
+      const wire = { _tag: tag, chunk: "line\n", service: "db", source: "slow-query" };
+      const decoded = Schema.decodeUnknownSync(StreamFrame)(wire);
+      expect(decoded._tag).toBe(tag);
+      if (decoded._tag === "stdout" || decoded._tag === "stderr") {
+        expect(decoded.source).toBe("slow-query");
+      }
+      expect(Schema.encodeSync(StreamFrame)(decoded)).toEqual(wire);
+    }
+  });
 });

@@ -21,7 +21,7 @@ import type {
   StopAppOptions,
   ToolingOptions,
 } from "@lando/sdk/app";
-import type { ServiceName } from "@lando/sdk/schema";
+import { LogSourceId, type ServiceName } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
 import { EventService } from "@lando/sdk/services";
 
@@ -34,6 +34,7 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
   service: line.service as ServiceName,
   stream: line.stream,
   line: line.line,
+  ...(line.source === undefined ? {} : { source: LogSourceId.make(line.source) }),
   ...(line.timestamp === undefined ? {} : { timestamp: new Date(line.timestamp) }),
 });
 

@@ -13,6 +13,7 @@ import {
   AppId,
   type AppPlan,
   LogSource,
+  LogSourceId,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -330,6 +331,132 @@ describe("lando logs", () => {
     await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls[0]?.options.sources).toEqual([]);
+  });
+
+  const withWebSources = (sources: ServicePlan["logSources"]): AppPlan => {
+    const webWithSources: ServicePlan = { ...web, ...(sources === undefined ? {} : { logSources: sources }) };
+    return {
+      ...plan,
+      services: { [webWithSources.name]: webWithSources, [database.name]: database },
+    };
+  };
+
+  test("--source restricts resolved sources to one declared source and sets LogOptions.source", async () => {
+    const appFile = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const other = Schema.decodeUnknownSync(LogSource)({
+      id: "other",
+      path: "/app/logs/other.log",
+      stream: "stderr",
+      strategy: "follow",
+    });
+    const harness = makeLogsLayer({ appPlan: withWebSources([appFile, other]) });
+
+    await Effect.runPromise(
+      logsApp({ service: "web", source: "app-file" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls[0]?.options.sources).toEqual([appFile]);
+    expect(String(harness.logCalls[0]?.options.source)).toBe("app-file");
+  });
+
+  test("--source console restricts to the implicit console stream with no file sources", async () => {
+    const appFile = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const harness = makeLogsLayer({ appPlan: withWebSources([appFile]) });
+
+    await Effect.runPromise(
+      logsApp({ service: "web", source: "console" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls[0]?.options.sources).toEqual([]);
+    expect(harness.logCalls[0]?.options.source).toBeUndefined();
+  });
+
+  test("--source with an unknown id fails listing known sources and never calls the provider", async () => {
+    const appFile = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const harness = makeLogsLayer({ appPlan: withWebSources([appFile]) });
+
+    const exit = await Effect.runPromiseExit(
+      logsApp({ service: "web", source: "nope" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const error = failure.value as { _tag: string; message: string };
+        expect(error._tag).toBe("ToolingExecError");
+        expect(error.message).toContain("nope");
+        expect(error.message).toContain("console");
+        expect(error.message).toContain("app-file");
+      }
+    }
+  });
+
+  test("labels rendered lines by declared source while console lines keep today's appearance", () => {
+    const rendered = renderLogsAppResult({
+      app: "test-logs",
+      lines: [
+        { service: "database", stream: "stdout", line: "slow query", source: "slow-query" },
+        { service: "database", stream: "stdout", line: "console line" },
+      ],
+    });
+
+    expect(rendered).toContain("database stdout [slow-query]: slow query");
+    expect(rendered).toContain("database stdout: console line");
+  });
+
+  test("follow mode under --format json carries source on stdout/stderr frames", async () => {
+    const appFile = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const harness = makeLogsLayer({
+      appPlan: withWebSources([appFile]),
+      logs: (target) =>
+        Stream.fromIterable([
+          {
+            service: target.service,
+            source: LogSourceId.make("app-file"),
+            stream: "stdout" as const,
+            line: "sourced line",
+          },
+        ]),
+    });
+    const io = createBufferedRendererIO({ isTTY: false });
+    await runWithRendererHandling(followLogsApp({ follow: true, service: "web", source: "app-file" }), {
+      runtime: harness.layer,
+      rendererMode: "json",
+      resultFormat: "json",
+      command: "app:logs",
+      resultSchema: EmptyResultSchema,
+      streaming: StreamFrame,
+      streamingMode: "live",
+      io,
+      formatError: (error) => String(error),
+    });
+
+    const frames = io.stdoutLines().map((line) => JSON.parse(line) as { _tag: string; source?: string });
+    const sourced = frames.find((frame) => frame._tag === "stdout" && frame.source === "app-file");
+    expect(sourced).toBeDefined();
   });
 
   test("fails up front with CapabilityError when the provider cannot stream logs", async () => {

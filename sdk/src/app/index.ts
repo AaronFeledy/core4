@@ -272,6 +272,17 @@ export type InfoServiceStatus =
   | "unhealthy"
   | "error";
 
+/** Availability of a resolved log source when reported by `lando info`. */
+export type InfoLogSourceAvailability = "available" | "redirected-to-console" | "unavailable";
+
+export interface InfoLogSource {
+  readonly id: string;
+  readonly path: string;
+  readonly strategy: "redirect" | "follow";
+  readonly availability: InfoLogSourceAvailability;
+  readonly reason?: string;
+}
+
 export interface InfoAppService {
   readonly app: string;
   readonly service: string;
@@ -281,6 +292,7 @@ export interface InfoAppService {
   readonly primary: boolean;
   readonly status: InfoServiceStatus;
   readonly endpoints: ReadonlyArray<string>;
+  readonly logSources?: ReadonlyArray<InfoLogSource>;
 }
 
 export interface InfoAppAgentEnv {
@@ -403,6 +415,8 @@ export interface LogsAppOptions {
   readonly follow?: boolean;
   readonly tail?: number;
   readonly since?: string;
+  /** Restrict the stream to a single declared source id (or the implicit `console`). */
+  readonly source?: string;
 }
 
 export type LogsAppError =

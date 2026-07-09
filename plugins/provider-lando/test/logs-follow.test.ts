@@ -176,4 +176,25 @@ describe("provider-lando log followers", () => {
     expect(chunks.map((chunk) => chunk.line)).toEqual(["console only"]);
     expect(chunks[0]?.source).toBeUndefined();
   });
+
+  test("restricts to a single declared source and suppresses console when options.source is set", async () => {
+    const fileSource = source();
+    const plan = makePlan([fileSource]);
+    const fs = makeMemoryLogFileAccess();
+    fs.writeFile(fileSource.path, "file ready\n");
+    const fake = makeFakeApi(rawConsole("console noise"));
+
+    const chunks = await collect(
+      logs(
+        plan,
+        { app: appId, service: node.name },
+        { follow: false, sources: [fileSource], source: fileSource.id },
+        { podmanApi: fake.api, logFileAccess: fs.access },
+      ),
+    );
+
+    expect(chunks.map((chunk) => chunk.line)).toEqual(["file ready"]);
+    expect(chunks.every((chunk) => chunk.source === fileSource.id)).toBe(true);
+    expect(chunks.some((chunk) => chunk.line === "console noise")).toBe(false);
+  });
 });

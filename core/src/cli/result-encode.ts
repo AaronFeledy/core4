@@ -26,6 +26,7 @@ export interface EncodeStreamEventFrameOptions {
 export interface EncodeStreamChunkFrameOptions {
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
   readonly redactor: Redactor;
 }
 
@@ -159,6 +160,7 @@ export const encodeStreamStdoutFrame = (
       _tag: "stdout",
       chunk: options.chunk,
       ...(options.service === undefined ? {} : { service: options.service }),
+      ...(options.source === undefined ? {} : { source: options.source }),
     },
     options.redactor,
   );
@@ -171,6 +173,7 @@ export const encodeStreamStderrFrame = (
       _tag: "stderr",
       chunk: options.chunk,
       ...(options.service === undefined ? {} : { service: options.service }),
+      ...(options.source === undefined ? {} : { source: options.source }),
     },
     options.redactor,
   );

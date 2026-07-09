@@ -106,28 +106,34 @@ const makeStreamFrameSinkLive = (
     Effect.gen(function* () {
       const renderer = yield* Renderer;
       const redaction = yield* RedactionService;
-      const redactor =
-        format === "json" ? yield* redaction.forProfile("secrets", { sourceEnv: process.env }) : undefined;
+      const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
       const emit = (frame: StreamFrameSinkFrame): Effect.Effect<void> =>
         Effect.gen(function* () {
-          if (redactor !== undefined) {
+          if (format === "json") {
             const line =
               frame._tag === "stdout"
                 ? yield* encodeStreamStdoutFrame({
                     chunk: frame.chunk,
                     ...(frame.service === undefined ? {} : { service: frame.service }),
+                    ...(frame.source === undefined ? {} : { source: frame.source }),
                     redactor,
                   })
                 : yield* encodeStreamStderrFrame({
                     chunk: frame.chunk,
                     ...(frame.service === undefined ? {} : { service: frame.service }),
+                    ...(frame.source === undefined ? {} : { source: frame.source }),
                     redactor,
                   });
             yield* renderer.output.stdout(`${line}\n`);
             return;
           }
+          const chunk = redactor.redactString(frame.chunk);
           const text =
-            frame.service === undefined ? frame.chunk : `${frame.service} ${frame._tag}: ${frame.chunk}`;
+            frame.service === undefined
+              ? chunk
+              : frame.source === undefined
+                ? `${frame.service} ${frame._tag}: ${chunk}`
+                : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
           yield* renderer.output.stdout(`${text}\n`);
         });
       return { emit };
@@ -173,6 +179,7 @@ export interface StreamOutputFrame {
   readonly _tag: "stdout" | "stderr";
   readonly chunk: string;
   readonly service?: string;
+  readonly source?: string;
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
@@ -368,11 +375,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               ? yield* encodeStreamStdoutFrame({
                   chunk: frame.chunk,
                   ...(frame.service === undefined ? {} : { service: frame.service }),
+                  ...(frame.source === undefined ? {} : { source: frame.source }),
                   redactor,
                 })
               : yield* encodeStreamStderrFrame({
                   chunk: frame.chunk,
                   ...(frame.service === undefined ? {} : { service: frame.service }),
+                  ...(frame.source === undefined ? {} : { source: frame.source }),
                   redactor,
                 });
           yield* writeResultLine(line);

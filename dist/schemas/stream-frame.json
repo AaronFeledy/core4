@@ -123,6 +123,9 @@
         },
         "service": {
           "type": "string"
+        },
+        "source": {
+          "type": "string"
         }
       },
       "required": [
@@ -144,6 +147,9 @@
           "type": "string"
         },
         "service": {
+          "type": "string"
+        },
+        "source": {
           "type": "string"
         }
       },

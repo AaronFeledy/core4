@@ -1263,7 +1263,9 @@ const logs = (
       path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
     }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
 
-    if (!hasFollowSources || logFileAccess === undefined) return consoleStream;
+    if (!hasFollowSources || logFileAccess === undefined) {
+      return options.source === undefined ? consoleStream : Stream.empty;
+    }
 
     const fileStream = logFollowLineChunks(
       followLogSources({
@@ -1277,7 +1279,7 @@ const logs = (
       }),
     );
 
-    return Stream.merge(consoleStream, fileStream);
+    return options.source === undefined ? Stream.merge(consoleStream, fileStream) : fileStream;
   });
 };
 

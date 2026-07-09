@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LogSource,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -373,5 +374,107 @@ describe("lando info --deep — agent-context env audit", () => {
     );
     expect(result.agentEnv?.enabled).toBe(false);
     expect(result.agentEnv?.forwarded).toEqual([]);
+  });
+});
+
+describe("lando info — resolved log sources", () => {
+  const makeLogSourceLayer = (
+    logSources: ReadonlyArray<ReturnType<typeof Schema.decodeUnknownSync<typeof LogSource>>>,
+    serviceLogSources: boolean,
+  ) => {
+    const svc: ServicePlan = { ...postgres, logSources };
+    const logPlan: AppPlan = { ...plan, services: { [svc.name]: svc } };
+    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources };
+    const provider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities: caps,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: false }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: () => Effect.void,
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: logPlan.id,
+          service: target.service,
+          providerId,
+          status: "running",
+          state: "running",
+          endpoints: logPlan.services[target.service]?.endpoints ?? [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    return Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-info", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(logPlan) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(caps),
+        select: () => Effect.succeed(provider),
+      }),
+      emptyConfigServiceLayer,
+    );
+  };
+
+  const followSource = Schema.decodeUnknownSync(LogSource)({
+    id: "slow-query",
+    path: "/var/log/mysql/slow.log",
+    stream: "stderr",
+    strategy: "follow",
+  });
+  const redirectSource = Schema.decodeUnknownSync(LogSource)({
+    id: "access",
+    path: "/var/log/apache/access.log",
+    stream: "stdout",
+    strategy: "redirect",
+  });
+
+  test("reports a follow source as available when the provider advertises serviceLogSources", async () => {
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeLogSourceLayer([followSource], true))),
+    );
+    const svc = result.services.find((service) => service.service === "postgres");
+    expect(svc?.logSources).toEqual([
+      { id: "slow-query", path: "/var/log/mysql/slow.log", strategy: "follow", availability: "available" },
+    ]);
+    const rendered = renderInfoAppResult(result);
+    expect(rendered).toContain("log-source\tslow-query\t/var/log/mysql/slow.log\tfollow\tavailable");
+  });
+
+  test("reports a follow source unavailable with a reason when the provider lacks serviceLogSources", async () => {
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeLogSourceLayer([followSource], false))),
+    );
+    const svc = result.services.find((service) => service.service === "postgres");
+    expect(svc?.logSources?.[0]?.availability).toBe("unavailable");
+    expect(svc?.logSources?.[0]?.reason).toContain("serviceLogSources");
+  });
+
+  test("reports a redirect source as redirected-to-console", async () => {
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeLogSourceLayer([redirectSource], true))),
+    );
+    const svc = result.services.find((service) => service.service === "postgres");
+    expect(svc?.logSources?.[0]?.availability).toBe("redirected-to-console");
   });
 });
