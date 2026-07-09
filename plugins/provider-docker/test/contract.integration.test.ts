@@ -1020,7 +1020,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       ),
     );
 
-    expect(provider.capabilities).toEqual(linuxDockerCapabilities);
+    expect(provider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
     expect(provider.capabilities.bindMountPerformance).not.toBe("slow");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
   });
