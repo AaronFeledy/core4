@@ -70,7 +70,7 @@ import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
 import { mergeLogSources } from "./log-sources.ts";
-import { redirectLogSourceBuildSteps } from "./redirect-log-sources.ts";
+import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "./redirect-log-sources.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -598,6 +598,7 @@ type PlannedServiceDraft = {
 };
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
+const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
 
 const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArray<string> =>
   base === "lando" ? LANDO_BASE_DEFAULT_FEATURE_IDS : L337_BASE_DEFAULT_FEATURE_IDS;
@@ -1038,13 +1039,50 @@ const planApp = (
     }
 
     for (const { name, hostnames, authored, draft, logSources, routes, extensions } of plannedServiceDrafts) {
+      const followLogSources = runtimeFollowLogSources(logSources);
+      const providerSupportsLogSources = providerCapabilities.serviceLogSources === true;
+      if (!providerSupportsLogSources) {
+        const requiredFollowSource = followLogSources.find((source) => source.required === true);
+        if (requiredFollowSource !== undefined) {
+          yield* Effect.fail(
+            missingCapability(
+              provider,
+              name,
+              `required follow log source ${String(requiredFollowSource.id)}`,
+              "serviceLogSources",
+              `Use strategy: redirect for service ${name} log source ${String(requiredFollowSource.id)}, or choose a provider that advertises serviceLogSources.`,
+            ),
+          );
+        }
+      }
+
+      const unavailableFollowSources = providerSupportsLogSources
+        ? []
+        : followLogSources.filter((source) => source.required !== true);
+      const extensionsForPlan: ServicePlan["extensions"] =
+        unavailableFollowSources.length === 0
+          ? extensions
+          : {
+              ...extensions,
+              [LOG_SOURCES_EXTENSION_KEY]: {
+                ...(isRecord(extensions[LOG_SOURCES_EXTENSION_KEY])
+                  ? extensions[LOG_SOURCES_EXTENSION_KEY]
+                  : {}),
+                unavailableFollow: unavailableFollowSources.map((source) => ({
+                  id: String(source.id),
+                  path: String(source.path),
+                  reason:
+                    "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+                })),
+              },
+            };
       const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
       const draftForPlan =
         redirectSteps.length === 0
           ? draft
           : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
       const servicePlan = {
-        ...servicePlanFromDraft(draftForPlan, routes, metadata, extensions),
+        ...servicePlanFromDraft(draftForPlan, routes, metadata, extensionsForPlan),
         ...(logSources.length === 0 ? {} : { logSources }),
       };
 

@@ -43,6 +43,7 @@ import {
 } from "../errors/index.ts";
 
 import { emitLandofileYamlEither, parseLandofile } from "../landofile/index.ts";
+import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
   AbsolutePath,
   AppId,
@@ -1315,14 +1316,34 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       ),
     );
   },
-  logs: (target, _options) => {
-    const chunk: LogChunk = {
+  logs: (target, options) => {
+    const consoleChunk: LogChunk = {
       service: target.service,
       stream: "stdout",
       line: "ready",
     };
 
-    return Stream.make(chunk);
+    const sources = options.sources ?? [];
+    const followSources = sources.filter((source) => source.strategy === "follow");
+    if (followSources.length === 0) return Stream.make(consoleChunk);
+
+    const fs = makeMemoryLogFileAccess();
+    for (const source of followSources) {
+      fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
+    }
+
+    const followers = logFollowLineChunks(
+      followLogSources({
+        service: target.service,
+        sources,
+        follow: options.follow,
+        access: fs.access,
+        ...(options.tail === undefined ? {} : { tail: options.tail }),
+        ...(options.source === undefined ? {} : { source: options.source }),
+      }),
+    );
+
+    return Stream.concat(Stream.make(consoleChunk), followers);
   },
   inspect: (target) =>
     Effect.succeed({

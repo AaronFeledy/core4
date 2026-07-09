@@ -27,6 +27,7 @@
     "./events": "./src/events/index.ts",
     "./expressions": "./src/expressions/index.ts",
     "./landofile": "./src/landofile/index.ts",
+    "./log-follow": "./src/log-follow/index.ts",
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",
     "./renderer": "./src/renderer/index.ts",

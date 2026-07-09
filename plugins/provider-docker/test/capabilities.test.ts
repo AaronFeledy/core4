@@ -17,6 +17,7 @@ import {
   resolveDockerHost,
   windowsDockerCapabilities,
 } from "@lando/provider-docker";
+import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
@@ -115,8 +116,26 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(linuxProvider.capabilities).toEqual(linuxDockerCapabilities);
-    expect(macosProvider.capabilities).toEqual(macosDockerCapabilities);
+    expect(linuxProvider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
+    expect(macosProvider.capabilities).toEqual({ ...macosDockerCapabilities, serviceLogSources: false });
+  });
+
+  test("advertises service log source following only when file access is injected", async () => {
+    const fs = makeMemoryLogFileAccess();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({}) },
+            logFileAccess: fs.access,
+          }),
+        ),
+      ),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(true);
   });
 
   test("uses resolved Docker hosts for API creation and capabilities", async () => {
@@ -237,7 +256,7 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(windowsProvider.capabilities).toEqual(windowsDockerCapabilities);
+    expect(windowsProvider.capabilities).toEqual({ ...windowsDockerCapabilities, serviceLogSources: false });
     expect(windowsProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 

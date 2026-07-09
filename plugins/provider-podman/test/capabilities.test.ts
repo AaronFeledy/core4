@@ -13,6 +13,7 @@ import {
   resolvePodmanSocket,
   windowsPodmanCapabilities,
 } from "@lando/provider-podman";
+import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
 describe("provider-podman capabilities", () => {
@@ -260,9 +261,23 @@ describe("provider-podman RuntimeProvider layer", () => {
     );
 
     expect(linuxProvider.id).toBe("podman");
-    expect(linuxProvider.capabilities).toEqual(linuxPodmanCapabilities);
-    expect(macosProvider.capabilities).toEqual(macosPodmanCapabilities);
-    expect(windowsProvider.capabilities).toEqual(windowsPodmanCapabilities);
+    expect(linuxProvider.capabilities).toEqual({ ...linuxPodmanCapabilities, serviceLogSources: false });
+    expect(macosProvider.capabilities).toEqual({ ...macosPodmanCapabilities, serviceLogSources: false });
+    expect(windowsProvider.capabilities).toEqual({ ...windowsPodmanCapabilities, serviceLogSources: false });
+  });
+
+  test("advertises service log source following only when file access is injected", async () => {
+    const fs = makeMemoryLogFileAccess();
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        logFileAccess: fs.access,
+      }),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(true);
   });
 
   test("constructs the Podman API client through the resolved socket path", async () => {

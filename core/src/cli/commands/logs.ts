@@ -192,6 +192,15 @@ const logOptionsFor = (
   ...(since === undefined ? {} : { since: String(since.epochSeconds) }),
 });
 
+const logOptionsForService = (
+  logOptions: LogOptions,
+  service: ServicePlan,
+  serviceLogSources: boolean,
+): LogOptions => ({
+  ...logOptions,
+  sources: service.logSources?.filter((source) => serviceLogSources || source.strategy !== "follow") ?? [],
+});
+
 const waitForAbort = (signal: AbortSignal): Effect.Effect<void> =>
   Effect.async<void>((resume) => {
     if (signal.aborted) {
@@ -217,7 +226,12 @@ const collectLogLines = (
 ): Effect.Effect<LogsAppResult, LogsAppError, never> =>
   Effect.gen(function* () {
     const perService = yield* Effect.forEach(services, (service) =>
-      provider.logs({ app: plan.id, service: service.name }, logOptions).pipe(Stream.runCollect),
+      provider
+        .logs(
+          { app: plan.id, service: service.name },
+          logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources),
+        )
+        .pipe(Stream.runCollect),
     );
 
     const lines: LogsAppLine[] = [];
@@ -245,7 +259,10 @@ const drainLogFollow = (
   Effect.gen(function* () {
     const sink = yield* StreamFrameSink;
     const streams = services.map((service) =>
-      provider.logs({ app: plan.id, service: service.name }, logOptions),
+      provider.logs(
+        { app: plan.id, service: service.name },
+        logOptionsForService(logOptions, service, provider.capabilities.serviceLogSources),
+      ),
     );
     const drain = Stream.runForEach(
       Stream.mergeAll(streams, { concurrency: "unbounded" }),

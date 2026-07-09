@@ -29,6 +29,7 @@ import {
   ServiceNotFoundError,
   ServiceStartError,
 } from "@lando/sdk/errors";
+import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import {
   type AppId,
   type AppPlan,
@@ -127,6 +128,7 @@ export interface ProviderLayerOptions {
   readonly dockerHost?: string;
   readonly platform?: HostPlatform;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly logFileAccess?: LogFileAccess;
 }
 
 export interface ResolveDockerHostOptions {
@@ -1222,11 +1224,16 @@ const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", lin
 const makeLogsDecoder = (service: ServicePlan) =>
   makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLogLine(service, streamName, line) });
 
+interface LogsRuntime {
+  readonly api: DockerApiClient;
+  readonly logFileAccess?: LogFileAccess;
+}
+
 const logs = (
   plan: AppPlan,
   target: LogTarget,
   options: Partial<LogOptions>,
-  api: DockerApiClient,
+  runtime: LogsRuntime,
 ): Stream.Stream<LogChunk, ProviderError> => {
   const service = plan.services[target.service];
   if (service === undefined) {
@@ -1244,12 +1251,33 @@ const logs = (
   if (options.since !== undefined) {
     query.set("since", options.since);
   }
+  const logSources = options.sources ?? service.logSources ?? [];
+  const logFileAccess = runtime.logFileAccess;
+  const hasFollowSources = logSources.some((source) => source.strategy === "follow");
+  const since = options.since === undefined ? undefined : Number(options.since);
+
   return Stream.suspend(() => {
     const decodeChunk = makeLogsDecoder(service);
-    return stream(api, "logs", {
+    const consoleStream = stream(runtime.api, "logs", {
       method: "GET",
       path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
     }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+
+    if (!hasFollowSources || logFileAccess === undefined) return consoleStream;
+
+    const fileStream = logFollowLineChunks(
+      followLogSources({
+        service: service.name,
+        sources: logSources,
+        follow: options.follow ?? true,
+        access: logFileAccess,
+        ...(options.tail === undefined ? {} : { tail: options.tail }),
+        ...(since === undefined ? {} : { since }),
+        ...(options.source === undefined ? {} : { source: options.source }),
+      }),
+    );
+
+    return Stream.merge(consoleStream, fileStream);
   });
 };
 
@@ -1270,6 +1298,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.dockerApi === undefined && options.dockerApiFactory === undefined
       ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
       : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const runtimeCapabilities = capabilities.pipe(
+    Effect.map((resolved) => ({
+      ...resolved,
+      serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+    })),
+  );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
     api: dockerApi,
@@ -1280,7 +1314,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
     target.plan ?? plans.get(target.app);
 
-  return capabilities.pipe(
+  return runtimeCapabilities.pipe(
     Effect.map(
       (resolvedCapabilities): RuntimeProviderShape => ({
         id: PROVIDER_ID,
@@ -1334,7 +1368,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           const plan = resolvePlan(target);
           return plan === undefined
             ? Stream.fail(makeUnavailable("logs"))
-            : logs(plan, target, logOptions, dockerApi);
+            : logs(plan, target, logOptions, {
+                api: dockerApi,
+                ...(options.logFileAccess === undefined ? {} : { logFileAccess: options.logFileAccess }),
+              });
         },
         inspect: (target) => {
           const plan = resolvePlan(target);

@@ -6,6 +6,7 @@ import { Duration, Effect, Layer, Schema, Stream } from "effect";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
@@ -275,6 +276,7 @@ export interface ProviderLayerOptions {
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
+  readonly logFileAccess?: LogFileAccess;
 }
 
 interface RuntimeProviderServiceControls {
@@ -341,6 +343,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     shouldProbeCapabilities && podmanApi !== undefined
       ? introspectProviderCapabilities(podmanApi, platform)
       : Effect.succeed(mvpProviderCapabilities(platform));
+  const runtimeCapabilities = capabilities.pipe(
+    Effect.map((resolved) => ({
+      ...resolved,
+      serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+    })),
+  );
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -375,7 +383,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     return stateDir === undefined ? Effect.void : removeAppliedPlan(stateDir, appId);
   };
 
-  return capabilities.pipe(
+  return runtimeCapabilities.pipe(
     Effect.flatMap((resolvedCapabilities) =>
       Effect.gen(function* () {
         const canEnsure =
@@ -584,6 +592,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                         Effect.as(
                           logs(plan, target, logOptions, {
                             ...(podmanApi === undefined ? {} : { podmanApi }),
+                            ...(options.logFileAccess === undefined
+                              ? {}
+                              : { logFileAccess: options.logFileAccess }),
                           }),
                         ),
                       ),

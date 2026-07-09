@@ -36,6 +36,7 @@ import {
   providerStatePath as providerLandoStatePath,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { LogFileAccess } from "@lando/sdk/log-follow";
 import {
   AppId,
   AppPlan,
@@ -498,6 +499,7 @@ export interface ProviderLayerOptions {
     socketPath: string,
   ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
+  readonly logFileAccess?: LogFileAccess;
 }
 
 const makeUnavailable = (operation: string) =>
@@ -620,7 +622,10 @@ export const makeRuntimeProvider = (
       enforceServerVersionFloor(info).pipe(
         Effect.map((serverVersion) => ({
           serverVersion,
-          capabilities: podmanCapabilitiesForPlatform(platform),
+          capabilities: {
+            ...podmanCapabilitiesForPlatform(platform),
+            serviceLogSources: options.logFileAccess !== undefined,
+          },
         })),
       ),
     ),
@@ -738,7 +743,12 @@ export const makeRuntimeProvider = (
               Effect.map((plan) =>
                 plan === undefined
                   ? Stream.fail(makeNoPlanError(target.app, "logs"))
-                  : logs(plan, target, logOptions, { podmanApi }),
+                  : logs(plan, target, logOptions, {
+                      podmanApi,
+                      ...(options.logFileAccess === undefined
+                        ? {}
+                        : { logFileAccess: options.logFileAccess }),
+                    }),
               ),
             ),
           ),
