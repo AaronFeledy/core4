@@ -1578,3 +1578,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): None; both post-fix Bugbot findings were confirmed in scope and fixed.
 - Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for logs, info, logs-redaction, and machine-output schema.
 ---
+
+## 2026-07-09 16:36 CDT - Babysit
+- PR: #562 https://github.com/AaronFeledy/core4/pull/562
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip PR body rationale for logs/info source metadata; re-ran failed guide-scenarios)
+- Merge: merged (squash)
+---
