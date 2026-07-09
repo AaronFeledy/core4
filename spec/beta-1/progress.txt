@@ -1476,3 +1476,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): AbsolutePath brand not enforcing absolute segments at schema boundary is pre-existing (US-425); path/id control-character hardening deferred to follow/redirect wire-up; mysql/mariadb slow/general declared unconditionally as optional `follow` (matches PRD optional-unavailable reading vs "when enabled" wording). Bugbot: no bugs. Collector-spawn static boundary remains contract-shape + review (no in-tree violator).
 - Verification: typecheck, lint passed; focused spot checks 139/139 (log-sources, extends, app-planner, cache, service-lando log-sources, service contract, landofile round-trip).
 ---
+
+## 2026-07-09 00:34 CDT - Babysit
+- PR: #558 https://github.com/AaronFeledy/core4/pull/558
+- CI outcome: pass (after triage)
+- Review feedback: fixed guide-drift via Guide-Coverage-Skip on PR body (plan-intent only; no CLI/logs UX change)
+- Merge: merged (squash)
+---
