@@ -101,13 +101,26 @@ const knownSourceIds = (services: ReadonlyArray<ServicePlan>): ReadonlyArray<str
 const validateSource = (
   requested: string | undefined,
   services: ReadonlyArray<ServicePlan>,
+  serviceLogSources: boolean,
 ): Effect.Effect<void, ToolingExecError> => {
   if (requested === undefined) return Effect.void;
   const known = knownSourceIds(services);
-  if (known.includes(requested)) return Effect.void;
+  if (!known.includes(requested)) {
+    return Effect.fail(
+      new ToolingExecError({
+        message: `logs: unknown log source "${requested}" (available: ${known.join(", ")}).`,
+        tool: "app:logs",
+      }),
+    );
+  }
+  if (requested === RESERVED_LOG_SOURCE_ID || serviceLogSources) return Effect.void;
+  const matchedSources = services.flatMap((service) =>
+    (service.logSources ?? []).filter((source) => String(source.id) === requested),
+  );
+  if (matchedSources.some((source) => source.strategy === "redirect")) return Effect.void;
   return Effect.fail(
     new ToolingExecError({
-      message: `logs: unknown log source "${requested}" (available: ${known.join(", ")}).`,
+      message: `logs: log source "${requested}" is unavailable because the runtime provider does not advertise serviceLogSources.`,
       tool: "app:logs",
     }),
   );
@@ -186,7 +199,7 @@ const servicesForPlan = (
     }
 
     const services = yield* selectServices(plan, options.service);
-    yield* validateSource(options.source, services);
+    yield* validateSource(options.source, services, provider.capabilities.serviceLogSources);
     return { services, provider };
   });
 
@@ -240,6 +253,10 @@ const logOptionsForService = (
   );
   if (requestedSource === undefined) return { ...logOptions, sources: capable };
   if (requestedSource === RESERVED_LOG_SOURCE_ID) return { ...logOptions, sources: [] };
+  const matchedSources = (service.logSources ?? []).filter((source) => String(source.id) === requestedSource);
+  if (matchedSources.some((source) => source.strategy === "redirect")) {
+    return { ...logOptions, sources: [] };
+  }
   return {
     ...logOptions,
     sources: capable.filter((source) => String(source.id) === requestedSource),

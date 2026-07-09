@@ -381,6 +381,51 @@ describe("lando logs", () => {
     expect(harness.logCalls[0]?.options.source).toBeUndefined();
   });
 
+  test("--source for a redirected source keeps the console-backed stream available", async () => {
+    const access = Schema.decodeUnknownSync(LogSource)({
+      id: "access",
+      path: "/var/log/apache/access.log",
+      stream: "stdout",
+      strategy: "redirect",
+    });
+    const harness = makeLogsLayer({ appPlan: withWebSources([access]) });
+
+    const result = await Effect.runPromise(
+      logsApp({ service: "web", source: "access" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls[0]?.options.sources).toEqual([]);
+    expect(harness.logCalls[0]?.options.source).toBeUndefined();
+    expect(result.lines.map((line) => line.line)).toContain("web line 1");
+  });
+
+  test("--source for an unavailable follow source fails before provider logs are opened", async () => {
+    const appFile = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const harness = makeLogsLayer({ appPlan: withWebSources([appFile]), serviceLogSources: false });
+
+    const exit = await Effect.runPromiseExit(
+      logsApp({ service: "web", source: "app-file" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const error = failure.value as { _tag: string; message: string };
+        expect(error._tag).toBe("ToolingExecError");
+        expect(error.message).toContain("app-file");
+        expect(error.message).toContain("serviceLogSources");
+      }
+    }
+  });
+
   test("--source with an unknown id fails listing known sources and never calls the provider", async () => {
     const appFile = Schema.decodeUnknownSync(LogSource)({
       id: "app-file",
