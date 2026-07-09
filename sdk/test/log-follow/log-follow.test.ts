@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Duration, Effect, Fiber, Ref, Stream, TestClock, TestContext } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Ref, Stream, TestClock, TestContext } from "effect";
 
 import {
   type LogFollowEvent,
@@ -38,6 +38,15 @@ const lines = (events: ReadonlyArray<LogFollowEvent>): ReadonlyArray<string> =>
 
 const diagnostics = (events: ReadonlyArray<LogFollowEvent>): ReadonlyArray<string> =>
   events.flatMap((event) => (event._tag === "diagnostic" ? [event.diagnostic.kind] : []));
+
+const expectProviderUnavailable = <A>(exit: Exit.Exit<A, ProviderError>): void => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag === "Some") expect(failure.value._tag).toBe("ProviderUnavailableError");
+  }
+};
 
 const runFinite = (
   stream: Stream.Stream<LogFollowEvent, ProviderError, never>,
@@ -105,6 +114,23 @@ describe("followLogSource finite (§6.14.4)", () => {
     );
     expect(diagnostics(events)).toEqual(["unavailable"]);
     expect(lines(events)).toEqual([]);
+  });
+
+  test("S1 missing required file in finite mode fails", async () => {
+    const fs = makeMemoryLogFileAccess();
+
+    const exit = await Effect.runPromiseExit(
+      Stream.runCollect(
+        followLogSource({
+          service: SERVICE,
+          source: source({ required: true }),
+          follow: false,
+          access: fs.access,
+        }),
+      ).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+    );
+
+    expectProviderUnavailable(exit);
   });
 });
 
@@ -250,6 +276,32 @@ describe("followLogSource follow (§6.14.4)", () => {
         }),
     );
     expect(diagnostics(events)).toEqual(["pending", "unavailable"]);
+  });
+
+  test("S3 missing required follow file fails after readiness timeout", async () => {
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = makeMemoryLogFileAccess();
+        const fiber = yield* Effect.fork(
+          Effect.scoped(
+            Stream.runDrain(
+              followLogSource({
+                service: SERVICE,
+                source: source({ required: true }),
+                follow: true,
+                access: fs.access,
+                pollIntervalMillis: 100,
+                readinessTimeoutMillis: 500,
+              }),
+            ),
+          ),
+        );
+        for (let i = 0; i < 8; i += 1) yield* TestClock.adjust(Duration.millis(100));
+        return yield* Fiber.await(fiber);
+      }).pipe(Effect.provide(TestContext.TestContext)),
+    );
+
+    expectProviderUnavailable(exit);
   });
 
   test("S4 survives rename+create rotation and emits a rotation marker", async () => {

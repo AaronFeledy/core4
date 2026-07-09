@@ -23,6 +23,7 @@
  */
 import { Chunk, Clock, Duration, Effect, Option, Stream } from "effect";
 
+import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
 import type { LogChunk, ProviderError } from "../services/index.ts";
 
@@ -210,6 +211,15 @@ const diagnostic = (
   message: string,
 ): LogFollowEvent => ({ _tag: "diagnostic", diagnostic: { service, source: source.id, kind, message } });
 
+const missingRequiredLogSource = (source: LogSource, path: string): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: "log-follow",
+    operation: "logs",
+    message: `Required log source "${String(source.id)}" file ${path} is not present.`,
+    remediation:
+      "Create the declared log file, remove required: true, or redirect the log source to console.",
+  });
+
 interface FollowerState {
   handle: LogFileHandle;
   dev: string;
@@ -389,6 +399,7 @@ export const followLogSource = (
 
       if (Option.isNone(resolved)) {
         if (!follow) {
+          if (source.required === true) return Stream.fail(missingRequiredLogSource(source, path));
           prelude.push(
             diagnostic(
               service,
@@ -410,6 +421,7 @@ export const followLogSource = (
         const deadline = (yield* Clock.currentTimeMillis) + readinessTimeoutMillis;
         resolved = yield* waitForFile(input.access, path, deadline, pollIntervalMillis);
         if (Option.isNone(resolved)) {
+          if (source.required === true) return Stream.fail(missingRequiredLogSource(source, path));
           prelude.push(
             diagnostic(
               service,
