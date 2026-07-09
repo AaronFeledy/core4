@@ -200,3 +200,27 @@ Open closure categories:
 - Production wiring of deferred seams: host-proxy physical transport/shim/auth/limits, container file-read log adapter, and other typed future seams must be live-wired where the new PRDs require them.
 - CLI/MCP parity: new command surfaces must keep source and compiled dispatch, generated manifests, MCP allowlists, machine envelopes, streaming frames, and result schemas in sync.
 - Version/lifecycle/tooling gaps: Podman 6 lifecycle edge cases, runtime setup acceptance, scratch/build cache realities, guide/transcript ownership, and boundary-gate coverage remain closure work for the pending stories.
+
+## 2026-07-09 17:40 CDT - US-410
+- Runtime-bundle assembly now executes the staged Linux Podman with Lando's managed-service `--root` / `--runroot` / `system service` argv before packing, so remote-only clients fail closed before publication while non-Linux and deterministic archive behavior remain unchanged.
+- Verification: typecheck, lint, manifest invariants, and relevant runtime-bundle test spot checks passed; sandbox assembly against the currently pinned Linux asset failed at the intended gate with `unknown flag: --root`; QA teardown was clean.
+- Blocked: the immutable local-engine Linux assets still need to be source-built, published under a superseding runtime version, repinned, and proven by zero-override managed setup under US-430 before US-410 can truthfully set `passes: true`.
+- **Learnings for future iterations:**
+  - Checksum-valid provider assets are not sufficient release evidence; publishing must execute the staged binary with the exact production argv before packing or manifest regeneration.
+---
+
+## 2026-07-09 18:03 CDT - US-410 continuation
+- The generated publishing matrix now builds Linux Podman 6.0.1 natively from its checksum-pinned source archive on matching x64/arm64 GitHub runners with Go 1.25.6, then verifies the staged local engine before deterministic packing; Linux remote-static pins are rejected while macOS/Windows remote-client packaging remains unchanged.
+- Verification: typecheck, lint, manifest invariants, generated-workflow drift, and focused runtime-bundle/source-build tests passed; independent review approved unconditionally.
+- Blocked: immutable publication, manifest repinning, and zero-override managed setup evidence remain external US-430 gates, so US-410 correctly remains `passes: false`.
+- **Learnings for future iterations:**
+  - Native source builds must pin the upstream-required language toolchain as well as source bytes; runner package-manager Go versions are not sufficient provenance.
+---
+
+## 2026-07-09 18:11 CDT - US-410 verification
+- The Linux x64 publishing path completed end to end in the isolated development environment: it built Podman 6.0.1 from the pinned source, passed the managed-service argv verifier against the staged binary, and emitted a runtime archive containing the local Podman engine.
+- Verification: typecheck, lint, manifest invariants, generated-workflow drift, focused runtime-bundle tests, and isolated source-build assembly passed; temporary build and artifact resources were removed.
+- Blocked: the superseding immutable release, committed-manifest repin, and zero-override managed setup proof remain US-430 requirements, so US-410 remains `passes: false`.
+- **Learnings for future iterations:**
+  - A successful local source-built archive proves the publishing inputs and verifier, but it cannot substitute for the published-asset and committed-manifest setup evidence required to close the story.
+---
