@@ -1002,7 +1002,7 @@
         "Lint passes"
       ],
       "priority": 56,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-12 (spec \u00a76.14.3 redirect, \u00a76.13). Zero-runtime-cost path; reuses build orchestration + buildKey, does not add a separate apply step."
     },
     {
