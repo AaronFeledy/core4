@@ -29,6 +29,7 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="mcpEvents" value="pre-mcp-call|post-mcp-call" display="Plugin, agent, and embedding hosts can subscribe to redacted MCP tool-dispatch lifecycle events through the published SDK event union" />
       <Variable name="toolProvisioning" value="@lando/sdk/tool-provisioning|ToolManifest|provisionTool" display="Plugins can share the verified tool provisioning helper for per-platform host CLI and agent installs without reimplementing archive extraction or path containment" />
       <Variable name="providerSetupFlags" value="ProviderSetupOptions.setupFlags" display="Providers receive parsed values of the setup flags their plugin contributed via setup.flags on ProviderSetupOptions.setupFlags during lando setup" />
+      <Variable name="logFollowTesting" value="@lando/sdk/log-follow" display="Provider and embedding tests can use the SDK log-follow helpers to inject host log-file access; providers leave serviceLogSources disabled when that access is absent" />
     </Step>
   </Scenario>
 

@@ -105,6 +105,7 @@ tags: [beta, docs, providers, setup, selection]
       <Variable name="dockerPodmanSnapshot" value="copy" display="provider-docker and provider-podman advertise copy-mode volume snapshots over their Docker-compatible APIs" />
       <Variable name="serviceCopy" value="native" display="All bundled providers advertise native service file copy for host↔container byte movement" />
       <Variable name="artifactImportExport" value="enabled" display="All bundled providers advertise image artifact import and export when their runtime API is available" />
+      <Variable name="serviceLogSources" value="requires log-file access" display="Bundled providers only advertise service log source following when the host injects log-file access; generic provider contracts still use runtime logs when that capability is false" />
     </Step>
   </Scenario>
 </Guide>
