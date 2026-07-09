@@ -9,6 +9,7 @@ import {
   makeMemoryLogFileAccess,
 } from "@lando/sdk/log-follow";
 import { LogSource } from "@lando/sdk/schema";
+import type { ProviderError } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 const SERVICE = "db" as never;
@@ -39,14 +40,14 @@ const diagnostics = (events: ReadonlyArray<LogFollowEvent>): ReadonlyArray<strin
   events.flatMap((event) => (event._tag === "diagnostic" ? [event.diagnostic.kind] : []));
 
 const runFinite = (
-  stream: Stream.Stream<LogFollowEvent, never, never>,
+  stream: Stream.Stream<LogFollowEvent, ProviderError, never>,
 ): Promise<ReadonlyArray<LogFollowEvent>> =>
   Effect.runPromise(
     Stream.runCollect(stream).pipe(
       Effect.map((chunk) => [...chunk]),
       Effect.scoped,
       Effect.provide(TestContext.TestContext),
-    ) as Effect.Effect<ReadonlyArray<LogFollowEvent>, never, never>,
+    ) as Effect.Effect<ReadonlyArray<LogFollowEvent>, ProviderError, never>,
   );
 
 describe("makeLineFramer (§6.14.4 framing + bounds)", () => {
@@ -136,7 +137,9 @@ describe("followLogSource since (§6.14.4)", () => {
 });
 
 const collectFollow = (
-  build: (fs: ReturnType<typeof makeMemoryLogFileAccess>) => Stream.Stream<LogFollowEvent, never, never>,
+  build: (
+    fs: ReturnType<typeof makeMemoryLogFileAccess>,
+  ) => Stream.Stream<LogFollowEvent, ProviderError, never>,
   drive: (
     fs: ReturnType<typeof makeMemoryLogFileAccess>,
     adjust: (millis: number) => Effect.Effect<void>,
@@ -183,6 +186,25 @@ describe("followLogSource follow (§6.14.4)", () => {
         }),
     );
     expect(lines(events)).toEqual(["b2", "b3", "b4"]);
+    expect(handles).toBe(0);
+  });
+
+  test("S2 flushes a final partial line during initial follow backfill", async () => {
+    const { events, handles } = await collectFollow(
+      (fs) => {
+        fs.writeFile("/var/log/mysql/slow.log", "b1\npartial");
+        return followLogSource({
+          service: SERVICE,
+          source: source(),
+          follow: true,
+          access: fs.access,
+          pollIntervalMillis: 100,
+        });
+      },
+      (_fs, _adjust, read) => read,
+    );
+
+    expect(lines(events)).toEqual(["b1", "partial"]);
     expect(handles).toBe(0);
   });
 

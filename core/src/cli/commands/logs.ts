@@ -194,9 +194,7 @@ const logOptionsFor = (
 
 const logOptionsForService = (logOptions: LogOptions, service: ServicePlan): LogOptions => ({
   ...logOptions,
-  ...(service.logSources !== undefined && service.logSources.length > 0
-    ? { sources: service.logSources }
-    : {}),
+  sources: service.logSources ?? [],
 });
 
 const waitForAbort = (signal: AbortSignal): Effect.Effect<void> =>

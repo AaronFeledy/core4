@@ -313,7 +313,7 @@ export const followLogSource = (
             const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
             return [Chunk.fromIterable(lineEvents(tailed)), Option.none<BodyState>()] as const;
           }
-          const backfillEvents = lineEvents(applyTail(backfill, input.tail));
+          const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
           return [
             Chunk.fromIterable(backfillEvents),
             Option.some<BodyState>({ kind: "poll", state }),

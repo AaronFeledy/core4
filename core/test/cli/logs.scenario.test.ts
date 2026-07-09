@@ -273,7 +273,7 @@ describe("lando logs", () => {
     const harness = makeLogsLayer();
     await Effect.runPromise(logsApp({ tail: 25 }).pipe(Effect.provide(harness.layer)));
 
-    expect(harness.logCalls[0]?.options).toEqual({ follow: false, tail: 25 });
+    expect(harness.logCalls[0]?.options).toEqual({ follow: false, tail: 25, sources: [] });
   });
 
   test("passes each service plan's resolved log sources to the provider", async () => {
@@ -295,6 +295,14 @@ describe("lando logs", () => {
     await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls[0]?.options.sources).toEqual(webLogSources);
+  });
+
+  test("passes an empty log source list when a fresh plan has no resolved sources", async () => {
+    const harness = makeLogsLayer();
+
+    await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
+
+    expect(harness.logCalls[0]?.options.sources).toEqual([]);
   });
 
   test("fails up front with CapabilityError when the provider cannot stream logs", async () => {
