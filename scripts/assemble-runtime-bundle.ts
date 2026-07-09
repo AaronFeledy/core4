@@ -72,9 +72,11 @@ const targetFor = (hostKey: string): RuntimeBundleTarget => {
   return target;
 };
 
-const run = async (cmd: Array<string>, cwd?: string): Promise<void> => {
+export type BundleCommandRunner = (cmd: ReadonlyArray<string>, cwd?: string) => Promise<void>;
+
+const run: BundleCommandRunner = async (cmd, cwd) => {
   const proc = Bun.spawn({
-    cmd,
+    cmd: [...cmd],
     ...(cwd === undefined ? {} : { cwd }),
     stdout: "inherit",
     stderr: "inherit",
@@ -83,6 +85,46 @@ const run = async (cmd: Array<string>, cwd?: string): Promise<void> => {
   const exitCode = await proc.exited;
   if (exitCode !== 0)
     throw new Error(`assemble-runtime-bundle: command failed (${exitCode}): ${cmd.join(" ")}`);
+};
+
+const verifyLinuxPodman = async (
+  hostKey: string,
+  stageDir: string,
+  execute: BundleCommandRunner,
+): Promise<void> => {
+  if (hostKey !== "linux-x64" && hostKey !== "linux-arm64") return;
+
+  const verifyDir = await mkdtemp(join(tmpdir(), "rb-verify-"));
+  try {
+    const storageDir = join(verifyDir, "storage");
+    const runrootDir = join(verifyDir, "runroot");
+    const configPath = join(verifyDir, "containers.conf");
+    await mkdir(storageDir, { recursive: true });
+    await mkdir(runrootDir, { recursive: true });
+    await writeFile(configPath, "");
+    await execute([
+      join(stageDir, "bin", "podman"),
+      "--root",
+      storageDir,
+      "--runroot",
+      runrootDir,
+      "--config",
+      configPath,
+      "--storage-opt",
+      `overlay.mount_program=${join(stageDir, "bin", "fuse-overlayfs")}`,
+      "system",
+      "service",
+      "--help",
+    ]);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `assemble-runtime-bundle: Linux Podman managed-service verifier failed for ${hostKey}: ${detail}`,
+      { cause },
+    );
+  } finally {
+    await rm(verifyDir, { recursive: true, force: true });
+  }
 };
 
 const extractMember = async (
@@ -140,6 +182,7 @@ export interface AssembleBundleOptions {
   readonly sources: RuntimeBundleSources;
   readonly outDir: string;
   readonly fetchArtifact: (url: string) => Promise<Uint8Array>;
+  readonly verifyCommand?: BundleCommandRunner;
 }
 
 export interface AssembledBundle {
@@ -173,6 +216,7 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
       await extractMember(component, artifactPath, destPath);
       await chmod(destPath, component.mode);
     }
+    await verifyLinuxPodman(options.hostKey, stageDir, options.verifyCommand ?? run);
     await mkdir(options.outDir, { recursive: true });
     const outPath = join(options.outDir, target.filename);
     await packDeterministic(stageDir, outPath, target.filename.endsWith(".zip"));

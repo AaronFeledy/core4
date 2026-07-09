@@ -52,6 +52,8 @@ const fetchFixture = async (url: string): Promise<Uint8Array> => {
   throw new Error(`unexpected fixture url ${url}`);
 };
 
+const acceptVerification = async (): Promise<void> => {};
+
 describe("parseRuntimeBundleSources", () => {
   test("accepts a well-formed pins document", () => {
     const parsed = parseRuntimeBundleSources(fixtureSources());
@@ -61,13 +63,17 @@ describe("parseRuntimeBundleSources", () => {
 
   test("rejects a placeholder / all-zero sha256 (fail closed)", () => {
     const doc = fixtureSources();
-    doc.bundles["linux-x64"].components[0].sha256 = "0".repeat(64);
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.sha256 = "0".repeat(64);
     expect(() => parseRuntimeBundleSources(doc)).toThrow();
   });
 
   test("rejects a non-HTTPS component url (fail closed)", () => {
     const doc = fixtureSources();
-    doc.bundles["linux-x64"].components[0].url = "http://example.test/insecure";
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.url = "http://example.test/insecure";
     expect(() => parseRuntimeBundleSources(doc)).toThrow();
   });
 });
@@ -83,12 +89,14 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchFixture,
+        verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
         fetchArtifact: fetchFixture,
+        verifyCommand: acceptVerification,
       });
 
       expect(first.filename).toBe("lando-runtime-linux-x64.tar.gz");
@@ -109,7 +117,13 @@ describe("assembleBundle", () => {
       const sources = parseRuntimeBundleSources(fixtureSources());
       const badFetch = async (): Promise<Uint8Array> => new TextEncoder().encode("tampered");
       await expect(
-        assembleBundle({ hostKey: "linux-x64", sources, outDir: dir, fetchArtifact: badFetch }),
+        assembleBundle({
+          hostKey: "linux-x64",
+          sources,
+          outDir: dir,
+          fetchArtifact: badFetch,
+          verifyCommand: acceptVerification,
+        }),
       ).rejects.toThrow(/sha256|checksum|verify/i);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -147,12 +161,14 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchGz,
+        verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
         fetchArtifact: fetchGz,
+        verifyCommand: acceptVerification,
       });
       expect(second.sha256).toBe(first.sha256);
     } finally {
