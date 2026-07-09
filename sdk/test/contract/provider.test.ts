@@ -7,7 +7,7 @@ import {
   ProviderCapabilityError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, LogSource, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -119,6 +119,28 @@ describe("RuntimeProvider contract", () => {
       providerId: "test",
       status: "running",
     });
+  });
+
+  test("TestRuntimeProvider merges implicit console and source-tagged follow logs", async () => {
+    const followSource = Schema.decodeUnknownSync(LogSource)({
+      id: "slow-query",
+      path: "/var/log/app/slow.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+
+    const chunks = await Effect.runPromise(
+      TestRuntimeProvider.logs(
+        { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
+        { follow: false, sources: [followSource] },
+      ).pipe(
+        Stream.runCollect,
+        Effect.map((chunk) => [...chunk]),
+      ),
+    );
+
+    expect(chunks.some((chunk) => chunk.source === undefined)).toBe(true);
+    expect(chunks.some((chunk) => String(chunk.source ?? "") === String(followSource.id))).toBe(true);
   });
 
   test("fails with a tagged ContractFailure for malformed providers", async () => {
