@@ -622,7 +622,10 @@ export const makeRuntimeProvider = (
       enforceServerVersionFloor(info).pipe(
         Effect.map((serverVersion) => ({
           serverVersion,
-          capabilities: podmanCapabilitiesForPlatform(platform),
+          capabilities: {
+            ...podmanCapabilitiesForPlatform(platform),
+            serviceLogSources: options.logFileAccess !== undefined,
+          },
         })),
       ),
     ),

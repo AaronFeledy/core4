@@ -343,6 +343,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     shouldProbeCapabilities && podmanApi !== undefined
       ? introspectProviderCapabilities(podmanApi, platform)
       : Effect.succeed(mvpProviderCapabilities(platform));
+  const runtimeCapabilities = capabilities.pipe(
+    Effect.map((resolved) => ({
+      ...resolved,
+      serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+    })),
+  );
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -377,7 +383,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     return stateDir === undefined ? Effect.void : removeAppliedPlan(stateDir, appId);
   };
 
-  return capabilities.pipe(
+  return runtimeCapabilities.pipe(
     Effect.flatMap((resolvedCapabilities) =>
       Effect.gen(function* () {
         const canEnsure =

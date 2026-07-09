@@ -1535,3 +1535,11 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed stale app-plan binary cache fixture after schema bump
 - Merge: merged (squash)
 ---
+
+## 2026-07-09 11:42 CDT - US-428 Review
+- Fixed a review-blocking capability truthfulness gap: Docker, Podman, and Lando providers now advertise `serviceLogSources` only when the provider has an injected log-file follower seam, so required follow sources fail planning up front and optional follow sources are marked unavailable instead of being silently omitted at runtime.
+- Review notes (deferred/rejected): `review-work` was invoked with `origin/main`, but this harness returned the skill workflow instructions rather than automated findings, so that lane was treated as inconclusive and not counted as approval.
+- Review notes (deferred/rejected): Cursor Bugbot timed out after ten minutes with no report; treated as inconclusive, not approval.
+- Review notes (deferred/rejected): Initial follow backfill flushing a partial line was not changed because the US-428 contract test explicitly asserts that behavior.
+- Verification: typecheck and lint passed; focused spot checks passed across SDK log-follow, Docker/Lando provider follow tests, app-planner, and Docker/Lando/Podman capability tests (145 tests).
+---

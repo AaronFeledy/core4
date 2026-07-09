@@ -1298,6 +1298,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.dockerApi === undefined && options.dockerApiFactory === undefined
       ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
       : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const runtimeCapabilities = capabilities.pipe(
+    Effect.map((resolved) => ({
+      ...resolved,
+      serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+    })),
+  );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
     api: dockerApi,
@@ -1308,7 +1314,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
     target.plan ?? plans.get(target.app);
 
-  return capabilities.pipe(
+  return runtimeCapabilities.pipe(
     Effect.map(
       (resolvedCapabilities): RuntimeProviderShape => ({
         id: PROVIDER_ID,

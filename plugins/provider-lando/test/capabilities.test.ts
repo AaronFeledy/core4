@@ -10,6 +10,7 @@ import {
   makeProviderLayer,
   mvpProviderCapabilities,
 } from "@lando/provider-lando";
+import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
@@ -35,7 +36,7 @@ describe("provider-lando capabilities", () => {
     const layer = makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
-    expect(runtimeProvider.capabilities).toEqual(linuxMvpCapabilities);
+    expect(runtimeProvider.capabilities).toEqual({ ...linuxMvpCapabilities, serviceLogSources: false });
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
       mvpProviderCapabilities("linux").bindMountPerformance,
     );
@@ -46,13 +47,28 @@ describe("provider-lando capabilities", () => {
     );
   });
 
+  test("advertises service log source following only when file access is injected", async () => {
+    const fs = makeMemoryLogFileAccess();
+    const layer = makeProviderLayer({
+      platform: "linux",
+      podmanApi: { info: Effect.succeed({}) },
+      logFileAccess: fs.access,
+    });
+    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+
+    expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
+  });
+
   test("declares macOS support with slow bind mount performance", async () => {
     const layer = makeProviderLayer({ platform: "darwin", podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("darwin");
-    expect(runtimeProvider.capabilities).toEqual(macosMvpCapabilities);
-    expect(runtimeProvider.capabilities).toEqual(mvpProviderCapabilities("darwin"));
+    expect(runtimeProvider.capabilities).toEqual({ ...macosMvpCapabilities, serviceLogSources: false });
+    expect(runtimeProvider.capabilities).toEqual({
+      ...mvpProviderCapabilities("darwin"),
+      serviceLogSources: false,
+    });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
@@ -62,7 +78,10 @@ describe("provider-lando capabilities", () => {
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("win32");
-    expect(runtimeProvider.capabilities).toEqual(mvpProviderCapabilities("win32"));
+    expect(runtimeProvider.capabilities).toEqual({
+      ...mvpProviderCapabilities("win32"),
+      serviceLogSources: false,
+    });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
