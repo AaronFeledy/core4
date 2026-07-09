@@ -31,6 +31,7 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   multiServiceApply: false,
   serviceExec: false,
   serviceLogs: false,
+  serviceLogSources: false,
   serviceHealth: "none",
   hostReachability: "none",
   sharedCrossAppNetwork: false,

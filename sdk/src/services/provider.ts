@@ -19,6 +19,8 @@ import type {
   DataStoreMountPlan,
   EndpointPlan,
   HostPlatform,
+  LogSource,
+  LogSourceId,
   MountPlan,
   NetworkConfig,
   ProviderCapabilities,
@@ -146,10 +148,16 @@ export interface LogOptions {
   readonly follow: boolean;
   readonly tail?: number;
   readonly since?: string;
+  /** Resolved declared file sources; the `console` source is always implicit. */
+  readonly sources?: ReadonlyArray<LogSource>;
+  /** Optional: restrict the stream to one declared source id. */
+  readonly source?: LogSourceId;
 }
 
 export interface LogChunk {
   readonly service: ServiceName;
+  /** Source id; absent means the implicit `console` (container stdout/stderr) source. */
+  readonly source?: LogSourceId;
   readonly stream: "stdout" | "stderr";
   readonly line: string;
   readonly timestamp?: Date;

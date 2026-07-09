@@ -966,7 +966,7 @@
         "Lint passes"
       ],
       "priority": 54,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-12 (spec §6.14.1, §6.14.2, §5.4). Additive SDK surface; mirror the LogChunk/LogOptions/ProviderCapabilities shapes in sdk/src/services/provider.ts. Last new SDK surface before freeze."
     },
     {

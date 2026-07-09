@@ -1,0 +1,17 @@
+---
+title: Log Source Input
+description: Public Lando schema contract for Log Source Input.
+---
+
+# Log Source Input
+
+Public Lando schema contract for Log Source Input.
+
+[JSON Schema artifact](../../../dist/schemas/log-source-input.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `path` | Yes | `string` | Single absolute in-container file path declared under `services.&lt;name&gt;.logs`. | — | — | — | — |
+| `label` | No | `string` | — | — | — | — | — |
+| `stream` | No | `string` | — | — | `stdout`, `stderr` | — | — |
+| `id` | No | `string` | — | — | — | — | — |

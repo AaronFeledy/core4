@@ -1,0 +1,20 @@
+---
+title: Log Source
+description: Public Lando schema contract for Log Source.
+---
+
+# Log Source
+
+Public Lando schema contract for Log Source.
+
+[JSON Schema artifact](../../../dist/schemas/log-source.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | Unique source id within the service; `console` is reserved for the implicit engine stream. | — | — | — | — |
+| `label` | No | `string` | — | — | — | — | — |
+| `path` | Yes | `string` | Single absolute in-container file path for this log source; globs are not supported. | — | — | — | — |
+| `stream` | Yes | `string` | Render and exit classification for this source's lines. | — | `stdout`, `stderr` | — | — |
+| `strategy` | Yes | `string` | How Lando reifies the declared source: build-time redirect or runtime follower. | — | `redirect`, `follow` | — | — |
+| `required` | No | `boolean` | — | — | — | — | — |
+| `timestamps` | No | `boolean` | — | — | — | — | — |
