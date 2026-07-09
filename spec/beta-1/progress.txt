@@ -1565,3 +1565,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
   - Providers merge console + file streams for follow sources; to "restrict to one source" you must suppress console when `options.source` is set (return the file stream only, or `Stream.empty` if the requested file source is unavailable) — the command-level `sources` filter alone does not stop the container console stream.
   - Adding an optional field to the public `StreamFrame` requires regenerating the schema snapshot (`codegen:schema-snapshot`) AND updating the spec §8.11.3 block plus `sdk/API_COMPATIBILITY.md`; the OCLIF `--source` flag needs `codegen:oclif-manifest` so the compiled `$bunfs` dispatch parses it.
 ---
+
+## 2026-07-09 14:55 CDT - US-429 Review
+- Fixed a review-blocking `lando info` reporting gap: unavailable follow log sources now show their unavailable reason in both the plain/table-style output and the decorated summary, instead of only in the structured result.
+- Review notes (deferred/rejected): `review-work` was invoked with `HEAD`, but this harness returned the skill workflow instructions rather than automated findings; treated as inconclusive, not approval.
+- Review notes (deferred/rejected): Cursor Bugbot was invoked twice before fixes and produced no substantive report before timing out/exiting; treated as inconclusive, not approval.
+- Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for info, logs, logs-redaction, and machine-output schema.
+---
