@@ -25,7 +25,6 @@ describe("provider-lando managed machine trust import argv", () => {
     for (const args of [buildManagedMachineInitArgs("lando"), buildManagedMachineTrustSyncArgs("lando")]) {
       const flag = args.find((token) => token.startsWith("--import-native-ca"));
       expect(flag).toBe("--import-native-ca");
-      // No `=value` form and no filesystem-path token anywhere in the argv.
       expect(args.some((token) => token.includes("--import-native-ca="))).toBe(false);
       expect(args.some((token) => /[/~\\]|%USERPROFILE%|%TEMP%|[A-Za-z]:\\/u.test(token))).toBe(false);
     }
@@ -57,12 +56,11 @@ describe("provider-lando machine trust import decision", () => {
 
   test("an existing user-owned machine is never modified implicitly", () => {
     for (const status of ["stopped", "running"] as const) {
-      // Recorded as user-owned.
       expect(resolveMachineTrustImport({ status, recordedOwnership: { createdByLando: false } })).toEqual({
         kind: "skip",
         reason: "user-owned",
       });
-      // No ownership record at all: an existing machine Lando did not create.
+      // Missing ownership record: treat as user-owned and leave untouched.
       expect(resolveMachineTrustImport({ status })).toEqual({ kind: "skip", reason: "user-owned" });
     }
   });
@@ -89,7 +87,6 @@ describe("provider-lando Windows Hyper-V prep remediation", () => {
   });
 
   test("carries no local certificate paths or host-specific details", () => {
-    // Advisory text only: command names, not host paths / home dirs / drive letters.
     expect(/\/home\/|\/Users\/|~\/|[A-Za-z]:\\|%USERPROFILE%|\.crt|\.pem/u.test(remediation)).toBe(false);
   });
 });

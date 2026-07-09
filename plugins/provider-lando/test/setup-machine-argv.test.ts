@@ -110,7 +110,6 @@ describe("provider-lando system machine runner argv", () => {
       }
     }
 
-    // Lando attempts create with native CA import but never spawns prep/elevation itself.
     expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
     expect(calls.some((argv) => argv.includes("hyperv-prep"))).toBe(false);
   });

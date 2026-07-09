@@ -1,18 +1,13 @@
 import type { PodmanMachineStatus } from "./setup.ts";
 
 /**
- * Managed-machine CA trust seam.
+ * Managed-machine CA trust helpers: pure argv builders and ownership-gated
+ * import decisions for Podman machines Lando owns.
  *
- * This is a pure, future-implementation seam (mirrors {@link ./image-pull.ts}
- * and {@link ./volume-prune.ts}): it models the argv and the trust-import
- * decision a real macOS/Windows machine driver will consult, without wiring a
- * live machine lifecycle (the host has no Podman machine to create).
- *
- * `--import-native-ca` is a boolean Podman flag (default `false`, supported on
- * macOS, Windows, and Linux) that syncs the host's native CA trust store into
- * the machine on startup. Because the flag takes no value, the argv it produces
- * carries no local certificate path or other host-specific detail — the trust
- * import never leaks host state into command output.
+ * `--import-native-ca` is a boolean Podman flag (default `false`) that syncs
+ * the host's native CA trust store into the machine on startup. The flag takes
+ * no value, so the argv never carries a local certificate path or other
+ * host-specific detail.
  */
 
 /** The boolean Podman flag that imports the host's native CA trust store. */
