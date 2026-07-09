@@ -1470,3 +1470,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed merge conflict with main; covered Windows managed machine trust in provider-lando-windows guide for guide-drift
 - Merge: merged (squash)
 ---
+
+## 2026-07-08 23:42 CDT - US-426 Review
+- Fixed review blockers: reject `redirect` from user log sources on `base: "l337"` (not only service-type sources), and preserve/merge `logSources` by id through service-type `extends` (child precedence) so catalog declarations are not dropped on extended types.
+- Review notes (deferred/rejected): AbsolutePath brand not enforcing absolute segments at schema boundary is pre-existing (US-425); path/id control-character hardening deferred to follow/redirect wire-up; mysql/mariadb slow/general declared unconditionally as optional `follow` (matches PRD optional-unavailable reading vs "when enabled" wording). Bugbot: no bugs. Collector-spawn static boundary remains contract-shape + review (no in-tree violator).
+- Verification: typecheck, lint passed; focused spot checks 139/139 (log-sources, extends, app-planner, cache, service-lando log-sources, service contract, landofile round-trip).
+---
