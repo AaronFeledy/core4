@@ -23,10 +23,10 @@ const redirectStepId = (source: LogSource): string => `lando-log-redirect:${Stri
  *
  * For each redirect source on a Lando-built service the daemon's log path is
  * symlinked to `/dev/stdout` (`stream: "stdout"`) or `/dev/stderr`
- * (`stream: "stderr"`) with `ln -sf`, the canonical Docker idiom (§6.14.3). The
- * lines then flow through the existing `console` stream with no runtime
- * follower. `ln -sf` is idempotent across rebuilds; the command encodes the
- * source's stream and path so a changed source produces a changed step.
+ * (`stream: "stderr"`) with `ln -sf` so lines flow through the existing
+ * `console` stream with no runtime follower. `ln -sf` is idempotent across
+ * rebuilds; the command encodes the source's stream and path so a changed
+ * source produces a changed step.
  *
  * A non-Lando base has no build phase to redirect through (redirect sources on
  * such a service are already rejected during {@link mergeLogSources}), so this
@@ -39,9 +39,7 @@ export const redirectLogSourceBuildSteps = (
   if (input.base !== "lando") return [];
   return input.logSources
     .filter((source) => source.strategy === "redirect")
-    .sort((left, right) =>
-      String(left.id) < String(right.id) ? -1 : String(left.id) > String(right.id) ? 1 : 0,
-    )
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)))
     .map((source) => ({
       id: redirectStepId(source),
       phase: "build",

@@ -338,7 +338,7 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("re-derives the redirect step command when a user overrides the source path", async () => {
+  test("emits redirect build steps for nginx bundled log sources", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         Schema.decodeUnknownSync(LandofileShape)({
