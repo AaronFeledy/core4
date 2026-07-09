@@ -1378,3 +1378,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review feedback: fixed guide-drift via Guide-Coverage-Skip on PR body; updated doctor provider-status NDJSON fixtures for serviceLogSources
 - Merge: merged (squash)
 ---
+
+## 2026-07-08 20:55 CDT - US-425 Verify (re-run with Podman 6 PATH)
+- Rebuilt compiled binary (`core/dist/lando`) and re-ran verify inside `lando4-dev` with Homebrew first on PATH (`/home/linuxbrew/.linuxbrew/bin/podman` → 6.0.0) and isolated roots via `LANDO_USER_{CONF,CACHE,DATA}_ROOT`.
+- `lando setup --yes --no-interactive --provider=podman` completed cleanly against system Podman 6 (Homebrew). Default/`--provider=lando` managed setup still fails after installing the bundle: published Linux `runtime/bin/podman` is a remote-only client (`unknown flag: --root`; no `system service`), so the managed socket never becomes reachable — known runtime-bundle asset gap, not a US-425 regression.
+- US-425 scenario (SDK-only): public `@lando/sdk/schema` LogSource/LogSourceInput/LogChunk/LogOptions/ProviderCapabilities.serviceLogSources + JSON Schema registry all green; adjacent compiled-binary smoke (`--version`, `--help`, `doctor` exit 0) green.
+- **Learnings:** Bare `podman` on default PATH is apt 5.4.2; put brew bin first (or call the brew binary). Isolated roots use `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT` (not `LANDO_USER_*DIR`). Prefer `--provider=podman` for live sandbox setup until a local-engine Linux runtime asset is published.
+---
