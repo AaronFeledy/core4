@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
-import { infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
+import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   LogSource,
+  type LogSource as LogSourceShape,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -145,7 +146,7 @@ const plan: AppPlan = {
   },
   routes: [],
   networks: [],
-  stores: [{ name: "test_info_postgres_data", scope: "app" }],
+  stores: [{ name: "test_info_postgres_data", kind: "data", scope: "app" }],
   fileSync: [],
   metadata,
   extensions: {},
@@ -219,6 +220,7 @@ const makeInfoLayer = (
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    runStream: () => Stream.die("not used"),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
       Effect.succeed({
@@ -230,6 +232,14 @@ const makeInfoLayer = (
         endpoints: state === "running" ? (plan.services[target.service]?.endpoints ?? []) : [],
       }),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.die("not used"),
+    exportArtifact: () => Stream.die("not used"),
+    importArtifact: () => Effect.die("not used"),
   };
 
   return Layer.mergeAll(
@@ -378,10 +388,7 @@ describe("lando info --deep — agent-context env audit", () => {
 });
 
 describe("lando info — resolved log sources", () => {
-  const makeLogSourceLayer = (
-    logSources: ReadonlyArray<ReturnType<typeof Schema.decodeUnknownSync<typeof LogSource>>>,
-    serviceLogSources: boolean,
-  ) => {
+  const makeLogSourceLayer = (logSources: ReadonlyArray<LogSourceShape>, serviceLogSources: boolean) => {
     const svc: ServicePlan = { ...postgres, logSources };
     const logPlan: AppPlan = { ...plan, services: { [svc.name]: svc } };
     const caps: ProviderCapabilities = { ...capabilities, serviceLogSources };
@@ -412,6 +419,7 @@ describe("lando info — resolved log sources", () => {
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      runStream: () => Stream.die("not used"),
       logs: () => Stream.die("not used"),
       inspect: (target) =>
         Effect.succeed({
@@ -423,6 +431,14 @@ describe("lando info — resolved log sources", () => {
           endpoints: logPlan.services[target.service]?.endpoints ?? [],
         }),
       list: () => Effect.succeed([]),
+      snapshotVolume: () => Effect.die("not used"),
+      restoreVolume: () => Effect.die("not used"),
+      listVolumes: () => Effect.succeed([]),
+      removeVolume: () => Effect.void,
+      copyToService: () => Effect.die("not used"),
+      copyFromService: () => Stream.die("not used"),
+      exportArtifact: () => Stream.die("not used"),
+      importArtifact: () => Effect.die("not used"),
     };
     return Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-info", services: {} }) }),
@@ -468,6 +484,9 @@ describe("lando info — resolved log sources", () => {
     const svc = result.services.find((service) => service.service === "postgres");
     expect(svc?.logSources?.[0]?.availability).toBe("unavailable");
     expect(svc?.logSources?.[0]?.reason).toContain("serviceLogSources");
+    const rendered = renderInfoAppResult(result);
+    expect(rendered).toContain("serviceLogSources");
+    expect(buildInfoSummary(result).sections[0]?.rows[0]?.fields?.[3]?.value).toContain("serviceLogSources");
   });
 
   test("reports a redirect source as redirected-to-console", async () => {

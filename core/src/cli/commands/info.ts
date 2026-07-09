@@ -124,8 +124,11 @@ const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
   }
 };
 
-const logSourceText = (source: InfoLogSource): string =>
-  `${source.id} ${source.path} (${source.strategy}, ${source.availability})`;
+const logSourceText = (source: InfoLogSource): string => {
+  const availability =
+    source.reason === undefined ? source.availability : `${source.availability}: ${source.reason}`;
+  return `${source.id} ${source.path} (${source.strategy}, ${availability})`;
+};
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const rows: SummaryRow[] = result.services.map((service) => ({
@@ -198,10 +201,10 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
     const endpoints = service.endpoints;
     const renderedEndpoints = endpoints.length === 0 ? "no endpoints" : endpoints.join(", ");
     const base = `${service.service}\t${service.status}\t${renderedEndpoints}`;
-    const logRows = (service.logSources ?? []).map(
-      (source) =>
-        `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}`,
-    );
+    const logRows = (service.logSources ?? []).map((source) => {
+      const reason = source.reason === undefined ? "" : `\t${source.reason}`;
+      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+    });
     return [base, ...logRows];
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
