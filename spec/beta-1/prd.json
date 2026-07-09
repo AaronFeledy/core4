@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 'contract-completion remediation': close every real gap found by the 2026-07-02 post-Alpha-4 audit before entering feature freeze. No new feature surface \u2014 each story either completes a contract a shipped Alpha 4 PRD already promised (fsync-backed atomic writes and a single durable store under core/src/state per PRD-13; runProbe-backed HealthcheckRunner/UrlScanner/doctor/downloader/setup-readiness consumers per PRD-14 US-317; RedactionService-routed managed-file events, PathsService.managedFileLedger, and FileFormat reconciliation per PRD-18; @lando/renderer-lando actually owning the default renderer layer per PRD-12; the doctor NDJSON paths on the central StreamFrame seam per PRD-15 US-326; plugin setup.flags merged into lando setup, uninstall machine teardown + purge-safe resumable reports, and the bundled Podman machine path on macOS/Windows per PRD-01; an explicit release-automation decision per PRD-08) or closes spec \u00a78/\u00a712 drift no later phase owns (writable app/meta/global config surfaces, config translate detect/list/from/file, source-scoped includes update with --no-network, app shell host-mode default on ShellRunner with --no-history/--no-interactive, app logs --follow/--since, real meta global list/info/logs/restart, and real build-time version reporting). Stories follow the 5-PRD breakdown in spec/beta-1/prd-beta-1-{01..05}-*.md (US-372..US-395); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: spec/{01..19}-*.md and the originating Alpha 4 PRDs cited per story; when a story deliberately re-scopes a shipped contract (FileFormat, release posture, shell default) the spec/PRD text and schema snapshot must move in the same change. Beta 1 additionally lands the agent-native feature wave (PRD-06..09, US-396..US-409), the last new feature surface before freeze: McpService + `lando mcp` serving allowlist-governed MCP tools generated from the LandoCommandSpec registry over stdio (spec 10.14, 8.2.6, 8.3 `mcpAllowed:`), host agent-context env forwarding into exec surfaces (spec 6.9.1, 7.4, 7.5), `lando open` / `app:open` (spec 8.2.5), the top-level `lando:` Landofile version constraint (spec 7.4), and the disposable tool runner `apps:scratch:run` / `lando run` with the bundled `toolbox` recipe (spec 21.10.3, 8.8.10). The four features were worked into the normative spec parts first; when a feature PRD and a spec part disagree, the spec part wins. Beta 1 additionally closes the runtime-bundle distribution gap (PRD-10, US-410..US-412): runtime bundles are published as immutable runtime-v<version> release assets on this repository (no separate runtime-bundles repo), the committed runtime-bundle-versions.json is pinned to real published artifacts so local builds and source runs complete `lando setup` with zero env overrides, and CI gates enforce the spec 5.8.1 committed-manifest invariant (no placeholder checksums, on-repo URLs only, version drift blocked). Beta 1 additionally adds the Podman 6 runtime contract wave (PRD-11, US-413..US-424), covering provider version gates, libpod v6 API migration, managed machine behavior, runtime target fallout, CI provider integration, and Podman 6 pull/health/OOM/volume/trust/containers.conf semantics. Beta 1 additionally adds the service-log-sources primitive (PRD-12, US-425..US-429), the last new SDK surface before freeze: a declarative LogSource on service types and Landofiles (spec 6.14), an additive LogChunk.source and a serviceLogSources provider capability (spec 5.3, 5.4), build-time redirect reification to /dev/stdout|stderr for Lando-built images, provider-owned follow-strategy file following inside RuntimeProvider.logs with defined rotation/framing/finite-vs-follow/since semantics, and lando logs --source labeling with redaction applied only at the renderer/event/machine-output boundary (spec 10.9).",
+  "description": "Phase 5 Beta 1 runs through US-443 and includes a closure wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing but US-410 and US-411 are reopened until the US-430 local-engine Linux runtime bundle passes; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; and US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
   "userStories": [
     {
       "id": "US-372",
@@ -683,11 +683,12 @@
     },
     {
       "id": "US-410",
-      "title": "Runtime-bundle publishing workflow (runtime-v* release series)",
+      "title": "Runtime-bundle publishing workflow (`runtime-v*` release series)",
       "description": "As a maintainer, bumping plugins/provider-lando/runtime-bundle-version triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a runtime-v<version> GitHub Release in this repository.",
       "acceptanceCriteria": [
         "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the existing build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: linux-x64, linux-arm64, darwin-arm64, win32-x64 (the \u00a713.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md). Podman 6 drops Intel Mac support.",
-        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include Podman + rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
+        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include a local-engine-capable Podman binary plus rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
+        "Linux bundle verification executes the bundled podman binary directly and proves it accepts the managed-service argv shape Lando uses: --root, --runroot, and system service are supported without falling back to a host/system Podman. A remote-only client artifact fails the publishing workflow before manifest regeneration.",
         "The workflow uploads the platform tarballs/zips (per the existing RUNTIME_BUNDLE_TARGETS naming) as assets on a runtime-v<version> GitHub Release in this repository, and fails rather than re-uploads if the tag or any asset already exists (immutability).",
         "scripts/build-runtime-bundle.ts release mode derives asset URLs from this repository's releases/download/runtime-v<version>/ path (the dead lando/runtime-bundles base URL is removed).",
         "The workflow's final step regenerates runtime-bundle-versions.json against the published assets and surfaces the diff for landing (PR or same-change commit per \u00a717.8), so a version bump and its manifest pin always travel together.",
@@ -696,17 +697,17 @@
         "Lint passes"
       ],
       "priority": 39,
-      "passes": true,
-      "notes": "PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
+      "passes": false,
+      "notes": "Reopened by the remote-only Linux Podman asset defect: the published runtime-v0.1.0 Linux asset was checksum-valid but rejected managed-service --root/--runroot argv. This story is complete only when US-430 passes with a local-engine-capable Linux bundle. PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
     },
     {
       "id": "US-411",
-      "title": "Pin the committed manifest - local builds just work",
+      "title": "Pin the committed manifest — local builds \"just work\"",
       "description": "As a developer, I can compile the binary locally (or run from source) and complete lando setup's runtime-bundle resolution with no LANDO_RUNTIME_BUNDLE_MANIFEST, no override flags, and no special setup - because the committed manifest pins real published artifacts.",
       "acceptanceCriteria": [
-        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all four host targets; the _comment placeholder disclaimer is gone.",
+        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all four host targets; the _comment placeholder disclaimer is gone, and Linux entries point only at local-engine-capable artifacts verified by US-410/US-430.",
         "The manifest's runtimeVersion equals the runtime-bundle-version file's content.",
-        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, and installs. This published-manifest smoke check does not replace the \u00a713.5 current-commit override verification, which remains as-is.",
+        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, installs, and starts the managed Podman service with the bundled binary's --root/--runroot argv. This published-manifest smoke check does not replace the \u00a713.5 current-commit override verification, which remains as-is.",
         "Running from source (bun run path) resolves the identical manifest via the existing static JSON import - asserted by a test that the embedded/imported manifest passes the production schema (https-only, no placeholders).",
         "No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to \u00a75.8.1.",
         "Tests pass",
@@ -714,8 +715,8 @@
         "Lint passes"
       ],
       "priority": 40,
-      "passes": true,
-      "notes": "PRD-10. Depends on US-410 having published the first runtime-v release."
+      "passes": false,
+      "notes": "Reopened by the remote-only Linux Podman asset defect: a checksum-valid manifest is insufficient when managed setup cannot launch the bundled Linux Podman with --root/--runroot. This story is complete only when US-430 passes and the repinned manifest drives zero-override setup. PRD-10. Depends on US-410 having published the corrected runtime-v release."
     },
     {
       "id": "US-412",
@@ -1043,6 +1044,261 @@
       "priority": 58,
       "passes": true,
       "notes": "Feature wave PRD-12 (spec \u00a76.14.5 redaction, \u00a710.9, \u00a78.2.5, \u00a78.11). Extends US-393 (app logs --follow/--since); do not fork logs command logic."
+    },
+    {
+      "id": "US-430",
+      "title": "Republish local-engine Linux runtime bundle",
+      "description": "As a Linux user installing Lando from the committed manifest, the published runtime bundle contains a local-engine-capable Podman, not a remote-only client, so managed setup can launch the bundled service with Lando-owned roots.",
+      "acceptanceCriteria": [
+        "A new immutable runtime-v<version> asset set is published or the existing failed version is superseded by a new version; release assets are never overwritten in place.",
+        "Linux linux-x64 and linux-arm64 bundles include a Podman 6 local engine plus required rootless helpers, not a remote-only client artifact.",
+        "Bundle verification runs the bundled Linux podman and proves --root, --runroot, and system service are accepted in the managed-service argv shape Lando uses.",
+        "runtime-bundle-versions.json is repinned to the corrected published assets with real HTTPS URLs, sizes, and SHA-256 values.",
+        "A zero-override published-manifest setup run downloads the repinned Linux bundle, checksum-verifies it, starts the managed service, and reaches provider readiness without LANDO_RUNTIME_BUNDLE_MANIFEST or paired override flags.",
+        "US-410 and US-411 may be marked passed only after this story's verification evidence is recorded.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 59,
+      "passes": false,
+      "notes": "PRD-13 closure. Reopens PRD-10 false completion caused by the runtime-v0.1.0 Linux remote-only Podman asset rejecting managed-service --root/--runroot argv."
+    },
+    {
+      "id": "US-431",
+      "title": "Independent closure review lanes",
+      "description": "As a release owner, Beta 1 closure is reviewed by independent goal, QA, code-quality, security, and context/history lanes, and an inconclusive tool invocation cannot be counted as approval.",
+      "acceptanceCriteria": [
+        "Five terminal review results are retained: goal/constraint verification, hands-on QA, code quality, security, and context/history mining.",
+        "A lane that times out, returns empty output, returns only workflow instructions, or cannot inspect the repository is recorded as inconclusive and does not count as approval.",
+        "Each lane includes scope, inputs, commands or tools run, findings, disposition, and residual risks.",
+        "Any blocker found by a lane is either fixed and re-reviewed or linked to a still-failing Beta 1 story; no blocker is dismissed without a source-backed rationale.",
+        "The final closure note names every lane result and stores enough evidence for a later maintainer to audit the decision without rerunning the tools.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 60,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress entries repeatedly record review-work returning workflow instructions or empty/inconclusive results; those lanes cannot count as approval."
+    },
+    {
+      "id": "US-432",
+      "title": "Live Podman 6 end-to-end acceptance",
+      "description": "As a maintainer, Beta 1 proves the Podman 6 runtime contract on supported live provider surfaces, including managed setup after US-430, and reports unsupported environments as skips rather than passes.",
+      "acceptanceCriteria": [
+        "Live acceptance covers @lando/provider-lando managed setup using the repinned bundle from US-430 and reaches a usable provider socket/service.",
+        "Live or explicitly env-gated acceptance covers supported @lando/provider-podman and Docker-compatible provider surfaces that Beta 1 claims.",
+        "The suite exercises start, exec, logs, stop/destroy, image pull, health/readiness, and volume cleanup on Podman 6 where the provider claims support.",
+        "Environment prerequisites are detected before execution; missing socket, unsupported OS, missing privileges, or unavailable live runtime produces a structured skip with reason, not a passing result.",
+        "CI/release reporting distinguishes pass, fail, and skip for every provider/host cell, and Beta closure requires the cells documented as release-blocking to pass.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 61,
+      "passes": false,
+      "notes": "PRD-13 closure. Covers the live Podman 6 acceptance gap after the corrected managed Linux runtime bundle exists."
+    },
+    {
+      "id": "US-433",
+      "title": "Production host-proxy runLando transport",
+      "description": "As a user running lando inside a container, runLando requests use the production host-proxy transport with the same behavior as the already-proven logical dispatcher.",
+      "acceptanceCriteria": [
+        "A compiled in-container shim is built and installed into the container feature path without importing source-only modules at runtime.",
+        "The host exposes a scoped Unix-socket or platform-equivalent transport into eligible containers with least-privilege mount semantics.",
+        "Requests authenticate with an unguessable token scoped to the app/session and reject missing, stale, or cross-app tokens with tagged failures.",
+        "The dispatcher enforces the generated host-proxy allowlist, cwd remapping, env filtering, retained-runtime dispatch, exit-code parity, and CommandResultEnvelope parity already proven by the logical tests.",
+        "A concurrency cap and recursion guard prevent nested runLando loops and unbounded request fan-out.",
+        "Socket, token, shim, and mount state are cleaned up on stop/destroy/uninstall and on failed setup.",
+        "Events, transcripts, and errors preserve existing redaction parity and renderer/event-boundary compliance.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 62,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress records the logical host-proxy runLando round-trip as complete while physical socket transport, compiled shim, mount, token auth, concurrency cap, and recursion guard remain deferred."
+    },
+    {
+      "id": "US-434",
+      "title": "Real provider log-follow file access",
+      "description": "As a user following declared service log files, provider logs reads real container files and proves the full follow contract end-to-end instead of relying only on fake-provider semantics.",
+      "acceptanceCriteria": [
+        "Provider implementations access in-container log files through a provider-owned file-read/follow seam, not a core tail -F shell-out.",
+        "Live or env-gated provider coverage proves finite snapshot, follow mode, tail, since handling, missing files, copytruncate, rename-create rotation, truncation, oversized/binary line bounding, UTF-8 framing, and final partial-line flushing.",
+        "Every emitted LogChunk carries the correct source, stream, and redaction-boundary behavior; provider diagnostics do not leak as service log lines.",
+        "Follower scopes are interrupted and cleaned up on Ctrl+C, dropped streams, service stop, and provider failure.",
+        "Tests distinguish fake-provider contract coverage from live-provider/container-file coverage in their names and reports.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 63,
+      "passes": false,
+      "notes": "PRD-13 closure. Extends PRD-12 follow semantics to real provider/container file access and rotation/truncation cleanup evidence."
+    },
+    {
+      "id": "US-435",
+      "title": "buildKey build-results short-circuit",
+      "description": "As a user running the same disposable tool twice, the second lando run avoids rebuilding when \u00a76.13.5 says the build is current while still creating a fresh scratch app identity.",
+      "acceptanceCriteria": [
+        "Build orchestration persists and reads spec \u00a76.13.5 build results keyed by buildKey for scratch/toolbox builds.",
+        "The second identical lando run short-circuits the build phase and proves no provider image build or redirect step re-runs.",
+        "Each non-kept run still allocates a fresh scratch app id, root, network/volume namespace, and cleanup scope; only the build artifact is reused.",
+        "Changes to recipe inputs, log-source redirect inputs, base image, build args, or provider-relevant environment invalidate the key and rebuild.",
+        "The short-circuit is observable in structured events/output without exposing host paths or secrets.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 64,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress proves fresh scratch identity but still leaves the spec \u00a76.13.5 build-results short-circuit for lando run as residual closure work."
+    },
+    {
+      "id": "US-436",
+      "title": "Live-wire remaining Podman 6 seams",
+      "description": "As a Podman 6 user, image-pull, volume-prune, doctor-OOM, and machine-trust behavior are wired to real provider surfaces with ownership, safety, and redaction guarantees.",
+      "acceptanceCriteria": [
+        "Image pulls request and render Podman 6 progress, map non-200 failures to tagged provider errors, and redact registry details before events/transcripts/output.",
+        "Volume prune/cleanup uses Podman 6 anonymous/named/filter semantics safely, never deleting outside the current app/provider labels and requiring explicit destructive intent for named volumes.",
+        "Doctor consumes Podman 6 died events with OOMKilled, correlates them to services where possible, and reports remediation without leaking raw event payloads.",
+        "Managed-machine trust changes apply only to Lando-owned machines; Windows Hyper-V prep remains explicit manual remediation, never auto-elevated.",
+        "Each seam has real or env-gated integration coverage; unsupported environments are structured skips, not passes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 65,
+      "passes": false,
+      "notes": "PRD-13 closure. Consolidates remaining live/e2e Podman 6 seam evidence for pull, prune, OOM doctor, and trust/remediation behavior."
+    },
+    {
+      "id": "US-437",
+      "title": "meta:global:rebuild lifecycle command",
+      "description": "As a global-app user, meta:global:rebuild is a real command with global lifecycle semantics and dispatch parity, not a NotImplementedError stub.",
+      "acceptanceCriteria": [
+        "The deferred stub is removed from every source and compiled dispatch registry location required by the dual-dispatch parity contract.",
+        "OCLIF/source and compiled runCompiledCli dispatch execute the same rebuild operation and expose the same help, flags, result schema, and exit-code behavior.",
+        "Rebuild uses global app lifecycle semantics, not app-local restart shortcuts: it resolves the global plan, tears down/rebuilds/apply-starts the global app as specified, and publishes global lifecycle events.",
+        "Idempotency and failure behavior are covered for disabled global app, missing provider, partial rebuild failure, and successful rebuild.",
+        "Not-implemented/deferred-command fixtures and parity probes are updated so a regression back to NotImplementedError fails.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 66,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress records meta global list/info/logs/restart graduating while meta global rebuild still returns NotImplementedError."
+    },
+    {
+      "id": "US-438",
+      "title": "MCP read-only app config projection",
+      "description": "As an agent using MCP, I can read app config through app:config get/view without exposing config writes or umbrella-command mutations.",
+      "acceptanceCriteria": [
+        "MCP projects read-only app:config get and app:config view as allowed tools without exposing set, unset, edit, validate, or other write-capable config paths.",
+        "Generated MCP allowlist/registration logic rejects unsafe umbrella-command exposure and detects conflicts where a write-capable variant would become reachable.",
+        "Tool input schemas constrain the verb/path shape so a crafted request cannot select a write verb through args or aliases.",
+        "Results use the standard CommandResultEnvelope/StreamFrame seams with redaction and non-interactive behavior.",
+        "Tests prove default MCP catalog includes only the read-only config tools and rejects attempted writes with tagged failures.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 67,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress records app:config being removed from the default MCP allowlist until read-only get/view projection exists."
+    },
+    {
+      "id": "US-439",
+      "title": "Bun.$ host REPL shell semantics",
+      "description": "As a user in lando shell host mode, the spec \u00a78.2.3 Bun.$ REPL semantics are complete, with safe history, redaction, interruption, and exit behavior.",
+      "acceptanceCriteria": [
+        "Host shell interactive mode uses the Bun.$-backed ShellRunner/REPL path required by spec, not a raw $SHELL spawn except where the spec explicitly permits service mode.",
+        "Every accepted line emits structured pre/post shell-command events with command text redacted through RedactionService before output, events, transcripts, or history.",
+        "History persistence is per-line, opt-out via --no-history, bounded, and redacted before write; failed validation or secret-bearing lines do not leak raw text.",
+        "Ctrl+C interrupts the running line without corrupting the REPL; Ctrl+D/exit terminates with the correct status and restores terminal state.",
+        "--no-interactive follows the spec-required non-TTY behavior with deterministic tagged failure or execution semantics, and dual-dispatch parity holds.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 68,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress records the full \u00a78.2.3 Bun.$ REPL with per-line redacted history/events as a remaining Beta 1 gap."
+    },
+    {
+      "id": "US-440",
+      "title": "MCP serve startup refusal and bounded stdio",
+      "description": "As a user or adversarial MCP client, lando mcp refuses invalid startup modes consistently and cannot be forced into unbounded memory growth through stdio.",
+      "acceptanceCriteria": [
+        "Source and compiled dispatch have identical startup-refusal behavior for missing stdio, TTY-only invocation where serve is impossible, incompatible flags, and invalid config.",
+        "The stdio transport enforces bounded frame size, bounded buffered bytes, and bounded pending requests before JSON parse and during response/progress writes.",
+        "Malformed, partial, oversized, slow-loris, and never-reading clients fail or are disconnected with tagged transport errors and no unbounded memory use.",
+        "Backpressure from stdout/stderr is respected; progress notifications cannot accumulate without limit behind a blocked client.",
+        "Tests include adversarial stdio clients and assert memory/buffer caps through deterministic seams rather than wall-clock sleeps.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 69,
+      "passes": false,
+      "notes": "PRD-13 closure. Hardens MCP serve startup-refusal parity and stdio buffering/backpressure beyond the happy-path MCP server implementation."
+    },
+    {
+      "id": "US-441",
+      "title": "Version-constraint gap closure",
+      "description": "As a team relying on lando: constraints, Landofile provenance, semver grammar, schema validation, machine warnings, and cache invalidation all match the contract.",
+      "acceptanceCriteria": [
+        "Constraint provenance includes all six Landofile layers/sources with ordered source metadata in errors, warnings, doctor output, and cache keys.",
+        "Range parsing supports the full npm-semver grammar required by the contract, including unions, hyphen ranges, x-ranges, prerelease handling, and build metadata rules.",
+        "Schema-level validation rejects malformed ranges at parse time where the contract requires it, and runtime predicates evaluate every accumulated range without loosening by lower-precedence layers.",
+        "LANDO_SKIP_VERSION_CONSTRAINT=1 emits structured machine-warning output, not prose-only warnings, and still records the skipped constraints.",
+        "App-plan/cache correctness is proven: changing any constraint or source layer invalidates relevant cache entries, while unchanged constraints keep hot-path behavior.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 70,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress review notes defer six-file provenance, full npm-semver grammar, schema-level range predicates, structured machine warnings, and cache correctness."
+    },
+    {
+      "id": "US-442",
+      "title": "Generic CLI command lifecycle events",
+      "description": "As an observability consumer, every CLI command publishes generic lifecycle events consistently across source and compiled dispatch, with redaction and renderer/event-boundary compliance.",
+      "acceptanceCriteria": [
+        "Source OCLIF dispatch and compiled runCompiledCli publish generic pre/post command lifecycle events for every canonical command, alias, success, tagged failure, and unexpected failure path.",
+        "Event payloads include canonical id, argv/args/flags summary, cwd/app context where available, exit code, duration, and failure tag without leaking raw secrets.",
+        "Redaction runs through RedactionService; no command body writes events or output directly around the renderer/event boundary.",
+        "Existing command-specific events remain intact and are ordered relative to generic events in a documented, tested sequence.",
+        "Contract tests cover representative bootstrap levels (none, provider, app, plugins), streaming commands, interactive carve-outs, and compiled/source parity.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 71,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress records generic cli-command lifecycle publishing as a pre-existing CLI hook TODO after app:open-specific events landed."
+    },
+    {
+      "id": "US-443",
+      "title": "Real tooling-router command dispatch",
+      "description": "As a user invoking tooling through the command-not-found path, Lando dispatches real tooling tasks with the same policies as explicit tooling execution instead of returning the command_not_found stub.",
+      "acceptanceCriteria": [
+        "The command_not_found tooling-router stub is replaced with dispatch that resolves eligible tooling tasks from the active app/recipe/tooling registry.",
+        "Dispatch preserves Landofile version-constraint checks, cache invalidation behavior, network/no-network policy, provider selection, and tooling task environment rules.",
+        "Unknown commands, ambiguous matches, disabled tooling, missing providers, network-policy violations, and task failures return tagged failures with remediation and correct exit codes.",
+        "Source and compiled dispatch behave identically, including top-level aliases and machine-output envelopes.",
+        "Tests prove the router cannot bypass version constraints, cache correctness, or network restrictions by entering through command-not-found.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 72,
+      "passes": false,
+      "notes": "PRD-13 closure. Progress identifies OCLIF command_not_found tooling dispatch as a remaining source-router stub."
     }
   ]
 }
