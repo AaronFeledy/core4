@@ -139,6 +139,7 @@ const makeLogsLayer = (
   overrides: {
     readonly appPlan?: AppPlan;
     readonly serviceLogs?: boolean;
+    readonly serviceLogSources?: boolean;
     readonly defaultProviderServiceLogs?: boolean;
     readonly logs?: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, never>;
   } = {},
@@ -148,6 +149,7 @@ const makeLogsLayer = (
   const effectiveCapabilities: ProviderCapabilities = {
     ...capabilities,
     ...(overrides.serviceLogs === undefined ? {} : { serviceLogs: overrides.serviceLogs }),
+    ...(overrides.serviceLogSources === undefined ? {} : { serviceLogSources: overrides.serviceLogSources }),
   };
   const defaultProviderCapabilities: ProviderCapabilities = {
     ...effectiveCapabilities,
@@ -295,6 +297,31 @@ describe("lando logs", () => {
     await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls[0]?.options.sources).toEqual(webLogSources);
+  });
+
+  test("does not pass follow sources when the provider cannot realize service log sources", async () => {
+    const followSource = Schema.decodeUnknownSync(LogSource)({
+      id: "app-file",
+      path: "/app/logs/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const redirectSource = Schema.decodeUnknownSync(LogSource)({
+      id: "redirected",
+      path: "/app/logs/redirected.log",
+      stream: "stderr",
+      strategy: "redirect",
+    });
+    const webWithSources: ServicePlan = { ...web, logSources: [followSource, redirectSource] };
+    const planWithSources: AppPlan = {
+      ...plan,
+      services: { [webWithSources.name]: webWithSources, [database.name]: database },
+    };
+    const harness = makeLogsLayer({ appPlan: planWithSources, serviceLogSources: false });
+
+    await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
+
+    expect(harness.logCalls[0]?.options.sources).toEqual([redirectSource]);
   });
 
   test("passes an empty log source list when a fresh plan has no resolved sources", async () => {
