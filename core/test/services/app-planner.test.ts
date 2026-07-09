@@ -14,6 +14,7 @@ import {
   AbsolutePath,
   AppPlan,
   LandofileShape,
+  LogSource,
   PluginManifest,
   PluginName,
   PortablePath,
@@ -214,6 +215,42 @@ const customPluginRegistry = {
     Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
 };
 
+const followLogSourceServiceType = (required: boolean): ServiceType => ({
+  id: required ? "required-follow-log-source" : "optional-follow-log-source",
+  name: required ? "required-follow-log-source" : "optional-follow-log-source",
+  base: "l337",
+  schema: Schema.Unknown,
+  resolve: (input) =>
+    Effect.succeed({
+      base: "l337" as const,
+      normalizedConfig: input.service,
+      features: [],
+      logSources: [
+        Schema.decodeUnknownSync(LogSource)({
+          id: "worker-file",
+          path: "/var/log/worker.log",
+          stream: "stdout",
+          strategy: "follow",
+          required,
+        }),
+      ],
+    }),
+});
+
+const registryWithServiceType = (serviceType: ServiceType) => ({
+  ...customPluginRegistry,
+  list: Effect.succeed([
+    Schema.decodeUnknownSync(PluginManifest)({
+      name: PluginName.make("@example/log-source-type"),
+      version: "1.0.0",
+      api: 4 as const,
+      contributes: { serviceTypes: [serviceType.id] },
+    }),
+  ]),
+  loadServiceType: (id: string) =>
+    id === serviceType.id ? Effect.succeed(serviceType) : customPluginRegistry.loadServiceType(id),
+});
+
 const planWithCustomRegistry = (
   landofile: LandofileShape,
   providerCapabilities = providerLandoCapabilities,
@@ -375,6 +412,75 @@ describe("AppPlannerLive", () => {
       );
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.extensions["@lando/core/service-features"]).toBeUndefined();
+    });
+  });
+
+  test("fails planning when a required follow log source needs unsupported serviceLogSources", async () => {
+    await withTempCwd(async () => {
+      const serviceType = followLogSourceServiceType(true);
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            Schema.decodeUnknownSync(LandofileShape)({
+              name: "logs-app",
+              runtime: 4,
+              services: { worker: { type: serviceType.id } },
+            }),
+            { ...providerLandoCapabilities, serviceLogSources: false },
+          ),
+        ).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
+        ),
+      );
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("worker");
+        expect(failure.feature).toBe("required follow log source worker-file");
+        expect(failure.capability).toBe("serviceLogSources");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toContain("strategy: redirect");
+        expect(failure.remediation).toContain("serviceLogSources");
+      }
+    });
+  });
+
+  test("records unavailable non-required follow log sources without mutating resolved sources", async () => {
+    await withTempCwd(async () => {
+      const serviceType = followLogSourceServiceType(false);
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            Schema.decodeUnknownSync(LandofileShape)({
+              name: "logs-app",
+              runtime: 4,
+              services: { worker: { type: serviceType.id } },
+            }),
+            { ...providerLandoCapabilities, serviceLogSources: false },
+          ),
+        ).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
+        ),
+      );
+
+      const worker = appPlan.services[ServiceName.make("worker")];
+      expect(
+        worker?.logSources?.map((source) => ({ id: String(source.id), strategy: source.strategy })),
+      ).toEqual([{ id: "worker-file", strategy: "follow" }]);
+      expect(worker?.extensions["@lando/core/log-sources"]).toEqual({
+        unavailableFollow: [
+          {
+            id: "worker-file",
+            path: "/var/log/worker.log",
+            reason:
+              "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+          },
+        ],
+      });
     });
   });
 
@@ -2325,33 +2431,28 @@ describe("AppPlannerLive", () => {
     });
 
     test("resolves an exact artifacts entry over the name:version convention", async () => {
-      const pinnedType: ServiceType = {
-        ...makeLegacyServiceTypeFake({
-          id: "fake-db",
-          toServicePlan: ({
-            name,
-            service,
-            provider = ProviderId.make("lando"),
-            primary = false,
+      const basePinnedType = makeLegacyServiceTypeFake({
+        id: "fake-db",
+        toServicePlan: ({ name, service, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+          Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: "fake-db",
+            provider,
+            primary,
+            artifact: { kind: "ref", ref: service.image ?? "fake-db:latest" },
+            environment: {},
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
             metadata,
-          }) =>
-            Schema.decodeUnknownSync(ServicePlan)({
-              name: ServiceName.make(name),
-              type: "fake-db",
-              provider,
-              primary,
-              artifact: { kind: "ref", ref: service.image ?? "fake-db:latest" },
-              environment: {},
-              mounts: [],
-              storage: [],
-              endpoints: [],
-              routes: [],
-              dependsOn: [],
-              hostAliases: [],
-              metadata,
-              extensions: {},
-            }),
-        }),
+            extensions: {},
+          }),
+      });
+      const pinnedType = {
+        ...basePinnedType,
         versions: ["1.0", "2.0"],
         artifacts: { "1.0": "registry.example.com/fake-db:1.0-hardened" },
       };
@@ -2364,8 +2465,8 @@ describe("AppPlannerLive", () => {
                 new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
               ),
         loadServiceFeature: (id: string) =>
-          id === pinnedType.testFeature.id
-            ? Effect.succeed(pinnedType.testFeature)
+          id === basePinnedType.testFeature.id
+            ? Effect.succeed(basePinnedType.testFeature)
             : Effect.fail(
                 new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
               ),

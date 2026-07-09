@@ -43,6 +43,7 @@ import {
 } from "../errors/index.ts";
 
 import { emitLandofileYamlEither, parseLandofile } from "../landofile/index.ts";
+import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
   AbsolutePath,
   AppId,
@@ -607,6 +608,33 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       isStream(provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })),
       "logs returns a Stream of LogChunk values",
     );
+    if (provider.capabilities.serviceLogSources === true) {
+      const followSource = Schema.decodeUnknownSync(LogSource)({
+        id: "slow-query",
+        path: "/var/log/app/slow.log",
+        stream: "stdout",
+        strategy: "follow",
+      });
+      const followChunks = yield* provider
+        .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false, sources: [followSource] })
+        .pipe(
+          Stream.runCollect,
+          Effect.map((chunk) => [...chunk]),
+          Effect.catchAll((error) =>
+            Effect.fail(contractFailure("logs follow-source stream terminates without error", error)),
+          ),
+        );
+      yield* requireContract(
+        followChunks.some((chunk) => chunk.source === undefined),
+        "logs merges the implicit console source (untagged chunk)",
+        followChunks,
+      );
+      yield* requireContract(
+        followChunks.some((chunk) => String(chunk.source ?? "") === String(followSource.id)),
+        "logs tags follow-source chunks with the source id",
+        followChunks,
+      );
+    }
     yield* requireContract(
       Effect.isEffect(provider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
       "inspect is Effect-typed",
@@ -1315,14 +1343,34 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
       ),
     );
   },
-  logs: (target, _options) => {
-    const chunk: LogChunk = {
+  logs: (target, options) => {
+    const consoleChunk: LogChunk = {
       service: target.service,
       stream: "stdout",
       line: "ready",
     };
 
-    return Stream.make(chunk);
+    const sources = options.sources ?? [];
+    const followSources = sources.filter((source) => source.strategy === "follow");
+    if (followSources.length === 0) return Stream.make(consoleChunk);
+
+    const fs = makeMemoryLogFileAccess();
+    for (const source of followSources) {
+      fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
+    }
+
+    const followers = logFollowLineChunks(
+      followLogSources({
+        service: target.service,
+        sources,
+        follow: options.follow,
+        access: fs.access,
+        ...(options.tail === undefined ? {} : { tail: options.tail }),
+        ...(options.source === undefined ? {} : { source: options.source }),
+      }),
+    );
+
+    return Stream.concat(Stream.make(consoleChunk), followers);
   },
   inspect: (target) =>
     Effect.succeed({

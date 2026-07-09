@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -12,6 +12,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LogSource,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -136,11 +137,13 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const makeLogsLayer = (
   overrides: {
+    readonly appPlan?: AppPlan;
     readonly serviceLogs?: boolean;
     readonly defaultProviderServiceLogs?: boolean;
     readonly logs?: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, never>;
   } = {},
 ) => {
+  const effectivePlan = overrides.appPlan ?? plan;
   const logCalls: Array<{ readonly target: LogTarget; readonly options: LogOptions }> = [];
   const effectiveCapabilities: ProviderCapabilities = {
     ...capabilities,
@@ -187,6 +190,7 @@ const makeLogsLayer = (
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    runStream: () => Stream.die("not used"),
     logs: (target, options) => {
       logCalls.push({ target, options });
       if (overrides.logs !== undefined) return overrides.logs(target, options);
@@ -198,7 +202,7 @@ const makeLogsLayer = (
     },
     inspect: () =>
       Effect.succeed({
-        app: plan.id,
+        app: effectivePlan.id,
         service: ServiceName.make("web"),
         providerId,
         status: "running",
@@ -206,11 +210,19 @@ const makeLogsLayer = (
         endpoints: [],
       }),
     list: () => Effect.succeed([]),
+    snapshotVolume: () => Effect.die("not used"),
+    restoreVolume: () => Effect.die("not used"),
+    listVolumes: () => Effect.succeed([]),
+    removeVolume: () => Effect.void,
+    copyToService: () => Effect.die("not used"),
+    copyFromService: () => Stream.die("not used"),
+    exportArtifact: () => Stream.die("not used"),
+    importArtifact: () => Effect.die("not used"),
   };
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-logs", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(effectivePlan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(defaultProviderCapabilities),
@@ -262,6 +274,27 @@ describe("lando logs", () => {
     await Effect.runPromise(logsApp({ tail: 25 }).pipe(Effect.provide(harness.layer)));
 
     expect(harness.logCalls[0]?.options).toEqual({ follow: false, tail: 25 });
+  });
+
+  test("passes each service plan's resolved log sources to the provider", async () => {
+    const webLogSources = [
+      Schema.decodeUnknownSync(LogSource)({
+        id: "app-file",
+        path: "/app/logs/app.log",
+        stream: "stdout",
+        strategy: "follow",
+      }),
+    ];
+    const webWithSources: ServicePlan = { ...web, logSources: webLogSources };
+    const planWithSources: AppPlan = {
+      ...plan,
+      services: { [webWithSources.name]: webWithSources, [database.name]: database },
+    };
+    const harness = makeLogsLayer({ appPlan: planWithSources });
+
+    await Effect.runPromise(logsApp({ service: "web" }).pipe(Effect.provide(harness.layer)));
+
+    expect(harness.logCalls[0]?.options.sources).toEqual(webLogSources);
   });
 
   test("fails up front with CapabilityError when the provider cannot stream logs", async () => {

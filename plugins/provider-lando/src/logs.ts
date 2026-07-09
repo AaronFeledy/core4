@@ -2,6 +2,7 @@ import { makeLogDecoder as makeRuntimeLogDecoder } from "@lando/container-runtim
 import { Stream } from "effect";
 
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/services";
 
@@ -10,6 +11,7 @@ import type { PodmanApiClient, PodmanHttpRequest } from "./capabilities.ts";
 const PROVIDER_ID = "lando";
 export interface LogsOptions {
   readonly podmanApi?: PodmanApiClient;
+  readonly logFileAccess?: LogFileAccess;
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
@@ -83,11 +85,32 @@ export const logs = (
   }
 
   const podmanApi = runtime.podmanApi;
+  const logFileAccess = runtime.logFileAccess;
+  const logSources = service.logSources ?? options.sources ?? [];
+  const hasFollowSources = logSources.some((source) => source.strategy === "follow");
+  const since = options.since === undefined ? undefined : Number(options.since);
+
   return Stream.suspend(() => {
     const decodeChunk = makeLogsDecoder(service);
-    return stream(podmanApi, {
+    const consoleStream = stream(podmanApi, {
       method: "GET",
       path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
     }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+
+    if (!hasFollowSources || logFileAccess === undefined) return consoleStream;
+
+    const fileStream = logFollowLineChunks(
+      followLogSources({
+        service: service.name,
+        sources: logSources,
+        follow: options.follow ?? true,
+        access: logFileAccess,
+        ...(options.tail === undefined ? {} : { tail: options.tail }),
+        ...(since === undefined ? {} : { since }),
+        ...(options.source === undefined ? {} : { source: options.source }),
+      }),
+    );
+
+    return Stream.merge(consoleStream, fileStream);
   });
 };

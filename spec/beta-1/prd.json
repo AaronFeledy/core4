@@ -1022,7 +1022,7 @@
         "Lint passes"
       ],
       "priority": 57,
-      "passes": false,
+      "passes": true,
       "notes": "Feature wave PRD-12 (spec \u00a75.3 logs semantics, \u00a76.14.3 follow, \u00a76.14.4). Provider-owned follower, NOT core execStream(tail -F). Incorporates the correctness-adversary failure-mode set (rotation, framing, finite-vs-follow, since lie, leaks, huge lines)."
     },
     {
