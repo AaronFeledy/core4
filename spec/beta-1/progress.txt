@@ -1507,3 +1507,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - **Learnings for future iterations:**
   - See the new Codebase Patterns bullet. Key gotcha: `servicePlanFromDraft` REBUILDS `extensions["@lando/core/service-features"].buildSteps` from `draft.buildSteps`, so planner-emitted build steps must be appended to `draft.buildSteps` (a shallow-copied draft), NOT to the already-finalized `extensions` object — writing to `extensions` is silently overwritten.
 ---
+
+## 2026-07-09 01:48 CDT - US-427 Review
+- Review fixed the Cursor Bugbot cache blocker: app-plan cache schema version now invalidates pre-review warm cache entries that could declare `strategy:"redirect"` log sources but omit the new `lando-log-redirect:*` build steps.
+- Review notes (deferred/rejected): `review-work` was invoked with `origin/main`, but this harness returned the skill workflow instructions rather than automated findings, so that lane was treated as inconclusive and not counted as approval.
+- Verification: typecheck and lint passed; focused spot checks passed (`cache.test.ts`, `redirect-log-sources.test.ts`, `redirect-log-round-trip.test.ts`, `app-planner.test.ts`, `log-sources.test.ts`, SDK service contract, and service-lando log-sources).
+---
