@@ -14,8 +14,20 @@ export interface WriteManagedRuntimeContainersConfOptions {
 
 const escapeTomlString = (value: string): string => value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
 
-const containersConfBody = (runtimeBinDir: string): string =>
-  `[engine]\nhelper_binaries_dir = ["${escapeTomlString(runtimeBinDir)}"]\n`;
+// Upstream `[network].default_host_ips` defaults to `[]` = bind published ports
+// on every interface (0.0.0.0/::); loopback-only keeps managed-runtime bindings
+// off the LAN. Field/shape/example per container-libs (Podman 6.0.0, common
+// v0.68.0): config.go DefaultHostIPs `toml:"default_host_ips,omitempty"` and
+// docs/containers.conf.5.md (example `["127.0.0.1", "::1"]`).
+const MANAGED_DEFAULT_HOST_IPS = ["127.0.0.1", "::1"] as const;
+
+const containersConfBody = (runtimeBinDir: string): string => {
+  const defaultHostIps = MANAGED_DEFAULT_HOST_IPS.map((ip) => `"${ip}"`).join(", ");
+  return (
+    `[engine]\nhelper_binaries_dir = ["${escapeTomlString(runtimeBinDir)}"]\n` +
+    `[network]\ndefault_host_ips = [${defaultHostIps}]\n`
+  );
+};
 
 export const writeManagedRuntimeContainersConf = (
   options: WriteManagedRuntimeContainersConfOptions,

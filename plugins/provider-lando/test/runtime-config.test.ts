@@ -7,17 +7,57 @@ import { Effect } from "effect";
 
 import { writeManagedRuntimeContainersConf } from "../src/runtime-config.ts";
 
+interface ManagedContainersConf {
+  readonly engine?: { readonly helper_binaries_dir?: ReadonlyArray<string> };
+  readonly network?: { readonly default_host_ips?: ReadonlyArray<string> };
+}
+
+const writeAndParse = async (): Promise<{
+  readonly runtimeBinDir: string;
+  readonly body: string;
+  readonly parsed: ManagedContainersConf;
+}> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-"));
+  const runtimeBinDir = join(root, "runtime", "bin");
+  const runtimeConfigDir = join(root, "runtime", "config");
+  try {
+    await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
+    const body = await readFile(join(runtimeConfigDir, "containers.conf"), "utf8");
+    return { runtimeBinDir, body, parsed: Bun.TOML.parse(body) as ManagedContainersConf };
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
 describe("writeManagedRuntimeContainersConf", () => {
   test("writes helper_binaries_dir pointing at runtimeBinDir", async () => {
-    const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-"));
-    const runtimeBinDir = join(root, "runtime", "bin");
-    const runtimeConfigDir = join(root, "runtime", "config");
-    try {
-      await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
-      const body = await readFile(join(runtimeConfigDir, "containers.conf"), "utf8");
-      expect(body).toContain(`helper_binaries_dir = ["${runtimeBinDir}"]`);
-    } finally {
-      await rm(root, { recursive: true, force: true });
+    const { runtimeBinDir, body } = await writeAndParse();
+    expect(body).toContain(`helper_binaries_dir = ["${runtimeBinDir}"]`);
+  });
+
+  test("emits parseable TOML with loopback default_host_ips coexisting with helper_binaries_dir", async () => {
+    const { runtimeBinDir, parsed } = await writeAndParse();
+    expect(parsed.engine?.helper_binaries_dir).toEqual([runtimeBinDir]);
+    expect(parsed.network?.default_host_ips).toEqual(["127.0.0.1", "::1"]);
+  });
+
+  test("binds default published ports to loopback only for the managed runtime", async () => {
+    const { parsed } = await writeAndParse();
+    const hostIps = parsed.network?.default_host_ips ?? [];
+    for (const ip of hostIps) {
+      expect(["127.0.0.1", "::1"]).toContain(ip);
     }
+    expect(hostIps).toContain("127.0.0.1");
+    expect(hostIps).toContain("::1");
+  });
+
+  test("never emits a LAN wildcard default for the managed runtime", async () => {
+    const { body, parsed } = await writeAndParse();
+    const hostIps = parsed.network?.default_host_ips ?? [];
+    expect(hostIps.length).toBeGreaterThan(0);
+    expect(hostIps).not.toContain("0.0.0.0");
+    expect(hostIps).not.toContain("::");
+    expect(body).not.toContain("0.0.0.0");
+    expect(body).not.toContain("default_host_ips = []");
   });
 });
