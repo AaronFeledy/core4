@@ -93,4 +93,16 @@ describe("mergeLogSources", () => {
 
     expect(failure.message).toContain("Use strategy: follow");
   });
+
+  test("rejects user redirect sources on l337 services", () => {
+    const failure = expectFailure(
+      merge({
+        base: "l337",
+        userSources: [source({ id: "user-error", path: "/app/logs/error.log", strategy: "redirect" })],
+      }),
+    );
+
+    expect(failure.message).toContain("Use strategy: follow");
+    expect(failure.message).toContain("user-error");
+  });
 });
