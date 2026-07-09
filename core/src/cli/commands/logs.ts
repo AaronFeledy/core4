@@ -1,8 +1,3 @@
-/**
- * `lando logs` — stream app logs.
- *
- * Supports `--service`, `--follow`, `--tail`, `--since`. Bootstrap level: `app`.
- */
 import { Effect, Stream } from "effect";
 
 import type { LogsAppError, LogsAppOptions } from "@lando/sdk/app";
@@ -114,10 +109,12 @@ const validateSource = (
     );
   }
   if (requested === RESERVED_LOG_SOURCE_ID || serviceLogSources) return Effect.void;
-  const matchedSources = services.flatMap((service) =>
-    (service.logSources ?? []).filter((source) => String(source.id) === requested),
+  const hasRedirectSource = services.some((service) =>
+    (service.logSources ?? []).some(
+      (source) => String(source.id) === requested && source.strategy === "redirect",
+    ),
   );
-  if (matchedSources.some((source) => source.strategy === "redirect")) return Effect.void;
+  if (hasRedirectSource) return Effect.void;
   return Effect.fail(
     new ToolingExecError({
       message: `logs: log source "${requested}" is unavailable because the runtime provider does not advertise serviceLogSources.`,
@@ -172,9 +169,6 @@ export const validateSince = (
   return Effect.fail(invalidSinceError(raw));
 };
 
-// Provider selection + serviceLogs capability gate + service filtering for an
-// already-resolved plan. Requires only RuntimeProviderRegistry so out-of-band
-// plan resolvers (global-app commands) reuse it without user-Landofile resolution.
 const servicesForPlan = (
   plan: AppPlan,
   options: LogsAppOptions,
@@ -248,13 +242,13 @@ const logOptionsForService = (
   serviceLogSources: boolean,
   requestedSource: string | undefined,
 ): LogOptions => {
-  const capable = (service.logSources ?? []).filter(
-    (source) => serviceLogSources || source.strategy !== "follow",
-  );
+  const serviceSources = service.logSources ?? [];
+  const capable = serviceSources.filter((source) => serviceLogSources || source.strategy !== "follow");
   if (requestedSource === undefined) return { ...logOptions, sources: capable };
   if (requestedSource === RESERVED_LOG_SOURCE_ID) return { ...logOptions, sources: [] };
-  const matchedSources = (service.logSources ?? []).filter((source) => String(source.id) === requestedSource);
-  if (matchedSources.some((source) => source.strategy === "redirect")) {
+  if (
+    serviceSources.some((source) => String(source.id) === requestedSource && source.strategy === "redirect")
+  ) {
     return { ...logOptions, sources: [] };
   }
   return {

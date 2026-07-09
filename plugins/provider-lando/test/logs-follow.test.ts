@@ -196,5 +196,6 @@ describe("provider-lando log followers", () => {
     expect(chunks.map((chunk) => chunk.line)).toEqual(["file ready"]);
     expect(chunks.every((chunk) => chunk.source === fileSource.id)).toBe(true);
     expect(chunks.some((chunk) => chunk.line === "console noise")).toBe(false);
+    expect(fake.calls).toEqual([]);
   });
 });

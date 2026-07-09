@@ -1,9 +1,3 @@
-/**
- * `lando info` — provider-neutral runtime info.
- *
- * Supports `--deep`, repeated `--filter`, `--path`, `--service`,
- * `--format json|table|yaml`.
- */
 import { Effect, Schema } from "effect";
 
 import type {
@@ -210,25 +204,6 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows, ...extra].join("\n");
 };
 
-const LOG_SOURCE_UNAVAILABLE_REASON =
-  "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.";
-
-const infoLogSourcesFor = (
-  service: ServicePlan,
-  serviceLogSources: boolean,
-): ReadonlyArray<InfoLogSource> | undefined => {
-  const sources = service.logSources ?? [];
-  if (sources.length === 0) return undefined;
-  return sources.map((source) => {
-    const base = { id: String(source.id), path: String(source.path), strategy: source.strategy };
-    if (source.strategy === "redirect") {
-      return { ...base, availability: "redirected-to-console" as const };
-    }
-    if (serviceLogSources) return { ...base, availability: "available" as const };
-    return { ...base, availability: "unavailable" as const, reason: LOG_SOURCE_UNAVAILABLE_REASON };
-  });
-};
-
 const toServiceInfo = (
   plan: AppPlan,
   service: ServicePlan,
@@ -236,7 +211,19 @@ const toServiceInfo = (
   endpoints: ReadonlyArray<string>,
   serviceLogSources: boolean,
 ): InfoAppService => {
-  const logSources = infoLogSourcesFor(service, serviceLogSources);
+  const logSources = (service.logSources ?? []).map((source) => {
+    const base = { id: String(source.id), path: String(source.path), strategy: source.strategy };
+    if (source.strategy === "redirect") {
+      return { ...base, availability: "redirected-to-console" as const };
+    }
+    if (serviceLogSources) return { ...base, availability: "available" as const };
+    return {
+      ...base,
+      availability: "unavailable" as const,
+      reason:
+        "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+    };
+  });
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -246,7 +233,7 @@ const toServiceInfo = (
     primary: service.primary,
     status,
     endpoints,
-    ...(logSources === undefined ? {} : { logSources }),
+    ...(logSources.length === 0 ? {} : { logSources }),
   };
 };
 

@@ -181,4 +181,31 @@ describe("provider-docker log followers", () => {
     expect(chunks.map((chunk) => chunk.line)).toEqual(["console only"]);
     expect(chunks[0]?.source).toBeUndefined();
   });
+
+  test("restricts to a single declared source and suppresses console when options.source is set", async () => {
+    const fileSource = source();
+    const plan = makePlan([fileSource]);
+    const fs = makeMemoryLogFileAccess();
+    fs.writeFile(fileSource.path, "file ready\n");
+    const fake = makeFakeApi(rawConsole("console noise"));
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+        ),
+      ),
+    );
+
+    const chunks = await collect(
+      provider.logs(
+        { app: appId, service: node.name, plan },
+        { follow: false, sources: [fileSource], source: fileSource.id },
+      ),
+    );
+
+    expect(chunks.map((chunk) => chunk.line)).toEqual(["file ready"]);
+    expect(chunks.every((chunk) => chunk.source === fileSource.id)).toBe(true);
+    expect(chunks.some((chunk) => chunk.line === "console noise")).toBe(false);
+    expect(fake.calls).toEqual([]);
+  });
 });

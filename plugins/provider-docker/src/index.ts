@@ -1253,33 +1253,35 @@ const logs = (
   }
   const logSources = options.sources ?? service.logSources ?? [];
   const logFileAccess = runtime.logFileAccess;
-  const hasFollowSources = logSources.some((source) => source.strategy === "follow");
   const since = options.since === undefined ? undefined : Number(options.since);
 
   return Stream.suspend(() => {
+    const fileStream =
+      logFileAccess === undefined || !logSources.some((source) => source.strategy === "follow")
+        ? Stream.empty
+        : logFollowLineChunks(
+            followLogSources({
+              service: service.name,
+              sources: logSources,
+              follow: options.follow ?? true,
+              access: logFileAccess,
+              ...(options.tail === undefined ? {} : { tail: options.tail }),
+              ...(since === undefined ? {} : { since }),
+              ...(options.source === undefined ? {} : { source: options.source }),
+            }),
+          );
+
+    if (options.source !== undefined) {
+      return fileStream;
+    }
+
     const decodeChunk = makeLogsDecoder(service);
     const consoleStream = stream(runtime.api, "logs", {
       method: "GET",
       path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
     }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
 
-    if (!hasFollowSources || logFileAccess === undefined) {
-      return options.source === undefined ? consoleStream : Stream.empty;
-    }
-
-    const fileStream = logFollowLineChunks(
-      followLogSources({
-        service: service.name,
-        sources: logSources,
-        follow: options.follow ?? true,
-        access: logFileAccess,
-        ...(options.tail === undefined ? {} : { tail: options.tail }),
-        ...(since === undefined ? {} : { since }),
-        ...(options.source === undefined ? {} : { source: options.source }),
-      }),
-    );
-
-    return options.source === undefined ? Stream.merge(consoleStream, fileStream) : fileStream;
+    return Stream.merge(consoleStream, fileStream);
   });
 };
 

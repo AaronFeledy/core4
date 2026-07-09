@@ -361,7 +361,7 @@ describe("lando logs", () => {
     );
 
     expect(harness.logCalls[0]?.options.sources).toEqual([appFile]);
-    expect(String(harness.logCalls[0]?.options.source)).toBe("app-file");
+    expect(harness.logCalls[0]?.options.source).toBe("app-file");
   });
 
   test("--source console restricts to the implicit console stream with no file sources", async () => {
@@ -454,7 +454,7 @@ describe("lando logs", () => {
     }
   });
 
-  test("labels rendered lines by declared source while console lines keep today's appearance", () => {
+  test("labels rendered lines by declared source while console lines stay unlabeled", () => {
     const rendered = renderLogsAppResult({
       app: "test-logs",
       lines: [

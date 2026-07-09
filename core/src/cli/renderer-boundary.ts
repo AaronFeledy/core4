@@ -109,21 +109,17 @@ const makeStreamFrameSinkLive = (
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
       const emit = (frame: StreamFrameSinkFrame): Effect.Effect<void> =>
         Effect.gen(function* () {
+          const streamFrameOptions = {
+            chunk: frame.chunk,
+            ...(frame.service === undefined ? {} : { service: frame.service }),
+            ...(frame.source === undefined ? {} : { source: frame.source }),
+            redactor,
+          };
           if (format === "json") {
             const line =
               frame._tag === "stdout"
-                ? yield* encodeStreamStdoutFrame({
-                    chunk: frame.chunk,
-                    ...(frame.service === undefined ? {} : { service: frame.service }),
-                    ...(frame.source === undefined ? {} : { source: frame.source }),
-                    redactor,
-                  })
-                : yield* encodeStreamStderrFrame({
-                    chunk: frame.chunk,
-                    ...(frame.service === undefined ? {} : { service: frame.service }),
-                    ...(frame.source === undefined ? {} : { source: frame.source }),
-                    redactor,
-                  });
+                ? yield* encodeStreamStdoutFrame(streamFrameOptions)
+                : yield* encodeStreamStderrFrame(streamFrameOptions);
             yield* renderer.output.stdout(`${line}\n`);
             return;
           }
@@ -370,20 +366,16 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const tokens = options.redactionTokens?.(value) ?? [];
         const redactor = yield* jsonRedactor(tokens);
         for (const frame of options.streamFrames?.(value) ?? []) {
+          const streamFrameOptions = {
+            chunk: frame.chunk,
+            ...(frame.service === undefined ? {} : { service: frame.service }),
+            ...(frame.source === undefined ? {} : { source: frame.source }),
+            redactor,
+          };
           const line =
             frame._tag === "stdout"
-              ? yield* encodeStreamStdoutFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  ...(frame.source === undefined ? {} : { source: frame.source }),
-                  redactor,
-                })
-              : yield* encodeStreamStderrFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  ...(frame.source === undefined ? {} : { source: frame.source }),
-                  redactor,
-                });
+              ? yield* encodeStreamStdoutFrame(streamFrameOptions)
+              : yield* encodeStreamStderrFrame(streamFrameOptions);
           yield* writeResultLine(line);
         }
         const events = yield* Effect.serviceOption(EventService).pipe(

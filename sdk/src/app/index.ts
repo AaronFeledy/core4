@@ -272,7 +272,6 @@ export type InfoServiceStatus =
   | "unhealthy"
   | "error";
 
-/** Availability of a resolved log source when reported by `lando info`. */
 export type InfoLogSourceAvailability = "available" | "redirected-to-console" | "unavailable";
 
 export interface InfoLogSource {

@@ -66,7 +66,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
 };
 
 // Type intentionally left inferred: an explicit `LandoCommandSpec` annotation makes the
-// machine-output gate read this spread variant as a spec missing a literal `resultSchema`.
+// machine-output gate read this spread variant as a command definition missing `resultSchema`.
 const followLogsSpec = { ...logsSpec, streamingMode: "live" as const };
 
 export default class LogsCommand extends LandoCommandBase {
