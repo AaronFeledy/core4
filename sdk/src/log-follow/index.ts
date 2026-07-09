@@ -227,12 +227,29 @@ interface FollowerState {
   offset: bigint;
 }
 
+const appendLines = (
+  target: FramedLine[],
+  lines: ReadonlyArray<FramedLine>,
+  tail: number | undefined,
+): void => {
+  target.push(...lines);
+  if (tail === undefined) return;
+  if (tail <= 0) {
+    target.length = 0;
+    return;
+  }
+  if (target.length > tail) target.splice(0, target.length - tail);
+};
+
 // Reads a handle from `state.offset` to EOF in bounded steps, feeding the
-// framer. Advances `state.offset`. Returns the complete lines produced.
+// framer. Advances `state.offset`. Returns the complete lines produced. When a
+// tail window is supplied, only that many complete lines are retained while
+// reading so large historical logs do not allocate one object per old line.
 const readToEnd = (
   state: FollowerState,
   framer: LineFramer,
   maxReadBytes: number,
+  tail?: number,
 ): Effect.Effect<ReadonlyArray<FramedLine>, ProviderError> =>
   Effect.gen(function* () {
     const lines: FramedLine[] = [];
@@ -240,7 +257,7 @@ const readToEnd = (
     while (!done) {
       const read = yield* state.handle.read(state.offset, maxReadBytes);
       state.offset = read.nextOffset;
-      if (read.bytes.length > 0) lines.push(...framer.feed(read.bytes));
+      if (read.bytes.length > 0) appendLines(lines, framer.feed(read.bytes), tail);
       done = read.eof;
     }
     return lines;
@@ -318,7 +335,7 @@ export const followLogSource = (
           const handle = yield* input.access.open(path);
           live.handle = handle;
           const state: FollowerState = { handle, dev: current.stat.dev, ino: current.stat.ino, offset: 0n };
-          const backfill = yield* readToEnd(state, framer, maxReadBytes);
+          const backfill = yield* readToEnd(state, framer, maxReadBytes, input.tail);
           if (!follow) {
             const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
             return [Chunk.fromIterable(lineEvents(tailed)), Option.none<BodyState>()] as const;

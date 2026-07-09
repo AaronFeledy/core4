@@ -98,6 +98,17 @@ describe("followLogSource finite (§6.14.4)", () => {
     expect(fs.openHandleCount()).toBe(0);
   });
 
+  test("S1 applies tail while reading a large finite snapshot", async () => {
+    const fs = makeMemoryLogFileAccess();
+    const body = Array.from({ length: 10_000 }, (_value, index) => `l${index}`).join("\n");
+    fs.writeFile("/var/log/mysql/slow.log", `${body}\npartial`);
+    const events = await runFinite(
+      followLogSource({ service: SERVICE, source: source(), follow: false, tail: 2, access: fs.access }),
+    );
+
+    expect(lines(events)).toEqual(["l9999", "partial"]);
+  });
+
   test("S1 flushes a final partial line at EOF in finite mode", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/var/log/mysql/slow.log", "l1\nno-newline");

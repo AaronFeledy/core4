@@ -75,7 +75,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 ---
 
 ## 2026-07-09 10:33 CDT - US-428 Review
-- Review fixed Bugbot-confirmed blockers in the follow-source path: `@lando/provider-lando` and `@lando/provider-docker` now treat fresh `LogOptions.sources` from the caller as authoritative before falling back to plan-cached `ServicePlan.logSources`; core always passes an explicit per-service source list (including `[]`) so removed Landofile `logs:` sources clear provider fallback; the follower flushes trailing partial lines during initial `follow:true` backfill instead of only in finite mode; and a missing `required:true` source now fails with a tagged provider error in finite mode or after follow readiness timeout.
+- Review fixed Bugbot-confirmed blockers in the follow-source path: `@lando/provider-lando` and `@lando/provider-docker` now treat fresh `LogOptions.sources` from the caller as authoritative before falling back to plan-cached `ServicePlan.logSources`; core always passes an explicit per-service source list (including `[]`) so removed Landofile `logs:` sources clear provider fallback; the follower flushes trailing partial lines during initial `follow:true` backfill instead of only in finite mode; a missing `required:true` source now fails with a tagged provider error in finite mode or after follow readiness timeout; and initial tail snapshots/backfills retain only the requested tail window while reading so large historical logs do not allocate one object per old line.
 - Review notes (deferred/rejected): none.
 - Verification: typecheck, lint passed; focused spot checks passed for both provider follow suites, `core/test/cli/logs.scenario.test.ts`, and `sdk/test/log-follow/log-follow.test.ts`.
 ---
