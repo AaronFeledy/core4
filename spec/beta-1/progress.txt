@@ -1454,3 +1454,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - US-425 scenario (SDK-only): public `@lando/sdk/schema` LogSource/LogSourceInput/LogChunk/LogOptions/ProviderCapabilities.serviceLogSources + JSON Schema registry all green; adjacent compiled-binary smoke (`--version`, `--help`, `doctor` exit 0) green.
 - **Learnings:** Bare `podman` on default PATH is apt 5.4.2; put brew bin first (or call the brew binary). Isolated roots use `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT` (not `LANDO_USER_*DIR`). Prefer `--provider=podman` for live sandbox setup until a local-engine Linux runtime asset is published.
 ---
+
+## 2026-07-08 22:22 CDT - Babysit
+- PR: #557 https://github.com/AaronFeledy/core4/pull/557
+- CI outcome: pass (after triage)
+- Review feedback: fixed merge conflict with main; covered Windows managed machine trust in provider-lando-windows guide for guide-drift
+- Merge: merged (squash)
+---
