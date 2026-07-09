@@ -235,4 +235,60 @@ describe("mergeResolutionOverParent", () => {
       added: true,
     });
   });
+
+  test("merges logSources by id with child precedence", () => {
+    const parent: ServiceTypeResolution = {
+      base: "lando",
+      normalizedConfig: {} as ServiceConfig,
+      features: [],
+      logSources: [
+        {
+          id: "access" as never,
+          path: "/var/log/parent/access.log" as never,
+          stream: "stdout",
+          strategy: "redirect",
+          required: false,
+          timestamps: false,
+        },
+        {
+          id: "error" as never,
+          path: "/var/log/parent/error.log" as never,
+          stream: "stderr",
+          strategy: "redirect",
+          required: false,
+          timestamps: false,
+        },
+      ],
+    };
+    const child: ServiceTypeResolution = {
+      base: "lando",
+      normalizedConfig: {} as ServiceConfig,
+      features: [],
+      logSources: [
+        {
+          id: "error" as never,
+          path: "/var/log/child/error.log" as never,
+          stream: "stderr",
+          strategy: "follow",
+          required: false,
+          timestamps: false,
+        },
+        {
+          id: "app" as never,
+          path: "/app/logs/app.log" as never,
+          stream: "stderr",
+          strategy: "follow",
+          required: false,
+          timestamps: false,
+        },
+      ],
+    };
+
+    const merged = mergeResolutionOverParent(parent, child);
+    expect(merged.logSources?.map((source) => String(source.id))).toEqual(["access", "error", "app"]);
+    expect(String(merged.logSources?.find((source) => String(source.id) === "error")?.path)).toBe(
+      "/var/log/child/error.log",
+    );
+    expect(merged.logSources?.find((source) => String(source.id) === "error")?.strategy).toBe("follow");
+  });
 });
