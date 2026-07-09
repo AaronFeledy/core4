@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { renderRuntimeBundleWorkflow } from "../../../scripts/build-runtime-bundle-workflow.ts";
 
@@ -47,6 +46,31 @@ describe("runtime-bundle workflow", () => {
     }
     expect(workflow).not.toContain("hostKey: darwin-x64");
     expect(workflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform");
+  });
+
+  test("runs linux-arm64 on the native GitHub ARM runner", async () => {
+    const workflow = await readWorkflow();
+    expect(workflow).toContain(
+      "hostKey: linux-arm64\n            filename: lando-runtime-linux-arm64.tar.gz\n            runsOn: ubuntu-24.04-arm",
+    );
+    expect(workflow).toContain(
+      "hostKey: linux-x64\n            filename: lando-runtime-linux-x64.tar.gz\n            runsOn: ubuntu-24.04",
+    );
+    expect(workflow).toContain("runs-on: ${{ matrix.runsOn }}");
+  });
+
+  test("installs Linux source-build prerequisites before assembly without host Podman", async () => {
+    const workflow = await readWorkflow();
+    const installPrereqs = workflow.indexOf("Install Linux Podman source-build prerequisites");
+    const assemble = workflow.indexOf("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
+    expect(installPrereqs).toBeGreaterThan(-1);
+    expect(assemble).toBeGreaterThan(installPrereqs);
+    expect(workflow).toContain("sudo apt-get install -y --no-install-recommends");
+    expect(workflow).toContain("uses: actions/setup-go@v5");
+    expect(workflow).toContain("go-version: 1.25.6");
+    expect(workflow).toContain("libseccomp-dev");
+    expect(workflow).not.toMatch(/\n\s+golang \\\n/u);
+    expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/);
   });
 
   test("uploads the pinned bundle asset names for each host key", async () => {

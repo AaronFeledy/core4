@@ -1,5 +1,5 @@
 {
-  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative GitHub release asset digest. netavark/aardvark-dns publish no linux-arm64 binary and passt/pasta ships only as a .deb, so those are not yet pinned for every platform; extend when upstream publishes matching artifacts.",
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative GitHub release asset digest. Linux Podman is source-built natively during assembly; non-Linux Podman entries remain upstream remote clients. netavark/aardvark-dns publish no linux-arm64 binary and passt/pasta ships only as a .deb, so those are not yet pinned for every platform; extend when upstream publishes matching artifacts.",
   "schemaVersion": 1,
   "runtimeVersion": "0.1.0",
   "bundles": {
@@ -7,13 +7,13 @@
       "components": [
         {
           "name": "podman",
-          "version": "6.0.0",
-          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_amd64.tar.gz",
-          "sha256": "46b882f98e2432df09b11d4272a67ab53eb8a38156ba0b389be5585ee9a9b1f5",
+          "version": "6.0.1",
+          "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+          "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
           "archive": "tar.gz",
-          "member": "bin/podman-remote-static-linux_amd64",
           "installName": "bin/podman",
-          "mode": 493
+          "mode": 493,
+          "sourceBuild": "podman-linux-native"
         },
         {
           "name": "crun",
@@ -75,13 +75,13 @@
       "components": [
         {
           "name": "podman",
-          "version": "6.0.0",
-          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_arm64.tar.gz",
-          "sha256": "f5049048b05465859f2773a969cc5d42760426460be66cbc7241cbe739b81f15",
+          "version": "6.0.1",
+          "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+          "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
           "archive": "tar.gz",
-          "member": "bin/podman-remote-static-linux_arm64",
           "installName": "bin/podman",
-          "mode": 493
+          "mode": 493,
+          "sourceBuild": "podman-linux-native"
         },
         {
           "name": "crun",

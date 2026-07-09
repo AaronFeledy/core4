@@ -26,8 +26,14 @@ const publishTargets = RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS.map((key) => {
   return target;
 });
 
+const runnerFor = (hostKey: string): string =>
+  hostKey === "linux-arm64" ? "ubuntu-24.04-arm" : "ubuntu-24.04";
+
 const matrixInclude = publishTargets
-  .map((target) => `          - hostKey: ${target.key}\n            filename: ${target.filename}`)
+  .map(
+    (target) =>
+      `          - hostKey: ${target.key}\n            filename: ${target.filename}\n            runsOn: ${runnerFor(target.key)}`,
+  )
   .join("\n");
 
 const assetArgs = publishTargets.map((target) => `dist/cache/runtime-bundle/${target.filename}`).join(" ");
@@ -56,7 +62,7 @@ permissions:
 jobs:
   assemble:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: \${{ matrix.runsOn }}
     strategy:
       fail-fast: true
       matrix:
@@ -74,6 +80,30 @@ ${matrixInclude}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Setup Go for Linux Podman source build
+        if: startsWith(matrix.hostKey, 'linux-')
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.6
+
+      - name: Install Linux Podman source-build prerequisites
+        if: startsWith(matrix.hostKey, 'linux-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \\
+            build-essential \\
+            libassuan-dev \\
+            libbtrfs-dev \\
+            libdevmapper-dev \\
+            libglib2.0-dev \\
+            libgpg-error-dev \\
+            libgpgme-dev \\
+            libseccomp-dev \\
+            libsubid-dev \\
+            libsystemd-dev \\
+            pkg-config \\
+            uidmap
 
       - name: Assemble \${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}

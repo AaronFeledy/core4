@@ -76,6 +76,40 @@ describe("parseRuntimeBundleSources", () => {
     component.url = "http://example.test/insecure";
     expect(() => parseRuntimeBundleSources(doc)).toThrow();
   });
+
+  test("rejects Linux Podman remote-static pins", () => {
+    const doc = fixtureSources();
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.url =
+      "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-static-linux_amd64.tar.gz";
+    expect(() => parseRuntimeBundleSources(doc)).toThrow(/linux.*podman.*remote-static/i);
+  });
+
+  test("accepts non-Linux Podman remote client pins", () => {
+    const parsed = parseRuntimeBundleSources({
+      schemaVersion: 1,
+      runtimeVersion: "9.9.9-fixture",
+      bundles: {
+        "darwin-arm64": {
+          components: [
+            {
+              name: "podman",
+              version: "6.0.1",
+              url: "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-release-darwin_arm64.zip",
+              sha256: sha256(podmanBytes),
+              archive: "zip",
+              member: "podman-6.0.1/usr/bin/podman",
+              installName: "bin/podman",
+              mode: 493,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(parsed.bundles["darwin-arm64"]?.components[0]?.url).toContain("podman-remote-release");
+  });
 });
 
 describe("assembleBundle", () => {

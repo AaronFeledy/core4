@@ -21,6 +21,12 @@ import { dirname, join, resolve } from "node:path";
 import { Schema } from "effect";
 
 import { RUNTIME_BUNDLE_TARGETS, type RuntimeBundleTarget } from "./build-runtime-bundle.ts";
+import {
+  LinuxPodmanSourceBuild,
+  buildLinuxPodmanFromSource,
+  validateLinuxPodmanSource,
+  verifyManagedLinuxPodman,
+} from "./linux-podman-source-build.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const PROVIDER_DIR = resolve(REPO_ROOT, "plugins", "provider-lando");
@@ -45,6 +51,7 @@ const RuntimeBundleComponent = Schema.Struct({
   member: Schema.optional(Schema.String.pipe(Schema.minLength(1))),
   installName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u)),
   mode: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  sourceBuild: Schema.optional(Schema.Literal(LinuxPodmanSourceBuild)),
 });
 
 const RuntimeBundleGroup = Schema.Struct({
@@ -62,7 +69,15 @@ export type RuntimeBundleComponent = Schema.Schema.Type<typeof RuntimeBundleComp
 
 const decodeSources = Schema.decodeUnknownSync(RuntimeBundleSources);
 
-export const parseRuntimeBundleSources = (value: unknown): RuntimeBundleSources => decodeSources(value);
+const validateRuntimeBundleSources = (sources: RuntimeBundleSources): RuntimeBundleSources => {
+  for (const [hostKey, group] of Object.entries(sources.bundles)) {
+    for (const component of group.components) validateLinuxPodmanSource(hostKey, component);
+  }
+  return sources;
+};
+
+export const parseRuntimeBundleSources = (value: unknown): RuntimeBundleSources =>
+  validateRuntimeBundleSources(decodeSources(value));
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -85,46 +100,6 @@ const run: BundleCommandRunner = async (cmd, cwd) => {
   const exitCode = await proc.exited;
   if (exitCode !== 0)
     throw new Error(`assemble-runtime-bundle: command failed (${exitCode}): ${cmd.join(" ")}`);
-};
-
-const verifyLinuxPodman = async (
-  hostKey: string,
-  stageDir: string,
-  execute: BundleCommandRunner,
-): Promise<void> => {
-  if (hostKey !== "linux-x64" && hostKey !== "linux-arm64") return;
-
-  const verifyDir = await mkdtemp(join(tmpdir(), "rb-verify-"));
-  try {
-    const storageDir = join(verifyDir, "storage");
-    const runrootDir = join(verifyDir, "runroot");
-    const configPath = join(verifyDir, "containers.conf");
-    await mkdir(storageDir, { recursive: true });
-    await mkdir(runrootDir, { recursive: true });
-    await writeFile(configPath, "");
-    await execute([
-      join(stageDir, "bin", "podman"),
-      "--root",
-      storageDir,
-      "--runroot",
-      runrootDir,
-      "--config",
-      configPath,
-      "--storage-opt",
-      `overlay.mount_program=${join(stageDir, "bin", "fuse-overlayfs")}`,
-      "system",
-      "service",
-      "--help",
-    ]);
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `assemble-runtime-bundle: Linux Podman managed-service verifier failed for ${hostKey}: ${detail}`,
-      { cause },
-    );
-  } finally {
-    await rm(verifyDir, { recursive: true, force: true });
-  }
 };
 
 const extractMember = async (
@@ -211,12 +186,16 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
       }
       const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
       await writeFile(artifactPath, bytes);
-      const destPath = join(stageDir, component.installName);
-      await mkdir(dirname(destPath), { recursive: true });
-      await extractMember(component, artifactPath, destPath);
-      await chmod(destPath, component.mode);
+      if (component.sourceBuild === LinuxPodmanSourceBuild) {
+        await buildLinuxPodmanFromSource(component, artifactPath, stageDir, options.verifyCommand ?? run);
+      } else {
+        const destPath = join(stageDir, component.installName);
+        await mkdir(dirname(destPath), { recursive: true });
+        await extractMember(component, artifactPath, destPath);
+        await chmod(destPath, component.mode);
+      }
     }
-    await verifyLinuxPodman(options.hostKey, stageDir, options.verifyCommand ?? run);
+    await verifyManagedLinuxPodman(options.hostKey, stageDir, options.verifyCommand ?? run);
     await mkdir(options.outDir, { recursive: true });
     const outPath = join(options.outDir, target.filename);
     await packDeterministic(stageDir, outPath, target.filename.endsWith(".zip"));
