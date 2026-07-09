@@ -1401,3 +1401,20 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - US-423 live machine create/trust + Windows Hyper-V remediation remain macOS/Windows-only (Linux has no Podman machine path); pure seam + real runner spawn tests remain the functional surface here.
 - **Learnings for future iterations:** For sandbox setup, put brew `bin` first on `PATH` (or call `/home/linuxbrew/.linuxbrew/bin/podman`) and override roots with `LANDO_USER_DATA_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_CONF_ROOT` (not `*_DIR`). Do not treat apt 5.4.2 as proof Podman 6 is unavailable. After the floor is cleared, managed-provider setup still hits the placeholder runtime-bundle readiness failure until a real local bundle (`LANDO_RUNTIME_BUNDLE_MANIFEST`) is supplied.
 ---
+
+## 2026-07-08 21:05 CDT - Push
+- PR: none — push skipped: uncommitted product changes in `plugins/provider-lando/src/machine-trust.ts` and related tests (comment/doc trim only); branch has no upstream and four commits ahead of `origin/main` ready once the working tree is clean.
+---
+
+## 2026-07-08 21:05 CDT - Babysit
+- PR: none
+- CI outcome: n/a (no PR)
+- Review feedback: none
+- Merge: deferred (no PR for branch us-423-managed-machine-trust; push skipped due to uncommitted product changes and no upstream)
+---
+
+## 2026-07-08 21:10 CDT - US-423 Build (verify complete)
+- Story was already implemented and committed (managed machine CA-trust seam + Windows Hyper-V advisory remediation) with `passes: true`; no new code required. Working tree had leftover comment/doc-trim edits on `machine-trust.ts` and two test files plus a spurious touch on the generated OCLIF manifest — all reverted to the committed documented state so the branch is clean for later pipeline steps.
+- Confirmed the trust import stays gated to the Lando-owned machine `create` path and `resolveMachineTrustImport` skips user-owned machines; Windows remediation is advisory-only text that never elevates or runs `hyperv-prep`.
+- Verification: typecheck, lint passed; redaction-boundary and renderer-boundary passed; machine-trust + setup-machine-argv spot checks 23/23 green. No functional change this step; confirmed complete.
+---
