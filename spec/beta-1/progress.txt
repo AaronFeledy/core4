@@ -1572,3 +1572,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Review notes (deferred/rejected): Cursor Bugbot was invoked twice before fixes and produced no substantive report before timing out/exiting; treated as inconclusive, not approval.
 - Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for info, logs, logs-redaction, and machine-output schema.
 ---
+
+## 2026-07-09 15:03 CDT - US-429 Review
+- Fixed post-fix Bugbot blockers in `lando logs --source`: redirected sources now keep their console-backed stream instead of being suppressed to empty output, and unavailable follow sources fail up front when the provider lacks `serviceLogSources` instead of silently returning no lines.
+- Review notes (deferred/rejected): None; both post-fix Bugbot findings were confirmed in scope and fixed.
+- Verification: typecheck and lint passed; renderer-boundary and redaction-boundary passed; focused spot checks passed for logs, info, logs-redaction, and machine-output schema.
+---
