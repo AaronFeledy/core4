@@ -240,3 +240,11 @@ Open closure categories:
 - **Learnings for future iterations:**
   - Runtime manifest regeneration must follow immutable asset publication; preparing the pin first can describe release URLs that do not exist yet.
 ---
+
+## 2026-07-09 20:20 CDT - US-410 verification
+- The runtime-bundle publishing implementation was reverified complete for its branch-owned workflow mechanics; no additional production change was needed.
+- Verification: typecheck, lint, manifest invariants, generated-workflow idempotency, and relevant runtime-bundle test spot checks passed; isolated Linux x64 assembly emitted a bundle containing the local Podman engine and cleaned its temporary resources.
+- Blocked: US-410 remains `passes: false` until US-430 publishes the superseding immutable assets, repins the committed manifest, and proves zero-override managed setup.
+- **Learnings for future iterations:**
+  - Do not close a reopened publishing story from implementation evidence alone when its PRD explicitly delegates published-asset and live setup acceptance to a closure story.
+---
