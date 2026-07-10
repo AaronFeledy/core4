@@ -106,7 +106,7 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-versions.json");
   });
 
-  test("pushes the manifest pin branch before the irreversible release upload", async () => {
+  test("publishes immutable assets before regenerating the manifest pin", async () => {
     const workflow = await readWorkflow();
     const manifestBuild = workflow.indexOf(
       "bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle",
@@ -116,12 +116,12 @@ describe("runtime-bundle workflow", () => {
     const prCreate = workflow.indexOf('gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH"');
 
     expect(manifestBuild).toBeGreaterThan(-1);
+    expect(manifestBuild).toBeGreaterThan(releaseCreate);
     expect(branchPush).toBeGreaterThan(manifestBuild);
-    expect(releaseCreate).toBeGreaterThan(branchPush);
-    expect(prCreate).toBeGreaterThan(releaseCreate);
+    expect(prCreate).toBeGreaterThan(branchPush);
   });
 
-  test("updates an existing manifest pin branch before publishing", async () => {
+  test("updates an existing manifest pin branch after publishing", async () => {
     const workflow = await readWorkflow();
     expect(workflow).toContain('MANIFEST_PIN="$(mktemp)"');
     expect(workflow).toContain('git fetch origin "$BRANCH:$BRANCH"');

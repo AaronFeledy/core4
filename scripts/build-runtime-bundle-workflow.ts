@@ -165,6 +165,16 @@ ${matrixInclude}
             exit 1
           fi
 
+      - name: Publish runtime-v release assets
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$RUNTIME_BUNDLE_TAG" ${assetArgs} \\
+            --target "\${{ github.sha }}" \\
+            --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" \\
+            --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
+
       - name: Prepare manifest pin branch for landing
         env:
           GH_TOKEN: \${{ github.token }}
@@ -197,16 +207,6 @@ ${matrixInclude}
           git add plugins/provider-lando/runtime-bundle-versions.json
           git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
           git push -u origin "$BRANCH"
-
-      - name: Publish runtime-v release assets
-        env:
-          GH_TOKEN: \${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release create "$RUNTIME_BUNDLE_TAG" ${assetArgs} \\
-            --target "\${{ github.sha }}" \\
-            --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" \\
-            --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
 
       - name: Surface manifest pin PR
         env:
