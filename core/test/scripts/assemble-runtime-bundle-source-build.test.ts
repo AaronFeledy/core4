@@ -108,15 +108,20 @@ describe("Linux Podman source build", () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-source-missing-"));
     try {
       const sourceArchive = await fixtureSourceArchive(dir);
-      await expect(
-        assembleBundle({
+      let failure: unknown;
+      try {
+        await assembleBundle({
           hostKey: "linux-x64",
           sources: sourceBuildSources(sourceArchive),
           outDir: dir,
           fetchArtifact: async () => sourceArchive,
           verifyCommand: async () => {},
-        }),
-      ).rejects.toThrow(/source-build output.*bin\/podman/i);
+        });
+      } catch (cause) {
+        failure = cause;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure instanceof Error ? failure.message : "").toMatch(/source-build output.*bin\/podman/i);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

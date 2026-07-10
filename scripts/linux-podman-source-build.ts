@@ -2,9 +2,15 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { BundleCommandRunner, RuntimeBundleComponent } from "./assemble-runtime-bundle.ts";
-
-export const LinuxPodmanSourceBuild = "podman-linux-native" as const;
+import type { BundleCommandRunner } from "./assemble-runtime-bundle.ts";
+import {
+  LinuxAardvarkDnsSourceBuild,
+  LinuxNetavarkSourceBuild,
+  LinuxPasstSourceBuild,
+  type RuntimeBundleBinaryComponent,
+  type RuntimeBundleComponent,
+  isLinuxRuntimeBundle,
+} from "./runtime-bundle-sources.ts";
 
 export const PodmanSourceBuild = {
   gitCommit: "4cabbe61fa3a27fafc4a3ee1226e38ae1664ae57",
@@ -13,21 +19,76 @@ export const PodmanSourceBuild = {
   extraLdflags: "-buildid=",
 } as const;
 
-const linuxHostKeys = new Set(["linux-x64", "linux-arm64"]);
+interface LinuxHelperSourceBuildOptions {
+  readonly component: RuntimeBundleComponent;
+  readonly artifactPaths: ReadonlyMap<string, string>;
+  readonly stageDir: string;
+  readonly execute: BundleCommandRunner;
+}
 
-export const isLinuxRuntimeBundle = (hostKey: string): boolean => linuxHostKeys.has(hostKey);
+const sourceDirName = (component: RuntimeBundleComponent): string => `${component.name}-${component.version}`;
 
-export const validateLinuxPodmanSource = (hostKey: string, component: RuntimeBundleComponent): void => {
-  if (!isLinuxRuntimeBundle(hostKey) || component.name !== "podman") return;
-  if (component.url.includes("podman-remote-static")) {
+const inputPath = (paths: ReadonlyMap<string, string>, name: string): string => {
+  const path = paths.get(name);
+  if (path === undefined) throw new Error(`assemble-runtime-bundle: missing source-build input ${name}`);
+  return path;
+};
+
+const installOutput = async (
+  sourceDir: string,
+  stageDir: string,
+  output: { readonly source: string; readonly installName: string; readonly mode: number },
+): Promise<void> => {
+  const bytes = await readFile(join(sourceDir, output.source)).catch((cause: unknown) => {
+    throw new Error(`assemble-runtime-bundle: missing Linux source-build output ${output.source}`, { cause });
+  });
+  const destPath = join(stageDir, output.installName);
+  await mkdir(dirname(destPath), { recursive: true });
+  await writeFile(destPath, bytes);
+  await chmod(destPath, output.mode);
+};
+
+export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuildOptions): Promise<void> => {
+  if (!("inputs" in options.component)) {
     throw new Error(
-      `assemble-runtime-bundle: Linux Podman must be source-built, not remote-static (${hostKey})`,
+      `assemble-runtime-bundle: ${options.component.name} does not declare source-build inputs`,
     );
+  }
+  const workDir = await mkdtemp(join(tmpdir(), `rb-${options.component.name}-src-`));
+  try {
+    await options.execute(["tar", "-xf", inputPath(options.artifactPaths, "source"), "-C", workDir]);
+    const sourceDir = join(workDir, sourceDirName(options.component));
+    if (
+      options.component.sourceBuild === LinuxNetavarkSourceBuild ||
+      options.component.sourceBuild === LinuxAardvarkDnsSourceBuild
+    ) {
+      await options.execute(["tar", "-xzf", inputPath(options.artifactPaths, "vendor"), "-C", sourceDir]);
+      await mkdir(join(sourceDir, ".cargo"), { recursive: true });
+      await writeFile(
+        join(sourceDir, ".cargo", "config.toml"),
+        `[source.crates-io]\nreplace-with = "vendored-sources"\n\n[source.vendored-sources]\ndirectory = "vendor"\n\n[net]\noffline = true\n\n[build]\nrustflags = ["-C", "link-arg=-Wl,--build-id=none"]\n`,
+      );
+      await options.execute(
+        ["env", "SOURCE_DATE_EPOCH=0", "cargo", "build", "--release", "--locked", "--offline"],
+        sourceDir,
+      );
+    } else if (options.component.sourceBuild === LinuxPasstSourceBuild) {
+      await options.execute(["make", "passt", "pasta", "SOURCE_DATE_EPOCH=0"], sourceDir);
+    } else {
+      throw new Error(
+        `assemble-runtime-bundle: unsupported Linux source build ${options.component.sourceBuild}`,
+      );
+    }
+    for (const output of options.component.outputs) {
+      await installOutput(sourceDir, options.stageDir, output);
+    }
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
   }
 };
 
 export const buildLinuxPodmanFromSource = async (
-  component: RuntimeBundleComponent,
+  component: RuntimeBundleBinaryComponent,
   artifactPath: string,
   stageDir: string,
   execute: BundleCommandRunner,

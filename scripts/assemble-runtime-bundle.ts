@@ -18,66 +18,28 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { Schema } from "effect";
-
 import { RUNTIME_BUNDLE_TARGETS, type RuntimeBundleTarget } from "./build-runtime-bundle.ts";
 import {
-  LinuxPodmanSourceBuild,
+  buildLinuxHelperFromSource,
   buildLinuxPodmanFromSource,
-  validateLinuxPodmanSource,
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
+import {
+  LinuxPodmanSourceBuild,
+  RUNTIME_BUNDLE_SOURCES_PATH,
+  type RuntimeBundleBinaryComponent,
+  type RuntimeBundleSources,
+  parseRuntimeBundleSources,
+} from "./runtime-bundle-sources.ts";
+
+export {
+  RUNTIME_BUNDLE_SOURCES_PATH,
+  RuntimeBundleSources,
+  parseRuntimeBundleSources,
+} from "./runtime-bundle-sources.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
-const PROVIDER_DIR = resolve(REPO_ROOT, "plugins", "provider-lando");
-export const RUNTIME_BUNDLE_SOURCES_PATH = join(PROVIDER_DIR, "runtime-bundle-sources.json");
 const DEFAULT_OUT_DIR = resolve(REPO_ROOT, "dist", "cache", "runtime-bundle");
-
-const Sha256 = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{64}$/u),
-  Schema.filter((value) =>
-    /^0+$/u.test(value) ? "placeholder (all-zero) sha256 is not allowed" : undefined,
-  ),
-);
-
-const HttpsUrl = Schema.String.pipe(Schema.pattern(/^https:\/\//u));
-
-const RuntimeBundleComponent = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
-  version: Schema.String.pipe(Schema.minLength(1)),
-  url: HttpsUrl,
-  sha256: Sha256,
-  archive: Schema.Literal("none", "gz", "tar.gz", "zip"),
-  member: Schema.optional(Schema.String.pipe(Schema.minLength(1))),
-  installName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u)),
-  mode: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
-  sourceBuild: Schema.optional(Schema.Literal(LinuxPodmanSourceBuild)),
-});
-
-const RuntimeBundleGroup = Schema.Struct({
-  components: Schema.Array(RuntimeBundleComponent).pipe(Schema.minItems(1)),
-});
-
-export const RuntimeBundleSources = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
-  runtimeVersion: Schema.String.pipe(Schema.minLength(1)),
-  bundles: Schema.Record({ key: Schema.String, value: RuntimeBundleGroup }),
-});
-
-export type RuntimeBundleSources = Schema.Schema.Type<typeof RuntimeBundleSources>;
-export type RuntimeBundleComponent = Schema.Schema.Type<typeof RuntimeBundleComponent>;
-
-const decodeSources = Schema.decodeUnknownSync(RuntimeBundleSources);
-
-const validateRuntimeBundleSources = (sources: RuntimeBundleSources): RuntimeBundleSources => {
-  for (const [hostKey, group] of Object.entries(sources.bundles)) {
-    for (const component of group.components) validateLinuxPodmanSource(hostKey, component);
-  }
-  return sources;
-};
-
-export const parseRuntimeBundleSources = (value: unknown): RuntimeBundleSources =>
-  validateRuntimeBundleSources(decodeSources(value));
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -103,7 +65,7 @@ const run: BundleCommandRunner = async (cmd, cwd) => {
 };
 
 const extractMember = async (
-  component: RuntimeBundleComponent,
+  component: RuntimeBundleBinaryComponent,
   artifactPath: string,
   destPath: string,
 ): Promise<void> => {
@@ -177,22 +139,44 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
   const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
   try {
     for (const component of group.components) {
-      const bytes = await options.fetchArtifact(component.url);
-      const actual = sha256Hex(bytes);
-      if (actual !== component.sha256) {
-        throw new Error(
-          `assemble-runtime-bundle: sha256 verify failed for ${component.name} (${component.url}): expected ${component.sha256}, got ${actual}`,
-        );
-      }
-      const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
-      await writeFile(artifactPath, bytes);
-      if (component.sourceBuild === LinuxPodmanSourceBuild) {
-        await buildLinuxPodmanFromSource(component, artifactPath, stageDir, options.verifyCommand ?? run);
+      if ("inputs" in component) {
+        const artifactPaths = new Map<string, string>();
+        for (const input of component.inputs) {
+          const bytes = await options.fetchArtifact(input.url);
+          const actual = sha256Hex(bytes);
+          if (actual !== input.sha256) {
+            throw new Error(
+              `assemble-runtime-bundle: sha256 verify failed for ${component.name} ${input.name} (${input.url}): expected ${input.sha256}, got ${actual}`,
+            );
+          }
+          const artifactPath = join(downloadDir, `${component.name}-${input.name}-${options.hostKey}`);
+          await writeFile(artifactPath, bytes);
+          artifactPaths.set(input.name, artifactPath);
+        }
+        await buildLinuxHelperFromSource({
+          component,
+          artifactPaths,
+          stageDir,
+          execute: options.verifyCommand ?? run,
+        });
       } else {
-        const destPath = join(stageDir, component.installName);
-        await mkdir(dirname(destPath), { recursive: true });
-        await extractMember(component, artifactPath, destPath);
-        await chmod(destPath, component.mode);
+        const bytes = await options.fetchArtifact(component.url);
+        const actual = sha256Hex(bytes);
+        if (actual !== component.sha256) {
+          throw new Error(
+            `assemble-runtime-bundle: sha256 verify failed for ${component.name} (${component.url}): expected ${component.sha256}, got ${actual}`,
+          );
+        }
+        const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
+        await writeFile(artifactPath, bytes);
+        if (component.sourceBuild === LinuxPodmanSourceBuild) {
+          await buildLinuxPodmanFromSource(component, artifactPath, stageDir, options.verifyCommand ?? run);
+        } else {
+          const destPath = join(stageDir, component.installName);
+          await mkdir(dirname(destPath), { recursive: true });
+          await extractMember(component, artifactPath, destPath);
+          await chmod(destPath, component.mode);
+        }
       }
     }
     await verifyManagedLinuxPodman(options.hostKey, stageDir, options.verifyCommand ?? run);

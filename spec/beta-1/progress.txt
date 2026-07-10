@@ -224,3 +224,11 @@ Open closure categories:
 - **Learnings for future iterations:**
   - A successful local source-built archive proves the publishing inputs and verifier, but it cannot substitute for the published-asset and committed-manifest setup evidence required to close the story.
 ---
+
+## 2026-07-09 19:01 CDT - US-410 helper closure
+- Linux x64 and arm64 runtime bundles now natively build checksum-pinned Netavark 2.0.0, Aardvark DNS 2.0.0, and passt/pasta alongside Podman 6.0.1; newuidmap/newgidmap remain explicit host-provided uidmap facilities rather than unsafe bundled copies.
+- Verification: typecheck, lint, manifest invariants, generated-workflow idempotency, and focused runtime-bundle tests passed; isolated Linux x64 assembly produced every required helper and passed managed-service argv verification with clean teardown.
+- Blocked: US-410 remains `passes: false` until US-430 publishes immutable corrected assets, repins the committed manifest, and records zero-override managed setup evidence.
+- **Learnings for future iterations:**
+  - Netavark and Aardvark DNS 2.0 source builds require Rust 1.88, vendored Cargo inputs, and protobuf-compiler; exercise the generated workflow's real native build because typecheck and mocked command tests cannot reveal missing build tools.
+---

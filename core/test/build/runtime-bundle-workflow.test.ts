@@ -68,7 +68,11 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("sudo apt-get install -y --no-install-recommends");
     expect(workflow).toContain("uses: actions/setup-go@v5");
     expect(workflow).toContain("go-version: 1.25.6");
+    expect(workflow).toContain("dtolnay/rust-toolchain@1.88.0");
+    expect(workflow).toContain("libcap-dev");
     expect(workflow).toContain("libseccomp-dev");
+    expect(workflow).toContain("protobuf-compiler");
+    expect(workflow).toContain("uidmap");
     expect(workflow).not.toMatch(/\n\s+golang \\\n/u);
     expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/);
   });
