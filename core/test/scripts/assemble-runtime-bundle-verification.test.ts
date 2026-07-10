@@ -67,6 +67,12 @@ describe("Linux runtime bundle verification", () => {
     expect(commands).toEqual([["ldd", "/stage/bin/podman"]]);
   });
 
+  test("accepts supported libassuan SONAME variants from the host gpgme closure", async () => {
+    await verifyLinuxPodmanPortability("linux-x64", "/stage", async () =>
+      lddWith("libassuan.so.0 => /lib/x86_64-linux-gnu/libassuan.so.0 (0x00007f0000000000)"),
+    );
+  });
+
   test("rejects resolved libsubid dependencies", async () => {
     await expectPortabilityFailure(
       lddWith("libsubid.so.4 => /lib/x86_64-linux-gnu/libsubid.so.4 (0x00007f0000000000)"),

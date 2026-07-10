@@ -25,6 +25,7 @@ const inspectCommand: InspectCommandRunner = async (cmd, cwd) => {
 const reviewedLinuxSonames = new Set([
   "ld-linux-aarch64.so.1",
   "ld-linux-x86-64.so.2",
+  "libassuan.so.0",
   "libassuan.so.9",
   "libaudit.so.1",
   "libblkid.so.1",
