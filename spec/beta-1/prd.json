@@ -1060,7 +1060,7 @@
         "Lint passes"
       ],
       "priority": 59,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Owns the remote-only runtime-v0.1.0 Linux Podman asset defect: corrected local-engine bundle publishing, committed-manifest repinning, and zero-override managed setup evidence."
     },
     {
