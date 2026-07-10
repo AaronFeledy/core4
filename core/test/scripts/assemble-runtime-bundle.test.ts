@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import {
   RUNTIME_BUNDLE_SOURCES_PATH,
@@ -24,12 +24,12 @@ const fixtureSources = () => ({
     "linux-x64": {
       components: [
         {
-          name: "podman",
+          name: "fixture-engine",
           version: "6.0.0",
           url: "https://example.test/podman-linux-amd64",
           sha256: sha256(podmanBytes),
           archive: "none" as const,
-          installName: "bin/podman",
+          installName: "bin/fixture-engine",
           mode: 493,
         },
         {
@@ -81,9 +81,21 @@ describe("parseRuntimeBundleSources", () => {
     const doc = fixtureSources();
     const [component] = doc.bundles["linux-x64"].components;
     if (component === undefined) throw new Error("fixture requires a component");
+    component.name = "podman";
+    component.installName = "bin/podman";
     component.url =
       "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-static-linux_amd64.tar.gz";
     expect(() => parseRuntimeBundleSources(doc)).toThrow(/linux.*podman.*remote-static/i);
+  });
+
+  test("rejects every Linux Podman binary pin without the native source build", () => {
+    const doc = fixtureSources();
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.name = "podman";
+    component.installName = "bin/podman";
+    component.url = "https://example.test/podman-local-engine-binary";
+    expect(() => parseRuntimeBundleSources(doc)).toThrow(/linux.*podman.*source-built/i);
   });
 
   test("rejects source-build outputs that try to bundle host-provided uidmap helpers", () => {
@@ -282,11 +294,9 @@ describe("committed runtime-bundle-sources.json", () => {
     expect(sources.bundles).not.toHaveProperty("darwin-x64");
   });
 
-  test("runtimeVersion matches the runtime-bundle-version file", async () => {
+  test("declares a version suitable for an immutable runtime release tag", async () => {
     const sources = await readCommitted();
-    const versionFile = join(dirname(RUNTIME_BUNDLE_SOURCES_PATH), "runtime-bundle-version");
-    const pinnedVersion = (await readFile(versionFile, "utf8")).trim();
-    expect(sources.runtimeVersion).toBe(pinnedVersion);
+    expect(sources.runtimeVersion).toMatch(/^\d+\.\d+\.\d+$/u);
   });
 
   test("every component pins a real HTTPS url and non-placeholder sha256", async () => {

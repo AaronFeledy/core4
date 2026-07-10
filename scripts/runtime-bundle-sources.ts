@@ -91,9 +91,11 @@ const validateComponent = (hostKey: string, component: RuntimeBundleComponent): 
     }
   }
   if (!isLinuxRuntimeBundle(hostKey)) return;
-  if (component.name === "podman" && "url" in component && component.url.includes("podman-remote-static")) {
+  const installsPodman =
+    component.name === "podman" || ("installName" in component && component.installName === "bin/podman");
+  if (installsPodman && (!("installName" in component) || component.sourceBuild !== LinuxPodmanSourceBuild)) {
     throw new Error(
-      `assemble-runtime-bundle: Linux Podman must be source-built, not remote-static (${hostKey})`,
+      `assemble-runtime-bundle: Linux Podman must be source-built with ${LinuxPodmanSourceBuild}; remote-static and other binary pins are forbidden (${hostKey})`,
     );
   }
   if ((component.name === "netavark" || component.name === "aardvark-dns") && "url" in component) {
