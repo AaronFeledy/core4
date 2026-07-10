@@ -8,6 +8,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 export interface PodmanServiceSpec {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
+  readonly env?: Readonly<Record<string, string>>;
   readonly socketPath: string;
 }
 
@@ -61,6 +62,7 @@ export const buildPodmanServiceArgs = (p: {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
   return {
     command: p.podmanBin,
+    env: { CONTAINERS_CONF: `${p.configDir}/containers.conf` },
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,
       runtimeRunDir: p.runRoot,
@@ -80,6 +82,25 @@ export interface PodmanServiceRunner {
   readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
 }
+
+export interface PodmanServiceLaunchOptions {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly stdout: "ignore";
+  readonly stderr: "ignore";
+  readonly detached: true;
+}
+
+export interface PodmanServiceProcess {
+  readonly pid: number;
+  readonly unref?: () => void;
+}
+
+export type PodmanServiceSpawn = (
+  argv: ReadonlyArray<string>,
+  options: PodmanServiceLaunchOptions,
+) => PodmanServiceProcess;
+
+const defaultPodmanServiceSpawn: PodmanServiceSpawn = (argv, options) => Bun.spawn([...argv], options);
 
 const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
   Effect.tryPromise({
@@ -156,17 +177,19 @@ const findManagedPodmanServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Eff
     return matching;
   });
 
-export const makeSystemPodmanServiceRunner = (): PodmanServiceRunner => ({
+export const makeSystemPodmanServiceRunner = (
+  spawn: PodmanServiceSpawn = defaultPodmanServiceSpawn,
+): PodmanServiceRunner => ({
   launch: (spec) =>
     Effect.try({
       try: () => {
-        const proc = Bun.spawn([spec.command, ...spec.args], {
+        const proc = spawn([spec.command, ...spec.args], {
+          env: { ...process.env, ...spec.env },
           stdout: "ignore",
           stderr: "ignore",
           detached: true,
         });
-        const detachable = proc as { readonly unref?: () => void };
-        detachable.unref?.();
+        proc.unref?.();
         return proc.pid;
       },
       catch: (cause) =>

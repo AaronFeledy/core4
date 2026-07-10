@@ -56,6 +56,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - CI/release platform id `windows-x64` is different from runtime host key `win32-x64`; keep both names in their existing domains.
 - The default `@lando/provider-lando` runtime-bundle manifest is a placeholder. To exercise setup with real bytes, build a local bundle and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it; verification is never disabled.
+- Managed Podman's `--config <dir>` does not load `<dir>/containers.conf`; the service launcher must also set `CONTAINERS_CONF=<dir>/containers.conf` so bundled helper paths are honored.
 - OpenTUI prompt support belongs behind the renderer plugin and dynamic import boundary described in `core/AGENTS.md`; never add `@opentui/core` to `@lando/core` or import it statically.
 
 ## Guides and Docs-as-Tests

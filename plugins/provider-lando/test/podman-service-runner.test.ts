@@ -5,6 +5,7 @@ import {
   type PodmanServiceRunner,
   buildPodmanServiceArgs,
   isManagedPodmanServiceArgv,
+  makeSystemPodmanServiceRunner,
 } from "../src/podman-service-runner.ts";
 
 describe("PodmanServiceRunner", () => {
@@ -18,6 +19,7 @@ describe("PodmanServiceRunner", () => {
     });
 
     expect(spec.command).toBe("/data/runtime/bin/podman");
+    expect(spec.env).toEqual({ CONTAINERS_CONF: "/data/runtime/config/containers.conf" });
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -91,6 +93,27 @@ describe("PodmanServiceRunner", () => {
 
     expect(spec.args).toContain("--time=0");
     expect(spec.args.at(-1)).toBe("unix:///data/runtime/run/podman.sock");
+  });
+
+  test("system runner launches Podman with the managed containers config and inherited environment", async () => {
+    let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
+    const runner = makeSystemPodmanServiceRunner((_argv, options) => {
+      launchedEnv = options.env;
+      return { pid: 4321 };
+    });
+    const spec = buildPodmanServiceArgs({
+      podmanBin: "/data/runtime/bin/podman",
+      storageDir: "/data/runtime/storage",
+      runRoot: "/data/runtime/run",
+      configDir: "/data/runtime/config",
+      socketPath: "/data/runtime/run/podman.sock",
+    });
+
+    const pid = await Effect.runPromise(runner.launch(spec));
+
+    expect(pid).toBe(4321);
+    expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
+    expect(launchedEnv?.PATH).toBe(process.env.PATH);
   });
 
   test("PodmanServiceRunner interface is usable with a fake runner", async () => {
