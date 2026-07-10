@@ -24,6 +24,7 @@ const Sha256 = Schema.String.pipe(
 );
 
 const HttpsUrl = Schema.String.pipe(Schema.pattern(/^https:\/\//u));
+const RuntimeVersion = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u));
 
 const RuntimeBundleSourceInput = Schema.Struct({
   name: Schema.Literal("source", "vendor"),
@@ -66,7 +67,7 @@ const RuntimeBundleGroup = Schema.Struct({
 
 export const RuntimeBundleSources = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  runtimeVersion: Schema.String.pipe(Schema.minLength(1)),
+  runtimeVersion: RuntimeVersion,
   hostProvidedHelpers: Schema.optional(Schema.Array(Schema.Literal("newuidmap", "newgidmap"))),
   bundles: Schema.Record({ key: Schema.String, value: RuntimeBundleGroup }),
 });
@@ -84,6 +85,11 @@ const validateComponent = (hostKey: string, component: RuntimeBundleComponent): 
     throw new Error("assemble-runtime-bundle: newuidmap/newgidmap must not be bundled");
   }
   if ("outputs" in component) {
+    for (const input of component.inputs) {
+      if (input.name === "vendor" && input.archive !== "tar.gz") {
+        throw new Error("assemble-runtime-bundle: vendor source-build inputs must use tar.gz archives");
+      }
+    }
     for (const output of component.outputs) {
       if (uidmapInstallNames.has(output.installName)) {
         throw new Error("assemble-runtime-bundle: newuidmap/newgidmap must not be bundled");
