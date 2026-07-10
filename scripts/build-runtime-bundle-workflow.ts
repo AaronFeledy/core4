@@ -41,9 +41,9 @@ const assetArgs = publishTargets.map((target) => `dist/cache/runtime-bundle/${ta
 export const renderRuntimeBundleWorkflow = (): string => `${GENERATED_HEADER}
 #
 # Publishes per-platform runtime bundles as immutable assets on a
-# runtime-v<version> GitHub Release when plugins/provider-lando/runtime-bundle-version
-# is bumped. Bundles are assembled from pinned upstream sources
-# (plugins/provider-lando/runtime-bundle-sources.json), never from whatever the
+# runtime-v<version> GitHub Release when runtime-bundle-sources.json declares a
+# new runtimeVersion. Bundles are assembled from those pinned upstream sources,
+# never from whatever the
 # runner's package manager installed. The publish job fails rather than
 # re-uploads if the tag or release already exists (release-asset immutability).
 name: runtime-bundle
@@ -52,7 +52,6 @@ on:
   push:
     branches: [main]
     paths:
-      - plugins/provider-lando/runtime-bundle-version
       - plugins/provider-lando/runtime-bundle-sources.json
   workflow_dispatch:
 
@@ -145,7 +144,7 @@ ${matrixInclude}
 
       - name: Resolve runtime bundle tag
         run: |
-          VERSION="$(tr -d '[:space:]' < plugins/provider-lando/runtime-bundle-version)"
+          VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
           test -n "$VERSION"
           echo "RUNTIME_BUNDLE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RUNTIME_BUNDLE_TAG=runtime-v$VERSION" >> "$GITHUB_ENV"
@@ -156,7 +155,7 @@ ${matrixInclude}
         run: |
           set -euo pipefail
           if git ls-remote --tags origin "refs/tags/$RUNTIME_BUNDLE_TAG" | grep -q "$RUNTIME_BUNDLE_TAG"; then
-            echo "::error title=runtime-bundle-immutable::tag $RUNTIME_BUNDLE_TAG already exists; runtime bundles are immutable — bump runtime-bundle-version instead of overwriting."
+            echo "::error title=runtime-bundle-immutable::tag $RUNTIME_BUNDLE_TAG already exists; runtime bundles are immutable — declare a new runtimeVersion in runtime-bundle-sources.json instead of overwriting."
             exit 1
           fi
           if gh release view "$RUNTIME_BUNDLE_TAG" >/dev/null 2>&1; then
@@ -177,14 +176,15 @@ ${matrixInclude}
       - name: Commit published manifest pin
         run: |
           set -euo pipefail
-          bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle
-          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
+          bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle --runtime-version "$RUNTIME_BUNDLE_VERSION"
+          printf '%s\\n' "$RUNTIME_BUNDLE_VERSION" > plugins/provider-lando/runtime-bundle-version
+          if git diff --quiet -- plugins/provider-lando/runtime-bundle-version plugins/provider-lando/runtime-bundle-versions.json; then
             echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; no commit needed."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add plugins/provider-lando/runtime-bundle-versions.json
+          git add plugins/provider-lando/runtime-bundle-version plugins/provider-lando/runtime-bundle-versions.json
           git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
           git fetch origin main
           git rebase origin/main

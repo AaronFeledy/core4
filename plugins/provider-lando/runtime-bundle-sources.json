@@ -1,7 +1,7 @@
 {
   "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable.",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.0",
+  "runtimeVersion": "0.1.1",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {

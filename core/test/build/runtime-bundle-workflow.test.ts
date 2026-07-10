@@ -20,9 +20,10 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("name: runtime-bundle");
   });
 
-  test("triggers on a runtime-bundle-version bump and manual dispatch", async () => {
+  test("triggers on a source-set release declaration and manual dispatch", async () => {
     const workflow = await readWorkflow();
-    expect(workflow).toContain("plugins/provider-lando/runtime-bundle-version");
+    expect(workflow).toContain("plugins/provider-lando/runtime-bundle-sources.json");
+    expect(workflow).not.toContain("      - plugins/provider-lando/runtime-bundle-version");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("branches: [main]");
   });
@@ -100,9 +101,26 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain('gh release create "$RUNTIME_BUNDLE_TAG"');
   });
 
-  test("regenerates the committed manifest as a same-change commit", async () => {
+  test("resolves the release tag from the validated source set", async () => {
     const workflow = await readWorkflow();
-    expect(workflow).toContain("bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle");
+    expect(workflow).toContain(
+      'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"',
+    );
+    expect(workflow).toContain("(await readRuntimeBundleSources()).runtimeVersion");
+    expect(workflow).not.toContain("tr -d '[:space:]' < plugins/provider-lando/runtime-bundle-version");
+  });
+
+  test("advances the published version and manifest in one commit", async () => {
+    const workflow = await readWorkflow();
+    expect(workflow).toContain(
+      'bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle --runtime-version "$RUNTIME_BUNDLE_VERSION"',
+    );
+    expect(workflow).toContain(
+      `printf '%s\\n' "$RUNTIME_BUNDLE_VERSION" > plugins/provider-lando/runtime-bundle-version`,
+    );
+    expect(workflow).toContain(
+      "git add plugins/provider-lando/runtime-bundle-version plugins/provider-lando/runtime-bundle-versions.json",
+    );
     expect(workflow).toContain('git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"');
     expect(workflow).toContain("git fetch origin main");
     expect(workflow).toContain("git rebase origin/main");
@@ -114,7 +132,10 @@ describe("runtime-bundle workflow", () => {
   test("publishes immutable assets before regenerating the manifest pin", async () => {
     const workflow = await readWorkflow();
     const manifestBuild = workflow.indexOf(
-      "bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle",
+      'bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle --runtime-version "$RUNTIME_BUNDLE_VERSION"',
+    );
+    const versionPin = workflow.indexOf(
+      `printf '%s\\n' "$RUNTIME_BUNDLE_VERSION" > plugins/provider-lando/runtime-bundle-version`,
     );
     const manifestCommit = workflow.indexOf(
       'git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"',
@@ -124,6 +145,7 @@ describe("runtime-bundle workflow", () => {
 
     expect(manifestBuild).toBeGreaterThan(-1);
     expect(manifestBuild).toBeGreaterThan(releaseCreate);
+    expect(versionPin).toBeGreaterThan(releaseCreate);
     expect(manifestCommit).toBeGreaterThan(manifestBuild);
     expect(manifestPush).toBeGreaterThan(manifestCommit);
   });
