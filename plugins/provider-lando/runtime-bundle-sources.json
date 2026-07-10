@@ -1,19 +1,20 @@
 {
-  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative GitHub release asset digest. netavark/aardvark-dns publish no linux-arm64 binary and passt/pasta ships only as a .deb, so those are not yet pinned for every platform; extend when upstream publishes matching artifacts.",
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable.",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.0",
+  "runtimeVersion": "0.1.1",
+  "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {
       "components": [
         {
           "name": "podman",
-          "version": "6.0.0",
-          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_amd64.tar.gz",
-          "sha256": "46b882f98e2432df09b11d4272a67ab53eb8a38156ba0b389be5585ee9a9b1f5",
+          "version": "6.0.1",
+          "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+          "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
           "archive": "tar.gz",
-          "member": "bin/podman-remote-static-linux_amd64",
           "installName": "bin/podman",
-          "mode": 493
+          "mode": 493,
+          "sourceBuild": "podman-linux-native"
         },
         {
           "name": "crun",
@@ -36,20 +37,61 @@
         {
           "name": "netavark",
           "version": "2.0.0",
-          "url": "https://github.com/containers/netavark/releases/download/v2.0.0/netavark.gz",
-          "sha256": "d8bc342c38382029e7e12256120ac0f7676dcc063aa1e7259189bb69cc869563",
-          "archive": "gz",
-          "installName": "bin/netavark",
-          "mode": 493
+          "sourceBuild": "netavark-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://github.com/containers/netavark/archive/refs/tags/v2.0.0.tar.gz",
+              "sha256": "031aeeacc930382e8635d40a885798eff1da164dfcf9024b698f822e5995d9c8",
+              "archive": "tar.gz"
+            },
+            {
+              "name": "vendor",
+              "url": "https://github.com/containers/netavark/releases/download/v2.0.0/netavark-v2.0.0-vendor.tar.gz",
+              "sha256": "86de7eb3a4e9ecc4acd5addc462879e8f2bac3562a4b99f12a4be67e5218c2cb",
+              "archive": "tar.gz"
+            }
+          ],
+          "outputs": [{ "source": "target/release/netavark", "installName": "bin/netavark", "mode": 493 }]
         },
         {
           "name": "aardvark-dns",
           "version": "2.0.0",
-          "url": "https://github.com/containers/aardvark-dns/releases/download/v2.0.0/aardvark-dns.gz",
-          "sha256": "fdaa3665ce58337fe597e0822e24de97528529d1a39fa6b655aa656c8ad33086",
-          "archive": "gz",
-          "installName": "bin/aardvark-dns",
-          "mode": 493
+          "sourceBuild": "aardvark-dns-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://github.com/containers/aardvark-dns/archive/refs/tags/v2.0.0.tar.gz",
+              "sha256": "d3f5d6b3be3c2d80e8257fb9467e34ff104f299474427979454034dca6dc88cc",
+              "archive": "tar.gz"
+            },
+            {
+              "name": "vendor",
+              "url": "https://github.com/containers/aardvark-dns/releases/download/v2.0.0/aardvark-dns-v2.0.0-vendor.tar.gz",
+              "sha256": "c5ca49d98c535fa3c8d0d195512faf1f8610ad9ca4f62bec73c7bbfc4ddcc0b6",
+              "archive": "tar.gz"
+            }
+          ],
+          "outputs": [
+            { "source": "target/release/aardvark-dns", "installName": "bin/aardvark-dns", "mode": 493 }
+          ]
+        },
+        {
+          "name": "passt",
+          "version": "2026_06_11.a9c61ff",
+          "sourceBuild": "passt-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://passt.top/passt/snapshot/passt-2026_06_11.a9c61ff.tar.xz",
+              "sha256": "b94b235cb96ce1b7aeab6552b7e0b4c9a780e5d700ced500c65e429b2d8b8450",
+              "archive": "tar.xz"
+            }
+          ],
+          "outputs": [
+            { "source": "passt", "installName": "bin/passt", "mode": 493 },
+            { "source": "pasta", "installName": "bin/pasta", "mode": 493 }
+          ]
         },
         {
           "name": "gvproxy",
@@ -75,13 +117,13 @@
       "components": [
         {
           "name": "podman",
-          "version": "6.0.0",
-          "url": "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-static-linux_arm64.tar.gz",
-          "sha256": "f5049048b05465859f2773a969cc5d42760426460be66cbc7241cbe739b81f15",
+          "version": "6.0.1",
+          "url": "https://github.com/containers/podman/archive/refs/tags/v6.0.1.tar.gz",
+          "sha256": "4829d7c1423523a6a4d5537dea7968ae7f6c22ed7f1d5f416638fd81c83caa47",
           "archive": "tar.gz",
-          "member": "bin/podman-remote-static-linux_arm64",
           "installName": "bin/podman",
-          "mode": 493
+          "mode": 493,
+          "sourceBuild": "podman-linux-native"
         },
         {
           "name": "crun",
@@ -100,6 +142,65 @@
           "archive": "none",
           "installName": "bin/conmon",
           "mode": 493
+        },
+        {
+          "name": "netavark",
+          "version": "2.0.0",
+          "sourceBuild": "netavark-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://github.com/containers/netavark/archive/refs/tags/v2.0.0.tar.gz",
+              "sha256": "031aeeacc930382e8635d40a885798eff1da164dfcf9024b698f822e5995d9c8",
+              "archive": "tar.gz"
+            },
+            {
+              "name": "vendor",
+              "url": "https://github.com/containers/netavark/releases/download/v2.0.0/netavark-v2.0.0-vendor.tar.gz",
+              "sha256": "86de7eb3a4e9ecc4acd5addc462879e8f2bac3562a4b99f12a4be67e5218c2cb",
+              "archive": "tar.gz"
+            }
+          ],
+          "outputs": [{ "source": "target/release/netavark", "installName": "bin/netavark", "mode": 493 }]
+        },
+        {
+          "name": "aardvark-dns",
+          "version": "2.0.0",
+          "sourceBuild": "aardvark-dns-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://github.com/containers/aardvark-dns/archive/refs/tags/v2.0.0.tar.gz",
+              "sha256": "d3f5d6b3be3c2d80e8257fb9467e34ff104f299474427979454034dca6dc88cc",
+              "archive": "tar.gz"
+            },
+            {
+              "name": "vendor",
+              "url": "https://github.com/containers/aardvark-dns/releases/download/v2.0.0/aardvark-dns-v2.0.0-vendor.tar.gz",
+              "sha256": "c5ca49d98c535fa3c8d0d195512faf1f8610ad9ca4f62bec73c7bbfc4ddcc0b6",
+              "archive": "tar.gz"
+            }
+          ],
+          "outputs": [
+            { "source": "target/release/aardvark-dns", "installName": "bin/aardvark-dns", "mode": 493 }
+          ]
+        },
+        {
+          "name": "passt",
+          "version": "2026_06_11.a9c61ff",
+          "sourceBuild": "passt-linux-native",
+          "inputs": [
+            {
+              "name": "source",
+              "url": "https://passt.top/passt/snapshot/passt-2026_06_11.a9c61ff.tar.xz",
+              "sha256": "b94b235cb96ce1b7aeab6552b7e0b4c9a780e5d700ced500c65e429b2d8b8450",
+              "archive": "tar.xz"
+            }
+          ],
+          "outputs": [
+            { "source": "passt", "installName": "bin/passt", "mode": 493 },
+            { "source": "pasta", "installName": "bin/pasta", "mode": 493 }
+          ]
         },
         {
           "name": "gvproxy",
