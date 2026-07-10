@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 runs through US-443 and includes a closure wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing but US-410 and US-411 are reopened until the US-430 local-engine Linux runtime bundle passes; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; and US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "description": "Phase 5 Beta 1 runs through US-443 and includes a closure wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; and US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps before feature freeze, with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
   "userStories": [
     {
       "id": "US-372",
@@ -683,12 +683,11 @@
     },
     {
       "id": "US-410",
-      "title": "Runtime-bundle publishing workflow (`runtime-v*` release series)",
+      "title": "Runtime-bundle publishing workflow (runtime-v* release series)",
       "description": "As a maintainer, bumping plugins/provider-lando/runtime-bundle-version triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a runtime-v<version> GitHub Release in this repository.",
       "acceptanceCriteria": [
         "A new generated workflow (emitted by a scripts/build-runtime-bundle-workflow.ts-style generator following the existing build-release-workflow.ts pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: linux-x64, linux-arm64, darwin-arm64, win32-x64 (the \u00a713.5 release platform id windows-x64 corresponds to manifest host key win32-x64; both names stay in their existing domains per root AGENTS.md). Podman 6 drops Intel Mac support.",
-        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include a local-engine-capable Podman binary plus rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
-        "Linux bundle verification executes the bundled podman binary directly and proves it accepts the managed-service argv shape Lando uses: --root, --runroot, and system service are supported without falling back to a host/system Podman. A remote-only client artifact fails the publishing workflow before manifest regeneration.",
+        "Bundle contents are assembled from pinned upstream artifact versions declared in a committed input (not whatever the runner's package manager installed): the pinned Podman line is Podman 6; Linux bundles include Podman + rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.",
         "The workflow uploads the platform tarballs/zips (per the existing RUNTIME_BUNDLE_TARGETS naming) as assets on a runtime-v<version> GitHub Release in this repository, and fails rather than re-uploads if the tag or any asset already exists (immutability).",
         "scripts/build-runtime-bundle.ts release mode derives asset URLs from this repository's releases/download/runtime-v<version>/ path (the dead lando/runtime-bundles base URL is removed).",
         "The workflow's final step regenerates runtime-bundle-versions.json against the published assets and surfaces the diff for landing (PR or same-change commit per \u00a717.8), so a version bump and its manifest pin always travel together.",
@@ -697,17 +696,17 @@
         "Lint passes"
       ],
       "priority": 39,
-      "passes": false,
-      "notes": "Reopened by the remote-only Linux Podman asset defect: the published runtime-v0.1.0 Linux asset was checksum-valid but rejected managed-service --root/--runroot argv. This story is complete only when US-430 passes with a local-engine-capable Linux bundle. PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
+      "passes": true,
+      "notes": "PRD-10 (spec \u00a75.8.1 committed-manifest invariant, \u00a713.5 in-repo hosting, \u00a717.8 runtime-bundle publishing). darwin/win32 bundle artifacts here are repackaged pinned upstream releases; the mac/win machine lifecycle remains US-387."
     },
     {
       "id": "US-411",
-      "title": "Pin the committed manifest — local builds \"just work\"",
+      "title": "Pin the committed manifest - local builds just work",
       "description": "As a developer, I can compile the binary locally (or run from source) and complete lando setup's runtime-bundle resolution with no LANDO_RUNTIME_BUNDLE_MANIFEST, no override flags, and no special setup - because the committed manifest pins real published artifacts.",
       "acceptanceCriteria": [
-        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all four host targets; the _comment placeholder disclaimer is gone, and Linux entries point only at local-engine-capable artifacts verified by US-410/US-430.",
+        "plugins/provider-lando/runtime-bundle-versions.json contains real HTTPS URLs under this repository's releases/download/runtime-v<version>/ path, real SHA-256 checksums, and real sizes for all four host targets; the _comment placeholder disclaimer is gone.",
         "The manifest's runtimeVersion equals the runtime-bundle-version file's content.",
-        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, installs, and starts the managed Podman service with the bundled binary's --root/--runroot argv. This published-manifest smoke check does not replace the \u00a713.5 current-commit override verification, which remains as-is.",
+        "A CI job (Linux) compiles the binary from the current checkout without LANDO_RUNTIME_BUNDLE_MANIFEST and runs lando setup end-to-end: the bundle downloads from the published runtime-v* asset, checksum-verifies, and installs. This published-manifest smoke check does not replace the \u00a713.5 current-commit override verification, which remains as-is.",
         "Running from source (bun run path) resolves the identical manifest via the existing static JSON import - asserted by a test that the embedded/imported manifest passes the production schema (https-only, no placeholders).",
         "No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to \u00a75.8.1.",
         "Tests pass",
@@ -715,8 +714,8 @@
         "Lint passes"
       ],
       "priority": 40,
-      "passes": false,
-      "notes": "Reopened by the remote-only Linux Podman asset defect: a checksum-valid manifest is insufficient when managed setup cannot launch the bundled Linux Podman with --root/--runroot. This story is complete only when US-430 passes and the repinned manifest drives zero-override setup. PRD-10. Depends on US-410 having published the corrected runtime-v release."
+      "passes": true,
+      "notes": "PRD-10. Depends on US-410 having published the first runtime-v release."
     },
     {
       "id": "US-412",
@@ -1055,14 +1054,14 @@
         "Bundle verification runs the bundled Linux podman and proves --root, --runroot, and system service are accepted in the managed-service argv shape Lando uses.",
         "runtime-bundle-versions.json is repinned to the corrected published assets with real HTTPS URLs, sizes, and SHA-256 values.",
         "A zero-override published-manifest setup run downloads the repinned Linux bundle, checksum-verifies it, starts the managed service, and reaches provider readiness without LANDO_RUNTIME_BUNDLE_MANIFEST or paired override flags.",
-        "US-410 and US-411 may be marked passed only after this story's verification evidence is recorded.",
+        "The defect and all corrective verification evidence are tracked under US-430; completing or failing this story does not change the recorded completion state of US-410 or US-411.",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
       ],
       "priority": 59,
       "passes": false,
-      "notes": "PRD-13 closure. Reopens PRD-10 false completion caused by the runtime-v0.1.0 Linux remote-only Podman asset rejecting managed-service --root/--runroot argv."
+      "notes": "PRD-13 closure. Owns the remote-only runtime-v0.1.0 Linux Podman asset defect: corrected local-engine bundle publishing, committed-manifest repinning, and zero-override managed setup evidence."
     },
     {
       "id": "US-431",

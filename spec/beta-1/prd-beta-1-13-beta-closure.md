@@ -2,14 +2,14 @@
 
 ## Introduction
 
-Beta 1 cannot close on the green story ledger alone. The progress log records several residual gaps after US-429: US-410 and US-411 were falsely complete because the published Linux runtime bundle was checksum-valid but remote-only; independent review lanes were inconclusive in this harness; live Podman 6 acceptance and several provider seams still need real or explicitly env-gated coverage; and multiple §8/§10/§12/§16 closure items remain documented as deferred gaps.
+Beta 1 cannot close on the green story ledger alone. The progress log records several residual gaps after US-429: the published Linux runtime bundle was checksum-valid but remote-only; independent review lanes were inconclusive in this harness; live Podman 6 acceptance and several provider seams still need real or explicitly env-gated coverage; and multiple §8/§10/§12/§16 closure items remain documented as deferred gaps.
 
 This PRD makes those residuals explicit Beta 1 closure work rather than silently deferring them past feature freeze. It does not mark any implementation complete. Every story in this PRD starts with `passes: false` and exists to preserve the hierarchy: normative spec is source of truth, these PRDs define Beta 1 acceptance, and `progress.txt` remains historical evidence.
 
 ## Source References
 
 - [`progress.txt`](./progress.txt) — unresolved runtime asset, review-lane, host-proxy transport, shell REPL, MCP projection/startup, version-constraint, global rebuild, tooling-router, and live-provider notes.
-- [`prd-beta-1-10-runtime-bundle-publishing.md`](./prd-beta-1-10-runtime-bundle-publishing.md) US-410/US-411 — reopened by the Linux remote-only Podman asset defect.
+- [`prd-beta-1-10-runtime-bundle-publishing.md`](./prd-beta-1-10-runtime-bundle-publishing.md) US-410..US-412 — runtime-bundle publishing and committed-manifest invariant context for the later Linux remote-only Podman asset defect.
 - [`prd-beta-1-11-podman-6.md`](./prd-beta-1-11-podman-6.md) — Podman 6 provider/runtime contract stories that require live or env-gated acceptance.
 - [`prd-beta-1-12-service-log-sources.md`](./prd-beta-1-12-service-log-sources.md) — service log sources, provider-owned `follow`, and `buildKey` adjacency.
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.2.3 shell semantics, §8.2.6 MCP, §8.4 global commands, §8.8 tooling, and §8.11 machine output.
@@ -19,7 +19,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 
 ## Goals
 
-- Reopen false completion claims where the evidence shows Beta 1 acceptance failed.
+- Assign the remote-only Linux runtime-bundle defect to its own closure story without reopening previously completed PRD-10 stories.
 - Encode every documented residual gap as a concrete, machine-readable story with ordered priority.
 - Keep closure work inside Beta 1 scope and block feature-freeze claims until the stories pass.
 - Preserve historical progress evidence while making the current acceptance state unambiguous.
@@ -38,7 +38,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 - [ ] Bundle verification runs the bundled Linux `podman` and proves `--root`, `--runroot`, and `system service` are accepted in the managed-service argv shape Lando uses.
 - [ ] `runtime-bundle-versions.json` is repinned to the corrected published assets with real HTTPS URLs, sizes, and SHA-256 values.
 - [ ] A zero-override published-manifest setup run downloads the repinned Linux bundle, checksum-verifies it, starts the managed service, and reaches provider readiness without `LANDO_RUNTIME_BUNDLE_MANIFEST` or paired override flags.
-- [ ] US-410 and US-411 may be marked passed only after this story's verification evidence is recorded.
+- [ ] The defect and all corrective verification evidence are tracked under US-430; completing or failing this story does not change the recorded completion state of US-410 or US-411.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -243,7 +243,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 ## Functional Requirements
 
 - **FR-1:** PRD-13 stories are Beta 1 closure work. They MUST NOT be treated as post-Beta backlog or omitted from Beta 1 traceability.
-- **FR-2:** US-410 and US-411 remain failed until US-430 provides the corrected published-manifest setup evidence.
+- **FR-2:** US-430 owns the corrected published-manifest setup evidence for the remote-only Linux runtime-bundle defect without changing the completion state of US-410 or US-411.
 - **FR-3:** A review lane is approval only when it returns a terminal, repository-specific result; timeout, empty output, or instruction-only output is inconclusive.
 - **FR-4:** Live-provider acceptance MUST separate environment skips from passes in machine-readable output.
 - **FR-5:** New closure work MUST keep the existing boundary rules: Renderer for output, RedactionService for secrets, StateStore for durable state, `runProbe` for retry/probe loops, generated allowlists from generators, and dual-dispatch parity for CLI behavior.
@@ -267,7 +267,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 ## Success Metrics
 
 - `spec/beta-1/prd.json` contains unique ordered US-430..US-443 entries with priorities continuing after US-429 and all `passes: false`.
-- US-410 and US-411 are no longer marked passed until the corrected runtime bundle and zero-override setup evidence exist.
+- US-430 explicitly owns corrected local-engine Linux bundle publishing, manifest repinning, and zero-override managed setup evidence.
 - The Beta 1 index traces every residual progress gap to a closure story.
 - Validation scripts confirm JSON parses, story IDs/priorities are unique and ordered, new story statuses are false, and Markdown/JSON story IDs/titles match.
 

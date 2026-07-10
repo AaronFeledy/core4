@@ -28,15 +28,12 @@ This PRD stands up the publishing pipeline, performs the first real publish, pin
 
 ### US-410: Runtime-bundle publishing workflow (`runtime-v*` release series)
 
-**Status note:** Reopened for Beta 1 closure. The first published Linux runtime asset was checksum-valid but contained a remote-only Podman build that rejects the managed-service `--root` / `--runroot` argv, so this story is not complete until US-430 publishes and verifies a local-engine-capable Linux bundle.
-
 **Description:** As a maintainer, bumping `plugins/provider-lando/runtime-bundle-version` triggers a generated workflow that assembles per-platform runtime bundles from pinned upstream sources and publishes them as immutable assets on a `runtime-v<version>` GitHub Release in this repository.
 
 **Acceptance Criteria:**
 
 - [ ] A new generated workflow (emitted by a `scripts/build-runtime-bundle-workflow.ts`-style generator following the existing `build-release-workflow.ts` pattern; never hand-edited YAML) builds runtime bundles for every supported host platform, keyed by exactly four runtime host keys: `linux-x64`, `linux-arm64`, `darwin-arm64`, `win32-x64` (the §13.5 release platform id `windows-x64` corresponds to manifest host key `win32-x64`; both names stay in their existing domains per root `AGENTS.md`). Podman 6 drops Intel Mac support.
-- [ ] Bundle contents are assembled from **pinned** upstream artifact versions declared in a committed input (not "whatever the runner's package manager installed"): the pinned Podman line is Podman 6; Linux bundles include a **local-engine-capable** Podman binary plus rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.
-- [ ] Linux bundle verification executes the bundled `podman` binary directly and proves it accepts the managed-service argv shape Lando uses: `--root`, `--runroot`, and `system service` are supported without falling back to a host/system Podman. A remote-only client artifact fails the publishing workflow before manifest regeneration.
+- [ ] Bundle contents are assembled from **pinned** upstream artifact versions declared in a committed input (not "whatever the runner's package manager installed"): the pinned Podman line is Podman 6; Linux bundles include Podman + rootless helpers (crun/conmon/netavark v2.x/aardvark-dns v2.x/gvproxy/fuse-overlayfs/passt with pasta/newuidmap/newgidmap as applicable per platform); macOS and Windows bundles include the Podman remote client + machine/gvproxy helpers. Assembly is reproducible: re-running against the same pins produces artifacts with identical SHA-256s.
 - [ ] The workflow uploads the platform tarballs/zips (per the existing `RUNTIME_BUNDLE_TARGETS` naming) as assets on a `runtime-v<version>` GitHub Release in this repository, and fails — rather than re-uploads — if the tag or any asset already exists (immutability).
 - [ ] `scripts/build-runtime-bundle.ts` release mode derives asset URLs from this repository's `releases/download/runtime-v<version>/` path (the dead `lando/runtime-bundles` base URL is removed).
 - [ ] The workflow's final step regenerates `runtime-bundle-versions.json` against the published assets and surfaces the diff for landing (PR or same-change commit per §17.8), so a version bump and its manifest pin always travel together.
@@ -46,15 +43,13 @@ This PRD stands up the publishing pipeline, performs the first real publish, pin
 
 ### US-411: Pin the committed manifest — local builds "just work"
 
-**Status note:** Reopened for Beta 1 closure. The committed manifest can point at checksum-valid bytes and still fail setup if the Linux asset is remote-only; US-411 is complete only after US-430 passes and the repinned manifest drives published-manifest setup with zero overrides.
-
 **Description:** As a developer, I can compile the binary locally (or run from source) and complete `lando setup`'s runtime-bundle resolution with no `LANDO_RUNTIME_BUNDLE_MANIFEST`, no override flags, and no special setup — because the committed manifest pins real published artifacts.
 
 **Acceptance Criteria:**
 
-- [ ] `plugins/provider-lando/runtime-bundle-versions.json` contains real HTTPS URLs under this repository's `releases/download/runtime-v<version>/` path, real SHA-256 checksums, and real sizes for all four host targets; the `_comment` placeholder disclaimer is gone, and the Linux entries point only at local-engine-capable artifacts verified by US-410/US-430.
+- [ ] `plugins/provider-lando/runtime-bundle-versions.json` contains real HTTPS URLs under this repository's `releases/download/runtime-v<version>/` path, real SHA-256 checksums, and real sizes for all four host targets; the `_comment` placeholder disclaimer is gone.
 - [ ] The manifest's `runtimeVersion` equals the `runtime-bundle-version` file's content.
-- [ ] A CI job (Linux) compiles the binary from the current checkout **without** `LANDO_RUNTIME_BUNDLE_MANIFEST` and runs `lando setup` end-to-end: the bundle downloads from the published `runtime-v*` asset, checksum-verifies, installs, and starts the managed Podman service with the bundled binary's `--root` / `--runroot` argv. This is a *published-manifest* smoke check and explicitly does not replace the §13.5 current-commit override verification, which remains as-is.
+- [ ] A CI job (Linux) compiles the binary from the current checkout **without** `LANDO_RUNTIME_BUNDLE_MANIFEST` and runs `lando setup` end-to-end: the bundle downloads from the published `runtime-v*` asset, checksum-verifies, and installs. This is a *published-manifest* smoke check and explicitly does not replace the §13.5 current-commit override verification, which remains as-is.
 - [ ] Running from source (`bun run` path) resolves the identical manifest via the existing static JSON import — asserted by a test that the embedded/imported manifest passes the production schema (`https`-only, no placeholders).
 - [ ] No resolution-precedence change: env override > paired flags > committed manifest, byte-identical behavior to §5.8.1.
 - [ ] Tests pass

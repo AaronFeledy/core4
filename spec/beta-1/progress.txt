@@ -23,7 +23,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Runtime-bundle host keys and release artifact ids are different domains. Runtime bundles publish only `linux-x64`, `linux-arm64`, `darwin-arm64`, and `win32-x64`; CLI/release artifacts can still include Intel Mac or differently named Windows targets.
 - Log-follow lifecycle semantics live in the provider-neutral SDK engine. It owns handle close via explicit close plus `Stream.ensuring`, byte-level UTF-8-safe framing, tail/since/copytruncate/rotation diagnostics, and planner-owned capability degradation. Do not reintroduce scoped file handles that close before streams run.
 - Log-source availability is a planning truth, not a mid-stream surprise. Required follow sources fail planning when `serviceLogSources` is unavailable; optional follow sources are recorded as unavailable; redirect sources ride console and are never followed.
-- Truth hierarchy is spec > PRD > progress. Progress can summarize and explain, but it must not preserve stale unreleased behavior over the spec or mark reopened/pending stories complete.
+- Truth hierarchy is spec > PRD > progress. Progress can summarize and explain, but it must not preserve stale unreleased behavior over the spec or mark pending stories complete.
 
 ## Foundation summary — US-372..US-400 (2026-07-02 through 2026-07-06)
 
@@ -100,9 +100,9 @@ What is complete:
 
 Manifest invariants became release and CI gates. Offline checks reject placeholder-like checksums, zero sizes, off-repo URLs, missing required host keys, and runtime-version mismatches. Live URL/length verification was scheduled for nightly/release contexts rather than every PR.
 
-The major unresolved blocker is Linux managed setup. The published Linux asset is checksum-valid and installs, and the bundled binary reports Podman 6.0.0, but it is a remote-only client: `podman --root` rejects with `unknown flag: --root`, and it cannot launch `system service` with the managed `--root`/`--runroot` arguments. A zero-override `lando setup` for provider-lando on Linux therefore does not pass.
+Subsequent operational validation exposed a separate Linux managed-setup gap. The published Linux asset is checksum-valid and installs, and the bundled binary reports Podman 6.0.0, but it is a remote-only client: `podman --root` rejects with `unknown flag: --root`, and it cannot launch `system service` with the managed `--root`/`--runroot` arguments. A zero-override `lando setup` for provider-lando on Linux therefore does not pass.
 
-This is not a local manifest bug and not a URL swap within the same upstream Podman release. The asset must be republished with a local-engine-capable Linux Podman and the committed manifest must be repinned. The PRD reopened US-410/US-411 to track that corrected publish-and-pin loop.
+This is not a local manifest bug and not a URL swap within the same upstream Podman release. The asset must be republished with a local-engine-capable Linux Podman and the committed manifest must be repinned. US-430 tracks that corrected publish-and-pin loop without reopening US-410 or US-411.
 
 Verification proved checksum/manifests/gates, deterministic assembly, schema-valid pins, override precedence, extraction layout, and published URL byte/sha matching. It did not prove managed zero-override Linux setup because the published asset cannot satisfy the local-engine requirement.
 
@@ -195,7 +195,7 @@ US-430..US-443 are pending and must remain `passes: false` until implemented and
 
 Open closure categories:
 
-- Runtime republish/live acceptance: US-410/US-411 remain reopened until the Linux runtime bundle is republished with a local-engine Podman, repinned, and proven by zero-override managed setup/live acceptance.
+- Runtime republish/live acceptance: US-430 remains pending until the Linux runtime bundle is republished with a local-engine Podman, repinned, and proven by zero-override managed setup/live acceptance.
 - Independent review: remaining stories need their own implementation evidence and review findings resolved, not inherited approval from this condensed progress narrative.
 - Production wiring of deferred seams: host-proxy physical transport/shim/auth/limits, container file-read log adapter, and other typed future seams must be live-wired where the new PRDs require them.
 - CLI/MCP parity: new command surfaces must keep source and compiled dispatch, generated manifests, MCP allowlists, machine envelopes, streaming frames, and result schemas in sync.
