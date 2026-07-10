@@ -1,27 +1,27 @@
 {
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.1",
+  "runtimeVersion": "0.1.2",
   "bundles": {
     "linux-x64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.1/lando-runtime-linux-x64.tar.gz",
-      "sha256": "14f97b25a6282eae8758ec8ad0eeefee33532e002dc79b564a236e2a0c141246",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.2/lando-runtime-linux-x64.tar.gz",
+      "sha256": "c5876a07feded0d7f1a04f4f1aebe06cd263dbb96eeb7249ed268db98f853109",
       "filename": "lando-runtime-linux-x64.tar.gz",
-      "sizeBytes": 44382995
+      "sizeBytes": 44376067
     },
     "linux-arm64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.1/lando-runtime-linux-arm64.tar.gz",
-      "sha256": "9225faf9340045dd6b5cb5b8cb7025fdad61cc31b16dccba66493451f52a9886",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.2/lando-runtime-linux-arm64.tar.gz",
+      "sha256": "7cf5ffc79899fc74d92e60fda27afca657a639b1fe677f39e997f6106f8513ac",
       "filename": "lando-runtime-linux-arm64.tar.gz",
-      "sizeBytes": 40789403
+      "sizeBytes": 40788904
     },
     "darwin-arm64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.1/lando-runtime-darwin-arm64.tar.gz",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.2/lando-runtime-darwin-arm64.tar.gz",
       "sha256": "d02e43ef84de776a2b2b3cb0e45acd2f075d3860027001288edf8ef1534b18ad",
       "filename": "lando-runtime-darwin-arm64.tar.gz",
       "sizeBytes": 30608459
     },
     "win32-x64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.1/lando-runtime-win32-x64.zip",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.2/lando-runtime-win32-x64.zip",
       "sha256": "5825667b63e1579161d229ddbe3678a449c23c8b224fda673f631425c297c1a9",
       "filename": "lando-runtime-win32-x64.zip",
       "sizeBytes": 27548275
