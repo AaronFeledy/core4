@@ -1095,7 +1095,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 61,
+      "priority": 59,
       "passes": false,
       "notes": "PRD-13 closure. Covers the live Podman 6 acceptance gap after the corrected managed Linux runtime bundle exists."
     },
