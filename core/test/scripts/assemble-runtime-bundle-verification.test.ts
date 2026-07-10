@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { assembleBundle, parseRuntimeBundleSources } from "../../../scripts/assemble-runtime-bundle.ts";
+import { buildManagedRuntimeServiceArgs } from "../../src/runtime/managed-runtime-service.ts";
 
 const podmanBytes = new TextEncoder().encode("pinned-podman-binary");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -17,12 +18,12 @@ const sourcesFor = (hostKey: "darwin-arm64" | "linux-x64") =>
       [hostKey]: {
         components: [
           {
-            name: "podman",
+            name: "fixture-engine",
             version: "6.0.0",
             url: `https://example.test/podman-${hostKey}`,
             sha256: sha256(podmanBytes),
             archive: "none",
-            installName: "bin/podman",
+            installName: "bin/fixture-engine",
             mode: 493,
           },
         ],
@@ -34,6 +35,7 @@ describe("Linux runtime bundle verification", () => {
   test("verifies staged Podman with the managed-service argv before packing", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-verify-"));
     const commands: Array<ReadonlyArray<string>> = [];
+    let configIsDirectory = false;
     try {
       const result = await assembleBundle({
         hostKey: "linux-x64",
@@ -42,17 +44,38 @@ describe("Linux runtime bundle verification", () => {
         fetchArtifact: async () => podmanBytes,
         verifyCommand: async (command) => {
           commands.push(command);
+          const configIndex = command.indexOf("--config");
+          const configPath = command[configIndex + 1];
+          if (configPath !== undefined) configIsDirectory = (await stat(configPath)).isDirectory();
         },
       });
 
       expect(commands).toHaveLength(1);
       const command = commands[0];
-      expect(command?.[0]?.endsWith("/bin/podman")).toBe(true);
-      expect(command).toContain("--root");
-      expect(command).toContain("--runroot");
-      expect(command).toContain("system");
-      expect(command).toContain("service");
+      const binary = command?.[0];
+      if (binary === undefined) throw new Error("verifier command requires a binary");
+      const valueAfter = (flag: string): string => {
+        const index = command.indexOf(flag);
+        const value = command[index + 1];
+        if (value === undefined) throw new Error(`verifier command requires ${flag}`);
+        return value;
+      };
+      const socketUri = command.at(-2);
+      if (socketUri === undefined || !socketUri.startsWith("unix://")) {
+        throw new Error("verifier command requires a Unix socket URI");
+      }
+      expect(binary.endsWith("/bin/podman")).toBe(true);
+      expect(command.slice(1, -1)).toEqual(
+        buildManagedRuntimeServiceArgs({
+          runtimeStorageDir: valueAfter("--root"),
+          runtimeRunDir: valueAfter("--runroot"),
+          runtimeConfigDir: valueAfter("--config"),
+          runtimeBinDir: dirname(binary),
+          providerSocketPath: socketUri.slice("unix://".length),
+        }),
+      );
       expect(command?.at(-1)).toBe("--help");
+      expect(configIsDirectory).toBe(true);
       expect(await Bun.file(result.artifactPath).exists()).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });

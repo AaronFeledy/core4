@@ -134,10 +134,11 @@ export const verifyManagedLinuxPodman = async (
   try {
     const storageDir = join(verifyDir, "storage");
     const runrootDir = join(verifyDir, "runroot");
-    const configPath = join(verifyDir, "containers.conf");
+    const configDir = join(verifyDir, "config");
+    const socketPath = join(verifyDir, "podman.sock");
     await mkdir(storageDir, { recursive: true });
     await mkdir(runrootDir, { recursive: true });
-    await writeFile(configPath, "");
+    await mkdir(configDir, { recursive: true });
     await execute([
       join(stageDir, "bin", "podman"),
       "--root",
@@ -145,11 +146,13 @@ export const verifyManagedLinuxPodman = async (
       "--runroot",
       runrootDir,
       "--config",
-      configPath,
+      configDir,
       "--storage-opt",
       `overlay.mount_program=${join(stageDir, "bin", "fuse-overlayfs")}`,
       "system",
       "service",
+      "--time=0",
+      `unix://${socketPath}`,
       "--help",
     ]);
   } catch (cause) {
