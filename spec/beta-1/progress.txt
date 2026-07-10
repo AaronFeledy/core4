@@ -16,6 +16,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Business logic stays in pure Effect. Filesystem, process, network, terminal, provider, and renderer effects belong behind services or seams; command bodies should compose services and return structured results.
 - Public contracts come from Effect Schema with tagged errors and generated schema snapshots. Additive schema exports need field annotations, compatibility bookkeeping where required, and snapshot/docs refresh; machine error envelopes only serialize `_tag`, `message`, and `remediation`, so machine-required context must appear in the message.
 - Generated-file discipline is non-negotiable. Change the generator, run the matching codegen, and include intentional emitted outputs; do not hand-edit generated workflows, manifests, bootstrap layers, compiled OCLIF manifest, plugin tables, or schema artifacts.
+- Job-level `pull-requests: write` does not override a repository that disables Actions-created PRs. When the release contract permits a same-change commit, let the workflow commit and rebase the generated pin onto `main`; keep that generated-only push outside the workflow path filter so it cannot recurse.
 - Source and compiled CLI paths must stay behaviorally paired. OCLIF flags, compiled `run.ts` parsing, command result schemas, streaming modes, and parity fixtures move together whenever command routing changes.
 - Renderer and redaction boundaries own output. Commands and provider seams should not write directly to stdout/stderr; user-visible text, StreamFrames, events, doctor contexts, and provider error details must pass through the shared renderer/redactor seams.
 - Durable host state and platform paths use shared services. Versioned/locked state belongs in `StateStore`; Lando roots and derived paths come from `makeLandoPaths`/`PathsService`; host/provider probing uses `@lando/sdk/probe` rather than ad hoc retry loops.
@@ -247,4 +248,12 @@ Open closure categories:
 - Blocked: US-410 remains `passes: false` until US-430 publishes the superseding immutable assets, repins the committed manifest, and proves zero-override managed setup.
 - **Learnings for future iterations:**
   - Do not close a reopened publishing story from implementation evidence alone when its PRD explicitly delegates published-asset and live setup acceptance to a closure story.
+---
+
+## 2026-07-09 20:50 CDT - US-410 manifest landing
+- Runtime-bundle publishing now lands the regenerated post-release manifest as a same-change bot commit rebased onto the latest `main`, removing its dependency on repository-disabled Actions PR creation while preserving release-before-pin ordering.
+- Verification: typecheck, lint, manifest invariants, generated-workflow idempotency, and relevant runtime-bundle test spot checks passed; local bare-remote QA preserved a concurrent mainline commit and removed all temporary repositories.
+- Blocked: US-410 remains `passes: false` until US-430 publishes the superseding immutable assets, repins the committed manifest, and proves zero-override managed setup.
+- **Learnings for future iterations:**
+  - Declaring `pull-requests: write` is insufficient when the repository disallows Actions-created PRs; use an allowed same-change landing path rather than accepting a predictably red publish job.
 ---
