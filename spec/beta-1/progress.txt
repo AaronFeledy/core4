@@ -257,3 +257,11 @@ Open closure categories:
 - **Learnings for future iterations:**
   - Declaring `pull-requests: write` is insufficient when the repository disallows Actions-created PRs; use an allowed same-change landing path rather than accepting a predictably red publish job.
 ---
+
+## 2026-07-09 21:04 CDT - US-410 build verification
+- The in-flight runtime-bundle publishing branch was verified complete for every branch-owned workflow, source-build, helper-packaging, managed-service argv, immutability, and manifest-landing criterion; no additional production change was warranted.
+- Verification: typecheck, lint, manifest invariants, generated-workflow idempotency, and 36 focused runtime-bundle tests passed; independent review approved unconditionally.
+- Blocked: US-410 correctly remains `passes: false` until US-430 publishes the superseding immutable assets, repins the committed manifest, and proves zero-override managed setup.
+- **Learnings for future iterations:**
+  - Build-step verification must preserve an explicit closure dependency even when all branch-owned mechanics pass; do not convert delegated external acceptance into an unsupported completion claim.
+---
