@@ -20,8 +20,10 @@ import { dirname, join, resolve } from "node:path";
 
 import { RUNTIME_BUNDLE_TARGETS, type RuntimeBundleTarget } from "./build-runtime-bundle.ts";
 import {
+  type InspectCommandRunner,
   buildLinuxHelperFromSource,
   buildLinuxPodmanFromSource,
+  verifyLinuxPodmanPortability,
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
 import {
@@ -119,6 +121,7 @@ export interface AssembleBundleOptions {
   readonly sources: RuntimeBundleSources;
   readonly outDir: string;
   readonly fetchArtifact: (url: string) => Promise<Uint8Array>;
+  readonly inspectCommand?: InspectCommandRunner;
   readonly verifyCommand?: BundleCommandRunner;
 }
 
@@ -135,6 +138,7 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
     throw new Error(`assemble-runtime-bundle: no components pinned for host key ${options.hostKey}`);
   }
   const target = targetFor(options.hostKey);
+  const verifyCommand = options.verifyCommand ?? run;
   const stageDir = await mkdtemp(join(tmpdir(), "rb-stage-"));
   const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
   try {
@@ -157,7 +161,7 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
           component,
           artifactPaths,
           stageDir,
-          execute: options.verifyCommand ?? run,
+          execute: verifyCommand,
         });
       } else {
         const bytes = await options.fetchArtifact(component.url);
@@ -170,7 +174,7 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
         const artifactPath = join(downloadDir, `${component.name}-${options.hostKey}`);
         await writeFile(artifactPath, bytes);
         if (component.sourceBuild === LinuxPodmanSourceBuild) {
-          await buildLinuxPodmanFromSource(component, artifactPath, stageDir, options.verifyCommand ?? run);
+          await buildLinuxPodmanFromSource(component, artifactPath, stageDir, verifyCommand);
         } else {
           const destPath = join(stageDir, component.installName);
           await mkdir(dirname(destPath), { recursive: true });
@@ -179,7 +183,8 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
         }
       }
     }
-    await verifyManagedLinuxPodman(options.hostKey, stageDir, options.verifyCommand ?? run);
+    await verifyLinuxPodmanPortability(options.hostKey, stageDir, options.inspectCommand);
+    await verifyManagedLinuxPodman(options.hostKey, stageDir, verifyCommand);
     await mkdir(options.outDir, { recursive: true });
     const outPath = join(options.outDir, target.filename);
     await packDeterministic(stageDir, outPath, target.filename.endsWith(".zip"));

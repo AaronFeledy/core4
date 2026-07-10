@@ -14,6 +14,8 @@ const netavarkBytes = new TextEncoder().encode("pinned-netavark-binary");
 const passtBytes = new TextEncoder().encode("pinned-passt-binary");
 const pastaBytes = new TextEncoder().encode("pinned-pasta-binary");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const acceptInspection = async (): Promise<string> =>
+  "linux-vdso.so.1 (0x00007ffc00000000)\nlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0000000000)\n/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n";
 
 const linuxHelperSources = (sourceArchive: Uint8Array, vendorArchive: Uint8Array) =>
   parseRuntimeBundleSources({
@@ -174,6 +176,7 @@ describe("Linux helper source builds", () => {
         sources: linuxHelperSources(sourceArchive, vendorArchive),
         outDir: dir,
         fetchArtifact: async (url) => (url.includes("vendor") ? vendorArchive : sourceArchive),
+        inspectCommand: acceptInspection,
         verifyCommand: runner,
       });
 
@@ -209,6 +212,7 @@ describe("Linux helper source builds", () => {
         sources: passtSources(sourceArchive),
         outDir: dir,
         fetchArtifact: async () => sourceArchive,
+        inspectCommand: acceptInspection,
         verifyCommand: runner,
       });
     } finally {

@@ -10,6 +10,15 @@ import {
   parseRuntimeBundleSources,
 } from "../../../scripts/assemble-runtime-bundle.ts";
 
+const realisticPortableLdd = `
+	linux-vdso.so.1 (0x00007ffc00000000)
+	libsqlite3.so.0 => /lib/x86_64-linux-gnu/libsqlite3.so.0 (0x00007f0000000000)
+	libsystemd.so.0 => /lib/x86_64-linux-gnu/libsystemd.so.0 (0x00007f0000000000)
+	libseccomp.so.2 => /lib/x86_64-linux-gnu/libseccomp.so.2 (0x00007f0000000000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0000000000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)
+`;
+
 const podmanSourceBytes = new TextEncoder().encode("pinned-podman-source");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -51,6 +60,7 @@ describe("Linux Podman source build", () => {
     const sources = parseRuntimeBundleSources(
       JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")),
     );
+    expect(sources.runtimeVersion).toBe("0.1.2");
 
     for (const hostKey of ["linux-x64", "linux-arm64"]) {
       const podman = sources.bundles[hostKey]?.components.find((component) => component.name === "podman");
@@ -79,7 +89,9 @@ describe("Linux Podman source build", () => {
           expect(command).toContain("bin/podman");
           expect(command).toContain("GIT_COMMIT=4cabbe61fa3a27fafc4a3ee1226e38ae1664ae57");
           expect(command).toContain("SOURCE_DATE_EPOCH=1783532707");
+          expect(command).toContain("CGO_ENABLED=1");
           expect(command).toContain("GOFLAGS=-trimpath -buildvcs=false");
+          expect(command).toContain("BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp");
           expect(command).toContain("EXTRA_LDFLAGS=-buildid=");
           if (cwd === undefined) throw new Error("source build requires cwd");
           await mkdir(join(cwd, "bin"), { recursive: true });
@@ -95,10 +107,55 @@ describe("Linux Podman source build", () => {
         sources: sourceBuildSources(sourceArchive),
         outDir: dir,
         fetchArtifact: async () => sourceArchive,
+        inspectCommand: async () => {
+          events.push("portability");
+          return realisticPortableLdd;
+        },
         verifyCommand: runner,
       });
 
-      expect(events).toEqual(["build", "verify"]);
+      expect(events).toEqual(["build", "portability", "verify"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails Linux Podman portability before deterministic packing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rb-asm-portable-before-pack-"));
+    try {
+      const sourceArchive = await fixtureSourceArchive(dir);
+      const artifactPath = join(dir, "lando-runtime-linux-x64.tar.gz");
+      const runner = async (command: ReadonlyArray<string>, cwd?: string): Promise<void> => {
+        if (command[0] === "tar" && command.includes("-xzf")) {
+          await Bun.spawn({ cmd: [...command], stdout: "ignore", stderr: "ignore" }).exited;
+          return;
+        }
+        if (command[0] === "make") {
+          if (cwd === undefined) throw new Error("source build requires cwd");
+          await mkdir(join(cwd, "bin"), { recursive: true });
+          await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
+          return;
+        }
+      };
+
+      let failure: unknown;
+      try {
+        await assembleBundle({
+          hostKey: "linux-x64",
+          sources: sourceBuildSources(sourceArchive),
+          outDir: dir,
+          fetchArtifact: async () => sourceArchive,
+          inspectCommand: async () => {
+            throw new Error("libsubid.so.4 => not found");
+          },
+          verifyCommand: runner,
+        });
+      } catch (cause) {
+        failure = cause;
+      }
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(await Bun.file(artifactPath).exists()).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -115,6 +172,7 @@ describe("Linux Podman source build", () => {
           sources: sourceBuildSources(sourceArchive),
           outDir: dir,
           fetchArtifact: async () => sourceArchive,
+          inspectCommand: async () => realisticPortableLdd,
           verifyCommand: async () => {},
         });
       } catch (cause) {

@@ -53,6 +53,8 @@ const fetchFixture = async (url: string): Promise<Uint8Array> => {
 };
 
 const acceptVerification = async (): Promise<void> => {};
+const acceptInspection = async (): Promise<string> =>
+  "linux-vdso.so.1 (0x00007ffc00000000)\nlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0000000000)\n/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n";
 
 describe("parseRuntimeBundleSources", () => {
   test("accepts a well-formed pins document", () => {
@@ -168,6 +170,7 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchFixture,
+        inspectCommand: acceptInspection,
         verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
@@ -175,6 +178,7 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirB,
         fetchArtifact: fetchFixture,
+        inspectCommand: acceptInspection,
         verifyCommand: acceptVerification,
       });
 
@@ -245,6 +249,7 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchGz,
+        inspectCommand: acceptInspection,
         verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
@@ -252,6 +257,7 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirB,
         fetchArtifact: fetchGz,
+        inspectCommand: acceptInspection,
         verifyCommand: acceptVerification,
       });
       expect(second.sha256).toBe(first.sha256);
