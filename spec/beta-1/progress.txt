@@ -232,3 +232,11 @@ Open closure categories:
 - **Learnings for future iterations:**
   - Netavark and Aardvark DNS 2.0 source builds require Rust 1.88, vendored Cargo inputs, and protobuf-compiler; exercise the generated workflow's real native build because typecheck and mocked command tests cannot reveal missing build tools.
 ---
+
+## 2026-07-09 19:44 CDT - US-410 workflow ordering
+- Runtime-bundle publishing now creates the immutable release assets before regenerating and surfacing the committed manifest pin, so the landing branch is derived only after the release URLs exist.
+- Verification: typecheck, lint, manifest invariants, full codegen idempotency, and relevant runtime-bundle test spot checks passed; the generated workflow surface preserves immutability checks before release creation and manifest/PR work afterward.
+- Blocked: story pass remains gated by US-430 publishing corrected local-engine Linux assets, repinning the committed manifest, and recording zero-override managed setup evidence.
+- **Learnings for future iterations:**
+  - Runtime manifest regeneration must follow immutable asset publication; preparing the pin first can describe release URLs that do not exist yet.
+---
