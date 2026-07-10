@@ -184,7 +184,7 @@ ${matrixInclude}
         if: startsWith(matrix.hostKey, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsubid-dev libsystemd-dev pkg-config protobuf-compiler uidmap
+          sudo apt-get install -y --no-install-recommends build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap
 
       - name: Assemble \${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
