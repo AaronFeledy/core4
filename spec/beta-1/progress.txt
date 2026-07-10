@@ -200,3 +200,12 @@ Open closure categories:
 - Production wiring of deferred seams: host-proxy physical transport/shim/auth/limits, container file-read log adapter, and other typed future seams must be live-wired where the new PRDs require them.
 - CLI/MCP parity: new command surfaces must keep source and compiled dispatch, generated manifests, MCP allowlists, machine envelopes, streaming frames, and result schemas in sync.
 - Version/lifecycle/tooling gaps: Podman 6 lifecycle edge cases, runtime setup acceptance, scratch/build cache realities, guide/transcript ownership, and boundary-gate coverage remain closure work for the pending stories.
+
+## 2026-07-10 01:08 CDT - US-430
+- Prepared the corrected immutable runtime release path: Linux bundles now require native source-built Podman and helpers, verify the production managed-service argument shape, and declare `runtime-v0.1.1` independently from the last published manifest pin so review-time manifest invariants stay fail-closed.
+- Native linux-x64 assembly and packed-service QA passed in `lando4-dev`: the managed Unix socket became ready and both client and server reported Podman 6.0.1 from the pinned source commit. Typecheck, lint, deprecation checks, manifest invariants, generated-workflow idempotency, and relevant runtime-bundle test spot checks passed.
+- Immutable asset publication, the post-release manifest pin, and zero-override published-manifest setup remain pending until the main-only publish workflow runs; the story therefore remains open.
+- **Learnings for future iterations:**
+  - Treat `runtime-bundle-sources.json.runtimeVersion` as the next source-set release and `runtime-bundle-version` as the last published pin; the publisher advances the pin and manifest together only after immutable assets exist.
+  - Podman `--config` takes a directory, and verifier coverage must compare the full production service arguments (`--time=0` plus Unix socket), not stop at global-flag parsing.
+---
