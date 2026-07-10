@@ -63,18 +63,20 @@ const sonameFromLddLine = (line: string): string | undefined => {
   return basename(token);
 };
 
-const assertPortableLinuxDependency = (line: string): void => {
+const PodmanPortabilityArtifacts = ["bin/podman", "bin/rootlessport"] as const;
+
+const assertPortableLinuxDependency = (artifactPath: string, line: string): void => {
   const soname = sonameFromLddLine(line);
   if (soname === undefined) return;
   if (/=>\s+not found\b/u.test(line)) {
-    throw new Error(`assemble-runtime-bundle: Linux Podman dependency ${soname} is not found`);
+    throw new Error(`assemble-runtime-bundle: Linux Podman artifact ${artifactPath} dependency ${soname} is not found`);
   }
   if (soname.startsWith("libsubid.so")) {
-    throw new Error(`assemble-runtime-bundle: Linux Podman links forbidden dependency ${soname}`);
+    throw new Error(`assemble-runtime-bundle: Linux Podman artifact ${artifactPath} links forbidden dependency ${soname}`);
   }
   if (!reviewedLinuxSonames.has(soname)) {
     throw new Error(
-      `assemble-runtime-bundle: Linux Podman dependency ${soname} is outside the reviewed Linux dynamic baseline`,
+      `assemble-runtime-bundle: Linux Podman artifact ${artifactPath} dependency ${soname} is outside the reviewed Linux dynamic baseline`,
     );
   }
 };
@@ -85,9 +87,12 @@ export const verifyLinuxPodmanPortability = async (
   inspect: InspectCommandRunner = inspectCommand,
 ): Promise<void> => {
   if (!isLinuxRuntimeBundle(hostKey)) return;
-  const stdout = await inspect(["ldd", join(stageDir, "bin", "podman")]);
-  if (stdout.trim().length === 0) {
-    throw new Error("assemble-runtime-bundle: Linux Podman ldd output is empty");
+  for (const artifact of PodmanPortabilityArtifacts) {
+    const artifactPath = join(stageDir, artifact);
+    const stdout = await inspect(["ldd", artifactPath]);
+    if (stdout.trim().length === 0) {
+      throw new Error(`assemble-runtime-bundle: Linux Podman artifact ${artifactPath} ldd output is empty`);
+    }
+    for (const line of stdout.split("\n")) assertPortableLinuxDependency(artifactPath, line);
   }
-  for (const line of stdout.split("\n")) assertPortableLinuxDependency(line);
 };

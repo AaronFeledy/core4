@@ -34,6 +34,24 @@ const expectPortabilityFailure = async (ldd: string, message: RegExp): Promise<v
   expect(failure instanceof Error ? failure.message : "").toMatch(message);
 };
 
+const expectPortabilityFailureForArtifact = async (
+  lddByArtifact: ReadonlyMap<string, string>,
+  message: RegExp,
+): Promise<void> => {
+  let failure: unknown;
+  try {
+    await verifyLinuxPodmanPortability("linux-x64", "/stage", async (command) => {
+      const artifactPath = command[1];
+      if (artifactPath === undefined) throw new Error("ldd requires an artifact path");
+      return lddByArtifact.get(artifactPath) ?? portableLdd;
+    });
+  } catch (cause) {
+    failure = cause;
+  }
+  expect(failure).toBeInstanceOf(Error);
+  expect(failure instanceof Error ? failure.message : "").toMatch(message);
+};
+
 const sourcesFor = (hostKey: "darwin-arm64" | "linux-x64") =>
   parseRuntimeBundleSources({
     schemaVersion: 1,
@@ -64,7 +82,20 @@ describe("Linux runtime bundle verification", () => {
       return portableLdd;
     });
 
-    expect(commands).toEqual([["ldd", "/stage/bin/podman"]]);
+    expect(commands).toEqual([
+      ["ldd", "/stage/bin/podman"],
+      ["ldd", "/stage/bin/rootlessport"],
+    ]);
+  });
+
+  test("reports which staged Linux Podman artifact failed dependency inspection", async () => {
+    await expectPortabilityFailureForArtifact(
+      new Map([
+        ["/stage/bin/podman", portableLdd],
+        ["/stage/bin/rootlessport", lddWith("libmissing.so.1 => not found")],
+      ]),
+      /bin\/rootlessport.*libmissing\.so\.1.*not found/i,
+    );
   });
 
   test("accepts supported libassuan SONAME variants from the host gpgme closure", async () => {
