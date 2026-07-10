@@ -26,8 +26,14 @@ const publishTargets = RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS.map((key) => {
   return target;
 });
 
+const runnerFor = (hostKey: string): string =>
+  hostKey === "linux-arm64" ? "ubuntu-24.04-arm" : "ubuntu-24.04";
+
 const matrixInclude = publishTargets
-  .map((target) => `          - hostKey: ${target.key}\n            filename: ${target.filename}`)
+  .map(
+    (target) =>
+      `          - hostKey: ${target.key}\n            filename: ${target.filename}\n            runsOn: ${runnerFor(target.key)}`,
+  )
   .join("\n");
 
 const assetArgs = publishTargets.map((target) => `dist/cache/runtime-bundle/${target.filename}`).join(" ");
@@ -56,7 +62,7 @@ permissions:
 jobs:
   assemble:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: \${{ matrix.runsOn }}
     strategy:
       fail-fast: true
       matrix:
@@ -75,6 +81,36 @@ ${matrixInclude}
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Setup Go for Linux Podman source build
+        if: startsWith(matrix.hostKey, 'linux-')
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.6
+
+      - name: Setup Rust for Linux helper source builds
+        if: startsWith(matrix.hostKey, 'linux-')
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Install Linux Podman source-build prerequisites
+        if: startsWith(matrix.hostKey, 'linux-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \\
+            build-essential \\
+            libassuan-dev \\
+            libbtrfs-dev \\
+            libcap-dev \\
+            libdevmapper-dev \\
+            libglib2.0-dev \\
+            libgpg-error-dev \\
+            libgpgme-dev \\
+            libseccomp-dev \\
+            libsubid-dev \\
+            libsystemd-dev \\
+            pkg-config \\
+            protobuf-compiler \\
+            uidmap
+
       - name: Assemble \${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
 
@@ -91,7 +127,6 @@ ${matrixInclude}
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
-      pull-requests: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -129,39 +164,6 @@ ${matrixInclude}
             exit 1
           fi
 
-      - name: Prepare manifest pin branch for landing
-        env:
-          GH_TOKEN: \${{ github.token }}
-        run: |
-          set -euo pipefail
-          bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle
-          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
-            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; nothing to land."
-            echo "RUNTIME_BUNDLE_MANIFEST_BRANCH=" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          BRANCH="runtime-bundle-manifest-$RUNTIME_BUNDLE_VERSION"
-          echo "RUNTIME_BUNDLE_MANIFEST_BRANCH=$BRANCH" >> "$GITHUB_ENV"
-          MANIFEST_PIN="$(mktemp)"
-          cp plugins/provider-lando/runtime-bundle-versions.json "$MANIFEST_PIN"
-          git restore -- plugins/provider-lando/runtime-bundle-versions.json
-          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
-            git fetch origin "$BRANCH:$BRANCH"
-            git switch "$BRANCH"
-          else
-            git switch -c "$BRANCH"
-          fi
-          cp "$MANIFEST_PIN" plugins/provider-lando/runtime-bundle-versions.json
-          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
-            echo "::notice title=runtime-bundle-manifest::manifest pin branch $BRANCH already matches regenerated assets."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add plugins/provider-lando/runtime-bundle-versions.json
-          git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
-          git push -u origin "$BRANCH"
-
       - name: Publish runtime-v release assets
         env:
           GH_TOKEN: \${{ github.token }}
@@ -172,22 +174,21 @@ ${matrixInclude}
             --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" \\
             --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
 
-      - name: Surface manifest pin PR
-        env:
-          GH_TOKEN: \${{ github.token }}
+      - name: Commit published manifest pin
         run: |
           set -euo pipefail
-          if [ -z "\${RUNTIME_BUNDLE_MANIFEST_BRANCH:-}" ]; then
-            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; no PR needed."
+          bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle
+          if git diff --quiet -- plugins/provider-lando/runtime-bundle-versions.json; then
+            echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; no commit needed."
             exit 0
           fi
-          if gh pr view "$RUNTIME_BUNDLE_MANIFEST_BRANCH" >/dev/null 2>&1; then
-            echo "::notice title=runtime-bundle-manifest::manifest pin PR for $RUNTIME_BUNDLE_MANIFEST_BRANCH already exists."
-            exit 0
-          fi
-          gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH" \\
-            --title "Pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION" \\
-            --body "Regenerated runtime-bundle-versions.json against the published $RUNTIME_BUNDLE_TAG release assets."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plugins/provider-lando/runtime-bundle-versions.json
+          git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
 `;
 
 const main = async (): Promise<void> => {

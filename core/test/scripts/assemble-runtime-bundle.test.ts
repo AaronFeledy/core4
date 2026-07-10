@@ -52,6 +52,8 @@ const fetchFixture = async (url: string): Promise<Uint8Array> => {
   throw new Error(`unexpected fixture url ${url}`);
 };
 
+const acceptVerification = async (): Promise<void> => {};
+
 describe("parseRuntimeBundleSources", () => {
   test("accepts a well-formed pins document", () => {
     const parsed = parseRuntimeBundleSources(fixtureSources());
@@ -61,14 +63,85 @@ describe("parseRuntimeBundleSources", () => {
 
   test("rejects a placeholder / all-zero sha256 (fail closed)", () => {
     const doc = fixtureSources();
-    doc.bundles["linux-x64"].components[0].sha256 = "0".repeat(64);
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.sha256 = "0".repeat(64);
     expect(() => parseRuntimeBundleSources(doc)).toThrow();
   });
 
   test("rejects a non-HTTPS component url (fail closed)", () => {
     const doc = fixtureSources();
-    doc.bundles["linux-x64"].components[0].url = "http://example.test/insecure";
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.url = "http://example.test/insecure";
     expect(() => parseRuntimeBundleSources(doc)).toThrow();
+  });
+
+  test("rejects Linux Podman remote-static pins", () => {
+    const doc = fixtureSources();
+    const [component] = doc.bundles["linux-x64"].components;
+    if (component === undefined) throw new Error("fixture requires a component");
+    component.url =
+      "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-static-linux_amd64.tar.gz";
+    expect(() => parseRuntimeBundleSources(doc)).toThrow(/linux.*podman.*remote-static/i);
+  });
+
+  test("rejects source-build outputs that try to bundle host-provided uidmap helpers", () => {
+    expect(() =>
+      parseRuntimeBundleSources({
+        schemaVersion: 1,
+        runtimeVersion: "9.9.9-fixture",
+        hostProvidedHelpers: ["newuidmap", "newgidmap"],
+        bundles: {
+          "linux-x64": {
+            components: [
+              {
+                name: "passt",
+                version: "2026_06_11.a9c61ff",
+                sourceBuild: "passt-linux-native",
+                inputs: [
+                  {
+                    name: "source",
+                    url: "https://example.test/passt.tar.xz",
+                    sha256: sha256(podmanBytes),
+                    archive: "tar.xz",
+                  },
+                ],
+                outputs: [{ source: "passt", installName: "bin/newuidmap", mode: 493 }],
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(/newuidmap.*newgidmap.*must not be bundled/i);
+  });
+
+  test("accepts non-Linux Podman remote client pins", () => {
+    const parsed = parseRuntimeBundleSources({
+      schemaVersion: 1,
+      runtimeVersion: "9.9.9-fixture",
+      bundles: {
+        "darwin-arm64": {
+          components: [
+            {
+              name: "podman",
+              version: "6.0.1",
+              url: "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-release-darwin_arm64.zip",
+              sha256: sha256(podmanBytes),
+              archive: "zip",
+              member: "podman-6.0.1/usr/bin/podman",
+              installName: "bin/podman",
+              mode: 493,
+            },
+          ],
+        },
+      },
+    });
+
+    const [podman] = parsed.bundles["darwin-arm64"]?.components ?? [];
+    expect(podman !== undefined && "url" in podman ? podman.url : undefined).toContain(
+      "podman-remote-release",
+    );
   });
 });
 
@@ -83,12 +156,14 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchFixture,
+        verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
         fetchArtifact: fetchFixture,
+        verifyCommand: acceptVerification,
       });
 
       expect(first.filename).toBe("lando-runtime-linux-x64.tar.gz");
@@ -108,9 +183,20 @@ describe("assembleBundle", () => {
     try {
       const sources = parseRuntimeBundleSources(fixtureSources());
       const badFetch = async (): Promise<Uint8Array> => new TextEncoder().encode("tampered");
-      await expect(
-        assembleBundle({ hostKey: "linux-x64", sources, outDir: dir, fetchArtifact: badFetch }),
-      ).rejects.toThrow(/sha256|checksum|verify/i);
+      let failure: unknown;
+      try {
+        await assembleBundle({
+          hostKey: "linux-x64",
+          sources,
+          outDir: dir,
+          fetchArtifact: badFetch,
+          verifyCommand: acceptVerification,
+        });
+      } catch (cause) {
+        failure = cause;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure instanceof Error ? failure.message : "").toMatch(/sha256|checksum|verify/i);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -129,12 +215,12 @@ describe("assembleBundle", () => {
           "linux-x64": {
             components: [
               {
-                name: "netavark",
+                name: "single-gzip-helper",
                 version: "2.0.0",
-                url: "https://example.test/netavark.gz",
+                url: "https://example.test/single-gzip-helper.gz",
                 sha256: sha256(gz),
                 archive: "gz",
-                installName: "bin/netavark",
+                installName: "bin/single-gzip-helper",
                 mode: 493,
               },
             ],
@@ -147,12 +233,14 @@ describe("assembleBundle", () => {
         sources,
         outDir: dirA,
         fetchArtifact: fetchGz,
+        verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
         fetchArtifact: fetchGz,
+        verifyCommand: acceptVerification,
       });
       expect(second.sha256).toBe(first.sha256);
     } finally {
@@ -165,9 +253,14 @@ describe("assembleBundle", () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-unknown-"));
     try {
       const sources = parseRuntimeBundleSources(fixtureSources());
-      await expect(
-        assembleBundle({ hostKey: "darwin-arm64", sources, outDir: dir, fetchArtifact: fetchFixture }),
-      ).rejects.toThrow(/host key|unknown|no components/i);
+      let failure: unknown;
+      try {
+        await assembleBundle({ hostKey: "darwin-arm64", sources, outDir: dir, fetchArtifact: fetchFixture });
+      } catch (cause) {
+        failure = cause;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure instanceof Error ? failure.message : "").toMatch(/host key|unknown|no components/i);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -200,9 +293,17 @@ describe("committed runtime-bundle-sources.json", () => {
     const sources = await readCommitted();
     for (const group of Object.values(sources.bundles)) {
       for (const component of group.components) {
-        expect(component.url.startsWith("https://")).toBe(true);
-        expect(component.sha256).toMatch(/^[0-9a-f]{64}$/);
-        expect(/^0+$/.test(component.sha256)).toBe(false);
+        if ("inputs" in component) {
+          for (const input of component.inputs) {
+            expect(input.url.startsWith("https://")).toBe(true);
+            expect(input.sha256).toMatch(/^[0-9a-f]{64}$/);
+            expect(/^0+$/.test(input.sha256)).toBe(false);
+          }
+        } else {
+          expect(component.url.startsWith("https://")).toBe(true);
+          expect(component.sha256).toMatch(/^[0-9a-f]{64}$/);
+          expect(/^0+$/.test(component.sha256)).toBe(false);
+        }
       }
     }
   });

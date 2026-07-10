@@ -1,6 +1,5 @@
-import { resolve } from "node:path";
-
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import { renderRuntimeBundleWorkflow } from "../../../scripts/build-runtime-bundle-workflow.ts";
 
@@ -36,8 +35,9 @@ describe("runtime-bundle workflow", () => {
       "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false",
     );
     expect(workflow).toContain(
-      "  publish:\n    needs: [assemble]\n    if: github.ref == 'refs/heads/main'\n    permissions:\n      contents: write\n      pull-requests: write",
+      "  publish:\n    needs: [assemble]\n    if: github.ref == 'refs/heads/main'\n    permissions:\n      contents: write",
     );
+    expect(workflow).not.toContain("pull-requests: write");
   });
 
   test("assembles exactly the four runtime host keys and never darwin-x64", async () => {
@@ -47,6 +47,35 @@ describe("runtime-bundle workflow", () => {
     }
     expect(workflow).not.toContain("hostKey: darwin-x64");
     expect(workflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform");
+  });
+
+  test("runs linux-arm64 on the native GitHub ARM runner", async () => {
+    const workflow = await readWorkflow();
+    expect(workflow).toContain(
+      "hostKey: linux-arm64\n            filename: lando-runtime-linux-arm64.tar.gz\n            runsOn: ubuntu-24.04-arm",
+    );
+    expect(workflow).toContain(
+      "hostKey: linux-x64\n            filename: lando-runtime-linux-x64.tar.gz\n            runsOn: ubuntu-24.04",
+    );
+    expect(workflow).toContain("runs-on: ${{ matrix.runsOn }}");
+  });
+
+  test("installs Linux source-build prerequisites before assembly without host Podman", async () => {
+    const workflow = await readWorkflow();
+    const installPrereqs = workflow.indexOf("Install Linux Podman source-build prerequisites");
+    const assemble = workflow.indexOf("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
+    expect(installPrereqs).toBeGreaterThan(-1);
+    expect(assemble).toBeGreaterThan(installPrereqs);
+    expect(workflow).toContain("sudo apt-get install -y --no-install-recommends");
+    expect(workflow).toContain("uses: actions/setup-go@v5");
+    expect(workflow).toContain("go-version: 1.25.6");
+    expect(workflow).toContain("dtolnay/rust-toolchain@1.88.0");
+    expect(workflow).toContain("libcap-dev");
+    expect(workflow).toContain("libseccomp-dev");
+    expect(workflow).toContain("protobuf-compiler");
+    expect(workflow).toContain("uidmap");
+    expect(workflow).not.toMatch(/\n\s+golang \\\n/u);
+    expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/);
   });
 
   test("uploads the pinned bundle asset names for each host key", async () => {
@@ -71,34 +100,38 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain('gh release create "$RUNTIME_BUNDLE_TAG"');
   });
 
-  test("regenerates the committed manifest and surfaces it for landing", async () => {
+  test("regenerates the committed manifest as a same-change commit", async () => {
     const workflow = await readWorkflow();
     expect(workflow).toContain("bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle");
-    expect(workflow).toContain("gh pr create");
+    expect(workflow).toContain('git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"');
+    expect(workflow).toContain("git fetch origin main");
+    expect(workflow).toContain("git rebase origin/main");
+    expect(workflow).toContain("git push origin HEAD:main");
+    expect(workflow).not.toContain("gh pr create");
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-versions.json");
   });
 
-  test("pushes the manifest pin branch before the irreversible release upload", async () => {
+  test("publishes immutable assets before regenerating the manifest pin", async () => {
     const workflow = await readWorkflow();
     const manifestBuild = workflow.indexOf(
       "bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle",
     );
-    const branchPush = workflow.indexOf('git push -u origin "$BRANCH"');
+    const manifestCommit = workflow.indexOf(
+      'git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"',
+    );
     const releaseCreate = workflow.indexOf('gh release create "$RUNTIME_BUNDLE_TAG"');
-    const prCreate = workflow.indexOf('gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH"');
+    const manifestPush = workflow.indexOf("git push origin HEAD:main");
 
     expect(manifestBuild).toBeGreaterThan(-1);
-    expect(branchPush).toBeGreaterThan(manifestBuild);
-    expect(releaseCreate).toBeGreaterThan(branchPush);
-    expect(prCreate).toBeGreaterThan(releaseCreate);
+    expect(manifestBuild).toBeGreaterThan(releaseCreate);
+    expect(manifestCommit).toBeGreaterThan(manifestBuild);
+    expect(manifestPush).toBeGreaterThan(manifestCommit);
   });
 
-  test("updates an existing manifest pin branch before publishing", async () => {
+  test("rebases the manifest commit onto the latest main before pushing", async () => {
     const workflow = await readWorkflow();
-    expect(workflow).toContain('MANIFEST_PIN="$(mktemp)"');
-    expect(workflow).toContain('git fetch origin "$BRANCH:$BRANCH"');
-    expect(workflow).toContain('cp "$MANIFEST_PIN" plugins/provider-lando/runtime-bundle-versions.json');
-    expect(workflow).toContain("manifest pin branch $BRANCH already matches regenerated assets");
-    expect(workflow).not.toContain("leaving it in place");
+    expect(workflow).toContain("git fetch origin main");
+    expect(workflow).toContain("git rebase origin/main");
+    expect(workflow).toContain("git push origin HEAD:main");
   });
 });
