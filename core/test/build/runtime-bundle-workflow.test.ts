@@ -22,6 +22,11 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("name: runtime-bundle");
   });
 
+  test("emits syntactically valid YAML", async () => {
+    const workflow = await readWorkflow();
+    expect(() => Bun.YAML.parse(workflow)).not.toThrow();
+  });
+
   test("triggers on a source-set release declaration and manual dispatch", async () => {
     const workflow = await readWorkflow();
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-sources.json");
