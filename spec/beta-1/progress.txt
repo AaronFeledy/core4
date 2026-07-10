@@ -265,3 +265,11 @@ Open closure categories:
 - **Learnings for future iterations:**
   - Build-step verification must preserve an explicit closure dependency even when all branch-owned mechanics pass; do not convert delegated external acceptance into an unsupported completion claim.
 ---
+
+## 2026-07-09 21:42 CDT - US-410 build verification
+- Runtime-bundle publishing remains complete for its branch-owned mechanics; no production change was needed after reconciling every acceptance criterion with the explicit US-430 closure dependency.
+- Verification: typecheck, lint, manifest invariants, generated-workflow and adjacent runtime-bundle spot checks passed; isolated Linux x64 assembly used the workflow-pinned Go and Rust toolchains, emitted the local Podman engine with required helpers, and cleaned all QA resources.
+- Blocked: US-410 remains `passes: false` until US-430 publishes superseding immutable assets, repins the committed manifest, and proves zero-override managed setup.
+- **Learnings for future iterations:**
+  - Manual source-build QA must mirror all generated-runner prerequisites, including pinned Go, pinned Rust, and `protoc`; a sandbox with Podman 6 alone is insufficient.
+---
