@@ -113,6 +113,14 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Start Podman socket");
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'podman-podman6-linux' }}");
     expect(providerContracts).toContain("      - name: Configure Docker socket");
+    expect(providerContracts).toContain("      - name: Pull live acceptance fixture images");
+    expect(providerContracts).toContain(
+      '              "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
+    );
+    expect(providerContracts).toContain(
+      '              podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
+    );
+    expect(providerContracts).toContain('              docker pull "$image"');
     expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
     expect(providerContracts).toContain("        if: always()");
     expect(providerContracts).toContain(

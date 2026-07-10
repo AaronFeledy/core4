@@ -150,6 +150,23 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
           echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=\${{ matrix.provider }}" >> "$GITHUB_ENV"
 
+      - name: Pull live acceptance fixture images
+        if: \${{ matrix['release-blocking'] == true }}
+        run: |
+          for image in node:22-alpine postgres:16-alpine alpine:3.20; do
+            case "\${{ matrix.cell }}" in
+              lando-podman6-linux)
+                "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
+                ;;
+              podman-podman6-linux)
+                podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
+                ;;
+              docker-engine-linux)
+                docker pull "$image"
+                ;;
+            esac
+          done
+
       - name: Run structured provider acceptance cell
         if: always()
         run: |
