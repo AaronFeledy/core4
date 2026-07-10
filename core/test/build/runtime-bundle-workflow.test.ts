@@ -35,8 +35,9 @@ describe("runtime-bundle workflow", () => {
       "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false",
     );
     expect(workflow).toContain(
-      "  publish:\n    needs: [assemble]\n    if: github.ref == 'refs/heads/main'\n    permissions:\n      contents: write\n      pull-requests: write",
+      "  publish:\n    needs: [assemble]\n    if: github.ref == 'refs/heads/main'\n    permissions:\n      contents: write",
     );
+    expect(workflow).not.toContain("pull-requests: write");
   });
 
   test("assembles exactly the four runtime host keys and never darwin-x64", async () => {
@@ -99,10 +100,14 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain('gh release create "$RUNTIME_BUNDLE_TAG"');
   });
 
-  test("regenerates the committed manifest and surfaces it for landing", async () => {
+  test("regenerates the committed manifest as a same-change commit", async () => {
     const workflow = await readWorkflow();
     expect(workflow).toContain("bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle");
-    expect(workflow).toContain("gh pr create");
+    expect(workflow).toContain('git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"');
+    expect(workflow).toContain("git fetch origin main");
+    expect(workflow).toContain("git rebase origin/main");
+    expect(workflow).toContain("git push origin HEAD:main");
+    expect(workflow).not.toContain("gh pr create");
     expect(workflow).toContain("plugins/provider-lando/runtime-bundle-versions.json");
   });
 
@@ -111,22 +116,22 @@ describe("runtime-bundle workflow", () => {
     const manifestBuild = workflow.indexOf(
       "bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle",
     );
-    const branchPush = workflow.indexOf('git push -u origin "$BRANCH"');
+    const manifestCommit = workflow.indexOf(
+      'git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"',
+    );
     const releaseCreate = workflow.indexOf('gh release create "$RUNTIME_BUNDLE_TAG"');
-    const prCreate = workflow.indexOf('gh pr create --base main --head "$RUNTIME_BUNDLE_MANIFEST_BRANCH"');
+    const manifestPush = workflow.indexOf("git push origin HEAD:main");
 
     expect(manifestBuild).toBeGreaterThan(-1);
     expect(manifestBuild).toBeGreaterThan(releaseCreate);
-    expect(branchPush).toBeGreaterThan(manifestBuild);
-    expect(prCreate).toBeGreaterThan(branchPush);
+    expect(manifestCommit).toBeGreaterThan(manifestBuild);
+    expect(manifestPush).toBeGreaterThan(manifestCommit);
   });
 
-  test("updates an existing manifest pin branch after publishing", async () => {
+  test("rebases the manifest commit onto the latest main before pushing", async () => {
     const workflow = await readWorkflow();
-    expect(workflow).toContain('MANIFEST_PIN="$(mktemp)"');
-    expect(workflow).toContain('git fetch origin "$BRANCH:$BRANCH"');
-    expect(workflow).toContain('cp "$MANIFEST_PIN" plugins/provider-lando/runtime-bundle-versions.json');
-    expect(workflow).toContain("manifest pin branch $BRANCH already matches regenerated assets");
-    expect(workflow).not.toContain("leaving it in place");
+    expect(workflow).toContain("git fetch origin main");
+    expect(workflow).toContain("git rebase origin/main");
+    expect(workflow).toContain("git push origin HEAD:main");
   });
 });
