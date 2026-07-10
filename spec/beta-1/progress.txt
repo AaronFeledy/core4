@@ -20,7 +20,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Renderer and redaction boundaries own output. Commands and provider seams should not write directly to stdout/stderr; user-visible text, StreamFrames, events, doctor contexts, and provider error details must pass through the shared renderer/redactor seams.
 - Durable host state and platform paths use shared services. Versioned/locked state belongs in `StateStore`; Lando roots and derived paths come from `makeLandoPaths`/`PathsService`; host/provider probing uses `@lando/sdk/probe` rather than ad hoc retry loops.
 - Runtime bundles for managed Linux setup must contain a local-engine Podman. A checksum-valid manifest can still pin an operationally wrong asset; the managed service requires `podman --root ... --runroot ... system service`, which a `podman-remote-static-*` client cannot provide.
-- Runtime-bundle verification must exercise network create/remove through the managed Podman root/runroot/config shape. Version checks and a ready API socket do not detect an incompatible Podman/Netavark CLI pair.
+- Runtime-bundle verification must exercise network create/remove and a published-port container through the managed Podman root/runroot/config shape. Version checks and a ready API socket do not prove that bundled networking helpers are selected or complete.
 - Runtime-bundle host keys and release artifact ids are different domains. Runtime bundles publish only `linux-x64`, `linux-arm64`, `darwin-arm64`, and `win32-x64`; CLI/release artifacts can still include Intel Mac or differently named Windows targets.
 - Log-follow lifecycle semantics live in the provider-neutral SDK engine. It owns handle close via explicit close plus `Stream.ensuring`, byte-level UTF-8-safe framing, tail/since/copytruncate/rotation diagnostics, and planner-owned capability degradation. Do not reintroduce scoped file handles that close before streams run.
 - Log-source availability is a planning truth, not a mid-stream surprise. Required follow sources fail planning when `serviceLogSources` is unavailable; optional follow sources are recorded as unavailable; redirect sources ride console and are never followed.
@@ -225,9 +225,11 @@ Open closure categories:
 
 ## 2026-07-10 15:29 CDT - US-432 blocked
 - Added generated provider/host acceptance cells with structured pass, fail, and skip reports, release-blocking evaluation, prerequisite preflight, per-cell evidence artifacts, and explicit lifecycle coverage through stop/destroy.
-- Verification: typecheck, lint, workflow/codegen/provider-acceptance spot checks passed. Fresh zero-override managed setup reached the repinned runtime-v0.1.2 socket, but the release-blocking live cell failed: Podman 6.0.1 invokes `netavark create`, while bundled Netavark 2.0.0 rejects that subcommand and returns `netavark: : EOF`.
-- US-432 remains `passes: false`. Completion requires a new immutable runtime bundle with a compatible Podman/Netavark pair, a repinned manifest, and a managed network create/remove smoke before rerunning the release-blocking cells.
+- Fixed managed service startup to load its generated `containers.conf` through `CONTAINERS_CONF`; without it, Podman ignored the bundled helper directory and selected the host's Netavark 1.14.0 instead of bundled Netavark 2.0.0. The matrix now pulls live fixture images before provider lifecycle checks.
+- Verification: typecheck, lint, workflow/codegen/provider-acceptance spot checks passed. Fresh zero-override setup reached the repinned runtime-v0.1.2 socket; managed network creation, image pulls, SDK contract, start, exec, logs, health, and volume checks passed. The release-blocking stop/destroy fixture then exposed that runtime-v0.1.2 omits `rootlessport`, so a service with a published port cannot start.
+- US-432 remains `passes: false`. Completion requires a new immutable runtime bundle containing the Podman 6 `rootlessport` helper, a repinned manifest, and a managed published-port lifecycle smoke before rerunning the release-blocking cells.
 - **Learnings for future iterations:**
-  - A successful managed setup proves download, checksum, service argv, and socket readiness; it does not prove the runtime can create networks or containers.
+  - `--config <runtimeConfigDir>` does not load `containers.conf`; launch the managed service with `CONTAINERS_CONF=<runtimeConfigDir>/containers.conf` or Podman falls back to host helpers.
+  - A successful managed setup proves download, checksum, service argv, and socket readiness; it does not prove the runtime can create networks or publish container ports.
   - Never classify a present-but-broken release-blocking runtime as an environment skip. Preserve the failed report and fix the immutable prerequisite.
 ---
