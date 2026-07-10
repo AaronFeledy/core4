@@ -214,10 +214,13 @@ describe("Linux Podman source build", () => {
           },
         });
       } catch (cause) {
+        if (!(cause instanceof Error)) throw cause;
         failure = cause;
       }
       expect(failure).toBeInstanceOf(Error);
-      expect(failure instanceof Error ? failure.message : "").toMatch(/source-build output.*bin\/rootlessport/i);
+      expect(failure instanceof Error ? failure.message : "").toMatch(
+        /source-build output.*bin\/rootlessport/i,
+      );
       expect(await Bun.file(artifactPath).exists()).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });

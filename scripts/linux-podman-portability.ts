@@ -69,10 +69,14 @@ const assertPortableLinuxDependency = (artifactPath: string, line: string): void
   const soname = sonameFromLddLine(line);
   if (soname === undefined) return;
   if (/=>\s+not found\b/u.test(line)) {
-    throw new Error(`assemble-runtime-bundle: Linux Podman artifact ${artifactPath} dependency ${soname} is not found`);
+    throw new Error(
+      `assemble-runtime-bundle: Linux Podman artifact ${artifactPath} dependency ${soname} is not found`,
+    );
   }
   if (soname.startsWith("libsubid.so")) {
-    throw new Error(`assemble-runtime-bundle: Linux Podman artifact ${artifactPath} links forbidden dependency ${soname}`);
+    throw new Error(
+      `assemble-runtime-bundle: Linux Podman artifact ${artifactPath} links forbidden dependency ${soname}`,
+    );
   }
   if (!reviewedLinuxSonames.has(soname)) {
     throw new Error(
