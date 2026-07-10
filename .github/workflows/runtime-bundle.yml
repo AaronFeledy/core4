@@ -3,9 +3,8 @@
 # Publishes per-platform runtime bundles as immutable assets on a
 # runtime-v<version> GitHub Release when runtime-bundle-sources.json declares a
 # new runtimeVersion. Bundles are assembled from those pinned upstream sources,
-# never from whatever the
-# runner's package manager installed. The publish job fails rather than
-# re-uploads if the tag or release already exists (release-asset immutability).
+# never from whatever the runner's package manager installed. Existing complete
+# immutable releases can recover the manifest pin without re-uploading assets.
 name: runtime-bundle
 
 on:
@@ -19,8 +18,101 @@ permissions:
   contents: read
 
 jobs:
-  assemble:
+  classify:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      state: ${{ steps.classify.outputs.release_state }}
+      runtime_version: ${{ steps.classify.outputs.runtime_version }}
+      runtime_tag: ${{ steps.classify.outputs.runtime_tag }}
+      desired_sources_sha: ${{ steps.classify.outputs.desired_sources_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - id: classify
+        name: Classify runtime bundle release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          test -n "$VERSION"
+          TAG="runtime-v$VERSION"
+          DESIRED_SOURCES_SHA="$(sha256sum plugins/provider-lando/runtime-bundle-sources.json | cut -d ' ' -f1)"
+          PINNED_VERSION="$(cat plugins/provider-lando/runtime-bundle-version 2>/dev/null || true)"
+          PINNED_VERSION="$(printf '%s' "$PINNED_VERSION" | tr -d '[:space:]')"
+
+          echo "runtime_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "runtime_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "desired_sources_sha=$DESIRED_SOURCES_SHA" >> "$GITHUB_OUTPUT"
+          set_state() { STATE="$1"; echo "release_state=$STATE" >> "$GITHUB_OUTPUT"; }
+
+          TAG_SHA="$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')"
+          RELEASE_JSON="$(mktemp)"
+          RELEASE_ERROR="$(mktemp)"
+          set +e
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$RELEASE_JSON" 2> "$RELEASE_ERROR"
+          RELEASE_STATUS=$?
+          set -e
+
+          if [ -z "$TAG_SHA" ] && [ "$RELEASE_STATUS" -ne 0 ] && grep -qi "not found" "$RELEASE_ERROR"; then
+            if [ "$PINNED_VERSION" = "$VERSION" ]; then
+              echo "::error title=runtime-bundle-state-mismatch::PIN_ALREADY_CURRENT points at $TAG but the tag or release is absent."
+              exit 1
+            fi
+            echo "::notice title=runtime-bundle-state::NO_RELEASE_PIN_OLD $TAG has no tag or release; new assets will be assembled."
+            set_state "publish_new"
+            exit 0
+          fi
+
+          if [ "$RELEASE_STATUS" -ne 0 ] && ! grep -qi "not found" "$RELEASE_ERROR"; then
+            echo "::error title=runtime-bundle-state-mismatch::GitHub API/auth failure while reading $TAG; refusing to assume absence."
+            cat "$RELEASE_ERROR"
+            exit 1
+          fi
+          if [ -z "$TAG_SHA" ] || [ "$RELEASE_STATUS" -ne 0 ]; then
+            echo "::error title=runtime-bundle-state-mismatch::$TAG must have both a tag and a release for recovery."
+            exit 1
+          fi
+
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          TAG_SOURCES_SHA="$(git show "$TAG:plugins/provider-lando/runtime-bundle-sources.json" | sha256sum | cut -d ' ' -f1)"
+          if [ "$TAG_SOURCES_SHA" != "$DESIRED_SOURCES_SHA" ]; then
+            echo "::error title=runtime-bundle-state-mismatch::tag-target runtime-bundle-sources.json does not match desired source set."
+            exit 1
+          fi
+
+          cat > expected-assets.txt <<'ASSETS'
+lando-runtime-linux-x64.tar.gz
+lando-runtime-linux-arm64.tar.gz
+lando-runtime-darwin-arm64.tar.gz
+lando-runtime-win32-x64.zip
+ASSETS
+          RELEASE_JSON="$RELEASE_JSON" TAG_SHA="$TAG_SHA" bun --eval 'const release = JSON.parse(await Bun.file(process.env.RELEASE_JSON).text()); const expected = new Set((await Bun.file("expected-assets.txt").text()).split("\n").filter(Boolean)); const assets = release.assets ?? []; if (release.draft === true || release.prerelease === true) throw new Error("release is draft or prerelease"); if (release.target_commitish !== process.env.TAG_SHA) throw new Error("tag target does not match release target"); if (assets.length !== expected.size) throw new Error("expected exactly 4 runtime assets"); for (const asset of assets) { if (!expected.delete(asset.name)) throw new Error("unexpected runtime asset " + asset.name); if (asset.size <= 0) throw new Error("asset size must be positive: " + asset.name); } if (expected.size !== 0) throw new Error("missing runtime assets: " + Array.from(expected).join(", "));'
+
+          if [ "$PINNED_VERSION" = "$VERSION" ]; then
+            bun run check:runtime-bundle-manifest
+            echo "::notice title=runtime-bundle-noop::PIN_ALREADY_CURRENT $TAG is already pinned by the committed manifest; needs.classify.outputs.state == 'pin_current'."
+            set_state "pin_current"
+            exit 0
+          fi
+
+          echo "::notice title=runtime-bundle-state::COMPLETE_MATCHING_RELEASE_PIN_OLD $TAG already has immutable assets; recovering manifest pin."
+          set_state "recover_pin"
+
+  assemble:
+    needs: [classify]
+    if: github.ref == 'refs/heads/main' && needs.classify.outputs.state == 'publish_new'
     runs-on: ${{ matrix.runsOn }}
     strategy:
       fail-fast: true
@@ -65,21 +157,7 @@ jobs:
         if: startsWith(matrix.hostKey, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            libassuan-dev \
-            libbtrfs-dev \
-            libcap-dev \
-            libdevmapper-dev \
-            libglib2.0-dev \
-            libgpg-error-dev \
-            libgpgme-dev \
-            libseccomp-dev \
-            libsubid-dev \
-            libsystemd-dev \
-            pkg-config \
-            protobuf-compiler \
-            uidmap
+          sudo apt-get install -y --no-install-recommends build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsubid-dev libsystemd-dev pkg-config protobuf-compiler uidmap
 
       - name: Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform ${{ matrix.hostKey }}
@@ -93,13 +171,15 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [assemble]
-    if: github.ref == 'refs/heads/main'
+    needs: [classify, assemble]
+    if: github.ref == 'refs/heads/main' && always() && ((needs.classify.outputs.state == 'publish_new' && needs.assemble.result == 'success') || needs.classify.outputs.state == 'recover_pin')
     permissions:
       contents: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -107,48 +187,65 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Download assembled bundles
+        if: needs.classify.outputs.state == 'publish_new'
         uses: actions/download-artifact@v4
         with:
           pattern: runtime-bundle-*
           merge-multiple: true
           path: dist/cache/runtime-bundle
 
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Resolve runtime bundle tag
         run: |
-          VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
-          test -n "$VERSION"
-          echo "RUNTIME_BUNDLE_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "RUNTIME_BUNDLE_TAG=runtime-v$VERSION" >> "$GITHUB_ENV"
+          echo "RUNTIME_BUNDLE_VERSION=${{ needs.classify.outputs.runtime_version }}" >> "$GITHUB_ENV"
+          echo "RUNTIME_BUNDLE_TAG=${{ needs.classify.outputs.runtime_tag }}" >> "$GITHUB_ENV"
+          echo "DESIRED_SOURCES_SHA=${{ needs.classify.outputs.desired_sources_sha }}" >> "$GITHUB_ENV"
 
-      - name: Enforce release-asset immutability
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Recheck release absence before publishing
+        if: needs.classify.outputs.state == 'publish_new'
         run: |
           set -euo pipefail
-          if git ls-remote --tags origin "refs/tags/$RUNTIME_BUNDLE_TAG" | grep -q "$RUNTIME_BUNDLE_TAG"; then
-            echo "::error title=runtime-bundle-immutable::tag $RUNTIME_BUNDLE_TAG already exists; runtime bundles are immutable — declare a new runtimeVersion in runtime-bundle-sources.json instead of overwriting."
-            exit 1
-          fi
-          if gh release view "$RUNTIME_BUNDLE_TAG" >/dev/null 2>&1; then
-            echo "::error title=runtime-bundle-immutable::release $RUNTIME_BUNDLE_TAG already exists; refusing to re-upload assets."
-            exit 1
-          fi
+          require_release_absent() {
+            if git ls-remote --tags origin "refs/tags/$RUNTIME_BUNDLE_TAG" | grep -q "$RUNTIME_BUNDLE_TAG"; then
+              echo "::error title=runtime-bundle-immutable::tag $RUNTIME_BUNDLE_TAG appeared after classification; refusing to publish."
+              exit 1
+            fi
+            RELEASE_ERROR="$(mktemp)"
+            if GITHUB_TOKEN="${{ github.token }}" gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RUNTIME_BUNDLE_TAG" >/dev/null 2> "$RELEASE_ERROR"; then
+              echo "::error title=runtime-bundle-immutable::release $RUNTIME_BUNDLE_TAG appeared after classification; refusing to publish."
+              exit 1
+            fi
+            if ! grep -qi "not found" "$RELEASE_ERROR"; then
+              echo "::error title=runtime-bundle-immutable::GitHub API/auth failure while rechecking $RUNTIME_BUNDLE_TAG; refusing to publish."
+              cat "$RELEASE_ERROR"
+              exit 1
+            fi
+          }
+          require_release_absent
 
       - name: Publish runtime-v release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: needs.classify.outputs.state == 'publish_new'
         run: |
           set -euo pipefail
-          gh release create "$RUNTIME_BUNDLE_TAG" dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz dist/cache/runtime-bundle/lando-runtime-darwin-arm64.tar.gz dist/cache/runtime-bundle/lando-runtime-win32-x64.zip \
-            --target "${{ github.sha }}" \
-            --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" \
-            --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
+          GITHUB_TOKEN="${{ github.token }}" gh release create "$RUNTIME_BUNDLE_TAG" dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz dist/cache/runtime-bundle/lando-runtime-darwin-arm64.tar.gz dist/cache/runtime-bundle/lando-runtime-win32-x64.zip --target "${{ github.sha }}" --title "Lando runtime bundle $RUNTIME_BUNDLE_VERSION" --notes "Immutable per-platform runtime bundles assembled from pinned upstream sources for runtime version $RUNTIME_BUNDLE_VERSION."
 
-      - name: Commit published manifest pin
+      - name: Download immutable release assets for manifest recovery
+        if: needs.classify.outputs.state == 'recover_pin'
+        run: |
+          set -euo pipefail
+          mkdir -p dist/cache/runtime-bundle
+          GITHUB_TOKEN="${{ github.token }}" gh release download "$RUNTIME_BUNDLE_TAG" --pattern "lando-runtime-*" --dir dist/cache/runtime-bundle --skip-existing
+
+      - name: Commit recovered manifest pin
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           bun run scripts/build-runtime-bundle.ts --staging dist/cache/runtime-bundle --runtime-version "$RUNTIME_BUNDLE_VERSION"
           printf '%s\n' "$RUNTIME_BUNDLE_VERSION" > plugins/provider-lando/runtime-bundle-version
+          bun run check:runtime-bundle-manifest
           if git diff --quiet -- plugins/provider-lando/runtime-bundle-version plugins/provider-lando/runtime-bundle-versions.json; then
             echo "::notice title=runtime-bundle-manifest::manifest already pins $RUNTIME_BUNDLE_TAG assets; no commit needed."
             exit 0
@@ -159,4 +256,9 @@ jobs:
           git commit -m "pin runtime bundle manifest $RUNTIME_BUNDLE_VERSION"
           git fetch origin main
           git rebase origin/main
+          echo "Recheck source identity after rebase"
+          POST_REBASE_SOURCES_SHA="$(sha256sum plugins/provider-lando/runtime-bundle-sources.json | cut -d ' ' -f1)"
+          test "$POST_REBASE_SOURCES_SHA" = "$DESIRED_SOURCES_SHA"
+          bun run check:runtime-bundle-manifest
+          gh auth setup-git
           git push origin HEAD:main
