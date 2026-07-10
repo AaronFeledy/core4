@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import type { BundleCommandRunner } from "./assemble-runtime-bundle.ts";
+export { type InspectCommandRunner, verifyLinuxPodmanPortability } from "./linux-podman-portability.ts";
 import {
   LinuxAardvarkDnsSourceBuild,
   LinuxNetavarkSourceBuild,
@@ -103,7 +104,9 @@ export const buildLinuxPodmanFromSource = async (
         "bin/podman",
         `GIT_COMMIT=${PodmanSourceBuild.gitCommit}`,
         `SOURCE_DATE_EPOCH=${PodmanSourceBuild.sourceDateEpoch}`,
+        "CGO_ENABLED=1",
         `GOFLAGS=${PodmanSourceBuild.goflags}`,
+        "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp",
         `EXTRA_LDFLAGS=${PodmanSourceBuild.extraLdflags}`,
       ],
       sourceDir,

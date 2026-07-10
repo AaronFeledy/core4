@@ -136,14 +136,12 @@ describe("runtime-bundle workflow", () => {
     const assemble = workflow.indexOf("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
     expect(installPrereqs).toBeGreaterThan(-1);
     expect(assemble).toBeGreaterThan(installPrereqs);
-    expect(workflow).toContain("sudo apt-get install -y --no-install-recommends");
-    expect(workflow).toContain("uses: actions/setup-go@v5");
-    expect(workflow).toContain("go-version: 1.25.6");
-    expect(workflow).toContain("dtolnay/rust-toolchain@1.88.0");
-    expect(workflow).toContain("libcap-dev");
-    expect(workflow).toContain("libseccomp-dev");
-    expect(workflow).toContain("protobuf-compiler");
-    expect(workflow).toContain("uidmap");
+    for (const prerequisite of "uses: actions/setup-go@v5|go-version: 1.25.6|dtolnay/rust-toolchain@1.88.0|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
+      "|",
+    )) {
+      expect(workflow).toContain(prerequisite);
+    }
+    expect(workflow).not.toContain("libsubid-dev");
     expect(workflow).not.toMatch(/\n\s+golang \\\n/u);
     expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/);
   });
