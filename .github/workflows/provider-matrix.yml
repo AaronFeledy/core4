@@ -19,38 +19,65 @@ jobs:
             engine: Docker Desktop
             runs-on: macos-15
             provider: docker
-            installable: false
-            notice: Docker Desktop requires a licensed desktop app and is not installed on GitHub-hosted macOS runners.
+            release-blocking: false
+            install-podman6: false
+            setup: advisory
+            advisory-skip: true
+            notice: "Docker Desktop requires a licensed desktop app and is not installed on GitHub-hosted macOS runners."
           - cell: docker-engine-linux
             engine: Docker Engine
             runs-on: ubuntu-24.04
             provider: docker
-            installable: true
-            notice: GitHub-hosted CI runtime is available.
+            release-blocking: true
+            install-podman6: false
+            setup: docker-engine
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
           - cell: podman-desktop-macos
             engine: Podman Desktop
             runs-on: macos-15
             provider: podman
-            installable: false
-            notice: Podman Desktop is not installable in GitHub-hosted CI; run this cell on a prepared self-hosted runner.
-          - cell: podman-linux
-            engine: Podman
+            release-blocking: false
+            install-podman6: false
+            setup: advisory
+            advisory-skip: true
+            notice: "Podman Desktop is not installable in GitHub-hosted CI; run this cell on a prepared self-hosted runner."
+          - cell: lando-podman6-linux
+            engine: Lando managed Podman 6
             runs-on: ubuntu-24.04
             provider: lando
-            installable: true
-            notice: GitHub-hosted CI runtime is available.
+            release-blocking: true
+            install-podman6: false
+            setup: managed-lando
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
+          - cell: podman-podman6-linux
+            engine: Podman 6
+            runs-on: ubuntu-24.04
+            provider: podman
+            release-blocking: true
+            install-podman6: true
+            setup: homebrew-podman
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
           - cell: lima-macos
             engine: Lima
             runs-on: macos-15
             provider: docker
-            installable: false
-            notice: Lima provider coverage needs a prepared macOS runtime; GitHub-hosted runners do not ship a reusable Lima daemon.
+            release-blocking: false
+            install-podman6: false
+            setup: advisory
+            advisory-skip: true
+            notice: "Lima provider coverage needs a prepared macOS runtime; GitHub-hosted runners do not ship a reusable Lima daemon."
           - cell: orbstack-macos
             engine: OrbStack
             runs-on: macos-15
             provider: docker
-            installable: false
-            notice: OrbStack is a macOS desktop runtime and is not installable in GitHub-hosted CI.
+            release-blocking: false
+            install-podman6: false
+            setup: advisory
+            advisory-skip: true
+            notice: "OrbStack is a macOS desktop runtime and is not installable in GitHub-hosted CI."
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
@@ -65,12 +92,71 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Notice unsupported hosted runner cell
-        if: ${{ matrix.installable == false }}
+        if: ${{ matrix['advisory-skip'] == true }}
         run: |
           echo "::notice title=provider-matrix::${{ matrix.engine }} skipped: ${{ matrix.notice }}"
 
+      - name: Provision managed Lando rootless runtime prerequisites
+        if: ${{ matrix.cell == 'lando-podman6-linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via ubuntu-24.04 default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Build Linux x64 binary for managed Lando provider
+        if: ${{ matrix.cell == 'lando-podman6-linux' }}
+        run: |
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+
+      - name: Prepare managed Lando provider from committed manifest
+        if: ${{ matrix.cell == 'lando-podman6-linux' }}
+        run: |
+          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
+          test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"
+          test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"
+          export LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf"
+          export LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data"
+          export LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache"
+          echo "LANDO_USER_CONF_ROOT=$LANDO_USER_CONF_ROOT" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$LANDO_USER_DATA_ROOT" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$LANDO_USER_CACHE_ROOT" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Verify managed Lando socket
+        if: ${{ matrix.cell == 'lando-podman6-linux' }}
+        run: |
+          for _ in {1..30}; do
+            test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock"
+          "$RUNNER_TEMP/lando-data/runtime/bin/podman" --version
+          dist/lando doctor --format json > /tmp/lando-managed-provider-doctor.json
+          echo "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock" >> "$GITHUB_ENV"
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+
       - name: Install Podman 6 toolchain (Homebrew; Ubuntu/OBS lack Podman 6)
-        if: ${{ matrix.cell == 'podman-linux' }}
+        if: ${{ matrix.cell == 'podman-podman6-linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y uidmap fuse-overlayfs
@@ -128,7 +214,7 @@ jobs:
           podman --version
 
       - name: Assert Podman 6 host contract
-        if: ${{ matrix.cell == 'podman-linux' }}
+        if: ${{ matrix.cell == 'podman-podman6-linux' }}
         run: |
           MINIMUM="6.0.0"
           version_output="$(podman --version 2>/dev/null || true)"
@@ -163,7 +249,7 @@ jobs:
           echo "podman6-contract: $numbers satisfies >= $MINIMUM"
 
       - name: Start Podman socket
-        if: ${{ matrix.cell == 'podman-linux' }}
+        if: ${{ matrix.cell == 'podman-podman6-linux' }}
         run: |
           sudo sysctl net.ipv4.ip_unprivileged_port_start=0
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
@@ -172,8 +258,11 @@ jobs:
             test -S /tmp/podman.sock && break
             sleep 1
           done
-          test -S /tmp/podman.sock
-          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
+          if test -S /tmp/podman.sock; then
+            echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
+          else
+            echo "::warning title=provider-matrix::Podman socket was not ready; acceptance runner will emit a structured skip."
+          fi
           echo "LANDO_CONFIG__default_provider_id=${{ matrix.provider }}" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
@@ -183,22 +272,38 @@ jobs:
           echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
           echo "LANDO_CONFIG__default_provider_id=${{ matrix.provider }}" >> "$GITHUB_ENV"
 
-      - name: Run provider contract tests
-        if: ${{ matrix.installable == true }}
+      - name: Run structured provider acceptance cell
+        if: always()
         run: |
-          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
-          bun test plugins/provider-lando/test/contract.integration.test.ts
-          bun test plugins/provider-docker/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/contract.integration.test.ts
-          bun test plugins/provider-podman/test/capabilities.test.ts
+          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports
+
+      - name: Upload provider matrix cell report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-matrix-report-${{ matrix.cell }}
+          path: provider-matrix-reports/${{ matrix.cell }}.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Teardown Podman
-        if: ${{ always() && matrix.cell == 'podman-linux' }}
+        if: ${{ always() && matrix.cell == 'podman-podman6-linux' }}
         run: |
           podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
           podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
           if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
           rm -f /tmp/podman.sock /tmp/podman-service.pid
+
+      - name: Teardown managed Lando runtime
+        if: ${{ always() && matrix.cell == 'lando-podman6-linux' }}
+        run: |
+          dist/lando poweroff || true
+          LANDO_PODMAN="$RUNNER_TEMP/lando-data/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$RUNNER_TEMP/lando-data/runtime/storage" --runroot "$RUNNER_TEMP/lando-data/runtime/run" --config "$RUNNER_TEMP/lando-data/runtime/config")
+          if test -x "$LANDO_PODMAN"; then
+            "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
+            "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
+          fi
 
       - name: Collect provider matrix diagnostics
         if: failure()

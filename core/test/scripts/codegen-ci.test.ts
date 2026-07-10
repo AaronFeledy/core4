@@ -184,17 +184,40 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("engine: Docker Desktop");
       expect(firstWorkflow).toContain("engine: Docker Engine");
       expect(firstWorkflow).toContain("engine: Podman Desktop");
-      expect(firstWorkflow).toContain("engine: Podman");
+      expect(firstWorkflow).toContain("engine: Lando managed Podman 6");
+      expect(firstWorkflow).toContain("engine: Podman 6");
       expect(firstWorkflow).toContain("engine: Lima");
       expect(firstWorkflow).toContain("engine: OrbStack");
-      expect(firstWorkflow).toContain("Notice unsupported hosted runner cell");
-      expect(firstWorkflow).toContain("Run provider contract tests");
+      expect(firstWorkflow).toContain("release-blocking: true");
+      expect(firstWorkflow).toContain("release-blocking: false");
+      expect(firstWorkflow).toContain("install-podman6: true");
+      expect(firstWorkflow).toContain("setup: managed-lando");
+      expect(firstWorkflow).toContain("setup: homebrew-podman");
+      expect(firstWorkflow).toContain("Build Linux x64 binary for managed Lando provider");
+      expect(firstWorkflow).toContain("Prepare managed Lando provider from committed manifest");
+      expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+      expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
+      expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"');
       expect(firstWorkflow).toContain(
+        "dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
+      );
+      expect(firstWorkflow).toContain(
+        "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock",
+      );
+      expect(firstWorkflow).toContain("if: ${{ matrix.cell == 'podman-podman6-linux' }}");
+      expect(firstWorkflow).toContain("Teardown managed Lando runtime");
+      expect(firstWorkflow).toContain("Run structured provider acceptance cell");
+      expect(firstWorkflow).toContain(
+        "bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
+      );
+      expect(firstWorkflow).toContain("Upload provider matrix cell report");
+      expect(firstWorkflow).toContain("if: always()");
+      expect(firstWorkflow).toContain("name: provider-matrix-report-${{ matrix.cell }}");
+      expect(firstWorkflow).toContain("path: provider-matrix-reports/${{ matrix.cell }}.json");
+      expect(firstWorkflow).not.toContain("Run provider contract tests");
+      expect(firstWorkflow).not.toContain(
         "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
       );
-      expect(firstWorkflow).toContain("bun test plugins/provider-lando/test/contract.integration.test.ts");
-      expect(firstWorkflow).toContain("bun test plugins/provider-docker/test/contract.integration.test.ts");
-      expect(firstWorkflow).toContain("bun test plugins/provider-podman/test/contract.integration.test.ts");
 
       await runCodegen();
 
