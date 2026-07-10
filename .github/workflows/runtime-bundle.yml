@@ -93,11 +93,11 @@ jobs:
           fi
 
           cat > expected-assets.txt <<'ASSETS'
-lando-runtime-linux-x64.tar.gz
-lando-runtime-linux-arm64.tar.gz
-lando-runtime-darwin-arm64.tar.gz
-lando-runtime-win32-x64.zip
-ASSETS
+          lando-runtime-linux-x64.tar.gz
+          lando-runtime-linux-arm64.tar.gz
+          lando-runtime-darwin-arm64.tar.gz
+          lando-runtime-win32-x64.zip
+          ASSETS
           RELEASE_JSON="$RELEASE_JSON" TAG_SHA="$TAG_SHA" bun --eval 'const release = JSON.parse(await Bun.file(process.env.RELEASE_JSON).text()); const expected = new Set((await Bun.file("expected-assets.txt").text()).split("\n").filter(Boolean)); const assets = release.assets ?? []; if (release.draft === true || release.prerelease === true) throw new Error("release is draft or prerelease"); if (release.target_commitish !== process.env.TAG_SHA) throw new Error("tag target does not match release target"); if (assets.length !== expected.size) throw new Error("expected exactly 4 runtime assets"); for (const asset of assets) { if (!expected.delete(asset.name)) throw new Error("unexpected runtime asset " + asset.name); if (asset.size <= 0) throw new Error("asset size must be positive: " + asset.name); } if (expected.size !== 0) throw new Error("missing runtime assets: " + Array.from(expected).join(", "));'
 
           if [ "$PINNED_VERSION" = "$VERSION" ]; then

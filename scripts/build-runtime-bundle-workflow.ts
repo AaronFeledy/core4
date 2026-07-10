@@ -37,7 +37,7 @@ const matrixInclude = publishTargets
   .join("\n");
 
 const assetArgs = publishTargets.map((target) => `dist/cache/runtime-bundle/${target.filename}`).join(" ");
-const expectedAssetLines = publishTargets.map((target) => target.filename).join("\n");
+const expectedAssetLines = publishTargets.map((target) => `          ${target.filename}`).join("\n");
 
 export const renderRuntimeBundleWorkflow = (): string => `${GENERATED_HEADER}
 #
@@ -135,7 +135,7 @@ jobs:
 
           cat > expected-assets.txt <<'ASSETS'
 ${expectedAssetLines}
-ASSETS
+          ASSETS
           RELEASE_JSON="$RELEASE_JSON" TAG_SHA="$TAG_SHA" bun --eval 'const release = JSON.parse(await Bun.file(process.env.RELEASE_JSON).text()); const expected = new Set((await Bun.file("expected-assets.txt").text()).split("\\n").filter(Boolean)); const assets = release.assets ?? []; if (release.draft === true || release.prerelease === true) throw new Error("release is draft or prerelease"); if (release.target_commitish !== process.env.TAG_SHA) throw new Error("tag target does not match release target"); if (assets.length !== expected.size) throw new Error("expected exactly 4 runtime assets"); for (const asset of assets) { if (!expected.delete(asset.name)) throw new Error("unexpected runtime asset " + asset.name); if (asset.size <= 0) throw new Error("asset size must be positive: " + asset.name); } if (expected.size !== 0) throw new Error("missing runtime assets: " + Array.from(expected).join(", "));'
 
           if [ "$PINNED_VERSION" = "$VERSION" ]; then
