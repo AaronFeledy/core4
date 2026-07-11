@@ -64,6 +64,7 @@ export interface UninstallOptions {
   readonly teardownProviderMachines?: (
     userDataRoot: string,
   ) => Promise<{ readonly removed: boolean; readonly name?: string }>;
+  readonly teardownHostProxySessions?: (userDataRoot: string) => Promise<void>;
   readonly reportFallbackDir?: string;
 }
 
@@ -142,6 +143,11 @@ const fallbackUninstallReportPath = async (reportFallbackDir?: string): Promise<
 };
 
 const defaultRemove = (path: string): Promise<void> => rm(path, { recursive: true, force: true });
+
+const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<void> => {
+  const { terminateOwnedHostProxyWorkersInRoot } = await import("../../subsystems/host-proxy/worker.ts");
+  await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot));
+};
 
 const defaultTeardownRuntimeService = (
   userDataRoot: string,
@@ -224,6 +230,7 @@ export const buildUninstallPlan = (
   const paths = makeLandoPaths({ userDataRoot });
   const runtimeDir = paths.runtimeDir;
   const managedProviderRuntime = join(userDataRoot, "providers", "lando");
+  const hostProxySessions = paths.hostProxyRunRoot;
   const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
@@ -288,6 +295,14 @@ export const buildUninstallPlan = (
       detail: "Remove Lando cache data.",
     },
     {
+      id: "host-proxy-sessions",
+      label: "host-proxy sessions",
+      target: hostProxySessions,
+      destructive: true,
+      status: pathStatus(hostProxySessions, exists),
+      detail: "Remove transient host-proxy runLando sockets and shims from app caches.",
+    },
+    {
       id: "installed-binary",
       label: "installed binary",
       target: execPath,
@@ -344,6 +359,7 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   const teardownRuntimeService = options.teardownRuntimeService ?? defaultTeardownRuntimeService;
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
+  const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
   const steps = buildUninstallPlan(options, mode);
   const executed: UninstallPlanStep[] = [];
 
@@ -363,6 +379,12 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
         // The target is a machine NAME, not a filesystem path: tear it down via the
         // provider-machine seam and never fall through to remove(step.target).
         await teardownProviderMachines(userDataRoot);
+        executed.push({ ...step, outcome: "completed" });
+        continue;
+      }
+      if (step.id === "host-proxy-sessions") {
+        await teardownHostProxySessions(userDataRoot);
+        await remove(step.target);
         executed.push({ ...step, outcome: "completed" });
         continue;
       }

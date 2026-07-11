@@ -23,6 +23,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  HostProxySocketStaleError,
+  HostProxyTransportUnavailableError,
   LandoCommandError,
   LandofileIncludeError,
   LandofileLockMismatchError,
@@ -182,6 +184,8 @@ export type StartAppError =
   | NotImplementedError
   | CapabilityError
   | GlobalAutoStartError
+  | HostProxySocketStaleError
+  | HostProxyTransportUnavailableError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError

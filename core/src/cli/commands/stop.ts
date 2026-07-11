@@ -17,6 +17,7 @@ import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } f
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
+import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 export type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -81,7 +82,9 @@ export const stopApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
+    yield* provider
+      .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
+      .pipe(Effect.ensuring(cleanupHostProxyRunLandoState(ref)));
 
     for (const service of services) {
       yield* events.publish(

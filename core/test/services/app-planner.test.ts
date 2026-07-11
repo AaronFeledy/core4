@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
@@ -411,7 +411,10 @@ describe("AppPlannerLive", () => {
         }),
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.extensions["@lando/core/service-features"]).toBeUndefined();
+      expect(web?.extensions["@lando/core/service-features"]).toEqual({
+        featureIds: ["service-lando.compose"],
+        buildSteps: [],
+      });
     });
   });
 
@@ -481,6 +484,32 @@ describe("AppPlannerLive", () => {
           },
         ],
       });
+    });
+  });
+
+  test("records host-proxy runLando unavailable when hostReachability is none without mutating service transport", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "host-proxy-none",
+          runtime: 4,
+          services: { web: { type: "node:lts" } },
+        }),
+        { ...providerLandoCapabilities, hostReachability: "none" },
+      );
+
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(appPlan.extensions["@lando/core/host-proxy"]).toEqual({
+        runLando: {
+          availability: "unavailable",
+          reason: "Provider hostReachability is none; host-proxy runLando is disabled.",
+        },
+      });
+      expect(web?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(web?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      expect(web?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+      );
     });
   });
 
@@ -638,6 +667,7 @@ describe("AppPlannerLive", () => {
           );
 
         const first = await runPlan(cachedLandofile);
+        const cachedBytes = await readFile(appPlanCachePath(cacheRoot, "cached-app", process.cwd()));
         const second = await runPlan(cachedLandofile);
         const changed = await runPlan({
           ...cachedLandofile,
@@ -650,6 +680,8 @@ describe("AppPlannerLive", () => {
         });
 
         expect(first.name).toBe("cached-app");
+        expect(JSON.stringify(first)).not.toContain("LANDO_HOST_PROXY_TOKEN");
+        expect(cachedBytes.toString("utf8")).not.toContain("LANDO_HOST_PROXY_TOKEN");
         expect(second.metadata.resolvedAt).toEqual(first.metadata.resolvedAt);
         expect(changed.name).toBe("cached-app");
         expect(servicePlanCalls).toBe(2);
@@ -961,6 +993,7 @@ describe("AppPlannerLive", () => {
 
       expect(appPlan.services[ServiceName.make("web")]?.extensions["@lando/core/service-features"]).toEqual({
         source: "service-feature",
+        featureIds: ["build-step-backed.test-plan"],
         buildSteps: [
           { id: "base-install", phase: "build", command: ["bun", "install"] },
           {

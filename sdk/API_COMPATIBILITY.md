@@ -426,6 +426,11 @@
 - `AppFeatureCycleError`
 - `ServiceTypeCollisionError`
 - `StateStoreError`
+- `HostProxyAuthenticationError`
+- `HostProxyBackpressureError`
+- `HostProxyRecursionError`
+- `HostProxySocketStaleError`
+- `HostProxyTransportUnavailableError`
 - `ToolManifestError`
 - `ToolExtractError`
 - `ToolInstallPathError`

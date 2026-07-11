@@ -14,8 +14,10 @@ import type {
   LandofileService,
   PluginRegistry,
   RuntimeProviderRegistry,
+  ShellRunner,
 } from "@lando/sdk/services";
 
+import type { RedactionService } from "../../redaction/service.ts";
 import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
@@ -34,7 +36,9 @@ type RestartAppServices =
   | GlobalAppService
   | LandofileService
   | PluginRegistry
-  | RuntimeProviderRegistry;
+  | RedactionService
+  | RuntimeProviderRegistry
+  | ShellRunner;
 
 export const renderRestartAppResult = (result: RestartAppResult): string => {
   const services = result.servicesStarted

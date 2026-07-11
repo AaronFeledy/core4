@@ -6,31 +6,32 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect, Exit, Schema, Scope } from "effect";
+import { DateTime, Effect, Schema, Scope } from "effect";
 
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
-  FileSyncEngine,
   type FileSystem,
   type GlobalAppService,
   LandofileService,
   type PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  type ShellRunner,
 } from "@lando/sdk/services";
 
+import type { RedactionService } from "../../redaction/service.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
+import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
+import { startHostProxyRunLandoSession, withHostProxyRunLando } from "./start-host-proxy.ts";
 
 import {
-  type ProgressEmitter,
   publishTaskComplete,
-  publishTaskDetail,
   publishTaskFail,
   publishTaskStart,
   publishTreeComplete,
@@ -38,6 +39,7 @@ import {
 } from "../progress.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
+export type { StartManagedScope } from "./start-file-sync.ts";
 
 export const StartedServiceResultSchema = Schema.Struct({
   name: Schema.String,
@@ -50,17 +52,6 @@ export const StartAppResultSchema = Schema.Struct({
   servicesStarted: Schema.Array(StartedServiceResultSchema),
 });
 
-/**
- * Optional managed scope an App handle injects so start-state resources
- * (file-sync sessions) are bound to the handle's lifecycle scope rather than a
- * transient throwaway scope. Absent for CLI callers, which keep start-state
- * resources alive until an explicit stop.
- */
-export interface StartManagedScope {
-  readonly scope: Scope.CloseableScope;
-  readonly onScopeClosedByStartApp?: Effect.Effect<void>;
-}
-
 type StartAppServices =
   | AppPlanner
   | EventService
@@ -68,7 +59,9 @@ type StartAppServices =
   | GlobalAppService
   | LandofileService
   | PluginRegistry
-  | RuntimeProviderRegistry;
+  | RedactionService
+  | RuntimeProviderRegistry
+  | ShellRunner;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -86,122 +79,9 @@ const endpointText = (endpoint: {
 
 const READY_STATES = new Set(["running", "ready"]);
 
-const managedFileSyncRefs = new WeakMap<Scope.CloseableScope, Set<FileSyncSessionRef>>();
-
-const managedRefsFor = (scope: Scope.CloseableScope): Set<FileSyncSessionRef> => {
-  const refs = managedFileSyncRefs.get(scope);
-  if (refs !== undefined) return refs;
-  const fresh = new Set<FileSyncSessionRef>();
-  managedFileSyncRefs.set(scope, fresh);
-  return fresh;
-};
-
-const hasManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionRef): boolean =>
-  managedRefsFor(managed.scope).has(ref);
-
-const markManagedFileSyncRef = (managed: StartManagedScope, ref: FileSyncSessionRef): void => {
-  managedRefsFor(managed.scope).add(ref);
-};
-
 const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
-
-const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter, managed?: StartManagedScope) =>
-  Effect.gen(function* () {
-    if (plan.fileSync.length === 0) return;
-    const engineOption = yield* Effect.serviceOption(FileSyncEngine);
-    if (engineOption._tag === "None") return;
-
-    const engine = engineOption.value;
-    if (!(yield* engine.isAvailable)) {
-      yield* publishTaskDetail(events, {
-        taskId: "file-sync",
-        stream: "stdout",
-        line: "Completing deferred file-sync setup for accelerated mounts.",
-      });
-      // Swallow setup failure: propagating it reaches `rollbackAppliedApp`,
-      // which would destroy the just-applied app over a transient download blip.
-      const setupSucceeded = yield* Effect.scoped(engine.setup({ force: false })).pipe(
-        Effect.as(true),
-        Effect.catchAll(() =>
-          publishTaskDetail(events, {
-            taskId: "file-sync",
-            stream: "stderr",
-            line: "Deferred file-sync setup failed; continuing without accelerated mounts.",
-          }).pipe(Effect.as(false)),
-        ),
-      );
-      if (!setupSucceeded || !(yield* engine.isAvailable)) return;
-    }
-
-    const createdRefs: Array<FileSyncSessionRef> = [];
-    const resumedPausedRefs: Array<FileSyncSessionRef> = [];
-    yield* Effect.forEach(
-      plan.fileSync,
-      (entry) =>
-        Effect.gen(function* () {
-          const existingSessions = yield* engine.listSessions({
-            app: entry.session.app,
-            service: entry.session.service,
-            mountKey: entry.session.mountKey,
-          });
-          const existingSession = existingSessions[0];
-          if (existingSession !== undefined) {
-            if (existingSession.status === "paused") {
-              yield* engine.resumeSession(existingSession.ref);
-              resumedPausedRefs.push(existingSession.ref);
-              if (managed !== undefined) {
-                yield* Effect.addFinalizer(() =>
-                  engine.pauseSession(existingSession.ref).pipe(Effect.catchAll(() => Effect.void)),
-                ).pipe(Effect.provideService(Scope.Scope, managed.scope));
-                markManagedFileSyncRef(managed, existingSession.ref);
-              }
-            }
-            if (
-              existingSession.status === "running" &&
-              managed !== undefined &&
-              !hasManagedFileSyncRef(managed, existingSession.ref)
-            ) {
-              yield* Effect.addFinalizer(() =>
-                engine.terminateSession(existingSession.ref).pipe(Effect.catchAll(() => Effect.void)),
-              ).pipe(Effect.provideService(Scope.Scope, managed.scope));
-              markManagedFileSyncRef(managed, existingSession.ref);
-            }
-            if (existingSession.status === "running" || existingSession.status === "paused") return;
-          }
-
-          const sessionScope = managed?.scope ?? (yield* Scope.make());
-          const ref = yield* engine
-            .createSession(entry.session)
-            .pipe(Effect.provideService(Scope.Scope, sessionScope));
-          if (managed !== undefined) markManagedFileSyncRef(managed, ref);
-          createdRefs.push(ref);
-        }),
-      { discard: true },
-    ).pipe(
-      Effect.catchAll((error) =>
-        (managed === undefined
-          ? Effect.forEach(
-              [...createdRefs].reverse(),
-              (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
-              { discard: true },
-            ).pipe(
-              Effect.zipRight(
-                Effect.forEach(
-                  [...resumedPausedRefs].reverse(),
-                  (ref) => engine.pauseSession(ref).pipe(Effect.catchAll(() => Effect.void)),
-                  { discard: true },
-                ),
-              ),
-            )
-          : Scope.close(managed.scope, Exit.void).pipe(
-              Effect.zipRight(managed.onScopeClosedByStartApp ?? Effect.void),
-            )
-        ).pipe(Effect.flatMap(() => Effect.fail(error))),
-      ),
-    );
-  });
 
 const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
   provider
@@ -265,7 +145,15 @@ export const startApp = (
       );
     }
 
-    const serviceList = Object.values(plan.services);
+    const hostProxySession = yield* startHostProxyRunLandoSession(plan, ref, provider.capabilities);
+    if (managed !== undefined && hostProxySession !== undefined) {
+      yield* Effect.addFinalizer(() => Effect.promise(() => hostProxySession.close())).pipe(
+        Effect.provideService(Scope.Scope, managed.scope),
+      );
+    }
+
+    const applyPlan = hostProxySession === undefined ? plan : withHostProxyRunLando(plan, hostProxySession);
+    const serviceList = Object.values(applyPlan.services);
     const serviceIds = serviceList.map((service) => String(service.name));
     const applyParentId = `apply-${plan.id}`;
     const applyStart = performance.now();
@@ -296,7 +184,7 @@ export const startApp = (
 
     const applyAndInspect = Effect.gen(function* () {
       yield* Effect.scoped(
-        provider.apply(plan, {
+        provider.apply(applyPlan, {
           reconcile: options.reconcile ?? false,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         }),
@@ -315,6 +203,7 @@ export const startApp = (
     const servicesStarted = yield* applyAndInspect.pipe(
       Effect.tapError(() =>
         Effect.gen(function* () {
+          if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
           for (const service of serviceList) {
             yield* publishTaskFail(events, {
               taskId: String(service.name),
@@ -350,7 +239,12 @@ export const startApp = (
     });
 
     yield* startFileSyncSessions(plan, events, managed).pipe(
-      Effect.tapError(() => rollbackAppliedApp(provider, plan)),
+      Effect.tapError(() =>
+        Effect.gen(function* () {
+          if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
+          yield* rollbackAppliedApp(provider, plan);
+        }),
+      ),
     );
 
     yield* events.publish(

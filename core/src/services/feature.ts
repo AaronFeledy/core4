@@ -84,6 +84,7 @@ const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   primary: base.primary,
   environment: sortRecord(base.environment ?? {}),
   mounts: [],
+  featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],
   storage: [],
   endpoints: [],
@@ -162,12 +163,16 @@ const makeContext = (
 });
 
 const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
+  const featureIds = draft.featureIds ?? [];
   const coreExtension =
-    draft.buildSteps.length === 0
+    draft.buildSteps.length === 0 && featureIds.length === 0
       ? {}
       : {
           "@lando/core/service-features": {
-            buildSteps: draft.buildSteps.map((step) => ({ ...step })),
+            ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
+            ...(draft.buildSteps.length === 0
+              ? {}
+              : { buildSteps: draft.buildSteps.map((step) => ({ ...step })) }),
           },
         };
 
@@ -205,6 +210,7 @@ export const composeService = (input: ComposeServiceInput): Effect.Effect<Servic
   Effect.gen(function* () {
     const draft = makeDraft(input.base);
     const orderedFeatures = stableFeatureOrder(input);
+    draft.featureIds = orderedFeatures.map((feature) => feature.id);
 
     yield* Effect.forEach(
       orderedFeatures,

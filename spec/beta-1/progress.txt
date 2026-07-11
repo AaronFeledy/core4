@@ -269,3 +269,13 @@ Open closure categories:
 - Verification: typecheck and focused closure-review tests passed; lint passed after formatting the focused regression change.
 - **Learnings for future iterations:** Disposition and inconclusive classification form one state invariant; validate both directions so contradictory external input cannot pass a fail-closed approval gate.
 ---
+
+## 2026-07-11 07:13 CDT - US-433
+- Shipped the production in-container `runLando` path: eligible services receive a read-only per-app Unix socket and compiled shim, while a detached host worker retains one app runtime and preserves the logical dispatcher's allowlist, cwd/env filtering, structured result, exit-code, event, and redaction behavior.
+- Added session-scoped token authentication, atomic concurrency admission, recursion protection, bounded request handling, capability-aware no-op reporting, and owned cleanup across failed setup, stop, destroy, rebuild, restart, and uninstall. Oversized requests are drained without retaining bytes and close after one tagged rejection response and event pair.
+- Verification: typecheck and lint passed; host-proxy, planner, start/info/uninstall, redaction, SDK, and service-lando spot checks passed; renderer, redaction, machine-output, and path boundaries passed; schema/codegen and focused guide checks passed; the compiled shim and sandboxed CLI surface were exercised successfully. The public-transcript inventory gate requires the unrelated full generated transcript corpus and therefore remained unavailable after a clean build tree.
+- **Learnings for future iterations:**
+  - Detached app workers need non-secret ownership records with live argv fingerprint checks before termination; deleting socket state alone can orphan a warm runtime.
+  - Enforce request-size and concurrency limits before retaining bytes or forking dispatch, and keep rejection events paired even for authentication and parse failures.
+  - Provider capability `none` must survive into the plan as explicit unavailable metadata so runtime no-ops remain visible through `lando info`.
+---

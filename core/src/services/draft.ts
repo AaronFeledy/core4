@@ -27,6 +27,7 @@ export interface DraftServicePlan {
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;
   mounts: ServiceMountIntent[];
+  featureIds?: ReadonlyArray<string>;
   buildSteps: ServiceBuildStepIntent[];
   extensions?: Record<string, unknown>;
   storage: Array<ServicePlan["storage"][number]>;

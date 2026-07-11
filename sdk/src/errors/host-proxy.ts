@@ -38,3 +38,48 @@ export class HostProxyAllowlistConflictError extends Schema.TaggedError<HostProx
     remediation: Schema.String,
   },
 ) {}
+
+export class HostProxyAuthenticationError extends Schema.TaggedError<HostProxyAuthenticationError>()(
+  "HostProxyAuthenticationError",
+  {
+    message: Schema.String,
+    reason: Schema.Literal("missing", "stale", "cross-app"),
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyRecursionError extends Schema.TaggedError<HostProxyRecursionError>()(
+  "HostProxyRecursionError",
+  {
+    message: Schema.String,
+    depth: Schema.Number,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyBackpressureError extends Schema.TaggedError<HostProxyBackpressureError>()(
+  "HostProxyBackpressureError",
+  {
+    message: Schema.String,
+    concurrency: Schema.Number,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyTransportUnavailableError extends Schema.TaggedError<HostProxyTransportUnavailableError>()(
+  "HostProxyTransportUnavailableError",
+  {
+    message: Schema.String,
+    socketPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxySocketStaleError extends Schema.TaggedError<HostProxySocketStaleError>()(
+  "HostProxySocketStaleError",
+  {
+    message: Schema.String,
+    socketPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}

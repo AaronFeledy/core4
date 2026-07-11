@@ -49,6 +49,8 @@ export interface LandoPaths {
   readonly runtimeRunDir: string;
   readonly runtimeStorageDir: string;
   readonly runtimeConfigDir: string;
+  readonly hostProxyRunRoot: string;
+  readonly hostProxyRunDir: (appId: string) => string;
   readonly providerSocketPath: string;
   readonly providerPidPath: string;
   readonly globalAppRoot: string;

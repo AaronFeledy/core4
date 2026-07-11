@@ -24,6 +24,7 @@ import {
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
+import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 export type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -84,14 +85,16 @@ export const destroyApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider.destroy(
-      { app: plan.id, plan },
-      {
-        volumes,
-        ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
-        removeState: true,
-      },
-    );
+    yield* provider
+      .destroy(
+        { app: plan.id, plan },
+        {
+          volumes,
+          ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
+          removeState: true,
+        },
+      )
+      .pipe(Effect.ensuring(cleanupHostProxyRunLandoState(ref)));
 
     if (volumes) {
       yield* Effect.promise(() =>

@@ -108,6 +108,7 @@ export {
   landoAppMountFeature,
   landoEnvFeature,
   landoHealthcheckFeature,
+  landoHostProxyFeature,
   landoStorageFeature,
   landoUserFeature,
   landoUserIdFeature,

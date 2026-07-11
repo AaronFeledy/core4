@@ -184,6 +184,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     const plan = await planComposeService({ service, serviceName: "api" });
 
     expect(plan.extensions).toEqual({
+      "@lando/core/service-features": { featureIds: ["service-lando.compose"] },
       lando: { labels: { "com.example.team": "platform" } },
       docker: { restart: "unless-stopped" },
     });

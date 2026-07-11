@@ -114,8 +114,9 @@
     }
   },
   "scripts": {
-    "build": "bun run build:manifest && bun run build:compile",
+    "build": "bun run build:manifest && bun run build:host-proxy-shim && bun run build:compile",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
+    "build:host-proxy-shim": "bun build ./src/subsystems/host-proxy/shim-bin.ts --compile --outfile ./dist/host-proxy/lando-shim",
     "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
     "build:compile": "bun build ./bin/lando.ts --compile --bytecode --outfile ./dist/lando --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",
     "clean": "rm -rf dist oclif.manifest.json .tsbuildinfo",

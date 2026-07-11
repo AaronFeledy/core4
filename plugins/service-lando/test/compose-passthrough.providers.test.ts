@@ -113,6 +113,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const plan = await planFor(composeLandofile, "lando");
     const worker = plan.services[ServiceName.make("worker")];
     expect(worker?.extensions).toEqual({
+      "@lando/core/service-features": { featureIds: ["service-lando.compose"], buildSteps: [] },
       lando: { labels: { "com.example.team": "platform" } },
       docker: { restart: "unless-stopped" },
     });

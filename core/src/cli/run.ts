@@ -25,6 +25,7 @@ import type { RedactionService } from "../redaction/service.ts";
 
 import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
 
 import { CORE_VERSION } from "../version.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
@@ -2054,6 +2055,11 @@ const normalizeCompiledScratchRunArgvForUniversalFlags = (
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
+    await runHostProxyWorkerProcess();
+    return;
+  }
+
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
     rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
@@ -2647,6 +2653,11 @@ export const isCompiledCliEntryPath = (entryPath: string, execPath: string = pro
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   const entryPath = fileURLToPath(options.rootUrl);
   const args = options.argv as Array<string>;
+
+  if (args[0] === HOST_PROXY_WORKER_COMMAND) {
+    await runHostProxyWorkerProcess();
+    return;
+  }
 
   if (isCompiledCliEntryPath(entryPath)) {
     await runCompiledCli(options.argv);

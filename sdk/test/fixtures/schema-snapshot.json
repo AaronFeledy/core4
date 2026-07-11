@@ -165,6 +165,7 @@
             "lando.env",
             "lando.app-mount",
             "lando.healthcheck",
+            "lando.host-proxy",
             "lando.user",
             "service-lando.apache",
             "service-lando.compose",
@@ -5394,6 +5395,27 @@
         },
         "app": {
           "type": "string"
+        },
+        "hostProxy": {
+          "additionalProperties": false,
+          "properties": {
+            "runLando": {
+              "additionalProperties": false,
+              "properties": {
+                "availability": {
+                  "enum": ["available", "unavailable"],
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["availability"],
+              "type": "object"
+            }
+          },
+          "required": ["runLando"],
+          "type": "object"
         },
         "services": {
           "items": {
@@ -12481,6 +12503,27 @@
         },
         "app": {
           "type": "string"
+        },
+        "hostProxy": {
+          "additionalProperties": false,
+          "properties": {
+            "runLando": {
+              "additionalProperties": false,
+              "properties": {
+                "availability": {
+                  "enum": ["available", "unavailable"],
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["availability"],
+              "type": "object"
+            }
+          },
+          "required": ["runLando"],
+          "type": "object"
         },
         "services": {
           "items": {

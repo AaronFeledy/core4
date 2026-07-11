@@ -41,13 +41,17 @@ tags: [beta, docs, subsystems, host-proxy, dns, lndo-site]
     </Step>
   </Scenario>
 
-  <Scenario id="host-proxy-open-round-trip" render={false} reason="The in-container `lando open` runLando round-trip is exercised by core/test/contract/host-proxy-runlando.test.ts through an in-process test dispatcher; a live socket round-trip requires a running container and the physical host-proxy socket/shim (a later wave)">
+  <Scenario id="host-proxy-open-round-trip" render={false} reason="The in-container `lando open` runLando round-trip is exercised by core/test/contract/host-proxy-runlando.test.ts through the logical dispatcher and core/test/subsystems/host-proxy/transport.test.ts through the physical socket/shim transport; live provider coverage still requires a running eligible container">
     <Step name="open-round-trip">
       <Variable name="shimRequest" value="buildRunLandoRequest({ argv, cwd, tty, env })" display="In-container shim builds a runLando request; env is filtered to LANDO_*, LC_*, LANG, TERM, and resolved agent-context names before forwarding" />
+      <Variable name="physicalTransport" value="createHostProxyRunLandoSession(...)" display="Host creates an app/session-scoped Unix socket, CSPRNG token, and compiled standalone shim; containers receive only the socket mount, shim mount, and session env" />
+      <Variable name="authFailures" value="HostProxyAuthenticationError" display="Missing, stale, and cross-app token/session requests fail before dispatch with tagged authentication failures" />
+      <Variable name="loopGuards" value="HostProxyRecursionError / HostProxyBackpressureError" display="Nested runLando calls and saturated concurrent requests fail immediately with tagged failures instead of queuing unbounded work" />
       <Variable name="allowlist" value="HOST_PROXY_RUNLANDO_ALLOWLIST" display="Generated cache of every command with hostProxyAllowed: true; app:open is on it, lifecycle/meta commands are rejected as HostProxyCommandNotAllowedError" />
       <Variable name="cwdRemap" value="remapContainerCwd(containerCwd, mountInfo)" display="Host dispatcher remaps the container cwd to the host app root; targets resolve against the retained runtime, never container-provided URLs" />
       <Variable name="envelopeParity" value="CommandResultEnvelope + exit code" display="Round-trip returns the same machine envelope and exit-code semantics as host-side `lando open`, including --print and headless degradation" />
       <Variable name="callEvents" value="pre-host-proxy-call / post-host-proxy-call" display="Every dispatched request (including rejected ones) publishes redacted call events alongside the existing pre-open-url / post-open-url events" />
+      <Variable name="cleanup" value="session.close() / Scope finalizer" display="Socket, token lifetime, compiled shim, and mount source directory are removed when the session closes or setup fails" />
     </Step>
   </Scenario>
 </Guide>

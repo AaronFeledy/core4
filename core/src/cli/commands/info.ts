@@ -17,6 +17,7 @@ import {
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvAudit } from "../../config/agent-env-policy.ts";
+import { hostProxyPlanExtension } from "../../subsystems/host-proxy/plan-extension.ts";
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { type RenderContext, isDecoratedContext } from "../renderer-boundary.ts";
 import {
@@ -66,11 +67,23 @@ export const AppInfoAgentEnvSchema = Schema.Struct({
   forwarded: Schema.Array(Schema.String),
 });
 
+const AppInfoHostProxySchema = Schema.Struct({
+  runLando: Schema.Struct({
+    availability: Schema.Literal("available", "unavailable"),
+    reason: Schema.optional(Schema.String),
+  }),
+});
+
 export const AppInfoResultSchema = Schema.Struct({
   app: Schema.String,
   services: Schema.Array(AppInfoServiceSchema),
   agentEnv: Schema.optional(AppInfoAgentEnvSchema),
+  hostProxy: Schema.optional(AppInfoHostProxySchema),
 });
+
+type InfoResultWithHostProxy = InfoAppResult & {
+  readonly hostProxy?: typeof AppInfoHostProxySchema.Type;
+};
 
 const statusText = (status: string | undefined): InfoServiceStatus => {
   switch (status) {
@@ -125,6 +138,7 @@ const logSourceText = (source: InfoLogSource): string => {
 };
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
+  const hostProxy = (result as InfoResultWithHostProxy).hostProxy;
   const rows: SummaryRow[] = result.services.map((service) => ({
     label: service.service,
     tone: infoStatusTone(service.status),
@@ -175,6 +189,24 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         rows,
         ...(rows.length === 0 ? { notes: ["No services are defined for this app."] } : {}),
       },
+      ...(hostProxy === undefined
+        ? []
+        : [
+            {
+              title: "host-proxy",
+              rows: [
+                {
+                  label: "runLando",
+                  tone: (hostProxy.runLando.availability === "available" ? "ok" : "skipped") as SummaryTone,
+                  value: hostProxy.runLando.availability,
+                  fields:
+                    hostProxy.runLando.reason === undefined
+                      ? []
+                      : [{ label: "reason", value: hostProxy.runLando.reason }],
+                },
+              ],
+            },
+          ]),
       ...agentEnvSection,
     ],
     footer: `${result.services.length} services`,
@@ -187,9 +219,16 @@ const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
   return [`agent-env\t${result.agentEnv.enabled ? "enabled" : "disabled"}\t${forwarded}`];
 };
 
+const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
+  const hostProxy = (result as InfoResultWithHostProxy).hostProxy;
+  if (hostProxy === undefined) return [];
+  const reason = hostProxy.runLando.reason === undefined ? "" : `\t${hostProxy.runLando.reason}`;
+  return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
+};
+
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
   if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), { columns: ctx?.columns });
-  const extra = agentEnvLines(result);
+  const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
     const endpoints = service.endpoints;
@@ -267,7 +306,8 @@ export const infoForPlan = (
       ),
     );
 
-    return { app: plan.name, services };
+    const hostProxy = hostProxyPlanExtension(plan);
+    return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
   });
 
 export const infoApp = (

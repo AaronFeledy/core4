@@ -97,6 +97,14 @@ const redactedRequestSummary = (
 const resultSummaryFor = (result: HostProxyRunLandoResult, redactor: Redactor): string =>
   redactor.redactString(`exit=${result.exitCode} ok=${result.envelope.ok}`);
 
+const forwardedEnvFor = (
+  request: HostProxyRunLandoRequest,
+  depth: number,
+): Readonly<Record<string, string>> => ({
+  ...(request.env === undefined ? {} : filterHostProxyEnv(request.env)),
+  LANDO_HOST_PROXY_DEPTH: String(depth + 1),
+});
+
 export const dispatchRunLando = (
   request: HostProxyRunLandoRequest,
   deps: DispatchRunLandoDeps,
@@ -155,7 +163,7 @@ export const dispatchRunLando = (
       argv: request.argv,
       cwd: hostCwd,
       tty: request.tty,
-      env: request.env === undefined ? {} : filterHostProxyEnv(request.env),
+      env: forwardedEnvFor(request, deps.depth),
     });
 
     yield* events.publish(

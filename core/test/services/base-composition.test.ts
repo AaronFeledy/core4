@@ -85,6 +85,14 @@ describe("lando base composition", () => {
     expect(plan.environment.LANDO).toBe("ON");
   });
 
+  test("activates host-proxy by default for lando base services", async () => {
+    const plan = await compose(inputFor("lando", { withHost: true }));
+
+    expect(plan.extensions["@lando/core/service-features"]).toMatchObject({
+      featureIds: expect.arrayContaining(["lando.host-proxy"]),
+    });
+  });
+
   test("marks global-app services and omits global Mailpit env", async () => {
     const plan = await compose(inputFor("lando", { appName: "global" }));
 
@@ -118,6 +126,14 @@ describe("lando base composition", () => {
 });
 
 describe("l337 base composition", () => {
+  test("does not activate host-proxy by default for l337 base services", async () => {
+    const plan = await compose(inputFor("l337", { withHost: true }));
+
+    expect(plan.extensions["@lando/core/service-features"] ?? {}).not.toMatchObject({
+      featureIds: expect.arrayContaining(["lando.host-proxy"]),
+    });
+  });
+
   test("carries only user/Compose-authored env and no LANDO_* identity layer", async () => {
     const plan = await compose(
       inputFor("l337", { environment: { COMPOSE_VAR: "from-compose" }, withHost: true }),

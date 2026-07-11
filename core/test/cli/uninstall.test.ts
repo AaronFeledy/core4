@@ -172,6 +172,61 @@ describe("meta:uninstall", () => {
     }
   });
 
+  test("plan targets host-proxy sessions under userDataRoot run directory", () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const hostProxyRunDir = join(userDataRoot, "run");
+      const plan = buildUninstallPlan({
+        userDataRoot,
+        userCacheRoot,
+        execPath: join(root, "lando"),
+        exists: (path: string) => path === hostProxyRunDir,
+      });
+
+      expect(plan.find((step) => step.id === "host-proxy-sessions")).toMatchObject({
+        target: hostProxyRunDir,
+        status: "owned",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("teardown runs before remove for host-proxy sessions", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const hostProxyRunDir = join(userDataRoot, "run");
+      const order: string[] = [];
+      const teardownRoots: string[] = [];
+
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+          exists: (path: string) => path === hostProxyRunDir,
+          teardownHostProxySessions: async (rootPath: string) => {
+            teardownRoots.push(rootPath);
+            order.push("teardown-host-proxy");
+          },
+          remove: async (path: string) => {
+            order.push(`remove:${path}`);
+          },
+        }),
+      );
+
+      expect(result.steps.find((step) => step.id === "host-proxy-sessions")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(teardownRoots).toEqual([userDataRoot]);
+      expect(order.slice(0, 2)).toEqual(["teardown-host-proxy", `remove:${hostProxyRunDir}`]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("runtime-service is removed under both keep-data and purge", () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {

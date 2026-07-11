@@ -8,6 +8,7 @@ const EXPECTED_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
   ["lando.env", 700],
   ["lando.app-mount", 800],
   ["lando.healthcheck", 900],
+  ["lando.host-proxy", 1250],
   ["lando.user", 2000],
 ];
 

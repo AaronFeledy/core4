@@ -100,9 +100,9 @@ describe("openOptionsFromRunLandoArgv", () => {
 describe("dispatchRunLando", () => {
   test("dispatches an allowed command and returns the executor envelope + exit code", async () => {
     const { events, layer } = recordingEvents();
-    let captured: { commandId: string; cwd: string } | undefined;
+    let captured: { commandId: string; cwd: string; env: Readonly<Record<string, string>> } | undefined;
     const executor: HostProxyRunLandoExecutor = (input) => {
-      captured = { commandId: input.commandId, cwd: input.cwd };
+      captured = { commandId: input.commandId, cwd: input.cwd, env: input.env };
       return Effect.succeed({ envelope: baseEnvelope as never, exitCode: 0 });
     };
     const request = buildRunLandoRequest({ argv: ["open", "--print"], cwd: "/app/web", tty: false });
@@ -122,6 +122,7 @@ describe("dispatchRunLando", () => {
     expect(result.envelope).toEqual(baseEnvelope);
     expect(captured?.commandId).toBe("app:open");
     expect(captured?.cwd).toBe("/home/u/demo/web");
+    expect(captured?.env.LANDO_HOST_PROXY_DEPTH).toBe("1");
     const tags = events.map((event) => event._tag);
     expect(tags).toContain("pre-host-proxy-call");
     expect(tags).toContain("post-host-proxy-call");
@@ -198,5 +199,30 @@ describe("dispatchRunLando", () => {
 
     const serialized = JSON.stringify(events);
     expect(serialized).not.toContain("s3cr3tpass");
+  });
+
+  test("never leaks a forwarded host-proxy token into events or failures", async () => {
+    const { events, layer } = recordingEvents();
+    const token = "hp-token-event-canary";
+    const request = buildRunLandoRequest({
+      argv: ["destroy"],
+      cwd: "/app",
+      tty: false,
+      env: { LANDO_HOST_PROXY_TOKEN: token },
+    });
+
+    const exit = await Effect.runPromiseExit(
+      dispatchRunLando(request, {
+        executor: okExecutor(baseEnvelope),
+        allowlist: ["app:open"],
+        mountInfo: mount,
+        callerService: "web",
+        depth: 0,
+        app: appRef,
+      }).pipe(Effect.provide(Layer.mergeAll(layer, standaloneRedactionLayer))),
+    );
+
+    expect(JSON.stringify(events)).not.toContain(token);
+    expect(JSON.stringify(exit)).not.toContain(token);
   });
 });
