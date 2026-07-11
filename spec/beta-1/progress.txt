@@ -242,3 +242,14 @@ Open closure categories:
   - A runtime source-set change must advance runtime-bundle-sources.json; build-script changes alone do not trigger the main-only immutable publisher.
   - Build rootlessport from the pinned Podman source alongside bin/podman, and inspect both artifacts before deterministic packing.
 ---
+
+## 2026-07-11 - US-432 (completion)
+- Live Podman 6 acceptance is fully closed: runtime-v0.1.3 published with rootlessport, manifest repinned on main, and all release-blocking provider-matrix cells (managed Lando Podman 6, system Podman 6, Docker Engine) pass with zero override env vars. Advisory macOS cells emit structured skips. US-432 flipped to passes: true on real CI evidence.
+- Getting the managed cell green required four product fixes beyond publication: readiness probing via `/libpod/_ping` instead of `/libpod/info`; managed service stdout/stderr captured to `<run dir>/service.log` with the tail surfaced in launch errors; a hermetic managed `registries.conf` (v2) wired via `CONTAINERS_REGISTRIES_CONF`; and pinning bundled `crun`/`conmon` plus `log_driver = "k8s-file"` in the managed containers.conf.
+- Verification: typecheck, lint passed; provider-lando/runtime-config/workflow test spot checks passed; provider-matrix run 29141267291 fully green.
+- **Learnings for future iterations:**
+  - GitHub ubuntu-24.04 runners ship a v1 `/etc/containers/registries.conf`, a pre-Podman-6 `crun`, and a huge dpkg database. The managed runtime must never consult host container configs or host OCI binaries: pin everything to the bundle via the managed config dir.
+  - `/libpod/info` shells out to the system package manager per helper binary and can take >45s on package-heavy hosts; never use it as a liveness probe — `_ping` is the readiness endpoint.
+  - Never spawn long-lived services with stderr "ignore"; empty evidence turns a config bug into a multi-round debugging hunt.
+  - A disposable workflow on a throwaway branch (push-triggered, never merged) is the fastest way to interrogate a GitHub runner: probe steps beat guess-and-dispatch cycles.
+  - The upstream static `conmon` release binary has no journald support; pair it with `log_driver = "k8s-file"`.
