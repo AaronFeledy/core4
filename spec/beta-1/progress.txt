@@ -264,7 +264,7 @@ Open closure categories:
 ---
 
 ## 2026-07-11 02:43 CDT - US-431 Review
-- Closed an approval-integrity bypass: an approved or blocked lane carrying an inconclusive class now fails validation, so timeout, empty-output, instructions-only, and no-repository-access results cannot be mislabeled as approvals. The CLI integration test now resolves the repository root explicitly instead of depending on the caller's working directory.
+- Closed approval-integrity bypasses: approved or blocked lanes carrying an inconclusive class now fail validation without rendering contradictory approved/inconclusive output, and whitespace-only audit fields cannot forge evidence. The CLI integration test now resolves the repository root explicitly instead of depending on the caller's working directory.
 - Review notes (deferred/rejected): malformed flag-value parsing is a pre-existing defensive CLI concern outside the story's retained-evidence contract; semantic-but-not-byte-identical JSON formatting does not change the audited report; unavailable original task sessions do not invalidate the self-contained retained lane evidence required by the PRD.
 - Verification: typecheck and focused closure-review tests passed; lint passed after formatting the focused regression change.
 - **Learnings for future iterations:** Disposition and inconclusive classification form one state invariant; validate both directions so contradictory external input cannot pass a fail-closed approval gate.
