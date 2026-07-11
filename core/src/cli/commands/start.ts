@@ -145,7 +145,9 @@ export const startApp = (
       );
     }
 
-    const hostProxySession = yield* startHostProxyRunLandoSession(plan, ref, provider.capabilities);
+    const hostProxySession = yield* startHostProxyRunLandoSession(plan, ref, provider.capabilities, {
+      platform: provider.platform,
+    });
     if (managed !== undefined && hostProxySession !== undefined) {
       yield* Effect.addFinalizer(() => Effect.promise(() => hostProxySession.close())).pipe(
         Effect.provideService(Scope.Scope, managed.scope),

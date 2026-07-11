@@ -1,8 +1,9 @@
 import { Effect } from "effect";
 
-import type { AppPlan, AppRef, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../config/paths.ts";
 import type { RedactionService } from "../../redaction/service.ts";
 import { defaultHostProxyShimArtifactPath } from "../../subsystems/host-proxy/transport-shim.ts";
 import {
@@ -55,11 +56,13 @@ export const startHostProxyRunLandoSession = (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
+  options: { readonly platform?: HostPlatform } = {},
 ) =>
   Effect.gen(function* () {
     yield* Effect.context<ShellRunner | EventService | RedactionService>();
     if (capabilities.hostReachability === "none" || hostProxyEligibleServices(plan).length === 0)
       return undefined;
+    if ((options.platform ?? makeLandoPaths().platform) === "win32") return undefined;
     return yield* startDetachedHostProxyWorker({
       app,
       plan,

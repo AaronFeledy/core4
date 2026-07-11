@@ -250,6 +250,7 @@ const makeStartLayer = (
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
+    readonly providerPlatform?: RuntimeProviderShape["platform"];
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -261,7 +262,7 @@ const makeStartLayer = (
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
-    platform: "linux",
+    platform: options.providerPlatform ?? "linux",
     capabilities: providerCapabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
@@ -653,6 +654,28 @@ describe("lando start", () => {
       );
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando" }),
+      );
+    });
+  });
+
+  test("win32 provider platform degrades host-proxy to no-op during start", async () => {
+    await withHostProxyArtifact(async () => {
+      const eligiblePlan = {
+        ...plan,
+        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        providerPlatform: "win32",
+      });
+
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
     });
   });
