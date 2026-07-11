@@ -27,7 +27,7 @@ describe("provider-lando runtime path resolution", () => {
       const providerPidPath = join(tempDir, "runtime", "run", "podman.pid");
       const podmanApiFactory = (socketPath: string): PodmanApiClient => {
         observedSockets.push(socketPath);
-        return { info: Effect.succeed({}) };
+        return { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
       };
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
@@ -77,7 +77,7 @@ describe("provider-lando runtime path resolution", () => {
       const providerPidPath = join(tempDir, "runtime", "run", "podman.pid");
       const podmanApiFactory = (socketPath: string): PodmanApiClient => {
         observedSockets.push(socketPath);
-        return { info: Effect.succeed({}) };
+        return { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
       };
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
@@ -123,7 +123,7 @@ describe("provider-lando runtime path resolution", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "darwin",
-          podmanApiFactory: () => ({ info: Effect.succeed({}) }),
+          podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,
           providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),
           providerPidPath: join(tempDir, "runtime", "run", "podman.pid"),
@@ -161,7 +161,7 @@ describe("provider-lando runtime path resolution", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "darwin",
-          podmanApiFactory: () => ({ info: Effect.succeed({}) }),
+          podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,
           providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),
           providerPidPath: join(tempDir, "runtime", "run", "podman.pid"),

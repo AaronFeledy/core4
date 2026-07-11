@@ -185,6 +185,7 @@ export {
   macosMvpCapabilities,
   makePodmanApiClient,
   makePodmanInfoRequest,
+  makePodmanPingRequest,
   mvpProviderCapabilities,
   providerLandoCapabilitiesForPlatform,
 } from "./capabilities.ts";

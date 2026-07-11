@@ -37,7 +37,7 @@ export interface EnsureRuntimeDeps {
   readonly readinessPolicy?: RetryPolicy;
 }
 
-// info() fails fast (connection refused) while podman is cold-starting, so the
+// ping() fails fast (connection refused) while podman is cold-starting, so the
 // readiness budget must be wall-clock patience, not a small attempt count burned
 // against instant refusals. A loaded CI runner can take tens of seconds to bring
 // the socket up: poll twice a second for ~45s, with timeout as a per-probe cap.
@@ -179,7 +179,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
       id: "provider-lando-runtime-ready",
       policy: deps.readinessPolicy ?? defaultRuntimeReadinessPolicy,
     },
-    deps.podmanApi.info,
+    deps.podmanApi.ping,
   ).pipe(
     Effect.flatMap((result) =>
       result.outcome === "green"
@@ -220,7 +220,7 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
-    const reachable = yield* Effect.either(deps.podmanApi.info);
+    const reachable = yield* Effect.either(deps.podmanApi.ping);
     if (reachable._tag === "Right") {
       const owned = yield* currentRuntimeIsOwned(deps);
       if (owned) return;

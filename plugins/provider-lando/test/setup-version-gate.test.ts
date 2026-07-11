@@ -19,6 +19,7 @@ const podmanCommand = (output: string): PodmanCommandRunner => ({
 
 const podmanApi = (version: string): PodmanApiClient => ({
   info: Effect.succeed({ version: { Version: version } }),
+  ping: Effect.succeed(undefined),
 });
 
 const runSetup = (options: SetupOptions) => Effect.runPromiseExit(setupProviderLando(options));

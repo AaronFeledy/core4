@@ -7,6 +7,7 @@ import {
   linuxMvpCapabilities,
   macosMvpCapabilities,
   makePodmanInfoRequest,
+  makePodmanPingRequest,
   makeProviderLayer,
   mvpProviderCapabilities,
 } from "@lando/provider-lando";
@@ -33,7 +34,10 @@ describe("provider-lando capabilities", () => {
   });
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
-    const layer = makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } });
+    const layer = makeProviderLayer({
+      platform: "linux",
+      podmanApi: { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
+    });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities).toEqual({ ...linuxMvpCapabilities, serviceLogSources: false });
@@ -51,7 +55,7 @@ describe("provider-lando capabilities", () => {
     const fs = makeMemoryLogFileAccess();
     const layer = makeProviderLayer({
       platform: "linux",
-      podmanApi: { info: Effect.succeed({}) },
+      podmanApi: { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
       logFileAccess: fs.access,
     });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
@@ -60,7 +64,10 @@ describe("provider-lando capabilities", () => {
   });
 
   test("declares macOS support with slow bind mount performance", async () => {
-    const layer = makeProviderLayer({ platform: "darwin", podmanApi: { info: Effect.succeed({}) } });
+    const layer = makeProviderLayer({
+      platform: "darwin",
+      podmanApi: { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
+    });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("darwin");
@@ -97,9 +104,21 @@ describe("provider-lando capabilities", () => {
     expect(request.args).toContain("http://localhost/v6.0.0/libpod/info");
   });
 
+  test("builds cheap Podman API ping requests without invoking capability detection", () => {
+    const request = makePodmanPingRequest("/tmp/podman.sock");
+
+    expect(request.command).toBe("curl");
+    expect(request.command).not.toBe("podman");
+    expect(request.socketUrl).toBe("unix:///tmp/podman.sock");
+    expect(request.args).toContain("--unix-socket");
+    expect(request.args).toContain("/tmp/podman.sock");
+    expect(request.args).toContain("http://localhost/v6.0.0/libpod/_ping");
+    expect(request.args).not.toContain("http://localhost/v6.0.0/libpod/info");
+  });
+
   test("decodes capabilities through the SDK schema", async () => {
     const capabilities = await Effect.runPromise(
-      introspectProviderCapabilities({ info: Effect.succeed({}) }, "linux"),
+      introspectProviderCapabilities({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }, "linux"),
     );
 
     expect(capabilities).toEqual(linuxMvpCapabilities);

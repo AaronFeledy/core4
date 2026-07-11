@@ -28,6 +28,7 @@ const runPull = async (
   const events: ImagePullProgressEvent[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     stream: () => (streamFactory ? streamFactory(chunks) : Stream.fromIterable(chunks)),
   };
   const exit = await Effect.runPromiseExit(
@@ -143,6 +144,7 @@ describe("pullImage", () => {
       pullImage(
         {
           info: Effect.succeed({}),
+          ping: Effect.succeed(undefined),
           stream: () =>
             Stream.fromIterable([bytes(`{"error":"pull failed for ${reference}: unauthorized"}\n`)]),
         },
@@ -166,6 +168,7 @@ describe("pullImage", () => {
       pullImage(
         {
           info: Effect.succeed({}),
+          ping: Effect.succeed(undefined),
           stream: () => Stream.fail(transportError),
         },
         "docker.io/library/alpine:3.20.3",
@@ -178,10 +181,14 @@ describe("pullImage", () => {
 
   test("fails with ProviderInternalError when the client cannot stream", async () => {
     const value = await Effect.runPromise(
-      pullImage({ info: Effect.succeed({}) }, "docker.io/library/alpine:3.20.3", {
-        publish: () => Effect.void,
-        now,
-      }).pipe(Effect.flip),
+      pullImage(
+        { info: Effect.succeed({}), ping: Effect.succeed(undefined) },
+        "docker.io/library/alpine:3.20.3",
+        {
+          publish: () => Effect.void,
+          now,
+        },
+      ).pipe(Effect.flip),
     );
     expect(value).toBeInstanceOf(ProviderInternalError);
   });

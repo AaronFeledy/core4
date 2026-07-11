@@ -121,7 +121,10 @@ describe("provider-lando setup", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
-            podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+            podmanApi: {
+              info: Effect.succeed({ version: { Version: "6.0.2" } }),
+              ping: Effect.succeed(undefined),
+            },
             podmanCommand: podmanCommand("podman version 6.0.2"),
             runtimeBundleDownloader: {
               download: Effect.succeed({
@@ -195,7 +198,10 @@ describe("provider-lando setup", () => {
     const result = await Effect.runPromise(
       setupProviderLando({
         platform: "darwin",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("missing", calls),
       }),
@@ -209,7 +215,10 @@ describe("provider-lando setup", () => {
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
         platform: "darwin",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: {
           ...machineRunner("missing", []),
@@ -236,7 +245,10 @@ describe("provider-lando setup", () => {
     const bundleBytes = new TextEncoder().encode("tampered lando runtime bundle");
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         runtimeBundleDownloader: {
           download: Effect.succeed({ version: "0.0.0-test", bytes: bundleBytes, sha256: "bad-checksum" }),
@@ -275,7 +287,10 @@ describe("provider-lando setup", () => {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "win32",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("running", calls),
           artifactDownload,
@@ -327,7 +342,10 @@ describe("provider-lando setup", () => {
         const provider = await Effect.runPromise(
           makeRuntimeProvider({
             platform: "win32",
-            podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+            podmanApi: {
+              info: Effect.succeed({ version: { Version: "6.0.2" } }),
+              ping: Effect.succeed(undefined),
+            },
             podmanCommand: podmanCommand("podman version 6.0.2"),
             podmanMachine: machineRunner("running", calls),
             artifactDownload,
@@ -371,7 +389,10 @@ describe("provider-lando setup", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: {
             download: Effect.succeed({
@@ -462,7 +483,10 @@ describe("provider-lando setup", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           stateDir,
           readinessCheck: Effect.fail(readinessError),
@@ -564,7 +588,10 @@ describe("provider-lando setup", () => {
     const result = await Effect.runPromise(
       setupProviderLando({
         platform: "win32",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("missing", calls),
       }),
@@ -578,7 +605,10 @@ describe("provider-lando setup", () => {
     const exit = await Effect.runPromiseExit(
       setupProviderLando({
         platform: "win32",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: {
           ...machineRunner("missing", []),
@@ -643,7 +673,10 @@ describe("provider-lando setup", () => {
     await Effect.runPromise(
       setupProviderLando({
         platform: "win32",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("running", []),
         eventService: {
@@ -731,7 +764,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       const result = await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(archiveBytes),
           stateDir,
@@ -764,7 +800,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: {
             download: Effect.succeed({ version: "0.0.0-test", bytes: archiveBytes, sha256: "deadbeef" }),
@@ -794,7 +833,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(archiveBytes),
           runtimeBinDir,
@@ -827,7 +869,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       const setupV1 = () =>
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(v1, "1.0.0"),
           runtimeBinDir,
@@ -849,7 +894,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(v2, "2.0.0"),
           runtimeBinDir,
@@ -871,7 +919,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: podmanCommand("podman version 6.0.2"),
           runtimeBundleDownloader: downloaderFor(bundleBytes),
           stateDir,

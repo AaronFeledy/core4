@@ -25,8 +25,11 @@ const unavailable = () =>
     remediation: "test remediation",
   });
 
-const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}) });
-const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()) });
+const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) });
+const unreachableApi = (): PodmanApiClient => ({
+  info: Effect.fail(unavailable()),
+  ping: Effect.fail(unavailable()),
+});
 
 const fastReadinessPolicy: RetryPolicy = {
   maxAttempts: 3,
@@ -47,6 +50,10 @@ const apiReachableAfterMachineAction = (calls: string[]): PodmanApiClient => ({
     if (calls.includes("start")) return {};
     return yield* Effect.fail(unavailable());
   }),
+  ping: Effect.gen(function* () {
+    if (calls.includes("start")) return;
+    return yield* Effect.fail(unavailable());
+  }),
 });
 
 const apiReachableAfterAttempts = (failUntil: number): { api: PodmanApiClient; attempts: () => number } => {
@@ -56,6 +63,10 @@ const apiReachableAfterAttempts = (failUntil: number): { api: PodmanApiClient; a
       info: Effect.suspend(() => {
         attempts += 1;
         return attempts > failUntil ? Effect.succeed({}) : Effect.fail(unavailable());
+      }),
+      ping: Effect.suspend(() => {
+        attempts += 1;
+        return attempts > failUntil ? Effect.succeed(undefined) : Effect.fail(unavailable());
       }),
     },
     attempts: () => attempts,
@@ -73,6 +84,10 @@ type Call =
 const apiReachableAfterLaunch = (calls: Call[]): PodmanApiClient => ({
   info: Effect.gen(function* () {
     if (calls.some((call) => call[0] === "launch")) return {};
+    return yield* Effect.fail(unavailable());
+  }),
+  ping: Effect.gen(function* () {
+    if (calls.some((call) => call[0] === "launch")) return;
     return yield* Effect.fail(unavailable());
   }),
 });
@@ -692,6 +707,40 @@ describe("ensureRuntime", () => {
           expect(failure.value.message).toContain("did not become reachable");
         }
       }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("launch readiness probes ping without calling info", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: libpod info is unavailable, but cheap libpod ping succeeds after launch.
+      const calls: Call[] = [];
+      const apiCalls: string[] = [];
+      const p = paths(dir);
+      const podmanApi: PodmanApiClient = {
+        info: Effect.sync(() => apiCalls.push("info")).pipe(Effect.andThen(Effect.fail(unavailable()))),
+        ping: Effect.sync(() => {
+          apiCalls.push("ping");
+        }),
+      };
+
+      // When: ensuring a Linux runtime launches the managed service.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi,
+          serviceRunner: serviceRunner(calls, false),
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      // Then: readiness uses ping only and never invokes expensive info.
+      expect(apiCalls).toEqual(["ping", "ping"]);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

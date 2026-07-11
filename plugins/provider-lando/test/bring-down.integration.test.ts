@@ -94,6 +94,7 @@ const makeFakeApi = () => {
   const calls: PodmanHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);

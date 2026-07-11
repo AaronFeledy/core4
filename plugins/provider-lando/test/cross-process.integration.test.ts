@@ -162,6 +162,7 @@ const makeFakePodmanState = () => {
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -351,20 +352,20 @@ describe("provider-lando cross-process state", () => {
       let forceUnreachableUntilNextLaunch = false;
       let allowLayerConstructionProbe = false;
       let launchBaseline = 0;
-      const infoObservations: string[] = [];
+      const pingObservations: string[] = [];
       const podmanApi: PodmanApiClient = {
         ...fake.api,
-        info: Effect.gen(function* () {
+        ping: Effect.gen(function* () {
           if (allowLayerConstructionProbe) {
             allowLayerConstructionProbe = false;
-            infoObservations.push("reachable-for-layer-construction");
-            return {};
+            pingObservations.push("reachable-for-layer-construction");
+            return;
           }
           if (!forceUnreachableUntilNextLaunch || launchCount() > launchBaseline) {
-            infoObservations.push("reachable");
-            return {};
+            pingObservations.push("reachable");
+            return;
           }
-          infoObservations.push("unreachable-after-kill");
+          pingObservations.push("unreachable-after-kill");
           return yield* Effect.fail(unavailable());
         }),
       };
@@ -395,7 +396,6 @@ describe("provider-lando cross-process state", () => {
 
       launchBaseline = firstLaunches;
       forceUnreachableUntilNextLaunch = true;
-      allowLayerConstructionProbe = true;
       livePids.delete(firstPid);
 
       const providerB = await makeFreshProvider();
@@ -412,8 +412,8 @@ describe("provider-lando cross-process state", () => {
       const healedPid = Number(await readFile(paths.providerPidPath, "utf8"));
       expect(healedPid).not.toBe(firstPid);
       expect(livePids.has(healedPid)).toBe(true);
-      expect(infoObservations).toContain("unreachable-after-kill");
-      expect(infoObservations.at(-1)).toBe("reachable");
+      expect(pingObservations).toContain("unreachable-after-kill");
+      expect(pingObservations.at(-1)).toBe("reachable");
     });
   });
 

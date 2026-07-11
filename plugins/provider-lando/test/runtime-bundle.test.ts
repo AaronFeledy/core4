@@ -416,7 +416,10 @@ describe("runtime bundle verification", () => {
       const exit = await Effect.runPromiseExit(
         setupProviderLando({
           platform: "linux",
-          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
           podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader,
         }),

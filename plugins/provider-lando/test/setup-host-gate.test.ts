@@ -49,7 +49,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
       platform: "darwin",
       arch: "x64",
       podmanCommand: podmanCommand("podman version 6.0.2"),
-      podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+      podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }), ping: Effect.succeed(undefined) },
       podmanMachine: machineRunner("missing", calls),
       skipSocketProbe: true,
     });
@@ -81,7 +81,10 @@ describe("provider-lando setup Intel Mac host gate", () => {
       setupProviderLando({
         platform: "darwin",
         arch: "arm64",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("missing", calls),
       }),
@@ -97,7 +100,10 @@ describe("provider-lando setup Intel Mac host gate", () => {
       makeRuntimeProvider({
         platform: "darwin",
         arch: "x64",
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: {
+          info: Effect.succeed({ version: { Version: "6.0.2" } }),
+          ping: Effect.succeed(undefined),
+        },
         podmanCommand: podmanCommand("podman version 6.0.2"),
         podmanMachine: machineRunner("missing", calls),
         socketPath: "/tmp/lando-test.sock",
