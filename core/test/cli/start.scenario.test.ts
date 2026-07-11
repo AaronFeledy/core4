@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
@@ -247,6 +247,7 @@ const makeStartLayer = (
   options: {
     readonly signalSeen?: boolean[];
     readonly applyFailure?: ProviderUnavailableError;
+    readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
   } = {},
@@ -288,10 +289,12 @@ const makeStartLayer = (
         applyPlans.push(appPlan);
         options.signalSeen?.push(applyOptions.signal?.aborted ?? false);
       }).pipe(
-        Effect.flatMap(() =>
-          options.applyFailure === undefined
-            ? Effect.succeed({ changed: true })
-            : Effect.fail(options.applyFailure),
+        Effect.flatMap(
+          () =>
+            options.applyEffect ??
+            (options.applyFailure === undefined
+              ? Effect.succeed({ changed: true })
+              : Effect.fail(options.applyFailure)),
         ),
       ),
     start: () => Effect.void,
@@ -602,7 +605,7 @@ describe("lando start", () => {
   });
 
   test("creates host-proxy session and applies shim/socket mounts before provider apply", async () => {
-    await withHostProxyArtifact(async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
         services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
@@ -624,6 +627,7 @@ describe("lando start", () => {
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
       );
       expect(appliedDatabase?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
     });
   });
 
@@ -731,6 +735,31 @@ describe("lando start", () => {
       await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
       const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      await expectMissingPath(hostProxyDir);
+    });
+  });
+
+  test("cleans host-proxy session artifacts when interrupted during provider apply", async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
+      const eligiblePlan = {
+        ...plan,
+        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+      };
+      let markApplyEntered: (() => void) | undefined;
+      const applyEntered = new Promise<void>((resolve) => {
+        markApplyEntered = resolve;
+      });
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        applyEffect: Effect.sync(() => markApplyEntered?.()).pipe(Effect.zipRight(Effect.never)),
+      });
+      const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
+
+      await applyEntered;
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      await stat(hostProxyDir);
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
       await expectMissingPath(hostProxyDir);
     });
   });

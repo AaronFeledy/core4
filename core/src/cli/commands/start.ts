@@ -199,8 +199,11 @@ export const startApp = (
         ),
       );
     });
+    const closeHostProxyOnInterrupt =
+      hostProxySession === undefined ? Effect.void : Effect.promise(() => hostProxySession.close());
 
     const servicesStarted = yield* applyAndInspect.pipe(
+      Effect.onInterrupt(() => closeHostProxyOnInterrupt),
       Effect.tapError(() =>
         Effect.gen(function* () {
           if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
