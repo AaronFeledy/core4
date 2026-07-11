@@ -165,7 +165,7 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
           for image in node:22-alpine postgres:16-alpine alpine:3.20; do
             case "\${{ matrix.cell }}" in
               lando-podman6-linux)
-                "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
+                CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/lando-data/runtime/config/registries.conf" "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
                 ;;
               podman-podman6-linux)
                 podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"
