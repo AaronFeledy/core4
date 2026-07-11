@@ -9,7 +9,11 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import type { PodmanApiClient } from "../src/capabilities.ts";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
-import { type PodmanServiceRunner, RuntimeLaunchError } from "../src/podman-service-runner.ts";
+import {
+  type PodmanServiceRunner,
+  RuntimeLaunchError,
+  podmanServiceLogPath,
+} from "../src/podman-service-runner.ts";
 import { RootlessPrerequisiteError, type RootlessProbes } from "../src/rootless-preflight.ts";
 import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
 
@@ -119,6 +123,18 @@ const serviceRunner = (
     Effect.sync(() => {
       calls.push(["terminate", pid]);
     }),
+});
+
+const serviceRunnerWritingLog = (calls: Call[], output: string): PodmanServiceRunner => ({
+  launch: (spec) =>
+    Effect.promise(async () => {
+      calls.push(["launch", JSON.stringify(spec.args)]);
+      await writeFile(podmanServiceLogPath(spec.socketPath), output);
+      return 9999;
+    }),
+  isAlive: () => Effect.succeed(false),
+  isServiceProcess: () => Effect.succeed(false),
+  terminate: () => Effect.void,
 });
 
 const failingLaunchRunner = (error: RuntimeLaunchError): PodmanServiceRunner => ({
@@ -674,6 +690,39 @@ describe("ensureRuntime", () => {
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
           expect(failure.value.message).toContain("did not become reachable");
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("launch success surfaces service log tail when the socket never becomes reachable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: a launched service writes startup failure evidence before the API probe times out.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: unreachableApi(),
+          serviceRunner: serviceRunnerWritingLog(calls, "podman died: missing helper\n"),
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      // When/Then: the reachability failure carries the service log tail as stderr evidence.
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          expect(failure.value.message).toContain("did not become reachable");
+          expect(failure.value.details).toMatchObject({ stderr: "podman died: missing helper\n" });
         }
       }
     } finally {

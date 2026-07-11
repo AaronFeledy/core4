@@ -1,4 +1,6 @@
+import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
@@ -14,6 +16,36 @@ export interface PodmanServiceSpec {
 
 const launchRemediation =
   "The Lando runtime service failed to launch. Run `lando doctor` to inspect the runtime, then rerun the command; run `lando setup` if the runtime is not installed.";
+const serviceLogName = "service.log";
+const serviceLogTailBytes = 4096;
+const serviceLogTailLines = 40;
+
+export const podmanServiceLogPath = (socketPath: string): string =>
+  `${dirname(socketPath)}/${serviceLogName}`;
+
+const tailServiceLog = (content: string): string => {
+  const bytesTail = content.slice(Math.max(0, content.length - serviceLogTailBytes));
+  const lines = bytesTail.split(/\r?\n/u);
+  return lines.length > serviceLogTailLines ? lines.slice(-serviceLogTailLines).join("\n") : bytesTail;
+};
+
+export const readPodmanServiceLogTail = (socketPath: string): Effect.Effect<string | undefined> =>
+  Effect.tryPromise({
+    try: async () => {
+      const tail = tailServiceLog(await readFile(podmanServiceLogPath(socketPath), "utf8"));
+      return tail.length === 0 ? undefined : tail;
+    },
+    catch: () => undefined,
+  }).pipe(Effect.catchAll((tail) => Effect.succeed(tail)));
+
+const readPodmanServiceLogTailSync = (socketPath: string): string | undefined => {
+  try {
+    const tail = tailServiceLog(readFileSync(podmanServiceLogPath(socketPath), "utf8"));
+    return tail.length === 0 ? undefined : tail;
+  } catch {
+    return undefined;
+  }
+};
 
 const stderrFromCause = (cause: unknown): string | undefined => {
   if (typeof cause !== "object" || cause === null || !("stderr" in cause)) return undefined;
@@ -85,8 +117,8 @@ export interface PodmanServiceRunner {
 
 export interface PodmanServiceLaunchOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly stdout: "ignore";
-  readonly stderr: "ignore";
+  readonly stdout: number;
+  readonly stderr: number;
   readonly detached: true;
 }
 
@@ -183,19 +215,32 @@ export const makeSystemPodmanServiceRunner = (
   launch: (spec) =>
     Effect.try({
       try: () => {
-        const proc = spawn([spec.command, ...spec.args], {
-          env: { ...process.env, ...spec.env },
-          stdout: "ignore",
-          stderr: "ignore",
-          detached: true,
-        });
+        const logPath = podmanServiceLogPath(spec.socketPath);
+        mkdirSync(dirname(logPath), { recursive: true });
+        const logFile = openSync(logPath, "w");
+        const proc = (() => {
+          try {
+            return spawn([spec.command, ...spec.args], {
+              env: { ...process.env, ...spec.env },
+              stdout: logFile,
+              stderr: logFile,
+              detached: true,
+            });
+          } finally {
+            closeSync(logFile);
+          }
+        })();
         proc.unref?.();
         return proc.pid;
       },
       catch: (cause) =>
         cause instanceof RuntimeLaunchError
           ? cause
-          : new RuntimeLaunchError("Failed to launch the Lando runtime service.", cause),
+          : new RuntimeLaunchError(
+              "Failed to launch the Lando runtime service.",
+              cause,
+              readPodmanServiceLogTailSync(spec.socketPath),
+            ),
     }),
   isAlive: (pid) =>
     Effect.sync(() => {

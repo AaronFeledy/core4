@@ -12,6 +12,7 @@ import {
   type PodmanServiceRunner,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
+  readPodmanServiceLogTail,
 } from "./podman-service-runner.ts";
 import {
   type RootlessProbes,
@@ -183,16 +184,24 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
     Effect.flatMap((result) =>
       result.outcome === "green"
         ? Effect.void
-        : Effect.fail(
-            new ProviderUnavailableError({
-              providerId: "lando",
-              operation: "setup",
-              message: "The Lando runtime service did not become reachable after launch.",
-              remediation:
-                "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
-              details: { attempts: result.attempts, elapsedMs: result.elapsedMs },
-              cause: result.lastError,
-            }),
+        : readPodmanServiceLogTail(deps.socketPath).pipe(
+            Effect.flatMap((stderr) =>
+              Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "lando",
+                  operation: "setup",
+                  message: "The Lando runtime service did not become reachable after launch.",
+                  remediation:
+                    "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
+                  details: {
+                    attempts: result.attempts,
+                    elapsedMs: result.elapsedMs,
+                    ...(stderr === undefined ? {} : { stderr }),
+                  },
+                  cause: result.lastError,
+                }),
+              ),
+            ),
           ),
     ),
     Effect.mapError((cause) =>

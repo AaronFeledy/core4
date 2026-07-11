@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect } from "effect";
 
 import {
@@ -6,7 +9,17 @@ import {
   buildPodmanServiceArgs,
   isManagedPodmanServiceArgv,
   makeSystemPodmanServiceRunner,
+  podmanServiceLogPath,
 } from "../src/podman-service-runner.ts";
+
+const waitForLog = async (path: string, expected: string): Promise<string> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const content = await readFile(path, "utf8").catch(() => "");
+    if (content.includes(expected)) return content;
+    await Bun.sleep(25);
+  }
+  return readFile(path, "utf8");
+};
 
 describe("PodmanServiceRunner", () => {
   test("buildPodmanServiceArgs emits canonical podman system service argv with private-root flags and unix socket bind", () => {
@@ -96,24 +109,77 @@ describe("PodmanServiceRunner", () => {
   });
 
   test("system runner launches Podman with the managed containers config and inherited environment", async () => {
-    let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
-    const runner = makeSystemPodmanServiceRunner((_argv, options) => {
-      launchedEnv = options.env;
-      return { pid: 4321 };
-    });
-    const spec = buildPodmanServiceArgs({
-      podmanBin: "/data/runtime/bin/podman",
-      storageDir: "/data/runtime/storage",
-      runRoot: "/data/runtime/run",
-      configDir: "/data/runtime/config",
-      socketPath: "/data/runtime/run/podman.sock",
-    });
+    const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
+    try {
+      let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
+      const runner = makeSystemPodmanServiceRunner((_argv, options) => {
+        launchedEnv = options.env;
+        return { pid: 4321 };
+      });
+      const spec = buildPodmanServiceArgs({
+        podmanBin: "/data/runtime/bin/podman",
+        storageDir: "/data/runtime/storage",
+        runRoot: "/data/runtime/run",
+        configDir: "/data/runtime/config",
+        socketPath: join(dir, "podman.sock"),
+      });
 
-    const pid = await Effect.runPromise(runner.launch(spec));
+      const pid = await Effect.runPromise(runner.launch(spec));
 
-    expect(pid).toBe(4321);
-    expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
-    expect(launchedEnv?.PATH).toBe(process.env.PATH);
+      expect(pid).toBe(4321);
+      expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
+      expect(launchedEnv?.PATH).toBe(process.env.PATH);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("system runner writes managed service output to a service log", async () => {
+    // Given: a managed service command that writes startup evidence to stderr.
+    const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
+    try {
+      const runner = makeSystemPodmanServiceRunner();
+      const spec = {
+        command: "/bin/sh",
+        args: ["-c", "echo boom >&2; exit 1"],
+        socketPath: join(dir, "podman.sock"),
+      };
+
+      // When: the service is launched by the system runner.
+      await Effect.runPromise(runner.launch(spec));
+
+      // Then: stderr lands in the fresh service log next to the runtime socket.
+      const content = await waitForLog(podmanServiceLogPath(spec.socketPath), "boom");
+      expect(content).toContain("boom");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("system runner truncates the service log for each fresh launch", async () => {
+    // Given: a previous service log contains stale startup evidence.
+    const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
+    try {
+      const runner = makeSystemPodmanServiceRunner();
+      const socketPath = join(dir, "podman.sock");
+      const logPath = podmanServiceLogPath(socketPath);
+      await writeFile(logPath, "old failure\n");
+      const spec = {
+        command: "/bin/sh",
+        args: ["-c", "echo fresh >&2; exit 1"],
+        socketPath,
+      };
+
+      // When: a new service launch starts.
+      await Effect.runPromise(runner.launch(spec));
+
+      // Then: the log contains only the new launch evidence.
+      const content = await waitForLog(logPath, "fresh");
+      expect(content).toContain("fresh");
+      expect(content).not.toContain("old failure");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("PodmanServiceRunner interface is usable with a fake runner", async () => {
