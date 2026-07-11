@@ -2,16 +2,30 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Layer } from "effect";
+import { DateTime, Effect, Exit, Layer } from "effect";
 
-import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type CommandResultEnvelope,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "../../../src/redaction/service.ts";
 import {
+  HOST_PROXY_CONTAINER_LANDO,
+  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   connectHostProxyRunLando,
   createHostProxyRunLandoSession,
   hostProxyRunLandoFeature,
+  stripHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport.ts";
 
 const tempDirs: string[] = [];
@@ -35,6 +49,11 @@ const envelope: CommandResultEnvelope = {
   result: { app: "demo", targets: [], launch: "printed" },
   warnings: [],
   deprecations: [],
+};
+const metadata = {
+  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  source: "host-proxy-transport-feature.test",
+  runtime: 4 as const,
 };
 
 const fakeExecutable = async (): Promise<string> => {
@@ -153,6 +172,91 @@ describe("hostProxyRunLandoFeature", () => {
     expect(environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
     expect(environment.LANDO_HOST_PROXY_TOKEN).toBe("secret-token");
     expect(mounts).not.toContainEqual(expect.objectContaining({ target: "/run/lando/host-proxy.sock" }));
+  });
+
+  test("strips runLando auth env, mounts, and extensions from a persisted plan", () => {
+    const service: ServicePlan = {
+      name: ServiceName.make("web"),
+      type: "lando",
+      provider: ProviderId.make("lando"),
+      primary: true,
+      artifact: { kind: "ref" as const, ref: "node:22-alpine" },
+      command: [],
+      environment: {
+        LANDO_APP_NAME: "demo",
+        LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+        LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET,
+        LANDO_HOST_PROXY_TOKEN: "secret-token",
+        LANDO_HOST_PROXY_SESSION: "session-id",
+        LANDO_HOST_PROXY_APP: "demo",
+        LANDO_HOST_PROXY_DEPTH: "0",
+      },
+      mounts: [
+        {
+          type: "bind" as const,
+          source: "/tmp/host-proxy.sock",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
+          readOnly: true,
+          realization: "passthrough" as const,
+        },
+        {
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
+          readOnly: true,
+          realization: "passthrough" as const,
+        },
+        {
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
+          readOnly: true,
+          realization: "passthrough" as const,
+        },
+        {
+          type: "volume" as const,
+          source: "app-data",
+          target: PortablePath.make("/data"),
+          readOnly: false,
+          realization: "passthrough" as const,
+        },
+      ],
+      storage: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata,
+      extensions: { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionId: "session-id" }, keep: true },
+    };
+
+    const stripped = stripHostProxyRunLando({
+      id: AppId.make("demo"),
+      name: "Demo",
+      slug: "demo",
+      root: AbsolutePath.make("/tmp/demo"),
+      provider: ProviderId.make("lando"),
+      services: { web: service },
+      routes: [],
+      networks: [],
+      stores: [],
+      fileSync: [],
+      metadata,
+      extensions: {},
+    } satisfies AppPlan);
+
+    const strippedWeb = stripped.services.web;
+    expect(strippedWeb?.environment).toEqual({ LANDO_APP_NAME: "demo" });
+    expect(strippedWeb?.mounts).toEqual([
+      {
+        type: "volume",
+        source: "app-data",
+        target: "/data",
+        readOnly: false,
+        realization: "passthrough",
+      },
+    ]);
+    expect(strippedWeb?.extensions).toEqual({ keep: true });
   });
 
   test("connectHostProxyRunLando rejects closed sessions", async () => {

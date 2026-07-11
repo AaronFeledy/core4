@@ -735,10 +735,6 @@ describe("host-proxy runLando physical transport", () => {
       cwd: "/srv/apps/demo",
       tty: false,
       env: {
-        LANDO_HOST_PROXY_SOCKET: session.socketPath,
-        LANDO_HOST_PROXY_TOKEN: session.token,
-        LANDO_HOST_PROXY_SESSION: session.sessionId,
-        LANDO_HOST_PROXY_APP: session.appId,
         LANDO_HOST_PROXY_CALLER: "web",
         LANDO_HOST_PROXY_DEPTH: "1",
         LANG: "C.UTF-8",

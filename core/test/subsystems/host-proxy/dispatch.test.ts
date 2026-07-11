@@ -130,6 +130,47 @@ describe("dispatchRunLando", () => {
     if (post?._tag === "post-host-proxy-call") expect(post.outcome).toBe("success");
   });
 
+  test("reconstructs host-proxy depth without forwarding container session material", async () => {
+    const { layer } = recordingEvents();
+    let capturedEnv: Readonly<Record<string, string>> | undefined;
+    const executor: HostProxyRunLandoExecutor = (input) => {
+      capturedEnv = input.env;
+      return Effect.succeed({ envelope: baseEnvelope as never, exitCode: 0 });
+    };
+    const request = buildRunLandoRequest({
+      argv: ["open", "--print"],
+      cwd: "/app",
+      tty: false,
+      env: {
+        LANDO_APP_NAME: "demo",
+        LANDO_HOST_PROXY_TOKEN: "tok",
+        LANDO_HOST_PROXY_SESSION: "session",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+        LANDO_HOST_PROXY_URL: "http://127.0.0.1:1234",
+        LANDO_HOST_PROXY_APP: "demo",
+        LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+        LANDO_HOST_PROXY_SHIM: "/usr/local/bin/lando",
+        LANDO_HOST_PROXY_DEPTH: "99",
+      },
+    });
+
+    await Effect.runPromise(
+      dispatchRunLando(request, {
+        executor,
+        allowlist: ["app:open"],
+        mountInfo: mount,
+        callerService: "web",
+        depth: 2,
+        app: appRef,
+      }).pipe(Effect.provide(Layer.mergeAll(layer, standaloneRedactionLayer))),
+    );
+
+    expect(capturedEnv).toEqual({
+      LANDO_APP_NAME: "demo",
+      LANDO_HOST_PROXY_DEPTH: "3",
+    });
+  });
+
   test("rejects a command outside the allowlist and still publishes pre+post events", async () => {
     const { events, layer } = recordingEvents();
     const request = buildRunLandoRequest({ argv: ["destroy"], cwd: "/app", tty: false });

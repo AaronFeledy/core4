@@ -4,6 +4,7 @@
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
@@ -388,8 +389,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   };
 
   const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.set(plan.id, plan);
-    return stateDir === undefined ? Effect.void : persistAppliedPlan(stateDir, plan).pipe(Effect.asVoid);
+    const persistedPlan = stripHostProxyRunLando(plan);
+    plans.set(plan.id, persistedPlan);
+    return stateDir === undefined
+      ? Effect.void
+      : persistAppliedPlan(stateDir, persistedPlan).pipe(Effect.asVoid);
   };
 
   const forgetPlan = (appId: AppId): Effect.Effect<void> => {

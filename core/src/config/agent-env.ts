@@ -1,3 +1,5 @@
+import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/transport-feature.ts";
+
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
   "CLAUDE_CODE",
@@ -73,9 +75,10 @@ export const isHostProxyForwardedEnvName = (
   name: string,
   allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
 ): boolean =>
-  HOST_PROXY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
-  HOST_PROXY_ENV_NAMES.includes(name) ||
-  allowlist.includes(name);
+  !isHostProxyRunLandoEnvName(name) &&
+  (HOST_PROXY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
+    HOST_PROXY_ENV_NAMES.includes(name) ||
+    allowlist.includes(name));
 
 export const filterHostProxyEnv = (
   env: HostEnv,

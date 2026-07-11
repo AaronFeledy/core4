@@ -44,6 +44,7 @@ import { makeLandoPaths } from "../../src/config/paths.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -844,7 +845,7 @@ describe("lando start", () => {
     });
   });
 
-  test("host-proxy token is absent from the cached/original plan and only appears in provider apply", async () => {
+  test("host-proxy session material is absent from the cached/original and persisted plans but present in provider apply", async () => {
     await withHostProxyArtifact(async () => {
       const eligiblePlan = {
         ...plan,
@@ -858,9 +859,19 @@ describe("lando start", () => {
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
       const originalPlanJson = JSON.stringify(eligiblePlan);
-      const appliedPlanJson = JSON.stringify(harness.applyPlans[0]);
+      const runtimePlan = harness.applyPlans[0];
+      const appliedPlanJson = JSON.stringify(runtimePlan);
+      const persistedPlanJson = JSON.stringify(
+        runtimePlan === undefined ? undefined : stripHostProxyRunLando(runtimePlan),
+      );
       expect(originalPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
       expect(originalPlanJson).not.toContain("host-proxy.sock");
+      expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_SESSION");
+      expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_SOCKET");
+      expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_DEPTH");
+      expect(persistedPlanJson).not.toContain("host-proxy.sock");
+      expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
       expect(appliedPlanJson).toContain("LANDO_HOST_PROXY_TOKEN");
     });
   });

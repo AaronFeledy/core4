@@ -22,9 +22,14 @@ import {
 } from "./transport-shim.ts";
 
 export {
+  HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_RUN_LANDO_ENV_NAMES,
+  HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   hostProxyRunLandoFeature,
+  isHostProxyRunLandoEnvName,
+  stripHostProxyRunLando,
 } from "./transport-feature.ts";
 export { connectHostProxyRunLando, sendHostProxyRunLando } from "./transport-protocol.ts";
 export type { HostProxyRunLandoClientRequest, HostProxyTransportError } from "./transport-protocol.ts";
