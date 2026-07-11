@@ -8,7 +8,8 @@ export const ensureHostProxyNoProxy = (targetHost: string, env: NodeJS.ProcessEn
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-  if (entries.includes("*") || entries.includes(targetHost)) return;
-  entries.push(targetHost);
-  env.NO_PROXY = entries.join(",");
+  if (!entries.includes("*") && !entries.includes(targetHost)) entries.push(targetHost);
+  const merged = entries.join(",");
+  env.NO_PROXY = merged;
+  env.no_proxy = merged;
 };
