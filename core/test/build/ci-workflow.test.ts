@@ -156,6 +156,9 @@ describe("ci workflow", () => {
     );
     expect(providerContracts).toContain("      - name: Collect provider matrix diagnostics");
     expect(providerContracts).toContain(
+      '            cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" provider-matrix-diagnostics/lando-managed-service.log || true',
+    );
+    expect(providerContracts).toContain(
       '            cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-matrix-diagnostics/lando-logs || true',
     );
     expect(providerContracts).toContain("      - name: Upload provider matrix diagnostics");

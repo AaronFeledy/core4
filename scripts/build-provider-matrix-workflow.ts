@@ -205,6 +205,9 @@ ${managedLandoTeardown}
         run: |
           mkdir -p provider-matrix-diagnostics
           cp /tmp/podman-service.log provider-matrix-diagnostics/podman-service.log || true
+          if test -f "\${LANDO_USER_DATA_ROOT:-}/runtime/run/service.log"; then
+            cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" provider-matrix-diagnostics/lando-managed-service.log || true
+          fi
           if test -d "\${LANDO_USER_CACHE_ROOT:-}/logs"; then
             cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-matrix-diagnostics/lando-logs || true
           fi
