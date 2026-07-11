@@ -1117,7 +1117,7 @@
       ],
       "priority": 62,
       "passes": false,
-      "notes": "PRD-13 closure. Production Unix-socket transport, compiled shim delivery, scoped mounts, token auth, bounded concurrency, recursion protection, and lifecycle cleanup are implemented for Linux/macOS. Native Windows remains open until it provides the required platform-equivalent transport."
+      "notes": "PRD-13 closure. Production Unix-socket transport, scoped mounts, token auth, bounded concurrency, recursion protection, and core cleanup paths are implemented for Linux/macOS. The story remains open for a cross-architecture compiled shim artifact, repeat-start worker replacement, complete pre-apply interruption cleanup, and the required native-Windows platform-equivalent transport."
     },
     {
       "id": "US-434",

@@ -282,7 +282,7 @@ Open closure categories:
 
 ## 2026-07-11 07:48 CDT - US-433 Review
 - Fixed exact missing/stale/cross-app authentication failure parity, authenticated slow-body admission outside the concurrency cap, listener cleanup after post-bind failure, app-specific detached-worker ownership and Darwin verification, interruption cleanup during worker startup and provider apply, overly broad uninstall removal of shared run state, and release-shaped compiled-binary shim delivery.
-- Review notes (deferred/rejected): US-433 is reopened because native Windows still fails instead of providing the required platform-equivalent transport; the existing DNS host-proxy doctor check and generic dispatch beyond the generated `app:open` allowlist were rejected as broader follow-up scope rather than blockers for this focused repair.
+- Review notes (deferred/rejected): US-433 is reopened for a cross-architecture compiled shim sidecar, repeat-start worker replacement, complete pre-apply interruption cleanup, and native Windows platform-equivalent transport; the existing DNS host-proxy doctor check and generic dispatch beyond the generated `app:open` allowlist were rejected as broader follow-up scope rather than blockers for this focused repair.
 - Verification: typecheck and lint passed; focused host-proxy transport/worker, start lifecycle, and uninstall tests passed; renderer, machine-output, and env-helper boundaries passed during the repair.
 - **Learnings for future iterations:** A compiled sidecar is not shipped merely because a package build script emits it; release-shaped binary tests must prove artifact delivery. Concurrency admission must happen before authenticated body retention, and shared run roots must only be cleaned through ownership-aware seams.
 ---
