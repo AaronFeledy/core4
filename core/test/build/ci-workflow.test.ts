@@ -141,7 +141,23 @@ describe("ci workflow", () => {
       "        if: ${{ always() && matrix.cell == 'lando-podman6-linux' }}",
     );
     expect(providerContracts).toContain("          dist/lando poweroff || true");
+    expect(providerContracts).toContain("      - name: Provision Linux rootless runtime prerequisites");
+    expect(providerContracts).toContain(
+      "        if: ${{ matrix.cell == 'lando-podman6-linux' || matrix.cell == 'podman-podman6-linux' }}",
+    );
+    expect(providerContracts).toContain(
+      "            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0",
+    );
+    expect(providerContracts).toContain(
+      '          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"',
+    );
+    expect(providerContracts).toContain(
+      '          echo "CONTAINERS_STORAGE_CONF=$CONTAINERS_STORAGE_CONF" >> "$GITHUB_ENV"',
+    );
     expect(providerContracts).toContain("      - name: Collect provider matrix diagnostics");
+    expect(providerContracts).toContain(
+      '            cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-matrix-diagnostics/lando-logs || true',
+    );
     expect(providerContracts).toContain("      - name: Upload provider matrix diagnostics");
     expect(providerContracts).toContain("          name: provider-matrix-diagnostics-${{ matrix.cell }}");
     expect(providerContracts).not.toContain("      - name: Run provider contract tests");
