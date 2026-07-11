@@ -51,6 +51,7 @@ type ClosureReport = {
     readonly id: LaneId;
     readonly disposition: string;
     readonly evidence: readonly string[];
+    readonly inconclusiveClass?: InconclusiveClass;
   }[];
   readonly errors: readonly string[];
 };
@@ -179,6 +180,20 @@ describe("US-431 closure review reporting", () => {
 
     expect(report.approved).toBe(false);
     expect(report.errors).toContain("qa lane cannot carry an inconclusive class with approved disposition");
+    expect(report.lanes.find((entry) => entry.id === "qa")?.inconclusiveClass).toBeUndefined();
+    expect(renderClosureReviewMarkdown(report)).not.toContain("qa: approved (timeout)");
+  });
+
+  test("rejects whitespace-only audit evidence", () => {
+    const input = conclusiveInput();
+    const lanes = input.lanes.map((entry) =>
+      entry.id === "security" ? lane("security", { evidence: [" "] }) : entry,
+    );
+
+    const report = evaluateClosureReviewInput({ lanes });
+
+    expect(report.approved).toBe(false);
+    expect(report.errors).toContain("security lane requires evidence");
   });
 
   test("rejects blockers without fixed evidence or a currently failing Beta 1 story link", () => {

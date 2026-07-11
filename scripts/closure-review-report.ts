@@ -85,7 +85,7 @@ const isInconclusiveClass = (value: unknown): value is ClosureInconclusiveClass 
 
 const stringArray = (value: unknown): readonly string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
-  return value.every((entry) => typeof entry === "string") ? value : undefined;
+  return value.every((entry) => typeof entry === "string" && entry.trim().length > 0) ? value : undefined;
 };
 
 const nonEmptyText = (value: unknown): string | undefined =>
@@ -192,7 +192,7 @@ const parseLane = (
   } else if (isInconclusiveClass(inconclusiveClass)) {
     errors.push(`${id} lane cannot carry an inconclusive class with ${disposition} disposition`);
   }
-  return isInconclusiveClass(inconclusiveClass)
+  return disposition === "inconclusive" && isInconclusiveClass(inconclusiveClass)
     ? {
         id,
         scope,
