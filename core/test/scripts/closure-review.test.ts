@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
@@ -168,6 +169,18 @@ describe("US-431 closure review reporting", () => {
     },
   );
 
+  test("rejects an approved lane carrying an inconclusive class", () => {
+    const input = conclusiveInput();
+    const lanes = input.lanes.map((entry) =>
+      entry.id === "qa" ? lane("qa", { inconclusiveClass: "timeout" }) : entry,
+    );
+
+    const report = evaluateClosureReviewInput({ lanes });
+
+    expect(report.approved).toBe(false);
+    expect(report.errors).toContain("qa lane cannot carry an inconclusive class with approved disposition");
+  });
+
   test("rejects blockers without fixed evidence or a currently failing Beta 1 story link", () => {
     const blocker: FindingInput = {
       title: "runtime bundle remains remote-only",
@@ -267,6 +280,7 @@ describe("US-431 closure review reporting", () => {
         "--prd",
         prdPath,
       ],
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
       stdout: "pipe",
       stderr: "pipe",
     });

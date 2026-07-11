@@ -189,6 +189,8 @@ const parseLane = (
   if (disposition === "inconclusive") {
     if (!isInconclusiveClass(inconclusiveClass)) errors.push(`${id} lane requires an inconclusive class`);
     else errors.push(`${id} lane is inconclusive: ${inconclusiveClass}`);
+  } else if (isInconclusiveClass(inconclusiveClass)) {
+    errors.push(`${id} lane cannot carry an inconclusive class with ${disposition} disposition`);
   }
   return isInconclusiveClass(inconclusiveClass)
     ? {
