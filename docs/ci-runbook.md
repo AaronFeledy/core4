@@ -180,20 +180,21 @@ LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/cor
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
-## Weekly provider matrix
+## Provider matrix
 
-The advisory `provider-matrix` workflow runs weekly and on manual dispatch. It covers Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack cells. GitHub-hosted CI only installs/runs the Linux Docker Engine and Podman cells; desktop-only engines emit a `::notice` skip so maintainers can mirror those cells on prepared self-hosted runners.
+The `provider-matrix` workflow runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push is made with `github.token` and therefore does not recursively fire `push:` triggers.
 
-Installable cells run the shared provider contract layer:
+The matrix is structured provider acceptance, not advisory contract-only coverage. Each cell writes a JSON report with a `passed`, `failed`, or `skipped` outcome; release-blocking cells fail the workflow when they fail or skip. Advisory desktop-only cells still emit a `::notice` skip on GitHub-hosted runners so maintainers can mirror them on prepared self-hosted runners.
+
+Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
 ```bash
-bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
 bun test plugins/provider-lando/test/contract.integration.test.ts
 bun test plugins/provider-docker/test/contract.integration.test.ts
 bun test plugins/provider-podman/test/contract.integration.test.ts
 ```
 
-Failures upload `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The weekly matrix is intentionally not listed under branch protection for Beta.
+Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check for Beta.
 
 ## Alpha platform scope
 
