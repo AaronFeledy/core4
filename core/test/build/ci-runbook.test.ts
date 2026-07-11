@@ -83,11 +83,14 @@ describe("ci runbook", () => {
     expect(runbook).toContain(
       "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64",
     );
-    expect(runbook).toContain("Weekly provider matrix");
-    expect(runbook).toContain("The advisory `provider-matrix` workflow runs weekly");
+    expect(runbook).toContain("## Provider matrix");
+    expect(runbook).toContain(
+      "runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher",
+    );
+    expect(runbook).toContain("release-blocking cells fail the workflow when they fail or skip");
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
-    expect(runbook).toContain("not listed under branch protection");
+    expect(runbook).toContain("not listed as a per-PR branch-protection check");
   });
 
   test("keeps the Beta 1 Bun floor decision synchronized across docs and package metadata", async () => {

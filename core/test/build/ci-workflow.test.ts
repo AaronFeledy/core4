@@ -9,6 +9,7 @@ const workflowsDir = resolve(repoRoot, ".github/workflows");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 const nightlyWorkflowPath = resolve(repoRoot, ".github/workflows/nightly.yml");
 const providerMatrixWorkflowPath = resolve(repoRoot, ".github/workflows/provider-matrix.yml");
+const runtimeBundleWorkflowPath = resolve(repoRoot, ".github/workflows/runtime-bundle.yml");
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioRunLine = `        run: ${guideScenarioRunCommand}`;
@@ -16,6 +17,7 @@ const guideScenarioRunLine = `        run: ${guideScenarioRunCommand}`;
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 const readNightlyWorkflow = async (): Promise<string> => Bun.file(nightlyWorkflowPath).text();
 const readProviderMatrixWorkflow = async (): Promise<string> => Bun.file(providerMatrixWorkflowPath).text();
+const readRuntimeBundleWorkflow = async (): Promise<string> => Bun.file(runtimeBundleWorkflowPath).text();
 
 const findIndentedBlock = (source: string, key: string, indent = 0): string => {
   const lines = source.split("\n");
@@ -56,7 +58,7 @@ describe("ci workflow", () => {
     ]);
   });
 
-  test("runs the weekly provider matrix as an advisory workflow", async () => {
+  test("runs the weekly provider matrix with release-blocking Linux acceptance reports", async () => {
     const workflow = await readProviderMatrixWorkflow();
     const triggers = findIndentedBlock(workflow, "on");
     const permissions = findIndentedBlock(workflow, "permissions");
@@ -72,33 +74,99 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("            engine: Docker Desktop");
     expect(providerContracts).toContain("            engine: Docker Engine");
     expect(providerContracts).toContain("            engine: Podman Desktop");
-    expect(providerContracts).toContain("            engine: Podman");
+    expect(providerContracts).toContain("            engine: Lando managed Podman 6");
+    expect(providerContracts).toContain("            engine: Podman 6");
     expect(providerContracts).toContain("            engine: Lima");
     expect(providerContracts).toContain("            engine: OrbStack");
+    expect((providerContracts.match(/release-blocking: true/g) ?? []).length).toBe(3);
+    expect((providerContracts.match(/advisory-skip: true/g) ?? []).length).toBe(4);
     expect(providerContracts).toContain("      - name: Notice unsupported hosted runner cell");
-    expect(providerContracts).toContain("        if: ${{ matrix.installable == false }}");
+    expect(providerContracts).toContain("        if: ${{ matrix['advisory-skip'] == true }}");
     expect(providerContracts).toContain("      - name: Setup Bun");
     expect(providerContracts).toContain("          bun-version-file: .bun-version");
     expect(providerContracts).toContain("        run: bun install --frozen-lockfile");
+    expect(providerContracts).toContain("      - name: Build Linux x64 binary for managed Lando provider");
+    expect(providerContracts).toContain("          bun run --filter='@lando/core' build:manifest");
+    expect(providerContracts).toContain(
+      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external",
+    );
+    expect(providerContracts).toContain(
+      "      - name: Prepare managed Lando provider from committed manifest",
+    );
+    expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+    expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
+    expect(providerContracts).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"');
+    expect(providerContracts).toContain('          export LANDO_USER_CONF_ROOT="$RUNNER_TEMP/lando-conf"');
+    expect(providerContracts).toContain('          export LANDO_USER_DATA_ROOT="$RUNNER_TEMP/lando-data"');
+    expect(providerContracts).toContain('          export LANDO_USER_CACHE_ROOT="$RUNNER_TEMP/lando-cache"');
+    expect(providerContracts).toContain(
+      "          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync",
+    );
+    expect(providerContracts).toContain("      - name: Verify managed Lando socket");
+    expect(providerContracts).toContain(
+      '          test -S "$RUNNER_TEMP/lando-data/runtime/run/podman.sock"',
+    );
+    expect(providerContracts).toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=$RUNNER_TEMP/lando-data/runtime/run/podman.sock" >> "$GITHUB_ENV"',
+    );
     expect(providerContracts).toContain("      - name: Install Podman 6 toolchain");
+    expect(providerContracts).toContain("        if: ${{ matrix.cell == 'podman-podman6-linux' }}");
     expect(providerContracts).toContain("      - name: Assert Podman 6 host contract");
+    expect(providerContracts).toContain("      - name: Start Podman socket");
+    expect(providerContracts).toContain("        if: ${{ matrix.cell == 'podman-podman6-linux' }}");
     expect(providerContracts).toContain("      - name: Configure Docker socket");
-    expect(providerContracts).toContain("      - name: Run provider contract tests");
+    expect(providerContracts).toContain("      - name: Pull live acceptance fixture images");
     expect(providerContracts).toContain(
-      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
+      '              "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
     );
     expect(providerContracts).toContain(
-      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
+      '              podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
     );
+    expect(providerContracts).toContain('              docker pull "$image"');
+    expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
+    expect(providerContracts).toContain("        if: always()");
     expect(providerContracts).toContain(
-      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
+      "          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
     );
+    expect(providerContracts).toContain("      - name: Upload provider matrix cell report");
+    expect(providerContracts).toContain("          name: provider-matrix-report-${{ matrix.cell }}");
+    expect(providerContracts).toContain("          path: provider-matrix-reports/${{ matrix.cell }}.json");
+    expect(providerContracts).toContain("          if-no-files-found: error");
+    expect(providerContracts).toContain("      - name: Teardown Podman");
     expect(providerContracts).toContain(
-      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
+      "        if: ${{ always() && matrix.cell == 'podman-podman6-linux' }}",
     );
+    expect(providerContracts).toContain("      - name: Teardown managed Lando runtime");
+    expect(providerContracts).toContain(
+      "        if: ${{ always() && matrix.cell == 'lando-podman6-linux' }}",
+    );
+    expect(providerContracts).toContain("          dist/lando poweroff || true");
     expect(providerContracts).toContain("      - name: Collect provider matrix diagnostics");
     expect(providerContracts).toContain("      - name: Upload provider matrix diagnostics");
     expect(providerContracts).toContain("          name: provider-matrix-diagnostics-${{ matrix.cell }}");
+    expect(providerContracts).not.toContain("      - name: Run provider contract tests");
+  });
+
+  test("dispatches the provider matrix after runtime bundle manifest repins", async () => {
+    const workflow = await readRuntimeBundleWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const publish = findIndentedBlock(jobs, "publish", 2);
+    const permissions = findIndentedBlock(publish, "permissions", 4);
+
+    expect(permissions).toContain("      contents: write");
+    expect(permissions).toContain("      actions: write");
+    expect(publish).toContain("      - name: Commit recovered manifest pin");
+    expect(publish).toContain("        id: manifest-pin");
+    expect(publish).toContain("          git push origin HEAD:main");
+    expect(publish).toContain('          echo "pushed=true" >> "$GITHUB_OUTPUT"');
+    expect(publish).toContain("      - name: Dispatch provider matrix after manifest repin");
+    expect(publish).toContain("        if: steps.manifest-pin.outputs.pushed == 'true'");
+    expect(publish).toContain(
+      '        run: GITHUB_TOKEN="${{ github.token }}" gh workflow run provider-matrix.yml --ref main',
+    );
+    expect(publish.indexOf("git push origin HEAD:main")).toBeLessThan(
+      publish.indexOf("Dispatch provider matrix after manifest repin"),
+    );
   });
 
   test("runs nightly provider-lando e2e on Linux x64", async () => {

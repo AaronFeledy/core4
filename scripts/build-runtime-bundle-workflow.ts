@@ -202,6 +202,7 @@ ${matrixInclude}
     if: github.ref == 'refs/heads/main' && always() && ((needs.classify.outputs.state == 'publish_new' && needs.assemble.result == 'success') || needs.classify.outputs.state == 'recover_pin')
     permissions:
       contents: write
+      actions: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -266,6 +267,7 @@ ${matrixInclude}
           GITHUB_TOKEN="\${{ github.token }}" gh release download "$RUNTIME_BUNDLE_TAG" --pattern "lando-runtime-*" --dir dist/cache/runtime-bundle --skip-existing
 
       - name: Commit recovered manifest pin
+        id: manifest-pin
         env:
           GH_TOKEN: \${{ github.token }}
         run: |
@@ -289,6 +291,11 @@ ${matrixInclude}
           bun run check:runtime-bundle-manifest
           gh auth setup-git
           git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch provider matrix after manifest repin
+        if: steps.manifest-pin.outputs.pushed == 'true'
+        run: GITHUB_TOKEN="\${{ github.token }}" gh workflow run provider-matrix.yml --ref main
 `;
 
 const main = async (): Promise<void> => {

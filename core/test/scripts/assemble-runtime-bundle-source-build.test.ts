@@ -20,6 +20,7 @@ const realisticPortableLdd = `
 `;
 
 const podmanSourceBytes = new TextEncoder().encode("pinned-podman-source");
+const rootlessportSourceBytes = new TextEncoder().encode("pinned-rootlessport-source");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const fixtureSourceArchive = async (dir: string): Promise<Uint8Array> => {
@@ -60,7 +61,7 @@ describe("Linux Podman source build", () => {
     const sources = parseRuntimeBundleSources(
       JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")),
     );
-    expect(sources.runtimeVersion).toBe("0.1.2");
+    expect(sources.runtimeVersion).toBe("0.1.3");
 
     for (const hostKey of ["linux-x64", "linux-arm64"]) {
       const podman = sources.bundles[hostKey]?.components.find((component) => component.name === "podman");
@@ -87,6 +88,7 @@ describe("Linux Podman source build", () => {
         if (command[0] === "make") {
           events.push("build");
           expect(command).toContain("bin/podman");
+          expect(command).toContain("bin/rootlessport");
           expect(command).toContain("GIT_COMMIT=4cabbe61fa3a27fafc4a3ee1226e38ae1664ae57");
           expect(command).toContain("SOURCE_DATE_EPOCH=1783532707");
           expect(command).toContain("CGO_ENABLED=1");
@@ -96,6 +98,7 @@ describe("Linux Podman source build", () => {
           if (cwd === undefined) throw new Error("source build requires cwd");
           await mkdir(join(cwd, "bin"), { recursive: true });
           await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
+          await writeFile(join(cwd, "bin", "rootlessport"), rootlessportSourceBytes);
           return;
         }
         events.push("verify");
@@ -114,7 +117,7 @@ describe("Linux Podman source build", () => {
         verifyCommand: runner,
       });
 
-      expect(events).toEqual(["build", "portability", "verify"]);
+      expect(events).toEqual(["build", "portability", "portability", "verify"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -134,6 +137,7 @@ describe("Linux Podman source build", () => {
           if (cwd === undefined) throw new Error("source build requires cwd");
           await mkdir(join(cwd, "bin"), { recursive: true });
           await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
+          await writeFile(join(cwd, "bin", "rootlessport"), rootlessportSourceBytes);
           return;
         }
       };
@@ -180,6 +184,44 @@ describe("Linux Podman source build", () => {
       }
       expect(failure).toBeInstanceOf(Error);
       expect(failure instanceof Error ? failure.message : "").toMatch(/source-build output.*bin\/podman/i);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects missing Linux rootlessport source-build output before deterministic packing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rb-asm-source-missing-rootlessport-"));
+    try {
+      const sourceArchive = await fixtureSourceArchive(dir);
+      const artifactPath = join(dir, "lando-runtime-linux-x64.tar.gz");
+      let failure: unknown;
+      try {
+        await assembleBundle({
+          hostKey: "linux-x64",
+          sources: sourceBuildSources(sourceArchive),
+          outDir: dir,
+          fetchArtifact: async () => sourceArchive,
+          inspectCommand: async () => realisticPortableLdd,
+          verifyCommand: async (command, cwd) => {
+            if (command[0] === "tar") {
+              await Bun.spawn({ cmd: [...command], stdout: "ignore", stderr: "ignore" }).exited;
+              return;
+            }
+            if (command[0] !== "make") return;
+            if (cwd === undefined) throw new Error("source build requires cwd");
+            await mkdir(join(cwd, "bin"), { recursive: true });
+            await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
+          },
+        });
+      } catch (cause) {
+        if (!(cause instanceof Error)) throw cause;
+        failure = cause;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure instanceof Error ? failure.message : "").toMatch(
+        /source-build output.*bin\/rootlessport/i,
+      );
+      expect(await Bun.file(artifactPath).exists()).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -184,6 +184,19 @@ const canonicalArgs = (p: ReturnType<typeof paths>) =>
     `unix://${p.socketPath}`,
   ]);
 
+const canonicalEnv = (p: ReturnType<typeof paths>) => ({
+  CONTAINERS_CONF: join(p.configDir, "containers.conf"),
+});
+
+const writeLaunchState = (p: ReturnType<typeof paths>, pid: number) =>
+  writeFile(
+    `${p.pidPath}.launch.json`,
+    JSON.stringify({
+      pid,
+      env: canonicalEnv(p),
+    }),
+  );
+
 const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
   subidConfigured: true,
   hasUidmapTools: true,
@@ -277,6 +290,7 @@ describe("ensureRuntime", () => {
       const calls: Call[] = [];
       const p = paths(dir);
       await writeFile(p.pidPath, "4321");
+      await writeLaunchState(p, 4321);
 
       await Effect.runPromise(
         ensureRuntime({
@@ -287,6 +301,104 @@ describe("ensureRuntime", () => {
         }),
       );
 
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable socket with matching argv but mismatched launch env metadata is restarted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+      await writeFile(
+        `${p.pidPath}.launch.json`,
+        JSON.stringify({ pid: 4321, env: { CONTAINERS_CONF: join(p.configDir, "old-containers.conf") } }),
+      );
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["terminate", 4321],
+        ["launch", canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable socket with matching argv but missing launch env metadata is restarted", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: an old owned service has only the legacy PID file, so its launch
+      // env cannot prove the current CONTAINERS_CONF requirement was applied.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+
+      // When: ensureRuntime sees the socket is already reachable.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          ...p,
+        }),
+      );
+
+      // Then: the old owned process is stopped and relaunched with the current spec.
+      expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["terminate", 4321],
+        ["launch", canonicalArgs(p)],
+      ]);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable socket with matching argv and launch env metadata is reused", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: the recorded owned service launch state includes the required env.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+      await writeLaunchState(p, 4321);
+
+      // When: ensureRuntime sees the socket is already reachable.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          ...p,
+        }),
+      );
+
+      // Then: no stop/start is performed.
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],

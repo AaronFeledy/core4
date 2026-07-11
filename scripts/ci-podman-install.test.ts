@@ -91,10 +91,12 @@ describe("generated workflows carry the Podman 6 host contract", () => {
       expect(contents).toContain("brew install podman");
       const assertIndex = contents.indexOf("Assert Podman 6 host contract");
       expect(assertIndex).toBeGreaterThan(0);
+      const podmanUseMarkers =
+        path === ".github/workflows/provider-matrix.yml"
+          ? ["podman system service"]
+          : ["podman system service", "lando setup"];
       const firstPodmanUse = Math.min(
-        ...["podman system service", "lando setup"]
-          .map((marker) => contents.indexOf(marker))
-          .filter((index) => index >= 0),
+        ...podmanUseMarkers.map((marker) => contents.indexOf(marker)).filter((index) => index >= 0),
       );
       expect(firstPodmanUse).toBeGreaterThan(0);
       expect(assertIndex).toBeLessThan(firstPodmanUse);

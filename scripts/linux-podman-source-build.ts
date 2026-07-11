@@ -20,6 +20,11 @@ export const PodmanSourceBuild = {
   extraLdflags: "-buildid=",
 } as const;
 
+const PodmanSourceBuildOutputs = [
+  { source: "bin/podman", installName: "bin/podman", mode: 0o755 },
+  { source: "bin/rootlessport", installName: "bin/rootlessport", mode: 0o755 },
+] as const;
+
 interface LinuxHelperSourceBuildOptions {
   readonly component: RuntimeBundleComponent;
   readonly artifactPaths: ReadonlyMap<string, string>;
@@ -102,6 +107,7 @@ export const buildLinuxPodmanFromSource = async (
       [
         "make",
         "bin/podman",
+        "bin/rootlessport",
         `GIT_COMMIT=${PodmanSourceBuild.gitCommit}`,
         `SOURCE_DATE_EPOCH=${PodmanSourceBuild.sourceDateEpoch}`,
         "CGO_ENABLED=1",
@@ -111,16 +117,19 @@ export const buildLinuxPodmanFromSource = async (
       ],
       sourceDir,
     );
-    const builtPath = join(sourceDir, "bin", "podman");
-    const bytes = await readFile(builtPath).catch((cause: unknown) => {
-      throw new Error(`assemble-runtime-bundle: missing Linux Podman source-build output ${builtPath}`, {
-        cause,
+    for (const output of PodmanSourceBuildOutputs) {
+      const builtPath = join(sourceDir, output.source);
+      const bytes = await readFile(builtPath).catch((cause: unknown) => {
+        throw new Error(`assemble-runtime-bundle: missing Linux Podman source-build output ${builtPath}`, {
+          cause,
+        });
       });
-    });
-    const destPath = join(stageDir, component.installName);
-    await mkdir(dirname(destPath), { recursive: true });
-    await writeFile(destPath, bytes);
-    await chmod(destPath, component.mode);
+      const installName = output.source === "bin/podman" ? component.installName : output.installName;
+      const destPath = join(stageDir, installName);
+      await mkdir(dirname(destPath), { recursive: true });
+      await writeFile(destPath, bytes);
+      await chmod(destPath, output.source === "bin/podman" ? component.mode : output.mode);
+    }
   } finally {
     await rm(workDir, { recursive: true, force: true });
   }
