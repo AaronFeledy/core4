@@ -4,7 +4,7 @@ import { stdout } from "node:process";
 import { Effect, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
-import { AppPlan, type AppRef } from "@lando/sdk/schema";
+import { AppPlan, type AppRef, type ServicePlan } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";
 
 import type { RootOverrides } from "../../config/paths.ts";
@@ -13,11 +13,13 @@ import type { RedactionService } from "../../redaction/service.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./api.ts";
+import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import { runOpenForHostProxy } from "./dispatch.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 import { createHostProxyRunLandoSession } from "./transport.ts";
 import {
+  hostProxyWorkerOwnerMarker,
   readOwnership,
   removeOwnedHostProxyWorkerState,
   terminateVerifiedOwnership,
@@ -32,8 +34,12 @@ import {
   stdinText,
 } from "./worker-process.ts";
 
+const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
+const HOST_PROXY_FEATURE_ID = "lando.host-proxy";
+
 export { HOST_PROXY_WORKER_COMMAND, hostProxyWorkerArgv } from "./worker-process.ts";
 export {
+  hostProxyWorkerOwnerMarker,
   removeOwnedHostProxyWorkerState,
   terminateOwnedHostProxyWorker,
   terminateOwnedHostProxyWorkersInRoot,
@@ -75,9 +81,34 @@ export interface DetachedHostProxyWorkerOptions {
   readonly spawnWorker?: HostProxyWorkerSpawner;
   readonly readProcessArgv?: (pid: number) => Promise<ReadonlyArray<string>>;
   readonly readProcessCommand?: (pid: number) => Promise<string>;
+  readonly spawnProcessCommand?: (argv: ReadonlyArray<string>) => Promise<{
+    readonly exitCode: number;
+    readonly stdout: string;
+  }>;
   readonly terminateProcess?: (pid: number) => Promise<void>;
   readonly platform?: NodeJS.Platform;
 }
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+export const serviceHasHostProxyFeature = (service: ServicePlan): boolean => {
+  const extension = service.extensions[SERVICE_FEATURES_EXTENSION_KEY];
+  if (!isRecord(extension)) return false;
+  const featureIds = extension.featureIds;
+  return Array.isArray(featureIds) && featureIds.includes(HOST_PROXY_FEATURE_ID);
+};
+
+export const hostProxyEligibleServices = (plan: AppPlan) =>
+  Object.values(plan.services).filter(serviceHasHostProxyFeature);
+
+export const hostProxyMountInfoFromPlan = (plan: AppPlan): HostProxyMountInfo => {
+  for (const service of hostProxyEligibleServices(plan)) {
+    if (service.appMount !== undefined)
+      return { containerRoot: String(service.appMount.target), hostRoot: String(service.appMount.source) };
+  }
+  return { containerRoot: "/app", hostRoot: String(plan.root) };
+};
 
 const rootOverridesFromWorkerInput = (paths: WorkerInput["paths"]): RootOverrides => ({
   ...(paths.userConfRoot === undefined ? {} : { userConfRoot: paths.userConfRoot }),
@@ -120,7 +151,10 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
     void (async () => {
       try {
         const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
-        const argv = hostProxyWorkerArgv({ appId: options.app.id });
+        const argv = [
+          ...hostProxyWorkerArgv({ appId: options.app.id }),
+          hostProxyWorkerOwnerMarker(options.app.id),
+        ];
         const existingOwnership = await readOwnership(options.app, options.paths);
         if (existingOwnership !== undefined) {
           const result = await terminateVerifiedOwnership(existingOwnership, options);
@@ -207,7 +241,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       const runtimeContext = yield* Effect.context<ShellRunner | EventService | RedactionService>();
       return yield* createHostProxyRunLandoSession({
         app,
-        mountInfo: { containerRoot: "/app", hostRoot: String(input.plan.root) },
+        mountInfo: hostProxyMountInfoFromPlan(input.plan),
         allowlist: HOST_PROXY_RUNLANDO_ALLOWLIST,
         callerService: "lando",
         executor: (request) => runOpenForHostProxy(input.plan, request).pipe(Effect.provide(runtimeContext)),

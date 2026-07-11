@@ -8,7 +8,6 @@ import type { AppRef } from "@lando/sdk/schema";
 import type { RootOverrides } from "../../config/paths.ts";
 import { makeLandoPaths } from "../../config/paths.ts";
 import { hostProxyRunLandoStateDir } from "./transport.ts";
-import { HOST_PROXY_WORKER_COMMAND } from "./worker-process.ts";
 
 const WorkerOwnership = Schema.Struct({
   appId: Schema.String,
@@ -26,6 +25,10 @@ export interface TerminateHostProxyWorkerOptions {
   readonly paths?: RootOverrides;
   readonly readProcessArgv?: (pid: number) => Promise<ReadonlyArray<string>>;
   readonly readProcessCommand?: (pid: number) => Promise<string>;
+  readonly spawnProcessCommand?: (argv: ReadonlyArray<string>) => Promise<{
+    readonly exitCode: number;
+    readonly stdout: string;
+  }>;
   readonly terminateProcess?: (pid: number) => Promise<void>;
   readonly platform?: NodeJS.Platform;
 }
@@ -38,6 +41,9 @@ const fingerprintArgv = (argv: ReadonlyArray<string>): string =>
 export const workerOwnershipPath = (app: AppRef, paths?: RootOverrides): string =>
   resolve(hostProxyRunLandoStateDir(app, paths), "worker.json");
 
+export const hostProxyWorkerOwnerMarker = (appId: string): string =>
+  `--lando-host-proxy-owner=${fingerprintArgv([appId])}`;
+
 const defaultReadProcessArgv = async (pid: number): Promise<ReadonlyArray<string>> => {
   try {
     return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter((part) => part.length > 0);
@@ -46,24 +52,45 @@ const defaultReadProcessArgv = async (pid: number): Promise<ReadonlyArray<string
   }
 };
 
-const defaultReadProcessCommand = async (pid: number): Promise<string> => {
-  const proc = Bun.spawn(["ps", "-p", String(pid), "-ww", "-o", "command="], {
+const defaultSpawnProcessCommand = async (
+  argv: ReadonlyArray<string>,
+): Promise<{ readonly exitCode: number; readonly stdout: string }> => {
+  const proc = Bun.spawn([...argv], {
     stdout: "pipe",
     stderr: "pipe",
   });
   const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  return { exitCode, stdout };
+};
+
+const processCommandReaderArgv = (pid: number, platform: NodeJS.Platform): ReadonlyArray<string> => {
+  if (platform === "win32")
+    return [
+      "powershell.exe",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { $p.CommandLine }`,
+    ];
+  return ["ps", "-p", String(pid), "-ww", "-o", "command="];
+};
+
+const defaultReadProcessCommand = async (
+  pid: number,
+  platform: NodeJS.Platform,
+  spawnProcessCommand: (argv: ReadonlyArray<string>) => Promise<{
+    readonly exitCode: number;
+    readonly stdout: string;
+  }>,
+): Promise<string> => {
+  const { exitCode, stdout } = await spawnProcessCommand(processCommandReaderArgv(pid, platform));
   return exitCode === 0 ? stdout.trim() : "";
 };
 
-const commandMatchesOwnership = (command: string, ownership: WorkerOwnership): boolean => {
-  const argv = command.split(/\s+/u).filter((part) => part.length > 0);
-  const appMarkerIndex = argv.indexOf("--app-id");
-  return (
-    argv.includes(HOST_PROXY_WORKER_COMMAND) &&
-    appMarkerIndex >= 0 &&
-    argv[appMarkerIndex + 1] === ownership.appId
-  );
-};
+const commandMatchesOwnership = (command: string, ownership: WorkerOwnership): boolean =>
+  new RegExp(`(?:^|\\s)${hostProxyWorkerOwnerMarker(ownership.appId)}(?:\\s|$)`, "u").test(command);
 
 const defaultTerminateProcess = async (pid: number): Promise<void> => {
   try {
@@ -104,7 +131,11 @@ export const terminateVerifiedOwnership = async (
     if (actualArgv.length === 0) return "absent";
     if (fingerprintArgv(actualArgv) !== ownership.argvFingerprint) return "unverified";
   } else {
-    const command = await (options.readProcessCommand ?? defaultReadProcessCommand)(ownership.pid);
+    const command = await (
+      options.readProcessCommand ??
+      ((pid) =>
+        defaultReadProcessCommand(pid, platform, options.spawnProcessCommand ?? defaultSpawnProcessCommand))
+    )(ownership.pid);
     if (command.length === 0) return "absent";
     if (!commandMatchesOwnership(command, ownership)) return "unverified";
   }

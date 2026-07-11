@@ -4,10 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect, Exit, Fiber } from "effect";
 
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 
 import {
+  hostProxyMountInfoFromPlan,
   hostProxyWorkerArgv,
+  hostProxyWorkerOwnerMarker,
   removeOwnedHostProxyWorkerState,
   startDetachedHostProxyWorker,
   terminateOwnedHostProxyWorker,
@@ -39,6 +49,39 @@ const plan: AppPlan = {
   },
   extensions: {},
 };
+
+const servicePlan = (name: string, target: string, eligible = true): ServicePlan => ({
+  name: ServiceName.make(name),
+  type: "node",
+  provider: ProviderId.make("lando"),
+  primary: name === "appserver",
+  environment: {},
+  appMount: {
+    source: AbsolutePath.make("/srv/apps/demo"),
+    target: PortablePath.make(target),
+    readOnly: false,
+    excludes: [],
+    includes: [],
+    realization: "passthrough",
+  },
+  mounts: [],
+  storage: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00.000Z"),
+    source: "worker.test",
+    runtime: 4,
+  },
+  extensions: eligible ? { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } } : {},
+});
+
+const ownedWorkerArgv = (appId: string): ReadonlyArray<string> => [
+  ...hostProxyWorkerArgv({ appId }),
+  hostProxyWorkerOwnerMarker(appId),
+];
 
 const tempRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-host-proxy-worker-"));
 
@@ -140,7 +183,7 @@ describe("detached host-proxy worker manager", () => {
       await Effect.runPromise(
         terminateOwnedHostProxyWorker(app, {
           paths: { userDataRoot: root },
-          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          readProcessArgv: async () => ownedWorkerArgv("demo"),
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -234,7 +277,7 @@ describe("detached host-proxy worker manager", () => {
           app,
           { userDataRoot: root },
           {
-            readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+            readProcessArgv: async () => ownedWorkerArgv("demo"),
             terminateProcess: async (pid) => {
               terminated.push(pid);
             },
@@ -282,7 +325,7 @@ describe("detached host-proxy worker manager", () => {
           plan,
           paths: { userDataRoot: root },
           shimArtifactPath: "/tmp/fake-shim",
-          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          readProcessArgv: async () => ownedWorkerArgv("demo"),
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -424,7 +467,7 @@ describe("detached host-proxy worker manager", () => {
         terminateOwnedHostProxyWorker(app, {
           paths: { userDataRoot: root },
           platform: "darwin",
-          readProcessCommand: async () => `${hostProxyWorkerArgv({ appId: "demo" }).join(" ")}`,
+          readProcessCommand: async () => `bun ${hostProxyWorkerOwnerMarker("demo")}`,
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -432,6 +475,101 @@ describe("detached host-proxy worker manager", () => {
       );
 
       expect(terminated).toEqual([24680]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("uses marker-based Darwin command ownership when app ids contain spaces", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app: spacedApp,
+          plan: { ...plan, id: AppId.make("demo app"), root: spacedApp.root },
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 24681,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo app",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo-app", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo-app", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorker(spacedApp, {
+          paths: { userDataRoot: root },
+          platform: "darwin",
+          readProcessCommand: async () => `bun path with spaces ${hostProxyWorkerOwnerMarker("demo app")}`,
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+        }),
+      );
+
+      expect(terminated).toEqual([24681]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("uses the default Windows CIM command-line reader through the injectable spawn seam", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 24682,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorker(app, {
+          paths: { userDataRoot: root },
+          platform: "win32",
+          spawnProcessCommand: async (argv) => {
+            expect(argv.join(" ")).toContain("Get-CimInstance");
+            expect(argv.join(" ")).toContain("24682");
+            return {
+              exitCode: 0,
+              stdout: `bun.exe C:\\Program Files\\Lando\\lando ${hostProxyWorkerOwnerMarker("demo")}`,
+            };
+          },
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+        }),
+      );
+
+      expect(terminated).toEqual([24682]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -474,7 +612,7 @@ describe("detached host-proxy worker manager", () => {
       );
       await Effect.runPromise(
         terminateOwnedHostProxyWorkersInRoot(root, {
-          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          readProcessArgv: async () => ownedWorkerArgv("demo"),
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -519,7 +657,7 @@ describe("detached host-proxy worker manager", () => {
 
       await Effect.runPromise(
         terminateOwnedHostProxyWorkersInRoot(root, {
-          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          readProcessArgv: async () => ownedWorkerArgv("demo"),
           terminateProcess: async () => undefined,
         }),
       );
@@ -566,7 +704,7 @@ describe("detached host-proxy worker manager", () => {
 
       await Effect.runPromise(
         terminateOwnedHostProxyWorkersInRoot(root, {
-          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo app" }),
+          readProcessArgv: async () => ownedWorkerArgv("demo app"),
           terminateProcess: async () => undefined,
         }),
       );
@@ -606,5 +744,28 @@ describe("detached host-proxy worker manager", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("derives host-proxy mount info from the first eligible service", () => {
+    const mountInfo = hostProxyMountInfoFromPlan({
+      ...plan,
+      services: {
+        [ServiceName.make("database")]: servicePlan("database", "/db", false),
+        [ServiceName.make("appserver")]: servicePlan("appserver", "/workspace"),
+      },
+    });
+
+    expect(mountInfo).toEqual({ containerRoot: "/workspace", hostRoot: "/srv/apps/demo" });
+  });
+
+  test("falls back to the plan root when no service is host-proxy eligible", () => {
+    const mountInfo = hostProxyMountInfoFromPlan({
+      ...plan,
+      services: {
+        [ServiceName.make("database")]: servicePlan("database", "/db", false),
+      },
+    });
+
+    expect(mountInfo).toEqual({ containerRoot: "/app", hostRoot: "/srv/apps/demo" });
   });
 });

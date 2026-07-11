@@ -16,28 +16,14 @@ import {
   type HostProxyRunLandoSession,
   hostProxyRunLandoFeature,
 } from "../../subsystems/host-proxy/transport.ts";
-import { startDetachedHostProxyWorker } from "../../subsystems/host-proxy/worker.ts";
+import {
+  hostProxyEligibleServices,
+  serviceHasHostProxyFeature,
+  startDetachedHostProxyWorker,
+} from "../../subsystems/host-proxy/worker.ts";
 
-const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
-const HOST_PROXY_FEATURE_ID = "lando.host-proxy";
 const HOST_PROXY_CONTAINER_TARGET_EXTENSION_KEY = "@lando/core/host-proxy-container-target";
 const HOST_PROXY_HOST_GATEWAY_EXTENSION = "@lando/core/host-proxy-transport:tcp-host-gateway";
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const serviceFeatureIds = (service: ServicePlan): ReadonlyArray<string> => {
-  const extension = service.extensions[SERVICE_FEATURES_EXTENSION_KEY];
-  if (!isRecord(extension)) return [];
-  const featureIds = extension.featureIds;
-  return Array.isArray(featureIds) ? featureIds.filter((id): id is string => typeof id === "string") : [];
-};
-
-const serviceHasHostProxyFeature = (service: ServicePlan): boolean =>
-  serviceFeatureIds(service).includes(HOST_PROXY_FEATURE_ID);
-
-export const hostProxyEligibleServices = (plan: AppPlan): ReadonlyArray<ServicePlan> =>
-  Object.values(plan.services).filter(serviceHasHostProxyFeature);
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
 
