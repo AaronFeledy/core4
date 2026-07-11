@@ -36,7 +36,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
-import type { FileSyncEngineShape, RuntimeProviderShape } from "@lando/sdk/services";
+import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -261,6 +261,7 @@ const makeStartLayer = (
     readonly signalSeen?: boolean[];
     readonly applyFailure?: ProviderUnavailableError;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly inspectEffect?: Effect.Effect<ServiceRuntimeInfo, ProviderUnavailableError>;
     readonly inspectFailure?: ProviderUnavailableError;
     readonly blockTreeStart?: Effect.Effect<void>;
     readonly plannedApp?: AppPlan;
@@ -334,8 +335,9 @@ const makeStartLayer = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
-      options.inspectFailure === undefined
-        ? Effect.succeed({
+      options.inspectEffect ??
+      (options.inspectFailure === undefined
+        ? Effect.succeed<ServiceRuntimeInfo>({
             app: plannedApp.id,
             service: target.service,
             providerId,
@@ -343,7 +345,7 @@ const makeStartLayer = (
             state: "running",
             endpoints: plannedApp.services[target.service]?.endpoints ?? [],
           })
-        : Effect.fail(options.inspectFailure),
+        : Effect.fail(options.inspectFailure)),
     list: () => Effect.succeed([]),
   };
 
@@ -954,6 +956,36 @@ describe("lando start", () => {
       expect(harness.applyPlans).toHaveLength(1);
       expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
       await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
+    });
+  });
+
+  test("rolls back applied provider resources and cleans host-proxy artifacts when interrupted during inspect", async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      let markInspectEntered: (() => void) | undefined;
+      const inspectEntered = new Promise<void>((resolve) => {
+        markInspectEntered = resolve;
+      });
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        inspectEffect: Effect.sync(() => markInspectEntered?.()).pipe(Effect.zipRight(Effect.never)),
+      });
+      const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
+
+      await inspectEntered;
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      await stat(hostProxyDir);
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
+      expect(harness.applyPlans).toHaveLength(1);
+      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
+      await expectMissingPath(hostProxyDir);
     });
   });
 

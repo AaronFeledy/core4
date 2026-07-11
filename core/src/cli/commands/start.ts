@@ -266,5 +266,9 @@ export const startApp = (
       );
 
       return { app: plan.name, servicesStarted };
-    }).pipe(Effect.onInterrupt(() => closeHostProxySession));
+    }).pipe(
+      Effect.onInterrupt(() =>
+        closeHostProxySession.pipe(Effect.zipRight(rollbackAppliedApp(provider, plan))),
+      ),
+    );
   });
