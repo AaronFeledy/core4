@@ -18,6 +18,7 @@ import {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
+import { launchStatePath, recordedLaunchMatchesSpec, writeLaunchState } from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
 
 export interface EnsureRuntimeDeps {
@@ -107,6 +108,7 @@ const reapStaleRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void> =>
 
     yield* bestEffortRm(deps.socketPath);
     yield* bestEffortRm(deps.pidPath);
+    yield* bestEffortRm(launchStatePath(deps.pidPath));
   });
 
 const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> =>
@@ -117,8 +119,11 @@ const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> 
     const alive = yield* deps.serviceRunner.isAlive(pid);
     if (!alive) return false;
 
-    return yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
-      Effect.succeed(false);
+    const spec = buildPodmanServiceArgs(deps);
+    const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false);
+    if (!serviceProcess) return false;
+
+    return yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec);
   });
 
 const findAliveServicePids = (
@@ -164,6 +169,7 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
     );
 
     yield* writePidFile(deps.pidPath, pid);
+    yield* writeLaunchState(deps.pidPath, pid, spec);
   });
 
 const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
