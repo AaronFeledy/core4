@@ -73,14 +73,17 @@ const buildLayers = (
   );
 
 describe("meta:doctor command", () => {
-  test("renders the selected provider and every ProviderCapabilities field", async () => {
+  test("renders the selected provider and every declared ProviderCapabilities field", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
     const output = renderDoctorResult(result);
 
     expect(output).toContain("selected-provider: pass");
     expect(output).toContain("provider: lando");
+    const optionalCapabilityFields = new Set(["hostProxy"]);
     for (const field of Object.keys(ProviderCapabilities.fields)) {
+      if (optionalCapabilityFields.has(field) && provider.capabilities[field as "hostProxy"] === undefined)
+        continue;
       expect(output).toContain(`${field}:`);
     }
   });

@@ -486,6 +486,7 @@ export const doctor = (
 
     const capabilities: Record<string, unknown> = {};
     for (const field of CAPABILITY_FIELDS) {
+      if (provider.capabilities[field] === undefined) continue;
       capabilities[field] = provider.capabilities[field];
     }
 
