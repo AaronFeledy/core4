@@ -261,6 +261,7 @@ const makeStartLayer = (
     readonly signalSeen?: boolean[];
     readonly applyFailure?: ProviderUnavailableError;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly inspectFailure?: ProviderUnavailableError;
     readonly blockTreeStart?: Effect.Effect<void>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
@@ -272,6 +273,11 @@ const makeStartLayer = (
   const events: string[] = [];
   const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
+  const destroyCalls: Array<{
+    readonly app: string;
+    readonly volumes: boolean;
+    readonly removeState: boolean;
+  }> = [];
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
@@ -315,20 +321,29 @@ const makeStartLayer = (
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
-    destroy: () => Effect.void,
+    destroy: (target, destroyOptions) =>
+      Effect.sync(() => {
+        destroyCalls.push({
+          app: String(target.app),
+          volumes: destroyOptions.volumes,
+          removeState: destroyOptions.removeState ?? false,
+        });
+      }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
-      Effect.succeed({
-        app: plannedApp.id,
-        service: target.service,
-        providerId,
-        status: "running",
-        state: "running",
-        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
-      }),
+      options.inspectFailure === undefined
+        ? Effect.succeed({
+            app: plannedApp.id,
+            service: target.service,
+            providerId,
+            status: "running",
+            state: "running",
+            endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+          })
+        : Effect.fail(options.inspectFailure),
     list: () => Effect.succeed([]),
   };
 
@@ -363,7 +378,7 @@ const makeStartLayer = (
     unusedGlobalServicesLayer,
   );
 
-  return { layer, events, applyPlans, taskEvents };
+  return { layer, events, applyPlans, destroyCalls, taskEvents };
 };
 
 const globalServiceType = makeLegacyServiceTypeFake({
@@ -912,6 +927,33 @@ describe("lando start", () => {
 
       const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
       await expectMissingPath(hostProxyDir);
+    });
+  });
+
+  test("rolls back applied provider resources and cleans host-proxy artifacts when inspect fails", async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        inspectFailure: new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "inspect",
+          message: "podman inspect failed",
+        }),
+      });
+
+      const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+      expect(exit._tag).toBe("Failure");
+      expect(harness.applyPlans).toHaveLength(1);
+      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
+      await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
     });
   });
 

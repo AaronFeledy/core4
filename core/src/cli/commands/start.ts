@@ -212,6 +212,7 @@ export const startApp = (
         Effect.tapError(() =>
           Effect.gen(function* () {
             if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
+            yield* rollbackAppliedApp(provider, plan);
             for (const service of serviceList) {
               yield* publishTaskFail(events, {
                 taskId: String(service.name),
