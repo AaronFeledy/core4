@@ -316,3 +316,10 @@ Open closure categories:
   - Session closure must be observable (`closed` promise) so control-plane-initiated shutdown terminates the detached entry; SIGTERM-only wiring silently orphans replaced workers.
   - Bun's proxy env is latched at first fetch per process and survives env unsets; loopback bypass must be installed at process entry, and HTTP servers must route on normalized pathnames because proxied clients send absolute-form request lines.
 ---
+
+## 2026-07-11 18:54 CDT - US-433 Review
+- Fixed loopback proxy bypass compatibility so host-proxy process entry synchronizes the merged bypass list into both `NO_PROXY` and `no_proxy`, preserving wildcard and duplicate semantics for clients that honor either casing.
+- Review notes (deferred/rejected): rejected the claimed no-op dependency failure because `Effect.context` captures the existing context without runtime service lookup; rejected partial Unix feature injection because production sessions always carry the explicit Unix socket path and malformed internal session fixtures are not a reachable transport state.
+- Verification: typecheck and lint passed; focused proxy-bypass, shim, physical transport, and worker test spot checks passed; the strict TypeScript no-excuse audit passed.
+- **Learnings for future iterations:** Proxy environment variables are casing-sensitive across clients; process-entry bypass guards must update uppercase and lowercase variants together rather than treating one as canonical only for reads.
+---
