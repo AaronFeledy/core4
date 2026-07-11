@@ -1,4 +1,5 @@
 [test]
+preload = ["./scripts/test-preload.ts"]
 include = [
   "core/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",

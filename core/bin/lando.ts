@@ -19,6 +19,11 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { ensureHostProxyNoProxy } from "../src/subsystems/host-proxy/proxy-bypass.ts";
+
+ensureHostProxyNoProxy("127.0.0.1");
+ensureHostProxyNoProxy("localhost");
+
 const argv = Bun.argv.slice(2);
 
 const hasHostProxyShimEnv = (): boolean =>

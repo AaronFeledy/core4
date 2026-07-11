@@ -8,6 +8,7 @@ export const WorkerReady = Schema.TaggedStruct("ready", {
   appId: Schema.String,
   sessionId: Schema.String,
   token: Schema.String,
+  controlToken: Schema.String,
   socketPath: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   containerUrl: Schema.optional(Schema.String),
@@ -30,6 +31,9 @@ export interface HostProxyWorkerSpawnSpec {
 
 export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostProxyWorkerProcess;
 
+const READY_TIMEOUT_MS = 15_000;
+const TERMINATE_GRACE_MS = 5_000;
+
 export const hostProxyWorkerArgv = (
   input: { readonly entryPath?: string | undefined; readonly appId?: string | undefined } = {},
 ): ReadonlyArray<string> => {
@@ -48,18 +52,33 @@ export const hostProxyWorkerArgv = (
   return [process.execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
 };
 
-const textFromStreamUntilLine = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+const textFromStreamUntilLine = async (
+  stream: ReadableStream<Uint8Array>,
+  timeoutMs: number,
+): Promise<string> => {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = "";
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    text += decoder.decode(chunk.value, { stream: true });
-    const newline = text.indexOf("\n");
-    if (newline >= 0) return text.slice(0, newline);
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error("Detached host-proxy worker readiness timed out.");
+      const chunk = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Detached host-proxy worker readiness timed out.")), remaining),
+        ),
+      ]);
+      if (chunk.done) break;
+      text += decoder.decode(chunk.value, { stream: true });
+      const newline = text.indexOf("\n");
+      if (newline >= 0) return text.slice(0, newline);
+    }
+    return text;
+  } finally {
+    reader.releaseLock();
   }
-  return text;
 };
 
 const textFromStream = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
@@ -90,14 +109,31 @@ export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
       proc.stdin.end();
     },
     readReady: async () => {
-      const line = await textFromStreamUntilLine(proc.stdout);
-      if (line.length > 0) return Schema.decodeUnknownSync(WorkerReady)(JSON.parse(line));
-      await proc.exited;
-      const stderr = (await textFromStream(proc.stderr)).trim();
-      throw new Error(stderr.length === 0 ? "Detached host-proxy worker exited before readiness." : stderr);
+      try {
+        const line = await textFromStreamUntilLine(proc.stdout, READY_TIMEOUT_MS);
+        if (line.length > 0) return Schema.decodeUnknownSync(WorkerReady)(JSON.parse(line));
+        await proc.exited;
+        const stderr = (await textFromStream(proc.stderr)).trim();
+        throw new Error(stderr.length === 0 ? "Detached host-proxy worker exited before readiness." : stderr);
+      } catch (cause) {
+        const exited = await Promise.race([
+          proc.exited.then(() => true),
+          new Promise<false>((resolve) => setTimeout(() => resolve(false), 50)),
+        ]);
+        if (exited) {
+          const stderr = (await textFromStream(proc.stderr).catch(() => "")).trim();
+          if (stderr.length > 0) throw new Error(stderr);
+        }
+        throw cause;
+      }
     },
     terminate: async () => {
       proc.kill("SIGTERM");
+      const exited = await Promise.race([
+        proc.exited.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), TERMINATE_GRACE_MS)),
+      ]);
+      if (!exited) proc.kill("SIGKILL");
       await proc.exited;
     },
   };

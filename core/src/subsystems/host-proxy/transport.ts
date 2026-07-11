@@ -58,18 +58,21 @@ export interface HostProxyRunLandoSessionOptions {
   readonly shimArtifactPath?: string;
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
+  readonly controlToken?: string;
 }
 
 export interface HostProxyRunLandoSession {
   readonly appId: string;
   readonly sessionId: string;
   readonly token: string;
+  readonly controlToken: string;
   readonly socketPath?: string;
   readonly url?: string;
   readonly containerUrl?: string;
   readonly shimPath: string;
   readonly transport: HostProxyTransportKind;
   readonly close: () => Promise<void>;
+  readonly closed: Promise<void>;
 }
 
 const makeToken = (): string => randomBytes(32).toString("base64url");
@@ -95,7 +98,7 @@ const listenFailure = (
   });
 };
 
-export const hostProxyRunLandoStateDir = (app: AppRef, paths?: RootOverrides): string => {
+export const hostProxyRunLandoStateDir = (app: Pick<AppRef, "id">, paths?: RootOverrides): string => {
   const landoPaths = makeLandoPaths(paths ?? {});
   return landoPaths.hostProxyRunDir(app.id);
 };
@@ -138,6 +141,7 @@ export const createHostProxyRunLandoSession = (
     const runtimeContext = yield* Effect.context<EventService | RedactionService>();
     const sessionId = makeToken();
     const token = makeToken();
+    const controlToken = options.controlToken ?? makeToken();
     const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
     const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
     const bodyReadTimeoutMs = options.bodyReadTimeoutMs ?? DEFAULT_BODY_READ_TIMEOUT_MS;
@@ -155,8 +159,9 @@ export const createHostProxyRunLandoSession = (
         }),
       );
     }
-    const active = { value: 0 };
+    const semaphore = Effect.unsafeMakeSemaphore(concurrency);
     const inFlight = new Set<HostProxyInFlightRequest>();
+    const shutdownRef: { current?: () => Promise<void> } = {};
 
     yield* installHostProxyShim(shimArtifact, paths.shimPath);
     yield* Effect.tryPromise({
@@ -168,15 +173,22 @@ export const createHostProxyRunLandoSession = (
           remediation: "Ensure the app cache directory is writable.",
         }),
     });
-    const session = { appId: options.app.id, sessionId, token };
+    const session = { appId: options.app.id, sessionId, token, controlToken };
     const server = createServer(
       makeHostProxyRunLandoHandler({
         ...options,
         session,
+        control: {
+          token: controlToken,
+          transport: paths.transport,
+          protocolVersion: 1,
+          pid: process.pid,
+          shutdown: () => shutdownRef.current?.() ?? Promise.resolve(),
+        },
         concurrency,
         maxDepth,
         bodyReadTimeoutMs,
-        active,
+        semaphore,
         inFlight,
         runtimeContext,
       }),
@@ -244,6 +256,26 @@ export const createHostProxyRunLandoSession = (
       }
     });
 
+    let resolveClosed: () => void = () => undefined;
+    const closed = new Promise<void>((resolveClosedPromise) => {
+      resolveClosed = resolveClosedPromise;
+    });
+    const close = async () => {
+      closePromise ??= (async () => {
+        const requests = [...inFlight];
+        const serverClosed = new Promise<void>((resolveClose, rejectClose) =>
+          server.close((cause) => (cause === undefined ? resolveClose() : rejectClose(cause))),
+        );
+        for (const request of requests) request.response.destroy();
+        await Effect.runPromise(Fiber.interruptAll(requests.map(({ fiber }) => fiber)));
+        server.closeAllConnections();
+        await serverClosed;
+        await rm(paths.stateDir, { recursive: true, force: true });
+      })().finally(resolveClosed);
+      await closePromise;
+    };
+    shutdownRef.current = close;
+
     return {
       ...session,
       ...(paths.socketPath === undefined ? {} : { socketPath: paths.socketPath }),
@@ -251,20 +283,8 @@ export const createHostProxyRunLandoSession = (
       ...(containerUrl === undefined ? {} : { containerUrl }),
       shimPath: paths.shimPath,
       transport: paths.transport,
-      close: async () => {
-        closePromise ??= (async () => {
-          const requests = [...inFlight];
-          const serverClosed = new Promise<void>((resolveClose, rejectClose) =>
-            server.close((cause) => (cause === undefined ? resolveClose() : rejectClose(cause))),
-          );
-          for (const request of requests) request.response.destroy();
-          await Effect.runPromise(Fiber.interruptAll(requests.map(({ fiber }) => fiber)));
-          server.closeAllConnections();
-          await serverClosed;
-          await rm(paths.stateDir, { recursive: true, force: true });
-        })();
-        await closePromise;
-      },
+      close,
+      closed,
     };
   }).pipe(
     Effect.catchAll((failure) =>

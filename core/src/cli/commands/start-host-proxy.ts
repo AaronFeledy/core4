@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Ref, Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
@@ -125,4 +125,53 @@ export const startHostProxyRunLandoSession = (
       shimTarget,
       ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
     });
+  });
+
+export const withStartedHostProxy = <A, E, R>(
+  plan: AppPlan,
+  app: AppRef,
+  capabilities: ProviderCapabilities,
+  options: {
+    readonly platform?: HostPlatform;
+    readonly managed?: { readonly scope: Scope.Scope };
+    readonly use: (plan: AppPlan) => Effect.Effect<A, E, R>;
+  },
+): Effect.Effect<
+  A,
+  E | HostProxyTransportUnavailableError,
+  R | ShellRunner | EventService | RedactionService
+> =>
+  Effect.gen(function* () {
+    const keepSession = yield* Ref.make(false);
+    return yield* Effect.acquireUseRelease(
+      startHostProxyRunLandoSession(plan, app, capabilities, {
+        ...(options.platform === undefined ? {} : { platform: options.platform }),
+      }),
+      (session) => {
+        const applyPlan = session === undefined ? plan : withHostProxyRunLando(plan, session);
+        return options
+          .use(applyPlan)
+          .pipe(
+            Effect.tap(() =>
+              session === undefined
+                ? Ref.set(keepSession, true)
+                : Ref.set(keepSession, true).pipe(
+                    Effect.zipRight(
+                      options.managed === undefined
+                        ? Effect.void
+                        : Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
+                            Effect.provideService(Scope.Scope, options.managed.scope),
+                          ),
+                    ),
+                  ),
+            ),
+          );
+      },
+      (session) =>
+        Ref.get(keepSession).pipe(
+          Effect.flatMap((keep) =>
+            keep || session === undefined ? Effect.void : Effect.promise(() => session.close()),
+          ),
+        ),
+    );
   });

@@ -400,9 +400,9 @@ describe("HttpClientLive network trust", () => {
       expect(capture.init()?.proxy).toBe("http://env-proxy:8080");
       expect(capture.init()?.tls).toEqual({ ca: [envCaPem] });
     } finally {
-      if (prevHttpProxy === undefined) process.env.HTTP_PROXY = undefined;
+      if (prevHttpProxy === undefined) Reflect.deleteProperty(process.env, "HTTP_PROXY");
       else process.env.HTTP_PROXY = prevHttpProxy;
-      if (prevCaCerts === undefined) process.env.LANDO_NETWORK_CA_CERTS = undefined;
+      if (prevCaCerts === undefined) Reflect.deleteProperty(process.env, "LANDO_NETWORK_CA_CERTS");
       else process.env.LANDO_NETWORK_CA_CERTS = prevCaCerts;
     }
   });

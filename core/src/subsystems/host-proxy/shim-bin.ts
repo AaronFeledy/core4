@@ -1,5 +1,7 @@
 import { request } from "node:http";
+
 import { cwd, env, exit, stderr, stdout } from "node:process";
+import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
 
 const forwardedEnvNames: ReadonlyArray<string> = ["LANG", "TERM"];
 const agentEnvNames: ReadonlyArray<string> = [
@@ -71,6 +73,7 @@ const writeAndExit = (
   let buffered = "";
   let exitCode = 1;
   const targetUrl = target.url === undefined ? undefined : new URL("/runLando", target.url);
+  if (targetUrl !== undefined) ensureHostProxyNoProxy(targetUrl.hostname);
   const req = request(
     {
       ...(targetUrl === undefined

@@ -13,6 +13,7 @@ import {
 import { CommandResultEnvelope, HostProxyRunLandoRequest } from "@lando/sdk/schema";
 
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
+import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
 import { decodeNdjsonResponse } from "./transport-frames.ts";
 
 export const HOST_PROXY_MAX_FRAME_BYTES = 1024 * 1024;
@@ -232,6 +233,7 @@ export const sendHostProxyRunLando = (
             }
           });
         };
+        if (session.url !== undefined) ensureHostProxyNoProxy(new URL(session.url).hostname);
         const req =
           session.url === undefined
             ? httpRequest(

@@ -1,7 +1,5 @@
-import { rm } from "node:fs/promises";
-import { dirname } from "node:path";
 import { stdout } from "node:process";
-import { Effect, Schema } from "effect";
+import { Effect, Ref, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AppPlan, type AppRef, type ServicePlan } from "@lando/sdk/schema";
@@ -15,36 +13,34 @@ import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./api.ts";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import { runOpenForHostProxy } from "./dispatch.ts";
+import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 import { createHostProxyRunLandoSession } from "./transport.ts";
 import {
-  hostProxyWorkerOwnerMarker,
-  readOwnership,
-  removeOwnedHostProxyWorkerState,
-  terminateVerifiedOwnership,
-  workerOwnershipPath,
-  writeOwnership,
-} from "./worker-ownership.ts";
-import {
-  type HostProxyWorkerProcess,
   type HostProxyWorkerSpawner,
   defaultSpawnWorker,
   hostProxyWorkerArgv,
   stdinText,
 } from "./worker-process.ts";
+import {
+  removeOwnedHostProxyWorkerState,
+  replaceExistingHostProxyWorker,
+  withWorkerRecordLock,
+  workerStatePath,
+  writeWorkerRecord,
+} from "./worker-state.ts";
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 const HOST_PROXY_FEATURE_ID = "lando.host-proxy";
 
 export { HOST_PROXY_WORKER_COMMAND, hostProxyWorkerArgv } from "./worker-process.ts";
 export {
-  hostProxyWorkerOwnerMarker,
   removeOwnedHostProxyWorkerState,
   terminateOwnedHostProxyWorker,
   terminateOwnedHostProxyWorkersInRoot,
-  workerOwnershipPath,
-} from "./worker-ownership.ts";
+  workerStatePath,
+} from "./worker-state.ts";
 
 const WorkerInput = Schema.Struct({
   app: Schema.Struct({
@@ -79,14 +75,7 @@ export interface DetachedHostProxyWorkerOptions {
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
-  readonly readProcessArgv?: (pid: number) => Promise<ReadonlyArray<string>>;
-  readonly readProcessCommand?: (pid: number) => Promise<string>;
-  readonly spawnProcessCommand?: (argv: ReadonlyArray<string>) => Promise<{
-    readonly exitCode: number;
-    readonly stdout: string;
-  }>;
-  readonly terminateProcess?: (pid: number) => Promise<void>;
-  readonly platform?: NodeJS.Platform;
+  readonly terminateProcess?: (pid: number, signal: NodeJS.Signals) => Promise<void>;
 }
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -119,120 +108,105 @@ const rootOverridesFromWorkerInput = (paths: WorkerInput["paths"]): RootOverride
 });
 
 export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
-  Effect.async<
-    {
-      readonly appId: string;
-      readonly sessionId: string;
-      readonly token: string;
-      readonly socketPath?: string;
-      readonly url?: string;
-      readonly containerUrl?: string;
-      readonly shimPath: string;
-      readonly transport: HostProxyTransportKind;
-      readonly close: () => Promise<void>;
-    },
-    HostProxyTransportUnavailableError
-  >((resume) => {
-    let worker: HostProxyWorkerProcess | undefined;
-    let settled = false;
-    const fail = (cause: unknown): void => {
-      if (settled) return;
-      settled = true;
-      resume(
-        Effect.fail(
-          new HostProxyTransportUnavailableError({
-            message: cause instanceof Error ? cause.message : String(cause),
-            socketPath: workerOwnershipPath(options.app, options.paths),
-            remediation: "Inspect the detached host-proxy worker startup failure.",
-          }),
-        ),
-      );
-    };
-    void (async () => {
-      try {
-        const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
-        const argv = [
-          ...hostProxyWorkerArgv({ appId: options.app.id }),
-          hostProxyWorkerOwnerMarker(options.app.id),
-        ];
-        const existingOwnership = await readOwnership(options.app, options.paths);
-        if (existingOwnership !== undefined) {
-          const result = await terminateVerifiedOwnership(existingOwnership, options);
-          if (result === "unverified") {
-            fail(
-              new HostProxyTransportUnavailableError({
-                message: "Existing host-proxy worker ownership could not be verified for replacement.",
-                socketPath: workerOwnershipPath(options.app, options.paths),
-                remediation: "Stop the app or clear stale host-proxy state before starting it again.",
-              }),
-            );
-            return;
-          }
-          await rm(dirname(workerOwnershipPath(options.app, options.paths)), {
-            recursive: true,
-            force: true,
+  withWorkerRecordLock(
+    options.app,
+    options.paths,
+    Effect.gen(function* () {
+      const keepWorker = yield* Ref.make(false);
+      return yield* Effect.acquireUseRelease(
+        Effect.gen(function* () {
+          yield* replaceExistingHostProxyWorker(options.app, {
+            ...(options.paths === undefined ? {} : { paths: options.paths }),
+            ...(options.terminateProcess === undefined ? {} : { terminateProcess: options.terminateProcess }),
           });
-        }
-        worker = spawnWorker({ argv });
-        const currentWorker = worker;
-        const encodedPlan = Schema.encodeUnknownSync(AppPlan)(options.plan);
-        const landoPaths = makeLandoPaths(options.paths);
-        const paths = { ...landoPaths.roots, platform: landoPaths.platform };
-        await worker.writeStdin(
-          `${JSON.stringify({
-            app: options.app,
-            plan: encodedPlan,
-            paths,
-            shimArtifactPath: options.shimArtifactPath,
-            ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
-            ...(options.hostGatewayName === undefined ? {} : { hostGatewayName: options.hostGatewayName }),
-          })}\n`,
-        );
-        const ready = await worker.readReady();
-        const transport: HostProxyTransportKind =
-          ready.transport ??
-          (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
-        const ownership = {
-          appId: options.app.id,
-          pid: worker.pid,
-          argv: [...worker.argv],
-          ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-          ...(ready.url === undefined ? {} : { url: ready.url }),
-          ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-          shimPath: ready.shimPath,
-        };
-        await writeOwnership(options.app, options.paths, ownership);
-        if (settled) {
-          await worker.terminate();
-          return;
-        }
-        settled = true;
-        resume(
-          Effect.succeed({
-            appId: ready.appId,
-            sessionId: ready.sessionId,
-            token: ready.token,
-            ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-            ...(ready.url === undefined ? {} : { url: ready.url }),
-            ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-            shimPath: ready.shimPath,
-            transport,
-            close: () => currentWorker.terminate(),
-          }),
-        );
-      } catch (cause) {
-        await worker?.terminate();
-        fail(cause);
-      }
-    })();
-    return Effect.promise(async () => {
-      if (settled) return;
-      settled = true;
-      await worker?.terminate();
-    });
-  });
+          const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
+          return spawnWorker({ argv: hostProxyWorkerArgv({ appId: options.app.id }) });
+        }),
+        (worker) =>
+          Effect.tryPromise({
+            try: async () => {
+              const encodedPlan = Schema.encodeUnknownSync(AppPlan)(options.plan);
+              const landoPaths = makeLandoPaths(options.paths);
+              const paths = { ...landoPaths.roots, platform: landoPaths.platform };
+              await worker.writeStdin(
+                `${JSON.stringify({
+                  app: options.app,
+                  plan: encodedPlan,
+                  paths,
+                  shimArtifactPath: options.shimArtifactPath,
+                  ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
+                  ...(options.hostGatewayName === undefined
+                    ? {}
+                    : { hostGatewayName: options.hostGatewayName }),
+                })}\n`,
+              );
+              return await worker.readReady();
+            },
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.flatMap((ready) => {
+              const transport: HostProxyTransportKind =
+                ready.transport ??
+                (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+              let terminatePromise: Promise<void> | undefined;
+              let resolveClosed: () => void = () => undefined;
+              const closed = new Promise<void>((resolveClosedPromise) => {
+                resolveClosed = resolveClosedPromise;
+              });
+              return writeWorkerRecord(options.app, options.paths, {
+                appId: options.app.id,
+                pid: worker.pid,
+                ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                ...(ready.url === undefined ? {} : { url: ready.url }),
+                shimPath: ready.shimPath,
+                transport,
+                protocolVersion: 1,
+                startedAt: new Date().toISOString(),
+                controlToken: ready.controlToken,
+              }).pipe(
+                Effect.zipLeft(Ref.set(keepWorker, true)),
+                Effect.as({
+                  appId: ready.appId,
+                  sessionId: ready.sessionId,
+                  token: ready.token,
+                  controlToken: ready.controlToken,
+                  ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                  ...(ready.url === undefined ? {} : { url: ready.url }),
+                  ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                  shimPath: ready.shimPath,
+                  transport,
+                  close: () => {
+                    terminatePromise ??= worker.terminate().finally(resolveClosed);
+                    return terminatePromise;
+                  },
+                  closed,
+                }),
+              );
+            }),
+          ),
+        (worker) =>
+          Ref.get(keepWorker).pipe(
+            Effect.flatMap((keep) => (keep ? Effect.void : Effect.promise(() => worker.terminate()))),
+          ),
+      );
+    }),
+  ).pipe(
+    Effect.catchAll((cause) =>
+      Effect.fail(
+        cause instanceof HostProxyTransportUnavailableError
+          ? cause
+          : new HostProxyTransportUnavailableError({
+              message: cause instanceof Error ? cause.message : String(cause),
+              socketPath: workerStatePath(options.app, options.paths),
+              remediation: "Inspect the detached host-proxy worker startup failure.",
+            }),
+      ),
+    ),
+  );
 
 export const runHostProxyWorkerProcess = async (): Promise<void> => {
+  ensureHostProxyNoProxy("127.0.0.1");
+  ensureHostProxyNoProxy("localhost");
   const input = Schema.decodeUnknownSync(WorkerInput)(JSON.parse(await stdinText()));
   const app = { kind: input.app.kind, id: input.app.id, root: input.app.root } as AppRef;
   const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
@@ -258,6 +232,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       appId: session.appId,
       sessionId: session.sessionId,
       token: session.token,
+      controlToken: session.controlToken,
       ...(session.socketPath === undefined ? {} : { socketPath: session.socketPath }),
       ...(session.url === undefined ? {} : { url: session.url }),
       ...(session.containerUrl === undefined ? {} : { containerUrl: session.containerUrl }),
@@ -271,6 +246,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
     };
     process.once("SIGTERM", shutdown);
     process.once("SIGINT", shutdown);
+    void session.closed.then(resolveShutdown);
   });
 };
 
