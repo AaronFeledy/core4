@@ -19,8 +19,11 @@ const unavailable = () =>
     remediation: "test remediation",
   });
 
-const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}) });
-const unreachableApi = (): PodmanApiClient => ({ info: Effect.fail(unavailable()) });
+const reachableApi = (): PodmanApiClient => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) });
+const unreachableApi = (): PodmanApiClient => ({
+  info: Effect.fail(unavailable()),
+  ping: Effect.fail(unavailable()),
+});
 
 const spec = (dir: string): PodmanServiceSpec => ({
   command: join(dir, "bin", "podman"),

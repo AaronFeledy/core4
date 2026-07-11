@@ -94,22 +94,26 @@ const makeFrame = (text: string): Uint8Array => {
 
 const makeFakePodmanApi = (
   events: string[],
-  infoSuccessesBeforeEnsureFailure = 1,
-  launchesBeforeInfoSuccess = 1,
+  pingSuccessesBeforeEnsureFailure = 1,
+  launchesBeforePingSuccess = 1,
 ): PodmanApiClient => {
-  let infoCalls = 0;
+  let pingCalls = 0;
   const existing = new Set<string>();
   const running = new Set<string>();
   const networks = new Set<string>();
   const volumes = new Set<string>();
 
   return {
-    info: Effect.gen(function* () {
-      infoCalls += 1;
+    info: Effect.sync(() => {
       events.push("api.info");
+      return { version: { Version: "6.0.2" } };
+    }),
+    ping: Effect.gen(function* () {
+      pingCalls += 1;
+      events.push("api.ping");
       const launchCount = events.filter((event) => event === "service.launch").length;
-      if (infoCalls <= infoSuccessesBeforeEnsureFailure || launchCount >= launchesBeforeInfoSuccess) {
-        return { version: { Version: "6.0.2" } };
+      if (pingCalls <= pingSuccessesBeforeEnsureFailure || launchCount >= launchesBeforePingSuccess) {
+        return;
       }
       return yield* Effect.fail(
         new ProviderUnavailableError({
@@ -176,8 +180,8 @@ const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => ({
 const withRuntimeProvider = async <A>(
   events: string[],
   use: (provider: RuntimeProviderShape) => Promise<A>,
-  infoSuccessesBeforeEnsureFailure = 1,
-  launchesBeforeInfoSuccess = 1,
+  pingSuccessesBeforeEnsureFailure = 1,
+  launchesBeforePingSuccess = 1,
   readinessPolicy: RetryPolicy = fastReadinessPolicy,
 ): Promise<A> => {
   const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
@@ -185,7 +189,7 @@ const withRuntimeProvider = async <A>(
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
-        podmanApi: makeFakePodmanApi(events, infoSuccessesBeforeEnsureFailure, launchesBeforeInfoSuccess),
+        podmanApi: makeFakePodmanApi(events, pingSuccessesBeforeEnsureFailure, launchesBeforePingSuccess),
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         podmanService: makeFakeServiceRunner(events),
         providerSocketPath: join(tempDir, "podman.sock"),
@@ -279,9 +283,9 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
     const launchIndex = events.indexOf("service.launch");
     expect(
-      events.slice(0, launchIndex).filter((event) => event === "api.info").length,
-    ).toBeGreaterThanOrEqual(2);
-    expect(events.at(launchIndex + 1)).toBe("api.info");
+      events.slice(0, launchIndex).filter((event) => event === "api.ping").length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(events.at(launchIndex + 1)).toBe("api.ping");
   });
 
   test("providerSocketPath alone constructs the runtime API client and triggers ensureRuntime", async () => {

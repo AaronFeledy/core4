@@ -73,6 +73,7 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
 
   return {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request: PodmanHttpRequest) =>
       Effect.sync((): PodmanHttpResponse => {
         if (request.method === "POST" && request.path.includes("/exec")) {

@@ -25,6 +25,7 @@ const requestClient = (response: { status: number; body: string }): PodmanApiCli
   return {
     captured,
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request) => {
       captured.path = request.path;
       captured.method = request.method;
@@ -170,7 +171,7 @@ describe("pruneVolumes", () => {
   });
 
   test("fails with a typed ProviderInternalError when the client cannot make requests", async () => {
-    const api: PodmanApiClient = { info: Effect.succeed({}) };
+    const api: PodmanApiClient = { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
     const error = await Effect.runPromise(
       pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp") }).pipe(Effect.flip),
     );

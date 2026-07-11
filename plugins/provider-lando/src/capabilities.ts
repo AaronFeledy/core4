@@ -48,6 +48,7 @@ export interface PodmanHttpResponse {
 
 export interface PodmanApiClient {
   readonly info: Effect.Effect<unknown, ProviderCapabilityError | ProviderUnavailableError>;
+  readonly ping: Effect.Effect<void, ProviderCapabilityError | ProviderUnavailableError>;
   readonly request?: (
     request: PodmanHttpRequest,
   ) => Effect.Effect<PodmanHttpResponse, ProviderUnavailableError | ProviderInternalError>;
@@ -96,6 +97,19 @@ export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => (
     "--unix-socket",
     socketPath,
     "http://localhost/v6.0.0/libpod/info",
+  ],
+  socketUrl: `unix://${socketPath}`,
+});
+
+export const makePodmanPingRequest = (socketPath: string): PodmanApiRequest => ({
+  command: "curl",
+  args: [
+    "--silent",
+    "--show-error",
+    "--fail",
+    "--unix-socket",
+    socketPath,
+    "http://localhost/v6.0.0/libpod/_ping",
   ],
   socketUrl: `unix://${socketPath}`,
 });
@@ -168,6 +182,35 @@ const writeStdinPayload = (
   stdin.write(payload);
   stdin.end();
 };
+
+interface PodmanApiRequestFailureContext {
+  readonly message: string;
+  readonly capability: string;
+  readonly requiredValue: string;
+}
+
+const runPodmanApiRequest = (request: PodmanApiRequest, failure: PodmanApiRequestFailureContext) =>
+  Effect.tryPromise({
+    try: async () => {
+      const proc = Bun.spawn([request.command, ...request.args], { stderr: "pipe", stdout: "pipe" });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      return { stdout, stderr, exitCode };
+    },
+    catch: (cause) =>
+      new ProviderCapabilityError({
+        providerId: PROVIDER_ID,
+        operation: "capabilities",
+        message: failure.message,
+        capability: failure.capability,
+        requiredValue: failure.requiredValue,
+        actualValue: undefined,
+        cause,
+      }),
+  });
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>
@@ -257,26 +300,10 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
     }),
   info: Effect.gen(function* () {
     const request = makePodmanInfoRequest(socketPath);
-    const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
-      try: async () => {
-        const proc = Bun.spawn([request.command, ...request.args], { stderr: "pipe", stdout: "pipe" });
-        const [stdout, stderr, exitCode] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-          proc.exited,
-        ]);
-        return { stdout, stderr, exitCode };
-      },
-      catch: (cause) =>
-        new ProviderCapabilityError({
-          providerId: PROVIDER_ID,
-          operation: "capabilities",
-          message: "Failed to inspect provider-lando capabilities through the Podman API.",
-          capability: "podman-info",
-          requiredValue: "Podman HTTP API info response",
-          actualValue: undefined,
-          cause,
-        }),
+    const { stdout, stderr, exitCode } = yield* runPodmanApiRequest(request, {
+      message: "Failed to inspect provider-lando capabilities through the Podman API.",
+      capability: "podman-info",
+      requiredValue: "Podman HTTP API info response",
     });
     if (exitCode !== 0) {
       yield* Effect.fail(
@@ -302,6 +329,25 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
           cause,
         }),
     });
+  }),
+  ping: Effect.gen(function* () {
+    const request = makePodmanPingRequest(socketPath);
+    const { stderr, exitCode } = yield* runPodmanApiRequest(request, {
+      message: "Failed to inspect provider-lando capabilities through the Podman API.",
+      capability: "podman-ping",
+      requiredValue: "Podman HTTP API ping response",
+    });
+    if (exitCode !== 0) {
+      yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "capabilities",
+          message: `Podman API ping request failed with exit code ${exitCode}.`,
+          details: redactDetails({ stderr, socketUrl: request.socketUrl }),
+          remediation: TRANSPORT_REMEDIATION,
+        }),
+      );
+    }
   }),
 });
 

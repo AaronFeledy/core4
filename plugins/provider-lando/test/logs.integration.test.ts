@@ -81,6 +81,7 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   const calls: PodmanHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);

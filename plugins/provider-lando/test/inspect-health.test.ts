@@ -94,6 +94,7 @@ const apiFromResponses = (responses: ReadonlyArray<PodmanHttpResponse>) => {
   let calls = 0;
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: () =>
       Effect.sync(() => {
         const response = responses[Math.min(calls, responses.length - 1)];
@@ -259,6 +260,7 @@ describe("waitForServiceHealth", () => {
     const secretUrl = "https://user:secretpass@registry.example.com/x";
     const api: PodmanApiClient = {
       info: Effect.succeed({}),
+      ping: Effect.succeed(undefined),
       request: () =>
         Effect.fail(
           new ProviderUnavailableError({

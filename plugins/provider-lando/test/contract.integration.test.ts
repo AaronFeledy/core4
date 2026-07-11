@@ -35,6 +35,7 @@ const makeFakeApi = () => {
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -149,6 +150,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
+    ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.promise(async (): Promise<PodmanHttpResponse> => {
         calls.push(request);

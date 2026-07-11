@@ -79,6 +79,22 @@ export const namedPipeInfoFailure = (cause: unknown): ProviderCapabilityError | 
       });
 };
 
+const namedPipePingFailure = (cause: unknown): ProviderCapabilityError | ProviderUnavailableError => {
+  const pingRequest: PodmanHttpRequest = { method: "GET", path: "/libpod/_ping" };
+  const failure = podmanApiFailure(pingRequest, cause);
+  return failure instanceof ProviderUnavailableError
+    ? failure
+    : new ProviderCapabilityError({
+        providerId: PROVIDER_ID,
+        operation: "capabilities",
+        message: "Failed to inspect provider-podman capabilities through the Podman API.",
+        capability: "podman-ping",
+        requiredValue: "Podman HTTP API ping response",
+        actualValue: undefined,
+        cause: failure,
+      });
+};
+
 export const npipeSocketPath = normalizeNamedPipePath;
 
 const makeNamedPipeClient = (pipePath: string) =>
@@ -126,6 +142,18 @@ export const makeNamedPipePodmanApiClient = (socketPath: string): PodmanApiClien
             cause,
           }),
       });
+    }),
+    ping: Effect.gen(function* () {
+      const request: PodmanHttpRequest = { method: "GET", path: "/libpod/_ping" };
+      const response = yield* Effect.tryPromise({
+        try: () => client.request(request) as Promise<PodmanHttpResponse>,
+        catch: namedPipePingFailure,
+      });
+      if (response.status < 200 || response.status >= 300) {
+        yield* Effect.fail(
+          unavailable("capabilities", `Podman ping failed with HTTP ${response.status}.`, response),
+        );
+      }
     }),
   };
 };
