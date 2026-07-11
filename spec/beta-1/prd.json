@@ -1078,7 +1078,7 @@
         "Lint passes"
       ],
       "priority": 60,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Progress entries repeatedly record review-work returning workflow instructions or empty/inconclusive results; those lanes cannot count as approval."
     },
     {
@@ -1095,7 +1095,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 59,
+      "priority": 61,
       "passes": true,
       "notes": "PRD-13 closure. Covers the live Podman 6 acceptance gap after the corrected managed Linux runtime bundle exists."
     },

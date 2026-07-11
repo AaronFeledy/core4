@@ -253,3 +253,12 @@ Open closure categories:
   - Never spawn long-lived services with stderr "ignore"; empty evidence turns a config bug into a multi-round debugging hunt.
   - A disposable workflow on a throwaway branch (push-triggered, never merged) is the fastest way to interrogate a GitHub runner: probe steps beat guess-and-dispatch cycles.
   - The upstream static `conmon` release binary has no journald support; pair it with `log_driver = "k8s-file"`.
+
+## 2026-07-11 - US-431
+- Added a retained closure-review evidence surface for Beta 1: five required lanes now validate through a structured schema, inconclusive lanes cannot approve, blocker findings cannot be dismissed or hidden behind linked failing stories, and the final JSON/Markdown artifacts preserve lane scope, inputs, commands/tools, findings, dispositions, residual risks, and evidence.
+- Fixed the closure priority ledger so US-430..US-443 remain uniquely ordered, then retained approved goal, QA, code-quality, security, and context/history review lanes under `spec/beta-1/closure/us-431/`; the real closure-review CLI approved the retained lane input and wrote the audit report/note.
+- Verification: typecheck, lint passed; focused closure-review script tests passed; real CLI artifact generation passed.
+- **Learnings for future iterations:**
+  - Closure-review evidence must be machine-checkable and retained; inaccessible team messages or instruction-only/empty review output should be replaced with terminal lane results that can be audited later.
+  - Linked blockers can preserve accountability, but they must not make a closure report approved while the linked story is still failing.
+---
