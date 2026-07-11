@@ -296,3 +296,10 @@ Open closure categories:
   - Desktop host aliases are provider behavior: advertise them only after provider introspection, keep host listeners loopback-only, and retain a real Windows container-side round-trip test for reachability.
   - Ownership cleanup must preserve state when process identity cannot be verified; losing the record while leaving a worker alive makes safe recovery impossible.
 ---
+
+## 2026-07-11 13:10 CDT - US-433 Review
+- Fixed authenticated partial-body starvation with a bounded read deadline, made detached-worker ownership verification platform-safe on Windows and whitespace-safe on Darwin, derived cwd remapping from the production host-proxy eligibility marker, and restored Docker provider degradation when daemon capability introspection is unavailable.
+- Review notes (deferred/rejected): none; all confirmed review-work and Bugbot findings were in scope and repaired.
+- Verification: typecheck and lint passed; focused host-proxy transport/worker/start and Docker capability/availability spot checks passed.
+- **Learnings for future iterations:** Pre-dispatch body reads need their own deadline even when dispatch concurrency is capped; worker identity markers must be single-token and platform-readable; shared eligibility predicates must drive both feature injection and retained-worker behavior.
+---
