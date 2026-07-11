@@ -36,7 +36,7 @@ const matrixInclude = cells
 
 const landoRootlessPrereqStep = landoRootlessPrereqSteps.replace(
   "      - name: Provision rootless runtime prerequisites",
-  "      - name: Provision managed Lando rootless runtime prerequisites\n        if: ${{ matrix.cell == 'lando-podman6-linux' }}",
+  "      - name: Provision Linux rootless runtime prerequisites\n        if: ${{ matrix.cell == 'lando-podman6-linux' || matrix.cell == 'podman-podman6-linux' }}",
 );
 
 const managedLandoSteps = `${landoRootlessPrereqStep}
@@ -64,6 +64,15 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
           echo "LANDO_USER_CACHE_ROOT=$LANDO_USER_CACHE_ROOT" >> "$GITHUB_ENV"
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
+          cat > "$RUNNER_TEMP/lando-storage.conf" <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
+          EOF
+          export CONTAINERS_STORAGE_CONF="$RUNNER_TEMP/lando-storage.conf"
+          echo "CONTAINERS_STORAGE_CONF=$CONTAINERS_STORAGE_CONF" >> "$GITHUB_ENV"
           dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
       - name: Verify managed Lando socket
@@ -196,6 +205,9 @@ ${managedLandoTeardown}
         run: |
           mkdir -p provider-matrix-diagnostics
           cp /tmp/podman-service.log provider-matrix-diagnostics/podman-service.log || true
+          if test -d "\${LANDO_USER_CACHE_ROOT:-}/logs"; then
+            cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-matrix-diagnostics/lando-logs || true
+          fi
           journalctl --no-pager --since "-30 minutes" > provider-matrix-diagnostics/journalctl.log 2>&1 || true
 
       - name: Upload provider matrix diagnostics
