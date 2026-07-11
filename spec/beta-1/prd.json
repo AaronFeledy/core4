@@ -1116,7 +1116,7 @@
         "Lint passes"
       ],
       "priority": 62,
-      "passes": true,
+      "passes": false,
       "notes": "PRD-13 closure. Progress records the logical host-proxy runLando round-trip as complete while physical socket transport, compiled shim, mount, token auth, concurrency cap, and recursion guard remain deferred."
     },
     {

@@ -279,3 +279,10 @@ Open closure categories:
   - Enforce request-size and concurrency limits before retaining bytes or forking dispatch, and keep rejection events paired even for authentication and parse failures.
   - Provider capability `none` must survive into the plan as explicit unavailable metadata so runtime no-ops remain visible through `lando info`.
 ---
+
+## 2026-07-11 07:48 CDT - US-433 Review
+- Fixed exact missing/stale/cross-app authentication failure parity, authenticated slow-body admission outside the concurrency cap, listener cleanup after post-bind failure, app-specific detached-worker ownership and Darwin verification, interruption cleanup during worker startup and provider apply, overly broad uninstall removal of shared run state, and release-shaped compiled-binary shim delivery.
+- Review notes (deferred/rejected): US-433 is reopened because native Windows still fails instead of providing the required platform-equivalent transport; the existing DNS host-proxy doctor check and generic dispatch beyond the generated `app:open` allowlist were rejected as broader follow-up scope rather than blockers for this focused repair.
+- Verification: typecheck and lint passed; focused host-proxy transport/worker, start lifecycle, and uninstall tests passed; renderer, machine-output, and env-helper boundaries passed during the repair.
+- **Learnings for future iterations:** A compiled sidecar is not shipped merely because a package build script emits it; release-shaped binary tests must prove artifact delivery. Concurrency admission must happen before authenticated body retention, and shared run roots must only be cleaned through ownership-aware seams.
+---
