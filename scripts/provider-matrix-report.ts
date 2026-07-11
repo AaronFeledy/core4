@@ -214,4 +214,6 @@ export const runBunCommand = async (command: readonly string[]): Promise<Command
   return { exitCode, stdout, stderr };
 };
 
-const assertNever = (value: never): never => value;
+const assertNever = (value: never): never => {
+  throw new Error(`Unexpected provider acceptance outcome: ${String(value)}`);
+};

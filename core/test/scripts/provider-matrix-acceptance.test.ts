@@ -256,6 +256,23 @@ describe("provider matrix acceptance reporting", () => {
     expect(evaluateProviderAcceptanceReport(report).exitCode).toBe(1);
   });
 
+  test("provider matrix evaluation rejects unexpected outcomes", () => {
+    const report = {
+      schemaVersion: 1,
+      cellId: "docker-engine-linux",
+      provider: "docker",
+      engine: "Docker Engine",
+      runsOn: "ubuntu-24.04",
+      releaseBlocking: true,
+      outcome: "cancelled",
+      checks: [],
+    };
+
+    expect(() => evaluateProviderAcceptanceReport(report)).toThrow(
+      "Unexpected provider acceptance outcome: cancelled",
+    );
+  });
+
   test("provider matrix runner writes uploadable JSON before blocking evaluation", async () => {
     const report = await runProviderAcceptanceCell({
       cell: buildProviderAcceptancePlan("podman-podman6-linux"),
