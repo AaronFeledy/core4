@@ -1117,7 +1117,7 @@
       ],
       "priority": 62,
       "passes": false,
-      "notes": "PRD-13 closure. Progress records the logical host-proxy runLando round-trip as complete while physical socket transport, compiled shim, mount, token auth, concurrency cap, and recursion guard remain deferred."
+      "notes": "PRD-13 closure. Production Unix-socket transport, compiled shim delivery, scoped mounts, token auth, bounded concurrency, recursion protection, and lifecycle cleanup are implemented for Linux/macOS. Native Windows remains open until it provides the required platform-equivalent transport."
     },
     {
       "id": "US-434",
