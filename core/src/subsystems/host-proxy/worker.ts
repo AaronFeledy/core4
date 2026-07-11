@@ -17,6 +17,8 @@ import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./api.ts";
 import { runOpenForHostProxy } from "./dispatch.ts";
 import { createHostProxyRunLandoSession, hostProxyRunLandoStateDir } from "./transport.ts";
 import {
+  HOST_PROXY_WORKER_COMMAND,
+  type HostProxyWorkerProcess,
   type HostProxyWorkerSpawner,
   defaultSpawnWorker,
   hostProxyWorkerArgv,
@@ -64,7 +66,9 @@ export interface DetachedHostProxyWorkerOptions {
 export interface TerminateHostProxyWorkerOptions {
   readonly paths?: RootOverrides;
   readonly readProcessArgv?: (pid: number) => Promise<ReadonlyArray<string>>;
+  readonly readProcessCommand?: (pid: number) => Promise<string>;
   readonly terminateProcess?: (pid: number) => Promise<void>;
+  readonly platform?: NodeJS.Platform;
 }
 
 const fingerprintArgv = (argv: ReadonlyArray<string>): string =>
@@ -79,6 +83,25 @@ const defaultReadProcessArgv = async (pid: number): Promise<ReadonlyArray<string
   } catch {
     return [];
   }
+};
+
+const defaultReadProcessCommand = async (pid: number): Promise<string> => {
+  const proc = Bun.spawn(["ps", "-p", String(pid), "-ww", "-o", "command="], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+  return exitCode === 0 ? stdout.trim() : "";
+};
+
+const commandMatchesOwnership = (command: string, ownership: WorkerOwnership): boolean => {
+  const argv = command.split(/\s+/u).filter((part) => part.length > 0);
+  const appMarkerIndex = argv.indexOf("--app-id");
+  return (
+    argv.includes(HOST_PROXY_WORKER_COMMAND) &&
+    appMarkerIndex >= 0 &&
+    argv[appMarkerIndex + 1] === ownership.appId
+  );
 };
 
 const defaultTerminateProcess = async (pid: number): Promise<void> => {
@@ -118,10 +141,17 @@ const readOwnershipFile = async (path: string): Promise<WorkerOwnership | undefi
 const terminateVerifiedOwnership = async (
   ownership: WorkerOwnership,
   options: TerminateHostProxyWorkerOptions,
-): Promise<void> => {
-  const actualArgv = await (options.readProcessArgv ?? defaultReadProcessArgv)(ownership.pid);
-  if (actualArgv.length === 0 || fingerprintArgv(actualArgv) !== ownership.argvFingerprint) return;
+): Promise<boolean> => {
+  const platform = options.platform ?? process.platform;
+  if (options.readProcessArgv !== undefined || platform === "linux") {
+    const actualArgv = await (options.readProcessArgv ?? defaultReadProcessArgv)(ownership.pid);
+    if (actualArgv.length === 0 || fingerprintArgv(actualArgv) !== ownership.argvFingerprint) return false;
+  } else {
+    const command = await (options.readProcessCommand ?? defaultReadProcessCommand)(ownership.pid);
+    if (!commandMatchesOwnership(command, ownership)) return false;
+  }
   await (options.terminateProcess ?? defaultTerminateProcess)(ownership.pid);
+  return true;
 };
 
 const writeOwnership = async (
@@ -135,12 +165,38 @@ const writeOwnership = async (
 };
 
 export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
-  Effect.tryPromise({
-    try: async () => {
-      const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
-      const argv = hostProxyWorkerArgv();
-      const worker = spawnWorker({ argv });
+  Effect.async<
+    {
+      readonly appId: string;
+      readonly sessionId: string;
+      readonly token: string;
+      readonly socketPath: string;
+      readonly shimPath: string;
+      readonly close: () => Promise<void>;
+    },
+    HostProxyTransportUnavailableError
+  >((resume) => {
+    let worker: HostProxyWorkerProcess | undefined;
+    let settled = false;
+    const fail = (cause: unknown): void => {
+      if (settled) return;
+      settled = true;
+      resume(
+        Effect.fail(
+          new HostProxyTransportUnavailableError({
+            message: cause instanceof Error ? cause.message : String(cause),
+            socketPath: workerOwnershipPath(options.app, options.paths),
+            remediation: "Inspect the detached host-proxy worker startup failure.",
+          }),
+        ),
+      );
+    };
+    void (async () => {
       try {
+        const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
+        const argv = hostProxyWorkerArgv({ appId: options.app.id });
+        worker = spawnWorker({ argv });
+        const currentWorker = worker;
         const encodedPlan = Schema.encodeUnknownSync(AppPlan)(options.plan);
         const paths = makeLandoPaths(options.paths).roots;
         await worker.writeStdin(
@@ -156,25 +212,31 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
           shimPath: ready.shimPath,
         };
         await writeOwnership(options.app, options.paths, ownership);
-        return {
-          appId: ready.appId,
-          sessionId: ready.sessionId,
-          token: ready.token,
-          socketPath: ready.socketPath,
-          shimPath: ready.shimPath,
-          close: () => worker.terminate(),
-        };
+        if (settled) {
+          await worker.terminate();
+          return;
+        }
+        settled = true;
+        resume(
+          Effect.succeed({
+            appId: ready.appId,
+            sessionId: ready.sessionId,
+            token: ready.token,
+            socketPath: ready.socketPath,
+            shimPath: ready.shimPath,
+            close: () => currentWorker.terminate(),
+          }),
+        );
       } catch (cause) {
-        await worker.terminate();
-        throw cause;
+        await worker?.terminate();
+        fail(cause);
       }
-    },
-    catch: (cause) =>
-      new HostProxyTransportUnavailableError({
-        message: cause instanceof Error ? cause.message : String(cause),
-        socketPath: workerOwnershipPath(options.app, options.paths),
-        remediation: "Inspect the detached host-proxy worker startup failure.",
-      }),
+    })();
+    return Effect.promise(async () => {
+      if (settled) return;
+      settled = true;
+      await worker?.terminate();
+    });
   });
 
 export const terminateOwnedHostProxyWorker = (app: AppRef, options: TerminateHostProxyWorkerOptions = {}) =>
@@ -197,9 +259,11 @@ export const terminateOwnedHostProxyWorkersInRoot = (
       const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const ownership = await readOwnershipFile(resolve(root, entry.name, "worker.json"));
+        const appRunDir = resolve(root, entry.name);
+        const ownership = await readOwnershipFile(resolve(appRunDir, "worker.json"));
         if (ownership === undefined || ownership.appId !== entry.name) continue;
-        await terminateVerifiedOwnership(ownership, options);
+        if (await terminateVerifiedOwnership(ownership, options))
+          await rm(appRunDir, { recursive: true, force: true });
       }
     },
     catch: () => undefined,

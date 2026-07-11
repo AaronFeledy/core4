@@ -28,19 +28,21 @@ export interface HostProxyWorkerSpawnSpec {
 export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostProxyWorkerProcess;
 
 export const hostProxyWorkerArgv = (
-  input: { readonly entryPath?: string | undefined } = {},
+  input: { readonly entryPath?: string | undefined; readonly appId?: string | undefined } = {},
 ): ReadonlyArray<string> => {
   const entryPath = input.entryPath ?? process.argv[1];
+  const ownerArgs = input.appId === undefined ? [] : ["--app-id", input.appId];
   if (entryPath !== undefined && extname(entryPath) === ".ts" && entryPath.endsWith("bin/lando.ts"))
-    return [process.execPath, entryPath, HOST_PROXY_WORKER_COMMAND];
+    return [process.execPath, entryPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
   if (basename(process.execPath).startsWith("bun")) {
     return [
       process.execPath,
       new URL("../../../bin/lando.ts", import.meta.url).pathname,
       HOST_PROXY_WORKER_COMMAND,
+      ...ownerArgs,
     ];
   }
-  return [process.execPath, HOST_PROXY_WORKER_COMMAND];
+  return [process.execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
 };
 
 const textFromStreamUntilLine = async (stream: ReadableStream<Uint8Array>): Promise<string> => {

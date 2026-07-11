@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Fiber } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
@@ -69,10 +69,13 @@ describe("detached host-proxy worker manager", () => {
       const ownership = await readFile(workerOwnershipPath(app, { userDataRoot: root }), "utf8");
 
       expect(session.token).toBe("secret-token");
+      expect(writes[0]).toContain('"id":"demo"');
       expect(writes.join("\n")).not.toContain("secret-token");
       expect(ownership).toContain('"pid": 12345');
       expect(ownership).not.toContain("secret-token");
       expect(ownership).toContain("argvFingerprint");
+      expect(ownership).toContain("--app-id");
+      expect(ownership).toContain("demo");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -120,7 +123,19 @@ describe("detached host-proxy worker manager", () => {
       await Effect.runPromise(
         terminateOwnedHostProxyWorker(app, {
           paths: { userDataRoot: root },
-          readProcessArgv: async () => hostProxyWorkerArgv(),
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "other" }),
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+        }),
+      );
+
+      expect(terminated).toEqual([]);
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorker(app, {
+          paths: { userDataRoot: root },
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -128,6 +143,63 @@ describe("detached host-proxy worker manager", () => {
       );
 
       expect(terminated).toEqual([23456]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("uses default Darwin command inspection and refuses unverified worker identity", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 24680,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorker(app, {
+          paths: { userDataRoot: root },
+          platform: "darwin",
+          readProcessCommand: async () => `${hostProxyWorkerArgv({ appId: "other" }).join(" ")}`,
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+        }),
+      );
+
+      expect(terminated).toEqual([]);
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorker(app, {
+          paths: { userDataRoot: root },
+          platform: "darwin",
+          readProcessCommand: async () => `${hostProxyWorkerArgv({ appId: "demo" }).join(" ")}`,
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+        }),
+      );
+
+      expect(terminated).toEqual([24680]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -170,7 +242,7 @@ describe("detached host-proxy worker manager", () => {
       );
       await Effect.runPromise(
         terminateOwnedHostProxyWorkersInRoot(root, {
-          readProcessArgv: async () => hostProxyWorkerArgv(),
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
           terminateProcess: async (pid) => {
             terminated.push(pid);
           },
@@ -178,6 +250,80 @@ describe("detached host-proxy worker manager", () => {
       );
 
       expect(terminated).toEqual([34567]);
+      expect(await Bun.file(workerOwnershipPath(app, { userDataRoot: root })).exists()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes only verified owned worker directories under the run root", async () => {
+    const root = await tempRoot();
+    const tunnelsDir = join(root, "run", "tunnels");
+    try {
+      await mkdir(tunnelsDir, { recursive: true });
+      await writeFile(join(tunnelsDir, "registry.json"), "{}\n", "utf8");
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 56789,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorkersInRoot(root, {
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          terminateProcess: async () => undefined,
+        }),
+      );
+
+      expect(await Bun.file(join(root, "run", "demo")).exists()).toBe(false);
+      expect(await Bun.file(join(tunnelsDir, "registry.json")).exists()).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("terminates the spawned worker when startup is interrupted before readiness", async () => {
+    const root = await tempRoot();
+    let terminateCount = 0;
+    try {
+      const fiber = Effect.runFork(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 45678,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: () => new Promise(() => undefined),
+            terminate: async () => {
+              terminateCount += 1;
+            },
+          }),
+        }),
+      );
+
+      await Effect.runPromise(Effect.sleep("10 millis").pipe(Effect.zipRight(Fiber.interrupt(fiber))));
+
+      expect(terminateCount).toBe(1);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
