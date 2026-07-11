@@ -256,12 +256,14 @@ export const terminateOwnedHostProxyWorkersInRoot = (
   Effect.tryPromise({
     try: async () => {
       const root = makeLandoPaths({ userDataRoot }).hostProxyRunRoot;
+      const paths = makeLandoPaths({ userDataRoot });
       const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const appRunDir = resolve(root, entry.name);
         const ownership = await readOwnershipFile(resolve(appRunDir, "worker.json"));
-        if (ownership === undefined || ownership.appId !== entry.name) continue;
+        if (ownership === undefined || resolve(paths.hostProxyRunDir(ownership.appId)) !== appRunDir)
+          continue;
         if (await terminateVerifiedOwnership(ownership, options))
           await rm(appRunDir, { recursive: true, force: true });
       }

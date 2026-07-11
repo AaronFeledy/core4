@@ -15,6 +15,11 @@ import {
 } from "../../../src/subsystems/host-proxy/worker.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
+const spacedApp = {
+  kind: "user" as const,
+  id: "demo app",
+  root: AbsolutePath.make("/srv/apps/demo-app"),
+};
 const plan: AppPlan = {
   id: AppId.make("demo"),
   name: "demo",
@@ -107,7 +112,6 @@ describe("detached host-proxy worker manager", () => {
           }),
         }),
       );
-
       await Effect.runPromise(
         terminateOwnedHostProxyWorker(app, {
           paths: { userDataRoot: root },
@@ -174,7 +178,6 @@ describe("detached host-proxy worker manager", () => {
           }),
         }),
       );
-
       await Effect.runPromise(
         terminateOwnedHostProxyWorker(app, {
           paths: { userDataRoot: root },
@@ -294,6 +297,53 @@ describe("detached host-proxy worker manager", () => {
 
       expect(await Bun.file(join(root, "run", "demo")).exists()).toBe(false);
       expect(await Bun.file(join(tunnelsDir, "registry.json")).exists()).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("cleans verified worker directory when app id is sanitized in the run path", async () => {
+    const root = await tempRoot();
+    const runDir = join(root, "run", "demo-app");
+    const unrelatedDir = join(root, "run", "other-app");
+    try {
+      await mkdir(unrelatedDir, { recursive: true });
+      await writeFile(join(unrelatedDir, "keep.txt"), "keep\n", "utf8");
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app: spacedApp,
+          plan: { ...plan, id: AppId.make("demo app"), root: spacedApp.root },
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 67890,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo app",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(runDir, "host-proxy.sock"),
+              shimPath: join(runDir, "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+      expect(workerOwnershipPath(spacedApp, { userDataRoot: root })).toBe(join(runDir, "worker.json"));
+      expect(await Bun.file(join(runDir, "worker.json")).exists()).toBe(true);
+      expect(await Bun.file(join(runDir, "worker.json")).text()).toContain('"appId": "demo app"');
+
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorkersInRoot(root, {
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo app" }),
+          terminateProcess: async () => undefined,
+        }),
+      );
+
+      expect(await Bun.file(runDir).exists()).toBe(false);
+      expect(await Bun.file(join(unrelatedDir, "keep.txt")).exists()).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
