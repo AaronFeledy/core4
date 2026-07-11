@@ -4,7 +4,7 @@ import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
-import { Effect, Stream } from "effect";
+import { Effect, Exit, Stream } from "effect";
 
 import {
   dockerCapabilitiesForHost,
@@ -17,6 +17,7 @@ import {
   resolveDockerHost,
   windowsDockerCapabilities,
 } from "@lando/provider-docker";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -118,6 +119,46 @@ describe("provider-docker capabilities", () => {
 
     expect(linuxProvider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
     expect(macosProvider.capabilities).toEqual({ ...macosDockerCapabilities, serviceLogSources: false });
+  });
+
+  test("falls back to static capabilities when default Docker API construction cannot inspect info", async () => {
+    const dockerHost = "/tmp/lando-missing-docker.sock";
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: { LANDO_TEST_DOCKER_SOCKET: dockerHost } }),
+        ),
+      ),
+    );
+
+    expect(provider.capabilities).toEqual({
+      ...dockerCapabilitiesForHost("linux", dockerHost),
+      serviceLogSources: false,
+    });
+  });
+
+  test("does not mask explicitly injected Docker API capability failures", async () => {
+    const exit = await Effect.runPromiseExit(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: {
+              info: Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "docker",
+                  operation: "capabilities",
+                  message: "injected failure",
+                }),
+              ),
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 
   test("uses Docker info architecture for host-proxy target capability", async () => {

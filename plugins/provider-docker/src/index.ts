@@ -1322,7 +1322,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   });
   const dockerApi =
     options.dockerApi ?? (options.dockerApiFactory ?? makeDockerApiClient)(resolvedDockerHost);
-  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const defaultFactoryConstruction =
+    options.dockerApi === undefined && options.dockerApiFactory === undefined;
+  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
+    Effect.catchAll((failure) =>
+      defaultFactoryConstruction
+        ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
+        : Effect.fail(failure),
+    ),
+  );
   const runtimeCapabilities = capabilities.pipe(
     Effect.map((resolved) => ({
       ...resolved,
