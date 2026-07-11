@@ -110,7 +110,11 @@ const runExit = <Value, Error>(program: Effect.Effect<Value, Error, EventService
 
 const sessionFor = async (
   executor: HostProxyRunLandoExecutor,
-  overrides: { readonly concurrency?: number; readonly shimArtifactPath?: string } = {},
+  overrides: {
+    readonly concurrency?: number;
+    readonly bodyReadTimeoutMs?: number;
+    readonly shimArtifactPath?: string;
+  } = {},
 ) => {
   const shimArtifactPath = overrides.shimArtifactPath ?? (await fakeExecutable());
   return run(
@@ -122,6 +126,9 @@ const sessionFor = async (
       executor,
       paths: { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() },
       ...(overrides.concurrency === undefined ? {} : { concurrency: overrides.concurrency }),
+      ...(overrides.bodyReadTimeoutMs === undefined
+        ? {}
+        : { bodyReadTimeoutMs: overrides.bodyReadTimeoutMs }),
       shimArtifactPath,
     }),
   );
@@ -546,6 +553,21 @@ describe("host-proxy runLando physical transport", () => {
     await session.close();
   });
 
+  test("times out an authenticated never-completing body and releases dispatch capacity", async () => {
+    const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
+      bodyReadTimeoutMs: 20,
+      concurrency: 1,
+      shimArtifactPath: await fakeExecutable(),
+    });
+    const slow = await openSlowAuthenticatedRequest(session.socketPath, authHeaders(session));
+
+    await waitForSocketClose(slow);
+    const healthy = await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
+
+    expect(healthy.exitCode).toBe(0);
+    await session.close();
+  });
+
   test("close interrupts in-flight requests before unlinking artifacts", async () => {
     let accepted: (() => void) | undefined;
     let interrupted = false;
@@ -824,6 +846,18 @@ const openSlowAuthenticatedRequest = (
       resolveSocket(socket);
     });
     socket.once("error", reject);
+  });
+
+const waitForSocketClose = (socket: ReturnType<typeof createConnection>): Promise<void> =>
+  new Promise((resolveClose, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out waiting for host-proxy socket close."));
+      socket.destroy();
+    }, 1000);
+    socket.once("close", () => {
+      clearTimeout(timeout);
+      resolveClose();
+    });
   });
 
 const oversizedWriteThenContinue = (

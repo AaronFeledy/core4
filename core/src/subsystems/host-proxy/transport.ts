@@ -36,6 +36,7 @@ export {
 
 const DEFAULT_CONCURRENCY = 16;
 const DEFAULT_MAX_DEPTH = 3;
+const DEFAULT_BODY_READ_TIMEOUT_MS = 30_000;
 
 export type HostProxyTransportKind = "unix-socket" | "tcp-host-gateway";
 
@@ -48,6 +49,7 @@ export interface HostProxyRunLandoSessionOptions {
   readonly paths?: RootOverrides;
   readonly concurrency?: number;
   readonly maxDepth?: number;
+  readonly bodyReadTimeoutMs?: number;
   readonly shimArtifactPath?: string;
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
@@ -133,6 +135,7 @@ export const createHostProxyRunLandoSession = (
     const token = makeToken();
     const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
     const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
+    const bodyReadTimeoutMs = options.bodyReadTimeoutMs ?? DEFAULT_BODY_READ_TIMEOUT_MS;
     const shimArtifact =
       options.shimArtifactPath ??
       (options.shimTarget === undefined
@@ -167,6 +170,7 @@ export const createHostProxyRunLandoSession = (
         session,
         concurrency,
         maxDepth,
+        bodyReadTimeoutMs,
         active,
         inFlight,
         runtimeContext,

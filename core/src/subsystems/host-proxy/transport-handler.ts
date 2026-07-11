@@ -34,6 +34,7 @@ interface HandlerOptions {
   readonly executor: HostProxyRunLandoExecutor;
   readonly maxDepth: number;
   readonly concurrency: number;
+  readonly bodyReadTimeoutMs: number;
   readonly active: { value: number };
   readonly inFlight: Set<HostProxyInFlightRequest>;
   readonly session: { readonly appId: string; readonly sessionId: string; readonly token: string };
@@ -58,12 +59,17 @@ const headerValue = (request: IncomingMessage, name: string): string => {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 };
 
-const bodyText = (request: IncomingMessage): Promise<string> =>
+const bodyText = (request: IncomingMessage, timeoutMs: number): Promise<string> =>
   new Promise((resolveText, reject) => {
     let body = "";
     let settled = false;
     let draining = false;
+    const timeout = setTimeout(() => {
+      rejectOnce(new Error("Host-proxy request body timed out."));
+      request.destroy();
+    }, timeoutMs);
     const cleanup = (): void => {
+      clearTimeout(timeout);
       request.off("data", onData);
       request.off("end", resolveOnce);
       request.off("close", rejectClosed);
@@ -268,7 +274,7 @@ export const makeHostProxyRunLandoHandler =
         return;
       }
 
-      void bodyText(request)
+      void bodyText(request, options.bodyReadTimeoutMs)
         .then((body) => {
           const decodedRequest = Schema.decodeUnknownEither(HostProxyRunLandoRequest)(JSON.parse(body));
           if (decodedRequest._tag === "Left") {
