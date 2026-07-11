@@ -9,6 +9,7 @@ const workflowsDir = resolve(repoRoot, ".github/workflows");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 const nightlyWorkflowPath = resolve(repoRoot, ".github/workflows/nightly.yml");
 const providerMatrixWorkflowPath = resolve(repoRoot, ".github/workflows/provider-matrix.yml");
+const runtimeBundleWorkflowPath = resolve(repoRoot, ".github/workflows/runtime-bundle.yml");
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioRunLine = `        run: ${guideScenarioRunCommand}`;
@@ -16,6 +17,7 @@ const guideScenarioRunLine = `        run: ${guideScenarioRunCommand}`;
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 const readNightlyWorkflow = async (): Promise<string> => Bun.file(nightlyWorkflowPath).text();
 const readProviderMatrixWorkflow = async (): Promise<string> => Bun.file(providerMatrixWorkflowPath).text();
+const readRuntimeBundleWorkflow = async (): Promise<string> => Bun.file(runtimeBundleWorkflowPath).text();
 
 const findIndentedBlock = (source: string, key: string, indent = 0): string => {
   const lines = source.split("\n");
@@ -143,6 +145,28 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Upload provider matrix diagnostics");
     expect(providerContracts).toContain("          name: provider-matrix-diagnostics-${{ matrix.cell }}");
     expect(providerContracts).not.toContain("      - name: Run provider contract tests");
+  });
+
+  test("dispatches the provider matrix after runtime bundle manifest repins", async () => {
+    const workflow = await readRuntimeBundleWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const publish = findIndentedBlock(jobs, "publish", 2);
+    const permissions = findIndentedBlock(publish, "permissions", 4);
+
+    expect(permissions).toContain("      contents: write");
+    expect(permissions).toContain("      actions: write");
+    expect(publish).toContain("      - name: Commit recovered manifest pin");
+    expect(publish).toContain("        id: manifest-pin");
+    expect(publish).toContain("          git push origin HEAD:main");
+    expect(publish).toContain('          echo "pushed=true" >> "$GITHUB_OUTPUT"');
+    expect(publish).toContain("      - name: Dispatch provider matrix after manifest repin");
+    expect(publish).toContain("        if: steps.manifest-pin.outputs.pushed == 'true'");
+    expect(publish).toContain(
+      '        run: GITHUB_TOKEN="${{ github.token }}" gh workflow run provider-matrix.yml --ref main',
+    );
+    expect(publish.indexOf("git push origin HEAD:main")).toBeLessThan(
+      publish.indexOf("Dispatch provider matrix after manifest repin"),
+    );
   });
 
   test("runs nightly provider-lando e2e on Linux x64", async () => {
