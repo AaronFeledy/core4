@@ -253,3 +253,19 @@ Open closure categories:
   - Never spawn long-lived services with stderr "ignore"; empty evidence turns a config bug into a multi-round debugging hunt.
   - A disposable workflow on a throwaway branch (push-triggered, never merged) is the fastest way to interrogate a GitHub runner: probe steps beat guess-and-dispatch cycles.
   - The upstream static `conmon` release binary has no journald support; pair it with `log_driver = "k8s-file"`.
+
+## 2026-07-11 - US-431
+- Added a retained closure-review evidence surface for Beta 1: five required lanes now validate through a structured schema, inconclusive lanes cannot approve, blocker findings cannot be dismissed or hidden behind linked failing stories, and the final JSON/Markdown artifacts preserve lane scope, inputs, commands/tools, findings, dispositions, residual risks, and evidence.
+- Fixed the closure priority ledger so US-430..US-443 remain uniquely ordered, then retained approved goal, QA, code-quality, security, and context/history review lanes under `spec/beta-1/closure/us-431/`; the real closure-review CLI approved the retained lane input and wrote the audit report/note.
+- Verification: typecheck, lint passed; focused closure-review script tests passed; real CLI artifact generation passed.
+- **Learnings for future iterations:**
+  - Closure-review evidence must be machine-checkable and retained; inaccessible team messages or instruction-only/empty review output should be replaced with terminal lane results that can be audited later.
+  - Linked blockers can preserve accountability, but they must not make a closure report approved while the linked story is still failing.
+---
+
+## 2026-07-11 02:43 CDT - US-431 Review
+- Closed approval-integrity bypasses: approved or blocked lanes carrying an inconclusive class now fail validation without rendering contradictory approved/inconclusive output, and whitespace-only audit fields cannot forge evidence. The CLI integration test now resolves the repository root explicitly instead of depending on the caller's working directory.
+- Review notes (deferred/rejected): malformed flag-value parsing is a pre-existing defensive CLI concern outside the story's retained-evidence contract; semantic-but-not-byte-identical JSON formatting does not change the audited report; unavailable original task sessions do not invalidate the self-contained retained lane evidence required by the PRD.
+- Verification: typecheck and focused closure-review tests passed; lint passed after formatting the focused regression change.
+- **Learnings for future iterations:** Disposition and inconclusive classification form one state invariant; validate both directions so contradictory external input cannot pass a fail-closed approval gate.
+---
