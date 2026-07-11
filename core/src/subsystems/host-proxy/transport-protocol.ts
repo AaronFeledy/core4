@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { request as httpRequest } from "node:http";
+import { type IncomingMessage, request as httpRequest } from "node:http";
 import { Effect, Schema } from "effect";
 
 import {
@@ -63,7 +63,8 @@ export interface HostProxyRunLandoConnectionSession {
   readonly appId: string;
   readonly sessionId: string;
   readonly token: string;
-  readonly socketPath: string;
+  readonly socketPath?: string;
+  readonly url?: string;
 }
 
 export const authError = (reason: HostProxyAuthenticationError["reason"]): HostProxyAuthenticationError =>
@@ -193,48 +194,51 @@ export const sendHostProxyRunLando = (
           rejectOnce(
             new HostProxyTransportUnavailableError({
               message: "Host-proxy connection closed before a complete response.",
-              socketPath: session.socketPath,
+              socketPath: session.socketPath ?? session.url ?? "unknown",
               remediation: "Ensure the host-proxy session is running.",
             }),
           );
         };
-        const req = httpRequest(
-          {
-            socketPath: session.socketPath,
-            method: "POST",
-            path: "/runLando",
-            headers: {
-              authorization: `Bearer ${session.token}`,
-              "content-type": "application/json",
-              "x-lando-host-proxy-app": session.appId,
-              "x-lando-host-proxy-session": session.sessionId,
-              "x-lando-host-proxy-caller": options.callerService ?? "web",
-              "x-lando-host-proxy-depth": String(options.depth ?? 0),
-            },
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${session.token}`,
+            "content-type": "application/json",
+            "x-lando-host-proxy-app": session.appId,
+            "x-lando-host-proxy-session": session.sessionId,
+            "x-lando-host-proxy-caller": options.callerService ?? "web",
+            "x-lando-host-proxy-depth": String(options.depth ?? 0),
           },
-          (res) => {
-            responseStarted = true;
-            res.setEncoding("utf8");
-            res.on("data", (chunk) => {
-              response += chunk;
-              if (response.length > HOST_PROXY_MAX_FRAME_BYTES)
-                req.destroy(new Error("Host-proxy response exceeded maximum frame size."));
-            });
-            res.once("aborted", rejectIncomplete);
-            res.once("error", rejectOnce);
-            res.once("close", () => {
-              if (!responseEnded) rejectIncomplete();
-            });
-            res.once("end", () => {
-              responseEnded = true;
-              try {
-                resolveOnce(decodeWireResponse(response));
-              } catch (cause) {
-                rejectOnce(cause);
-              }
-            });
-          },
-        );
+        };
+        const onResponse = (res: IncomingMessage) => {
+          responseStarted = true;
+          res.setEncoding("utf8");
+          res.on("data", (chunk) => {
+            response += chunk;
+            if (response.length > HOST_PROXY_MAX_FRAME_BYTES)
+              req.destroy(new Error("Host-proxy response exceeded maximum frame size."));
+          });
+          res.once("aborted", rejectIncomplete);
+          res.once("error", rejectOnce);
+          res.once("close", () => {
+            if (!responseEnded) rejectIncomplete();
+          });
+          res.once("end", () => {
+            responseEnded = true;
+            try {
+              resolveOnce(decodeWireResponse(response));
+            } catch (cause) {
+              rejectOnce(cause);
+            }
+          });
+        };
+        const req =
+          session.url === undefined
+            ? httpRequest(
+                { socketPath: session.socketPath, path: "/runLando", ...requestOptions },
+                onResponse,
+              )
+            : httpRequest(new URL("/runLando", session.url), requestOptions, onResponse);
         req.once("error", rejectOnce);
         req.once("close", () => {
           if (!responseStarted) rejectIncomplete();
@@ -254,7 +258,7 @@ export const sendHostProxyRunLando = (
       }
       return new HostProxyTransportUnavailableError({
         message: cause instanceof Error ? cause.message : String(cause),
-        socketPath: session.socketPath,
+        socketPath: session.socketPath ?? session.url ?? "unknown",
         remediation: "Ensure the host-proxy session is running.",
       });
     },
@@ -265,12 +269,13 @@ export const connectHostProxyRunLando = (
 ): Effect.Effect<void, HostProxyTransportUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
+      if (session.socketPath === undefined) return;
       await stat(session.socketPath);
     },
     catch: (cause) =>
       new HostProxyTransportUnavailableError({
         message: cause instanceof Error ? cause.message : String(cause),
-        socketPath: session.socketPath,
+        socketPath: session.socketPath ?? session.url ?? "unknown",
         remediation: "Start the app to create a host-proxy runLando session before invoking the shim.",
       }),
   });

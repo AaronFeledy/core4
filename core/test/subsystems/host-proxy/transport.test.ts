@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Effect, Exit, Layer } from "effect";
 
 import {
@@ -22,7 +22,10 @@ import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
 } from "../../../src/subsystems/host-proxy/dispatch.ts";
-import { defaultHostProxyShimArtifactPath } from "../../../src/subsystems/host-proxy/transport-shim.ts";
+import {
+  defaultHostProxyShimArtifactPath,
+  resolveHostProxyShimArtifactPath,
+} from "../../../src/subsystems/host-proxy/transport-shim.ts";
 import {
   HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
@@ -45,6 +48,17 @@ const tempRoot = async (): Promise<string> => {
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/demo" };
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const coreBuildHostProxyShimScript = async (): Promise<string> => {
+  const packageJson: unknown = await Bun.file(join(import.meta.dirname, "../../../package.json")).json();
+  if (!isRecord(packageJson) || !isRecord(packageJson.scripts)) throw new Error("Invalid core package.json");
+  const script = packageJson.scripts["build:host-proxy-shim"];
+  if (typeof script !== "string") throw new Error("Missing build:host-proxy-shim script");
+  return script;
+};
 
 const envelope: CommandResultEnvelope = {
   apiVersion: "v4",
@@ -155,6 +169,30 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("host-proxy runLando physical transport", () => {
+  test("selects deterministic compiled shim sidecars for supported container targets", () => {
+    const distRoot = "/opt/lando/core/dist";
+
+    expect(
+      resolveHostProxyShimArtifactPath({
+        distRoot,
+        target: { os: "linux", arch: "x64" },
+      }),
+    ).toBe("/opt/lando/core/dist/host-proxy/linux-x64/lando-shim");
+    expect(
+      resolveHostProxyShimArtifactPath({
+        distRoot,
+        target: { os: "linux", arch: "arm64" },
+      }),
+    ).toBe("/opt/lando/core/dist/host-proxy/linux-arm64/lando-shim");
+  });
+
+  test("build script delivers every supported compiled shim sidecar path", async () => {
+    const script = await coreBuildHostProxyShimScript();
+
+    expect(script).toContain("--target=bun-linux-x64 --outfile ./dist/host-proxy/linux-x64/lando-shim");
+    expect(script).toContain("--target=bun-linux-arm64 --outfile ./dist/host-proxy/linux-arm64/lando-shim");
+  });
+
   test("happy authenticated physical round trip preserves envelope and remapped cwd", async () => {
     let capturedCwd = "";
     const session = await sessionFor((input) => {
@@ -169,6 +207,44 @@ describe("host-proxy runLando physical transport", () => {
     expect(result).toEqual({ envelope, exitCode: 0 });
     expect(capturedCwd).toBe("/srv/apps/demo/web");
     await session.close();
+  });
+
+  test("tcp host-gateway sessions use the URL client path and close their listener state", async () => {
+    let capturedCwd = "";
+    const cacheRoot = await tempRoot();
+    const dataRoot = await tempRoot();
+    const session = await run(
+      createHostProxyRunLandoSession({
+        app,
+        mountInfo: mount,
+        allowlist: ["app:open"],
+        callerService: "web",
+        executor: (input) => {
+          capturedCwd = input.cwd;
+          return Effect.succeed({ envelope, exitCode: 0 });
+        },
+        paths: { platform: "win32", userCacheRoot: cacheRoot, userDataRoot: dataRoot },
+        hostGatewayName: "host.containers.internal",
+        shimArtifactPath: await fakeExecutable(),
+      }),
+    );
+
+    expect(session.transport).toBe("tcp-host-gateway");
+    expect(session.socketPath).toBeUndefined();
+    expect(session.url).toStartWith("http://127.0.0.1:");
+    expect(session.url).not.toContain("0.0.0.0");
+    expect(session.containerUrl).toStartWith("http://host.containers.internal:");
+    expect(
+      await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app/web", tty: false })),
+    ).toEqual({
+      envelope,
+      exitCode: 0,
+    });
+    expect(capturedCwd).toBe("/srv/apps/demo/web");
+
+    const stateDir = hostProxyRunLandoStateDir(app, { platform: "win32", userDataRoot: dataRoot });
+    await session.close();
+    await expectMissingPath(stateDir);
   });
 
   test("rejects missing, stale, and cross-app tokens with tagged failures", async () => {
@@ -260,8 +336,8 @@ describe("host-proxy runLando physical transport", () => {
     await session.close();
   });
 
-  test("rejects unsupported socket platforms before creating artifacts", async () => {
-    const exit = await runExit(
+  test("serves authenticated requests over a scoped Windows TCP bridge endpoint", async () => {
+    const session = await run(
       createHostProxyRunLandoSession({
         app,
         mountInfo: mount,
@@ -269,15 +345,18 @@ describe("host-proxy runLando physical transport", () => {
         callerService: "web",
         executor: () => Effect.succeed({ envelope, exitCode: 0 }),
         paths: { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot(), platform: "win32" },
+        hostGatewayName: "host.containers.internal",
         shimArtifactPath: await fakeExecutable(),
       }),
     );
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
-      expect(exit.cause.error.message).toContain("Unix socket");
-    }
+    const result = await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
+
+    expect(session.socketPath).toBeUndefined();
+    expect(session.url).toStartWith("http://127.0.0.1:");
+    expect(session.containerUrl).toStartWith("http://host.containers.internal:");
+    expect(result).toEqual({ envelope, exitCode: 0 });
+    await session.close();
   });
 
   test("fails closed when a stale socket path already exists", async () => {
@@ -649,7 +728,24 @@ describe("host-proxy runLando physical transport", () => {
 
   test("release-shaped compiled binary supplies and executes the default host-proxy shim", async () => {
     const artifactPath = await compiledReleaseBinary();
-    expect(defaultHostProxyShimArtifactPath({ env: {}, execPath: artifactPath })).toBe(artifactPath);
+    const shimArtifactPath = defaultHostProxyShimArtifactPath({
+      env: {},
+      execPath: artifactPath,
+      target: { os: "linux", arch: "x64" },
+    });
+    await mkdir(dirname(shimArtifactPath), { recursive: true });
+    const buildShim = Bun.spawn({
+      cmd: [process.execPath, "build", HOST_PROXY_SHIM_SOURCE, "--compile", "--outfile", shimArtifactPath],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [buildExitCode, buildStderr] = await Promise.all([
+      buildShim.exited,
+      new Response(buildShim.stderr).text(),
+    ]);
+    expect(buildExitCode).toBe(0);
+    expect(buildStderr).toBe("");
+    expect(shimArtifactPath).toBe(join(dirname(artifactPath), "host-proxy", "linux-x64", "lando-shim"));
 
     let captured: HostProxyRunLandoExecutorInput | undefined;
     const session = await sessionFor(
@@ -657,7 +753,7 @@ describe("host-proxy runLando physical transport", () => {
         captured = request;
         return Effect.succeed({ envelope, exitCode: 0 });
       },
-      { shimArtifactPath: defaultHostProxyShimArtifactPath({ env: {}, execPath: artifactPath }) },
+      { shimArtifactPath },
     );
 
     const proc = Bun.spawn({

@@ -126,6 +126,35 @@ describe("hostProxyRunLandoFeature", () => {
     await session.close();
   });
 
+  test("exposes TCP host-gateway URL without socket metadata or host-gateway mapping", () => {
+    const environment: Record<string, string> = {};
+    const mounts: Array<{ readonly target: string }> = [];
+    const service = {
+      addEnv: (name: string, value: string) => {
+        environment[name] = value;
+      },
+      addMount: (mountValue: { readonly target: string }) => {
+        mounts.push(mountValue);
+      },
+    };
+
+    hostProxyRunLandoFeature({
+      appId: "demo",
+      sessionId: "session-1",
+      token: "secret-token",
+      url: "http://127.0.0.1:49152",
+      containerUrl: "http://host.containers.internal:49152",
+      shimPath: "C:\\Users\\me\\AppData\\Local\\Lando\\Data\\run\\demo\\lando.exe",
+      transport: "tcp-host-gateway",
+    }).apply(service);
+
+    expect(environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
+    expect(environment.LANDO_HOST_PROXY_URL).toBe("http://host.containers.internal:49152");
+    expect(environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+    expect(environment.LANDO_HOST_PROXY_TOKEN).toBe("secret-token");
+    expect(mounts).not.toContainEqual(expect.objectContaining({ target: "/run/lando/host-proxy.sock" }));
+  });
+
   test("connectHostProxyRunLando rejects closed sessions", async () => {
     const session = await sessionFor();
     await session.close();

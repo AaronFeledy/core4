@@ -8,8 +8,11 @@ export const WorkerReady = Schema.TaggedStruct("ready", {
   appId: Schema.String,
   sessionId: Schema.String,
   token: Schema.String,
-  socketPath: Schema.String,
+  socketPath: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+  containerUrl: Schema.optional(Schema.String),
   shimPath: Schema.String,
+  transport: Schema.optional(Schema.Literal("unix-socket", "tcp-host-gateway")),
 });
 export type WorkerReady = typeof WorkerReady.Type;
 

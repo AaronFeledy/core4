@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Fiber } from "effect";
+import { DateTime, Effect, Exit, Fiber } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import {
   hostProxyWorkerArgv,
+  removeOwnedHostProxyWorkerState,
   startDetachedHostProxyWorker,
   terminateOwnedHostProxyWorker,
   terminateOwnedHostProxyWorkersInRoot,
@@ -147,6 +148,234 @@ describe("detached host-proxy worker manager", () => {
       );
 
       expect(terminated).toEqual([23456]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves ownership state when cleanup cannot verify the recorded worker", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 34567,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        removeOwnedHostProxyWorkerState(
+          app,
+          { userDataRoot: root },
+          {
+            readProcessArgv: async () => hostProxyWorkerArgv({ appId: "other" }),
+            terminateProcess: async (pid) => {
+              terminated.push(pid);
+            },
+          },
+        ),
+      );
+
+      expect(terminated).toEqual([]);
+      expect(await readFile(workerOwnershipPath(app, { userDataRoot: root }), "utf8")).toContain(
+        '"pid": 34567',
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes ownership state after verified cleanup termination", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 45678,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      await Effect.runPromise(
+        removeOwnedHostProxyWorkerState(
+          app,
+          { userDataRoot: root },
+          {
+            readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+            terminateProcess: async (pid) => {
+              terminated.push(pid);
+            },
+          },
+        ),
+      );
+
+      expect(terminated).toEqual([45678]);
+      await expect(Bun.file(workerOwnershipPath(app, { userDataRoot: root })).exists()).resolves.toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("replaces a verified owned worker for the same app before spawning the next worker", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => ({
+            pid: 11111,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-1",
+              token: "secret-token-1",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      const replacement = await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "demo" }),
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+          spawnWorker: (spec) => ({
+            pid: 22222,
+            argv: spec.argv,
+            writeStdin: async () => undefined,
+            readReady: async () => ({
+              _tag: "ready" as const,
+              appId: "demo",
+              sessionId: "session-2",
+              token: "secret-token-2",
+              socketPath: join(root, "run", "demo", "host-proxy.sock"),
+              shimPath: join(root, "run", "demo", "lando"),
+            }),
+            terminate: async () => undefined,
+          }),
+        }),
+      );
+
+      const ownership = await readFile(workerOwnershipPath(app, { userDataRoot: root }), "utf8");
+      expect(terminated).toEqual([11111]);
+      expect(replacement.sessionId).toBe("session-2");
+      expect(ownership).toContain('"pid": 22222');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses repeat start when the existing worker fingerprint is unowned", async () => {
+    const root = await tempRoot();
+    const terminated: number[] = [];
+    let spawnCount = 0;
+    try {
+      await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          spawnWorker: (spec) => {
+            spawnCount += 1;
+            return {
+              pid: 33333,
+              argv: spec.argv,
+              writeStdin: async () => undefined,
+              readReady: async () => ({
+                _tag: "ready" as const,
+                appId: "demo",
+                sessionId: "session-1",
+                token: "secret-token-1",
+                socketPath: join(root, "run", "demo", "host-proxy.sock"),
+                shimPath: join(root, "run", "demo", "lando"),
+              }),
+              terminate: async () => undefined,
+            };
+          },
+        }),
+      );
+
+      const exit = await Effect.runPromiseExit(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot: root },
+          shimArtifactPath: "/tmp/fake-shim",
+          readProcessArgv: async () => hostProxyWorkerArgv({ appId: "other" }),
+          terminateProcess: async (pid) => {
+            terminated.push(pid);
+          },
+          spawnWorker: (spec) => {
+            spawnCount += 1;
+            return {
+              pid: 44444,
+              argv: spec.argv,
+              writeStdin: async () => undefined,
+              readReady: async () => ({
+                _tag: "ready" as const,
+                appId: "demo",
+                sessionId: "session-2",
+                token: "secret-token-2",
+                socketPath: join(root, "run", "demo", "host-proxy.sock"),
+                shimPath: join(root, "run", "demo", "lando"),
+              }),
+              terminate: async () => undefined,
+            };
+          },
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(terminated).toEqual([]);
+      expect(spawnCount).toBe(1);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

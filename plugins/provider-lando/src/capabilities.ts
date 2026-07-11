@@ -26,6 +26,27 @@ const bindMountPerformanceForPlatform = (
   return "none";
 };
 
+const hostProxyTransportExtensions = (platform: HostPlatform): ReadonlyArray<string> =>
+  platform === "win32" ? ["@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal"] : [];
+
+const hostProxyContainerTargetExtension = (arch?: string): ReadonlyArray<string> => {
+  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
+    return ["@lando/core/host-proxy-container-target:linux-x64"];
+  }
+  if (arch === "arm64" || arch === "aarch64") return ["@lando/core/host-proxy-container-target:linux-arm64"];
+  return [];
+};
+
+const podmanInfoArchitecture = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const host = "host" in info ? info.host : undefined;
+  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
+    return host.arch;
+  }
+  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
+  return undefined;
+};
+
 export interface PodmanApiRequest {
   readonly command: "curl";
   readonly args: ReadonlyArray<string>;
@@ -130,8 +151,11 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
-  buildProviderCapabilities({
+export const providerLandoCapabilitiesForPlatform = (
+  platform: HostPlatform,
+  providerExtensions: ReadonlyArray<string> = [],
+): ProviderCapabilities => {
+  return buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     volumeSnapshot: "native",
@@ -142,11 +166,13 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     tlsCertificates: "lando",
     rootless: true,
     composeSpec: "portable",
-    providerExtensions: [],
+    providerExtensions: [...providerExtensions, ...hostProxyTransportExtensions(platform)],
   });
+};
 
 export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("linux");
 export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
+export const windowsMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("win32");
 export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
   providerLandoCapabilitiesForPlatform(platform);
 
@@ -359,4 +385,9 @@ export const introspectProviderCapabilities = (
       ? "linux"
       : "win32",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
-  api.info.pipe(Effect.map(() => mvpProviderCapabilities(platform)));
+  api.info.pipe(
+    Effect.map((info) => {
+      const containerArch = podmanInfoArchitecture(info);
+      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargetExtension(containerArch));
+    }),
+  );

@@ -21,7 +21,9 @@ import { pathToFileURL } from "node:url";
 
 const argv = Bun.argv.slice(2);
 
-const hasHostProxyShimEnv = (): boolean => (process.env.LANDO_HOST_PROXY_SOCKET?.length ?? 0) > 0;
+const hasHostProxyShimEnv = (): boolean =>
+  (process.env.LANDO_HOST_PROXY_SOCKET?.length ?? 0) > 0 ||
+  (process.env.LANDO_HOST_PROXY_URL?.length ?? 0) > 0;
 
 const main = async (): Promise<void> => {
   if (hasHostProxyShimEnv()) {

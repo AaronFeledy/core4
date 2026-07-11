@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -108,6 +109,73 @@ const makePlan = (service = makeService()): AppPlan => ({
   metadata,
   extensions: {},
 });
+
+const makeAliasProbePlan = (): AppPlan => ({
+  id: AppId.make("windows-host-alias-docker"),
+  name: "Windows Host Alias Docker",
+  slug: "windows-host-alias-docker",
+  root: AbsolutePath.make("/tmp/lando-windows-host-alias-docker"),
+  provider: providerId,
+  services: {
+    [serviceName]: {
+      name: serviceName,
+      type: "node",
+      provider: providerId,
+      primary: true,
+      artifact: { kind: "ref", ref: "node:22-alpine" },
+      command: ["node", "-e", "setInterval(() => {}, 1000)"],
+      environment: {},
+      mounts: [],
+      storage: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata,
+      extensions: {},
+    },
+  },
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata,
+  extensions: {},
+});
+
+const startLoopbackAuthServer = async (expectedToken: string) => {
+  let observedAuthorization = "";
+  const server = createHttpServer((request, response) => {
+    observedAuthorization = request.headers.authorization ?? "";
+    response.writeHead(observedAuthorization === `Bearer ${expectedToken}` ? 200 : 401);
+    response.end(observedAuthorization === `Bearer ${expectedToken}` ? "alias-ok" : "alias-denied");
+  });
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") reject(new Error("expected TCP listener"));
+      else resolve(address.port);
+    });
+  });
+  return {
+    port,
+    authorization: () => observedAuthorization,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+};
+
+const aliasProbeScript = `
+const response = await fetch(process.env.LANDO_ALIAS_PROBE_URL, {
+  headers: { authorization: \`Bearer \${process.env.LANDO_ALIAS_PROBE_TOKEN}\` },
+});
+const body = await response.text();
+if (response.status !== 200 || body !== "alias-ok") {
+  console.error(\`unexpected alias response \${response.status}: \${body}\`);
+  process.exit(1);
+}
+console.log(body);
+`;
 
 const makeFakeApi = () => {
   const running = new Set<string>();
@@ -1201,6 +1269,53 @@ describe("provider-docker RuntimeProvider contract", () => {
       await Effect.runPromise(runProviderContract(provider));
     },
     60_000,
+  );
+
+  test.skipIf(
+    process.platform !== "win32" ||
+      (!process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET && !process.env.DOCKER_HOST),
+  )(
+    "live: Windows Docker Desktop container reaches host loopback through host.docker.internal",
+    async () => {
+      const dockerHost = process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
+      expect(dockerHost).toBeTruthy();
+      const token = "docker-alias-token";
+      const server = await startLoopbackAuthServer(token);
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              platform: "win32",
+              dockerApi: makeDockerApiClient(dockerHost ?? ""),
+            }),
+          ),
+        ),
+      );
+      const aliasPlan = makeAliasProbePlan();
+
+      try {
+        await Effect.runPromise(Effect.scoped(provider.apply(aliasPlan, { reconcile: true })));
+        const result = await Effect.runPromise(
+          provider.exec(
+            { app: aliasPlan.id, service: serviceName },
+            {
+              command: ["node", "-e", aliasProbeScript],
+              env: {
+                LANDO_ALIAS_PROBE_URL: `http://host.docker.internal:${server.port}/probe`,
+                LANDO_ALIAS_PROBE_TOKEN: token,
+              },
+            },
+          ),
+        );
+
+        expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
+        expect(server.authorization()).toBe(`Bearer ${token}`);
+      } finally {
+        await Effect.runPromise(Effect.either(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await server.close();
+      }
+    },
+    120_000,
   );
 
   test("matrix: covers linux / darwin / win32 via fake Docker API", async () => {

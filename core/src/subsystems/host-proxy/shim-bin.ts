@@ -64,14 +64,19 @@ const writeFrame = (line: string): number | undefined => {
   return undefined;
 };
 
-const writeAndExit = (socketPath: string, payload: ShimRequest): void => {
+const writeAndExit = (
+  target: { readonly socketPath?: string; readonly url?: string },
+  payload: ShimRequest,
+): void => {
   let buffered = "";
   let exitCode = 1;
+  const targetUrl = target.url === undefined ? undefined : new URL("/runLando", target.url);
   const req = request(
     {
-      socketPath,
+      ...(targetUrl === undefined
+        ? { socketPath: target.socketPath, path: "/runLando" }
+        : { hostname: targetUrl.hostname, port: targetUrl.port, path: targetUrl.pathname }),
       method: "POST",
-      path: "/runLando",
       headers: {
         authorization: `Bearer ${payload.token}`,
         "content-type": "application/json",
@@ -103,20 +108,28 @@ const writeAndExit = (socketPath: string, payload: ShimRequest): void => {
   req.end(JSON.stringify(payload.request));
 };
 
-const socketPath = requiredEnv("LANDO_HOST_PROXY_SOCKET");
+const socketPath = env.LANDO_HOST_PROXY_SOCKET;
+const url = env.LANDO_HOST_PROXY_URL;
+if ((socketPath === undefined || socketPath.length === 0) && (url === undefined || url.length === 0)) {
+  stderr.write("Missing LANDO_HOST_PROXY_SOCKET or LANDO_HOST_PROXY_URL for host-proxy runLando.\n");
+  exit(127);
+}
 const currentDepth = Number(env.LANDO_HOST_PROXY_DEPTH ?? "0");
 const depth = Number.isFinite(currentDepth) ? currentDepth : 0;
-writeAndExit(socketPath, {
-  sessionId: requiredEnv("LANDO_HOST_PROXY_SESSION"),
-  appId: requiredEnv("LANDO_HOST_PROXY_APP"),
-  token: requiredEnv("LANDO_HOST_PROXY_TOKEN"),
-  callerService: env.LANDO_HOST_PROXY_CALLER ?? "unknown",
-  depth,
-  request: {
-    _tag: "runLando",
-    argv: process.argv.slice(2),
-    cwd: cwd(),
-    tty: Boolean(stdout.isTTY),
-    env: filteredEnv(),
+writeAndExit(
+  { ...(socketPath === undefined ? {} : { socketPath }), ...(url === undefined ? {} : { url }) },
+  {
+    sessionId: requiredEnv("LANDO_HOST_PROXY_SESSION"),
+    appId: requiredEnv("LANDO_HOST_PROXY_APP"),
+    token: requiredEnv("LANDO_HOST_PROXY_TOKEN"),
+    callerService: env.LANDO_HOST_PROXY_CALLER ?? "unknown",
+    depth,
+    request: {
+      _tag: "runLando",
+      argv: process.argv.slice(2),
+      cwd: cwd(),
+      tty: Boolean(stdout.isTTY),
+      env: filteredEnv(),
+    },
   },
-});
+);

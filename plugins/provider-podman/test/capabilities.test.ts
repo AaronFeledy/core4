@@ -55,6 +55,30 @@ describe("provider-podman capabilities", () => {
     expect(podmanCapabilitiesForPlatform("darwin")).toEqual(macosPodmanCapabilities);
     expect(podmanCapabilitiesForPlatform("win32")).toEqual(windowsPodmanCapabilities);
   });
+
+  test("does not advertise host-proxy container targets without runtime API introspection", () => {
+    expect(
+      podmanCapabilitiesForPlatform("linux").providerExtensions.some((extension) =>
+        extension.startsWith("@lando/core/host-proxy-container-target:"),
+      ),
+    ).toBe(false);
+    expect(
+      podmanCapabilitiesForPlatform("darwin").providerExtensions.some((extension) =>
+        extension.startsWith("@lando/core/host-proxy-container-target:"),
+      ),
+    ).toBe(false);
+    expect(
+      podmanCapabilitiesForPlatform("win32").providerExtensions.some((extension) =>
+        extension.startsWith("@lando/core/host-proxy-container-target:"),
+      ),
+    ).toBe(false);
+  });
+
+  test("advertises Podman Desktop host alias for Windows TCP transport", () => {
+    expect(podmanCapabilitiesForPlatform("win32").providerExtensions).toContain(
+      "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
+    );
+  });
 });
 
 describe("provider-podman socket discovery", () => {
@@ -242,28 +266,75 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
       }),
     );
     const macosProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "darwin",
+        arch: "arm64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }) },
       }),
     );
     const windowsProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "win32",
+        arch: "arm64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }) },
       }),
     );
 
     expect(linuxProvider.id).toBe("podman");
-    expect(linuxProvider.capabilities).toEqual({ ...linuxPodmanCapabilities, serviceLogSources: false });
-    expect(macosProvider.capabilities).toEqual({ ...macosPodmanCapabilities, serviceLogSources: false });
-    expect(windowsProvider.capabilities).toEqual({ ...windowsPodmanCapabilities, serviceLogSources: false });
+    expect(linuxProvider.capabilities.providerExtensions).toContain(
+      "@lando/core/host-proxy-container-target:linux-x64",
+    );
+    expect(macosProvider.capabilities.providerExtensions).toContain(
+      "@lando/core/host-proxy-container-target:linux-arm64",
+    );
+    expect(windowsProvider.capabilities.providerExtensions).toContain(
+      "@lando/core/host-proxy-container-target:linux-arm64",
+    );
+    expect(windowsProvider.capabilities).toEqual({
+      ...podmanCapabilitiesForPlatform("win32", ["@lando/core/host-proxy-container-target:linux-arm64"]),
+      serviceLogSources: false,
+    });
+  });
+
+  test("uses Podman API runtime architecture over injected host architecture", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "win32",
+        arch: "x64",
+        env: {},
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }) },
+      }),
+    );
+
+    expect(provider.capabilities.providerExtensions).toContain(
+      "@lando/core/host-proxy-container-target:linux-arm64",
+    );
+    expect(provider.capabilities.providerExtensions).not.toContain(
+      "@lando/core/host-proxy-container-target:linux-x64",
+    );
+  });
+
+  test("omits Podman host-proxy target capability when API architecture is missing", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "win32",
+        arch: "arm64",
+        env: {},
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: {} }) },
+      }),
+    );
+
+    expect(
+      provider.capabilities.providerExtensions.some((extension) =>
+        extension.startsWith("@lando/core/host-proxy-container-target:"),
+      ),
+    ).toBe(false);
   });
 
   test("advertises service log source following only when file access is injected", async () => {
@@ -272,7 +343,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
         logFileAccess: fs.access,
       }),
     );
@@ -318,7 +389,7 @@ describe("provider-podman RuntimeProvider layer", () => {
           XDG_RUNTIME_DIR: "/run/user/1000",
           LANDO_PODMAN_MACHINE: "bad;name",
         },
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
       }),
     );
 

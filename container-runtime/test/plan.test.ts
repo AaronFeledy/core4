@@ -30,6 +30,7 @@ const service = {
     { type: "bind", source: "/host/cache", target: "/cache", readOnly: false, realization: "passthrough" },
   ],
   storage: [{ store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false }],
+  hostAliases: [],
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {

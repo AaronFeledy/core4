@@ -286,3 +286,13 @@ Open closure categories:
 - Verification: typecheck and lint passed; focused host-proxy transport/worker, start lifecycle, and uninstall tests passed; renderer, machine-output, and env-helper boundaries passed during the repair.
 - **Learnings for future iterations:** A compiled sidecar is not shipped merely because a package build script emits it; release-shaped binary tests must prove artifact delivery. Concurrency admission must happen before authenticated body retention, and shared run roots must only be cleaned through ownership-aware seams.
 ---
+
+## 2026-07-11 12:15 CDT - US-433 complete
+- Completed the production runLando host-proxy transport: target-specific Linux shim sidecars are selected from runtime-engine architecture, Unix sockets remain app-scoped, and Windows Docker/Podman paths use provider-declared Desktop aliases to reach a loopback-only authenticated TCP bridge.
+- Hardened lifecycle ownership across repeat starts and interruption: only verified workers are replaced or removed, unverified ownership state is preserved, and session cleanup is installed immediately after acquisition through apply, stop, destroy, restart, and uninstall paths.
+- Verification: typecheck and lint passed; focused host-proxy, start, provider capability/registry, container-plan, lifecycle, redaction, SDK, and service-lando spot checks passed; renderer, managed-file, state-store, probe, redaction, paths, and machine-output boundaries passed; x64/AArch64 shim builds and sandboxed CLI help passed. Native Windows container-side alias checks are retained as platform-gated live integration tests and structured-skipped on this Linux host.
+- **Learnings for future iterations:**
+  - Container helper architecture must come from the runtime engine's live info response, never the CLI host CPU or static capability defaults.
+  - Desktop host aliases are provider behavior: advertise them only after provider introspection, keep host listeners loopback-only, and retain a real Windows container-side round-trip test for reachability.
+  - Ownership cleanup must preserve state when process identity cannot be verified; losing the record while leaving a worker alive makes safe recovery impossible.
+---

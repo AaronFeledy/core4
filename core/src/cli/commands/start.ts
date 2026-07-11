@@ -148,118 +148,122 @@ export const startApp = (
     const hostProxySession = yield* startHostProxyRunLandoSession(plan, ref, provider.capabilities, {
       platform: provider.platform,
     });
-    if (managed !== undefined && hostProxySession !== undefined) {
-      yield* Effect.addFinalizer(() => Effect.promise(() => hostProxySession.close())).pipe(
-        Effect.provideService(Scope.Scope, managed.scope),
-      );
-    }
-
-    const applyPlan = hostProxySession === undefined ? plan : withHostProxyRunLando(plan, hostProxySession);
-    const serviceList = Object.values(applyPlan.services);
-    const serviceIds = serviceList.map((service) => String(service.name));
-    const applyParentId = `apply-${plan.id}`;
-    const applyStart = performance.now();
-
-    yield* events.publish(
-      PreAppStartEvent.make({
-        eventName: "pre-app-start",
-        appRef: ref,
-        providerId: plan.provider,
-        timestamp: now(),
-      }),
-    );
-
-    yield* publishTreeStart(events, {
-      parentId: applyParentId,
-      label: `Apply ${plan.name}`,
-      children: serviceIds,
-      mode: "list",
-    });
-
-    for (const service of serviceList) {
-      yield* publishTaskStart(events, {
-        taskId: String(service.name),
-        parentId: applyParentId,
-        label: `Apply service ${String(service.name)}`,
-      });
-    }
-
-    const applyAndInspect = Effect.gen(function* () {
-      yield* Effect.scoped(
-        provider.apply(applyPlan, {
-          reconcile: options.reconcile ?? false,
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-        }),
-      );
-      return yield* Effect.forEach(serviceList, (service) =>
-        provider.inspect({ app: plan.id, service: service.name }).pipe(
-          Effect.map((runtime) => ({
-            name: String(service.name),
-            state: runtime.state ?? runtime.status,
-            endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
-          })),
-        ),
-      );
-    });
-    const closeHostProxyOnInterrupt =
+    const closeHostProxySession =
       hostProxySession === undefined ? Effect.void : Effect.promise(() => hostProxySession.close());
 
-    const servicesStarted = yield* applyAndInspect.pipe(
-      Effect.onInterrupt(() => closeHostProxyOnInterrupt),
-      Effect.tapError(() =>
-        Effect.gen(function* () {
-          if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
-          for (const service of serviceList) {
-            yield* publishTaskFail(events, {
-              taskId: String(service.name),
-              summary: `Apply service ${String(service.name)}`,
+    return yield* Effect.gen(function* () {
+      if (managed !== undefined && hostProxySession !== undefined) {
+        yield* Effect.addFinalizer(() => Effect.promise(() => hostProxySession.close())).pipe(
+          Effect.provideService(Scope.Scope, managed.scope),
+        );
+      }
+
+      const applyPlan = hostProxySession === undefined ? plan : withHostProxyRunLando(plan, hostProxySession);
+      const serviceList = Object.values(applyPlan.services);
+      const serviceIds = serviceList.map((service) => String(service.name));
+      const applyParentId = `apply-${plan.id}`;
+      const applyStart = performance.now();
+
+      yield* events.publish(
+        PreAppStartEvent.make({
+          eventName: "pre-app-start",
+          appRef: ref,
+          providerId: plan.provider,
+          timestamp: now(),
+        }),
+      );
+
+      yield* publishTreeStart(events, {
+        parentId: applyParentId,
+        label: `Apply ${plan.name}`,
+        children: serviceIds,
+        mode: "list",
+      });
+
+      for (const service of serviceList) {
+        yield* publishTaskStart(events, {
+          taskId: String(service.name),
+          parentId: applyParentId,
+          label: `Apply service ${String(service.name)}`,
+        });
+      }
+
+      const applyAndInspect = Effect.gen(function* () {
+        yield* Effect.scoped(
+          provider.apply(applyPlan, {
+            reconcile: options.reconcile ?? false,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          }),
+        );
+        return yield* Effect.forEach(serviceList, (service) =>
+          provider.inspect({ app: plan.id, service: service.name }).pipe(
+            Effect.map((runtime) => ({
+              name: String(service.name),
+              state: runtime.state ?? runtime.status,
+              endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+            })),
+          ),
+        );
+      });
+      const closeHostProxyOnInterrupt = closeHostProxySession;
+
+      const servicesStarted = yield* applyAndInspect.pipe(
+        Effect.onInterrupt(() => closeHostProxyOnInterrupt),
+        Effect.tapError(() =>
+          Effect.gen(function* () {
+            if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
+            for (const service of serviceList) {
+              yield* publishTaskFail(events, {
+                taskId: String(service.name),
+                summary: `Apply service ${String(service.name)}`,
+                durationMs: Math.round(performance.now() - applyStart),
+              });
+            }
+            yield* publishTreeComplete(events, {
+              parentId: applyParentId,
+              summary: `${plan.name} apply failed`,
+              succeeded: 0,
+              failed: serviceList.length,
               durationMs: Math.round(performance.now() - applyStart),
             });
-          }
-          yield* publishTreeComplete(events, {
-            parentId: applyParentId,
-            summary: `${plan.name} apply failed`,
-            succeeded: 0,
-            failed: serviceList.length,
-            durationMs: Math.round(performance.now() - applyStart),
-          });
-        }),
-      ),
-    );
+          }),
+        ),
+      );
 
-    for (const service of servicesStarted) {
-      yield* publishTaskComplete(events, {
-        taskId: service.name,
-        summary: `${service.name} (${service.state})`,
+      for (const service of servicesStarted) {
+        yield* publishTaskComplete(events, {
+          taskId: service.name,
+          summary: `${service.name} (${service.state})`,
+          durationMs: Math.round(performance.now() - applyStart),
+        });
+      }
+
+      yield* publishTreeComplete(events, {
+        parentId: applyParentId,
+        summary: `${plan.name} ready`,
+        succeeded: serviceList.length,
+        failed: 0,
         durationMs: Math.round(performance.now() - applyStart),
       });
-    }
 
-    yield* publishTreeComplete(events, {
-      parentId: applyParentId,
-      summary: `${plan.name} ready`,
-      succeeded: serviceList.length,
-      failed: 0,
-      durationMs: Math.round(performance.now() - applyStart),
-    });
+      yield* startFileSyncSessions(plan, events, managed).pipe(
+        Effect.tapError(() =>
+          Effect.gen(function* () {
+            if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
+            yield* rollbackAppliedApp(provider, plan);
+          }),
+        ),
+      );
 
-    yield* startFileSyncSessions(plan, events, managed).pipe(
-      Effect.tapError(() =>
-        Effect.gen(function* () {
-          if (hostProxySession !== undefined) yield* Effect.promise(() => hostProxySession.close());
-          yield* rollbackAppliedApp(provider, plan);
+      yield* events.publish(
+        PostAppStartEvent.make({
+          eventName: "post-app-start",
+          appRef: ref,
+          providerId: plan.provider,
+          timestamp: now(),
         }),
-      ),
-    );
+      );
 
-    yield* events.publish(
-      PostAppStartEvent.make({
-        eventName: "post-app-start",
-        appRef: ref,
-        providerId: plan.provider,
-        timestamp: now(),
-      }),
-    );
-
-    return { app: plan.name, servicesStarted };
+      return { app: plan.name, servicesStarted };
+    }).pipe(Effect.onInterrupt(() => closeHostProxySession));
   });

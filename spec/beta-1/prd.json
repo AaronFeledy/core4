@@ -1116,8 +1116,8 @@
         "Lint passes"
       ],
       "priority": 62,
-      "passes": false,
-      "notes": "PRD-13 closure. Production Unix-socket transport, scoped mounts, token auth, bounded concurrency, recursion protection, and core cleanup paths are implemented for Linux/macOS. The story remains open for a cross-architecture compiled shim artifact, repeat-start worker replacement, complete pre-apply interruption cleanup, and the required native-Windows platform-equivalent transport."
+      "passes": true,
+      "notes": "PRD-13 closure complete. Production Unix-socket and Windows Desktop loopback transport, runtime-selected cross-architecture shim sidecars, authenticated bounded dispatch, verified worker replacement, interruption-safe cleanup, and lifecycle teardown are implemented and covered by focused and platform-gated integration tests."
     },
     {
       "id": "US-434",

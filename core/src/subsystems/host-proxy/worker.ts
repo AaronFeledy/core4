@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { rm } from "node:fs/promises";
+import { dirname } from "node:path";
 import { stdout } from "node:process";
 import { Effect, Schema } from "effect";
 
@@ -15,9 +14,17 @@ import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./api.ts";
 import { runOpenForHostProxy } from "./dispatch.ts";
-import { createHostProxyRunLandoSession, hostProxyRunLandoStateDir } from "./transport.ts";
+import type { HostProxyShimTarget } from "./transport-shim.ts";
+import type { HostProxyTransportKind } from "./transport.ts";
+import { createHostProxyRunLandoSession } from "./transport.ts";
 import {
-  HOST_PROXY_WORKER_COMMAND,
+  readOwnership,
+  removeOwnedHostProxyWorkerState,
+  terminateVerifiedOwnership,
+  workerOwnershipPath,
+  writeOwnership,
+} from "./worker-ownership.ts";
+import {
   type HostProxyWorkerProcess,
   type HostProxyWorkerSpawner,
   defaultSpawnWorker,
@@ -26,6 +33,12 @@ import {
 } from "./worker-process.ts";
 
 export { HOST_PROXY_WORKER_COMMAND, hostProxyWorkerArgv } from "./worker-process.ts";
+export {
+  removeOwnedHostProxyWorkerState,
+  terminateOwnedHostProxyWorker,
+  terminateOwnedHostProxyWorkersInRoot,
+  workerOwnershipPath,
+} from "./worker-ownership.ts";
 
 const WorkerInput = Schema.Struct({
   app: Schema.Struct({
@@ -42,75 +55,29 @@ const WorkerInput = Schema.Struct({
     platform: Schema.optional(Schema.String),
   }),
   shimArtifactPath: Schema.String,
+  shimTarget: Schema.optional(
+    Schema.Union(
+      Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("x64") }),
+      Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("arm64") }),
+    ),
+  ),
+  hostGatewayName: Schema.optional(Schema.String),
 });
 type WorkerInput = typeof WorkerInput.Type;
-
-const WorkerOwnership = Schema.Struct({
-  appId: Schema.String,
-  pid: Schema.Number,
-  argv: Schema.Array(Schema.String),
-  argvFingerprint: Schema.String,
-  socketPath: Schema.String,
-  shimPath: Schema.String,
-});
-type WorkerOwnership = typeof WorkerOwnership.Type;
 
 export interface DetachedHostProxyWorkerOptions {
   readonly app: AppRef;
   readonly plan: AppPlan;
   readonly paths?: RootOverrides;
   readonly shimArtifactPath: string;
+  readonly shimTarget?: HostProxyShimTarget;
+  readonly hostGatewayName?: string;
   readonly spawnWorker?: HostProxyWorkerSpawner;
-}
-
-export interface TerminateHostProxyWorkerOptions {
-  readonly paths?: RootOverrides;
   readonly readProcessArgv?: (pid: number) => Promise<ReadonlyArray<string>>;
   readonly readProcessCommand?: (pid: number) => Promise<string>;
   readonly terminateProcess?: (pid: number) => Promise<void>;
   readonly platform?: NodeJS.Platform;
 }
-
-const fingerprintArgv = (argv: ReadonlyArray<string>): string =>
-  createHash("sha256").update(JSON.stringify(argv)).digest("hex");
-
-export const workerOwnershipPath = (app: AppRef, paths?: RootOverrides): string =>
-  resolve(hostProxyRunLandoStateDir(app, paths), "worker.json");
-
-const defaultReadProcessArgv = async (pid: number): Promise<ReadonlyArray<string>> => {
-  try {
-    return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0").filter((part) => part.length > 0);
-  } catch {
-    return [];
-  }
-};
-
-const defaultReadProcessCommand = async (pid: number): Promise<string> => {
-  const proc = Bun.spawn(["ps", "-p", String(pid), "-ww", "-o", "command="], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-  return exitCode === 0 ? stdout.trim() : "";
-};
-
-const commandMatchesOwnership = (command: string, ownership: WorkerOwnership): boolean => {
-  const argv = command.split(/\s+/u).filter((part) => part.length > 0);
-  const appMarkerIndex = argv.indexOf("--app-id");
-  return (
-    argv.includes(HOST_PROXY_WORKER_COMMAND) &&
-    appMarkerIndex >= 0 &&
-    argv[appMarkerIndex + 1] === ownership.appId
-  );
-};
-
-const defaultTerminateProcess = async (pid: number): Promise<void> => {
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
-};
 
 const rootOverridesFromWorkerInput = (paths: WorkerInput["paths"]): RootOverrides => ({
   ...(paths.userConfRoot === undefined ? {} : { userConfRoot: paths.userConfRoot }),
@@ -120,58 +87,17 @@ const rootOverridesFromWorkerInput = (paths: WorkerInput["paths"]): RootOverride
   ...(paths.platform === undefined ? {} : { platform: paths.platform }),
 });
 
-const readOwnership = async (app: AppRef, paths?: RootOverrides): Promise<WorkerOwnership | undefined> => {
-  try {
-    return Schema.decodeUnknownSync(WorkerOwnership)(
-      JSON.parse(await readFile(workerOwnershipPath(app, paths), "utf8")),
-    );
-  } catch {
-    return undefined;
-  }
-};
-
-const readOwnershipFile = async (path: string): Promise<WorkerOwnership | undefined> => {
-  try {
-    return Schema.decodeUnknownSync(WorkerOwnership)(JSON.parse(await readFile(path, "utf8")));
-  } catch {
-    return undefined;
-  }
-};
-
-const terminateVerifiedOwnership = async (
-  ownership: WorkerOwnership,
-  options: TerminateHostProxyWorkerOptions,
-): Promise<boolean> => {
-  const platform = options.platform ?? process.platform;
-  if (options.readProcessArgv !== undefined || platform === "linux") {
-    const actualArgv = await (options.readProcessArgv ?? defaultReadProcessArgv)(ownership.pid);
-    if (actualArgv.length === 0 || fingerprintArgv(actualArgv) !== ownership.argvFingerprint) return false;
-  } else {
-    const command = await (options.readProcessCommand ?? defaultReadProcessCommand)(ownership.pid);
-    if (!commandMatchesOwnership(command, ownership)) return false;
-  }
-  await (options.terminateProcess ?? defaultTerminateProcess)(ownership.pid);
-  return true;
-};
-
-const writeOwnership = async (
-  app: AppRef,
-  paths: RootOverrides | undefined,
-  ownership: WorkerOwnership,
-): Promise<void> => {
-  const path = workerOwnershipPath(app, paths);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(ownership, null, 2)}\n`, { mode: 0o600 });
-};
-
 export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOptions) =>
   Effect.async<
     {
       readonly appId: string;
       readonly sessionId: string;
       readonly token: string;
-      readonly socketPath: string;
+      readonly socketPath?: string;
+      readonly url?: string;
+      readonly containerUrl?: string;
       readonly shimPath: string;
+      readonly transport: HostProxyTransportKind;
       readonly close: () => Promise<void>;
     },
     HostProxyTransportUnavailableError
@@ -195,20 +121,50 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
       try {
         const spawnWorker = options.spawnWorker ?? defaultSpawnWorker;
         const argv = hostProxyWorkerArgv({ appId: options.app.id });
+        const existingOwnership = await readOwnership(options.app, options.paths);
+        if (existingOwnership !== undefined) {
+          const result = await terminateVerifiedOwnership(existingOwnership, options);
+          if (result === "unverified") {
+            fail(
+              new HostProxyTransportUnavailableError({
+                message: "Existing host-proxy worker ownership could not be verified for replacement.",
+                socketPath: workerOwnershipPath(options.app, options.paths),
+                remediation: "Stop the app or clear stale host-proxy state before starting it again.",
+              }),
+            );
+            return;
+          }
+          await rm(dirname(workerOwnershipPath(options.app, options.paths)), {
+            recursive: true,
+            force: true,
+          });
+        }
         worker = spawnWorker({ argv });
         const currentWorker = worker;
         const encodedPlan = Schema.encodeUnknownSync(AppPlan)(options.plan);
-        const paths = makeLandoPaths(options.paths).roots;
+        const landoPaths = makeLandoPaths(options.paths);
+        const paths = { ...landoPaths.roots, platform: landoPaths.platform };
         await worker.writeStdin(
-          `${JSON.stringify({ app: options.app, plan: encodedPlan, paths, shimArtifactPath: options.shimArtifactPath })}\n`,
+          `${JSON.stringify({
+            app: options.app,
+            plan: encodedPlan,
+            paths,
+            shimArtifactPath: options.shimArtifactPath,
+            ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
+            ...(options.hostGatewayName === undefined ? {} : { hostGatewayName: options.hostGatewayName }),
+          })}\n`,
         );
         const ready = await worker.readReady();
-        const ownership: WorkerOwnership = {
+        const transport: HostProxyTransportKind =
+          ready.transport ??
+          (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+        const ownership = {
           appId: options.app.id,
           pid: worker.pid,
           argv: [...worker.argv],
-          argvFingerprint: fingerprintArgv(worker.argv),
-          socketPath: ready.socketPath,
+          ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+          ...(ready.url === undefined ? {} : { url: ready.url }),
+          ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
           shimPath: ready.shimPath,
         };
         await writeOwnership(options.app, options.paths, ownership);
@@ -222,8 +178,11 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
             appId: ready.appId,
             sessionId: ready.sessionId,
             token: ready.token,
-            socketPath: ready.socketPath,
+            ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+            ...(ready.url === undefined ? {} : { url: ready.url }),
+            ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
             shimPath: ready.shimPath,
+            transport,
             close: () => currentWorker.terminate(),
           }),
         );
@@ -238,38 +197,6 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
       await worker?.terminate();
     });
   });
-
-export const terminateOwnedHostProxyWorker = (app: AppRef, options: TerminateHostProxyWorkerOptions = {}) =>
-  Effect.tryPromise({
-    try: async () => {
-      const ownership = await readOwnership(app, options.paths);
-      if (ownership === undefined) return;
-      await terminateVerifiedOwnership(ownership, options);
-    },
-    catch: () => undefined,
-  }).pipe(Effect.asVoid);
-
-export const terminateOwnedHostProxyWorkersInRoot = (
-  userDataRoot: string,
-  options: Omit<TerminateHostProxyWorkerOptions, "paths"> = {},
-) =>
-  Effect.tryPromise({
-    try: async () => {
-      const root = makeLandoPaths({ userDataRoot }).hostProxyRunRoot;
-      const paths = makeLandoPaths({ userDataRoot });
-      const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const appRunDir = resolve(root, entry.name);
-        const ownership = await readOwnershipFile(resolve(appRunDir, "worker.json"));
-        if (ownership === undefined || resolve(paths.hostProxyRunDir(ownership.appId)) !== appRunDir)
-          continue;
-        if (await terminateVerifiedOwnership(ownership, options))
-          await rm(appRunDir, { recursive: true, force: true });
-      }
-    },
-    catch: () => undefined,
-  }).pipe(Effect.asVoid);
 
 export const runHostProxyWorkerProcess = async (): Promise<void> => {
   const input = Schema.decodeUnknownSync(WorkerInput)(JSON.parse(await stdinText()));
@@ -286,6 +213,8 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         executor: (request) => runOpenForHostProxy(input.plan, request).pipe(Effect.provide(runtimeContext)),
         paths: rootOverridesFromWorkerInput(input.paths),
         shimArtifactPath: input.shimArtifactPath,
+        ...(input.shimTarget === undefined ? {} : { shimTarget: input.shimTarget }),
+        ...(input.hostGatewayName === undefined ? {} : { hostGatewayName: input.hostGatewayName }),
       });
     }).pipe(Effect.provide(runtime)),
   );
@@ -295,8 +224,11 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
       appId: session.appId,
       sessionId: session.sessionId,
       token: session.token,
-      socketPath: session.socketPath,
+      ...(session.socketPath === undefined ? {} : { socketPath: session.socketPath }),
+      ...(session.url === undefined ? {} : { url: session.url }),
+      ...(session.containerUrl === undefined ? {} : { containerUrl: session.containerUrl }),
       shimPath: session.shimPath,
+      transport: session.transport,
     })}\n`,
   );
   await new Promise<void>((resolveShutdown) => {
@@ -309,9 +241,4 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
 };
 
 export const removeHostProxyWorkerState = (app: AppRef, paths?: RootOverrides): Effect.Effect<void, never> =>
-  terminateOwnedHostProxyWorker(app, paths === undefined ? {} : { paths }).pipe(
-    Effect.zipRight(
-      Effect.promise(() => rm(dirname(workerOwnershipPath(app, paths)), { recursive: true, force: true })),
-    ),
-    Effect.catchAll(() => Effect.void),
-  );
+  removeOwnedHostProxyWorkerState(app, paths);

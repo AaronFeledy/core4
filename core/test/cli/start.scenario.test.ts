@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
@@ -9,6 +9,7 @@ import {
   FileSyncStartError,
   GlobalAutoStartError,
   GlobalServiceMissingError,
+  HostProxyTransportUnavailableError,
   ProviderUnavailableError,
 } from "@lando/core/errors";
 import {
@@ -82,7 +83,7 @@ const capabilities: ProviderCapabilities = {
   rootless: true,
   privilegedServices: false,
   composeSpec: "portable",
-  providerExtensions: [],
+  providerExtensions: ["@lando/core/host-proxy-container-target:linux-x64"],
 };
 
 const metadata = {
@@ -114,6 +115,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 
 const web = servicePlan("web");
 const database = servicePlan("database");
+
 const hostProxyEnabledWeb: ServicePlan = {
   ...web,
   type: "lando",
@@ -202,6 +204,17 @@ const expectMissingPath = async (path: string): Promise<void> => {
   throw new Error(`Expected ${path} to be removed.`);
 };
 
+const waitForTaskEvent = async (
+  events: ReadonlyArray<{ readonly _tag: string; readonly [key: string]: unknown }>,
+  predicate: (event: { readonly _tag: string; readonly [key: string]: unknown }) => boolean,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 800; attempt += 1) {
+    if (events.some(predicate)) return;
+    await Bun.sleep(5);
+  }
+  throw new Error("Expected task event was not published.");
+};
+
 const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
@@ -248,6 +261,7 @@ const makeStartLayer = (
     readonly signalSeen?: boolean[];
     readonly applyFailure?: ProviderUnavailableError;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly blockTreeStart?: Effect.Effect<void>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
     readonly providerPlatform?: RuntimeProviderShape["platform"];
@@ -331,7 +345,15 @@ const makeStartLayer = (
         Effect.sync(() => {
           events.push(event._tag);
           taskEvents.push(event);
-        }),
+        }).pipe(
+          Effect.zipRight(
+            event._tag === "task.tree.start" &&
+              event.label === `Apply ${plannedApp.name}` &&
+              options.blockTreeStart !== undefined
+              ? options.blockTreeStart
+              : Effect.void,
+          ),
+        ),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
@@ -609,7 +631,10 @@ describe("lando start", () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
-        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       const harness = makeStartLayer({ plannedApp: eligiblePlan });
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
@@ -632,11 +657,119 @@ describe("lando start", () => {
     });
   });
 
-  test("hostReachability none is a true host-proxy no-op at start/apply", async () => {
+  test("selects the provider-declared linux-arm64 shim for an eligible service on an x64 host", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-cross-arch-shim-")));
+    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousDistRoot = process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT;
+    const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    try {
+      Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
+      process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = join(root, "dist");
+      process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
+      process.env.LANDO_USER_DATA_ROOT = join(root, "data");
+      const shimArtifact = join(root, "dist", "host-proxy", "linux-arm64", "lando-shim");
+      await mkdir(dirname(shimArtifact), { recursive: true });
+      await writeFile(shimArtifact, "#!/usr/bin/env sh\n# linux-arm64-selected\nexit 0\n");
+      await chmod(shimArtifact, 0o755);
+      const dataRoot = join(root, "data");
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        providerCapabilities: {
+          ...capabilities,
+          providerExtensions: ["@lando/core/host-proxy-container-target:linux-arm64"],
+        },
+      });
+
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ source: join(hostProxyDir, "lando"), target: "/usr/local/bin/lando" }),
+      );
+      expect(await readFile(join(hostProxyDir, "lando"), "utf8")).toContain("linux-arm64-selected");
+    } finally {
+      if (previousArtifact === undefined)
+        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
+      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousDistRoot === undefined)
+        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_DIST_ROOT");
+      else process.env.LANDO_HOST_PROXY_SHIM_DIST_ROOT = previousDistRoot;
+      if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+      else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when selected provider does not declare a container target", async () => {
     await withHostProxyArtifact(async () => {
       const eligiblePlan = {
         ...plan,
         services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        providerCapabilities: { ...capabilities, providerExtensions: [] },
+      });
+
+      const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+      }
+      expect(harness.applyPlans).toHaveLength(0);
+    });
+  });
+
+  test("fails closed when selected provider declares conflicting container targets", async () => {
+    await withHostProxyArtifact(async () => {
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        providerCapabilities: {
+          ...capabilities,
+          providerExtensions: [
+            "@lando/core/host-proxy-container-target:linux-x64",
+            "@lando/core/host-proxy-container-target:linux-arm64",
+          ],
+        },
+      });
+
+      const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+      }
+      expect(harness.applyPlans).toHaveLength(0);
+    });
+  });
+
+  test("hostReachability none is a true host-proxy no-op at start/apply", async () => {
+    await withHostProxyArtifact(async () => {
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
@@ -658,25 +791,39 @@ describe("lando start", () => {
     });
   });
 
-  test("win32 provider platform degrades host-proxy to no-op during start", async () => {
-    await withHostProxyArtifact(async () => {
+  test("win32 provider platform injects provider Desktop DNS endpoint during start", async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
-        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
         providerPlatform: "win32",
+        providerCapabilities: {
+          ...capabilities,
+          providerExtensions: [
+            ...capabilities.providerExtensions,
+            "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
+          ],
+        },
       });
 
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
+      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
-      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
+      expect(appliedWeb?.hostAliases).toEqual([]);
+      await stat(makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
     });
   });
 
@@ -684,7 +831,10 @@ describe("lando start", () => {
     await withHostProxyArtifact(async () => {
       const eligiblePlan = {
         ...plan,
-        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       const harness = makeStartLayer({ plannedApp: eligiblePlan });
 
@@ -745,7 +895,10 @@ describe("lando start", () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
-        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
@@ -766,7 +919,10 @@ describe("lando start", () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
-        services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
       };
       let markApplyEntered: (() => void) | undefined;
       const applyEntered = new Promise<void>((resolve) => {
@@ -781,6 +937,30 @@ describe("lando start", () => {
       await applyEntered;
       const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
       await stat(hostProxyDir);
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
+      await expectMissingPath(hostProxyDir);
+    });
+  });
+
+  test("cleans host-proxy session artifacts when interrupted after acquisition before provider apply", async () => {
+    await withHostProxyArtifact(async ({ dataRoot }) => {
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({ plannedApp: eligiblePlan, blockTreeStart: Effect.never });
+      const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
+
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      await waitForTaskEvent(
+        harness.taskEvents,
+        (event) => event._tag === "task.tree.start" && event.label === "Apply test-start",
+      );
+      expect(harness.applyPlans).toHaveLength(0);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       await expectMissingPath(hostProxyDir);

@@ -120,6 +120,88 @@ describe("provider-docker capabilities", () => {
     expect(macosProvider.capabilities).toEqual({ ...macosDockerCapabilities, serviceLogSources: false });
   });
 
+  test("uses Docker info architecture for host-proxy target capability", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ Architecture: "aarch64" }) },
+          }),
+        ),
+      ),
+    );
+
+    expect(provider.capabilities.providerExtensions).toContain(
+      "@lando/core/host-proxy-container-target:linux-arm64",
+    );
+    expect(provider.capabilities.providerExtensions).not.toContain(
+      "@lando/core/host-proxy-container-target:linux-x64",
+    );
+  });
+
+  test("omits Docker host-proxy target capability when API architecture is missing", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({}) },
+          }),
+        ),
+      ),
+    );
+
+    expect(
+      provider.capabilities.providerExtensions.some((extension) =>
+        extension.startsWith("@lando/core/host-proxy-container-target:"),
+      ),
+    ).toBe(false);
+  });
+
+  test("default construction introspects Docker info architecture through resolved socket transport", async () => {
+    const socketDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-default-info-"));
+    const socketPath = join(socketDir, "docker.sock");
+    const requests: string[] = [];
+    const responseBody = JSON.stringify({ Architecture: "x86_64" });
+    const server = createServer((socket) => {
+      socket.once("data", (chunk) => {
+        requests.push(chunk.toString());
+        socket.end(
+          `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${responseBody.length}\r\n\r\n${responseBody}`,
+        );
+      });
+    });
+
+    try {
+      await listen(server, socketPath);
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({ platform: "linux", env: { LANDO_TEST_DOCKER_SOCKET: socketPath } }),
+          ),
+        ),
+      );
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toStartWith("GET /v1.43/info HTTP/1.1");
+      expect(provider.capabilities.providerExtensions).toContain(
+        "@lando/core/host-proxy-container-target:linux-x64",
+      );
+    } finally {
+      await close(server);
+      await rm(socketDir, { recursive: true, force: true });
+    }
+  });
+
+  test("advertises Docker Desktop host alias for Windows TCP transport", () => {
+    expect(dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine").providerExtensions).toContain(
+      "@lando/core/host-proxy-transport:tcp-host-gateway:host.docker.internal",
+    );
+  });
+
   test("advertises service log source following only when file access is injected", async () => {
     const fs = makeMemoryLogFileAccess();
     const provider = await Effect.runPromise(
