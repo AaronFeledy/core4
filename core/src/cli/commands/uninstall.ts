@@ -298,9 +298,9 @@ export const buildUninstallPlan = (
       id: "host-proxy-sessions",
       label: "host-proxy sessions",
       target: hostProxySessions,
-      destructive: true,
+      destructive: false,
       status: pathStatus(hostProxySessions, exists),
-      detail: "Remove transient host-proxy runLando sockets and shims from app caches.",
+      detail: "Terminate owned host-proxy workers and remove only app-scoped host-proxy sockets and shims.",
     },
     {
       id: "installed-binary",
@@ -364,6 +364,16 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
+    if (step.id === "host-proxy-sessions" && step.status === "owned") {
+      try {
+        await teardownHostProxySessions(userDataRoot);
+        executed.push({ ...step, outcome: "completed" });
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+        executed.push({ ...step, outcome: "failed", error });
+      }
+      continue;
+    }
     if (!step.destructive || step.status !== "owned") {
       executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
       continue;
@@ -379,12 +389,6 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
         // The target is a machine NAME, not a filesystem path: tear it down via the
         // provider-machine seam and never fall through to remove(step.target).
         await teardownProviderMachines(userDataRoot);
-        executed.push({ ...step, outcome: "completed" });
-        continue;
-      }
-      if (step.id === "host-proxy-sessions") {
-        await teardownHostProxySessions(userDataRoot);
-        await remove(step.target);
         executed.push({ ...step, outcome: "completed" });
         continue;
       }

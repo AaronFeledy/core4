@@ -172,7 +172,7 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("plan targets host-proxy sessions under userDataRoot run directory", () => {
+  test("plan reports host-proxy sessions under userDataRoot run directory without removing the run root", () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const hostProxyRunDir = join(userDataRoot, "run");
@@ -186,18 +186,19 @@ describe("meta:uninstall", () => {
       expect(plan.find((step) => step.id === "host-proxy-sessions")).toMatchObject({
         target: hostProxyRunDir,
         status: "owned",
+        destructive: false,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test("teardown runs before remove for host-proxy sessions", async () => {
+  test("teardown owns host-proxy cleanup without removing unrelated run state", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const hostProxyRunDir = join(userDataRoot, "run");
-      const order: string[] = [];
       const teardownRoots: string[] = [];
+      const removed: string[] = [];
 
       const result = await Effect.runPromise(
         uninstall({
@@ -209,10 +210,9 @@ describe("meta:uninstall", () => {
           exists: (path: string) => path === hostProxyRunDir,
           teardownHostProxySessions: async (rootPath: string) => {
             teardownRoots.push(rootPath);
-            order.push("teardown-host-proxy");
           },
           remove: async (path: string) => {
-            order.push(`remove:${path}`);
+            removed.push(path);
           },
         }),
       );
@@ -221,7 +221,7 @@ describe("meta:uninstall", () => {
         outcome: "completed",
       });
       expect(teardownRoots).toEqual([userDataRoot]);
-      expect(order.slice(0, 2)).toEqual(["teardown-host-proxy", `remove:${hostProxyRunDir}`]);
+      expect(removed).not.toContain(hostProxyRunDir);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
