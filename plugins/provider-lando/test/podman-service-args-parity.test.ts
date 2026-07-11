@@ -27,6 +27,10 @@ test("buildPodmanServiceArgs stays byte-identical to the core managed runtime se
   expect([providerSpec.command, ...providerSpec.args]).toEqual([coreSpec.command, ...coreSpec.args]);
   expect(providerSpec.command).toBe(coreSpec.command);
   expect(providerSpec.args).toEqual(coreSpec.args);
+  expect(providerSpec.env).toEqual({
+    CONTAINERS_CONF: `${paths.runtimeConfigDir}/containers.conf`,
+    CONTAINERS_REGISTRIES_CONF: `${paths.runtimeConfigDir}/registries.conf`,
+  });
   expect(providerSpec.socketPath).toBe(coreSpec.socketPath);
 });
 

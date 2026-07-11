@@ -14,6 +14,7 @@ const escapeTomlString = (value: string): string => value.replace(/\\/gu, "\\\\"
 // Podman's empty default binds published ports on every interface; loopback-only
 // keeps managed-runtime bindings off the LAN.
 const MANAGED_DEFAULT_HOST_IPS = ["127.0.0.1", "::1"] as const;
+const MANAGED_REGISTRIES_CONF = 'unqualified-search-registries = ["docker.io"]\n';
 
 export const writeManagedRuntimeContainersConf = (
   options: WriteManagedRuntimeContainersConfOptions,
@@ -21,11 +22,16 @@ export const writeManagedRuntimeContainersConf = (
   Effect.tryPromise({
     try: async () => {
       const defaultHostIps = MANAGED_DEFAULT_HOST_IPS.map((ip) => `"${ip}"`).join(", ");
-      const body =
-        `[engine]\nhelper_binaries_dir = ["${escapeTomlString(options.runtimeBinDir)}"]\n` +
-        `[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
+      const binDir = escapeTomlString(options.runtimeBinDir);
+      // Pin conmon and the crun OCI runtime to the bundled binaries: host copies
+      // (e.g. a pre-Podman-6 crun on CI runners) fail container start with
+      // "crun: unknown version specified". log_driver stays k8s-file because the
+      // bundled static conmon has no journald support.
+      const body = `[containers]\nlog_driver = "k8s-file"\n[engine]\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
-      await writeFile(`${options.runtimeConfigDir.replace(/\/+$/u, "")}/containers.conf`, body);
+      const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");
+      await writeFile(`${configDir}/containers.conf`, body);
+      await writeFile(`${configDir}/registries.conf`, MANAGED_REGISTRIES_CONF);
     },
     catch: (cause) =>
       new ProviderUnavailableError({

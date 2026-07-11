@@ -32,7 +32,10 @@ describe("PodmanServiceRunner", () => {
     });
 
     expect(spec.command).toBe("/data/runtime/bin/podman");
-    expect(spec.env).toEqual({ CONTAINERS_CONF: "/data/runtime/config/containers.conf" });
+    expect(spec.env).toEqual({
+      CONTAINERS_CONF: "/data/runtime/config/containers.conf",
+      CONTAINERS_REGISTRIES_CONF: "/data/runtime/config/registries.conf",
+    });
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -128,6 +131,7 @@ describe("PodmanServiceRunner", () => {
 
       expect(pid).toBe(4321);
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
+      expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
       expect(launchedEnv?.PATH).toBe(process.env.PATH);
     } finally {
       await rm(dir, { recursive: true, force: true });

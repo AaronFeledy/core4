@@ -94,7 +94,10 @@ export const buildPodmanServiceArgs = (p: {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
   return {
     command: p.podmanBin,
-    env: { CONTAINERS_CONF: `${p.configDir}/containers.conf` },
+    env: {
+      CONTAINERS_CONF: `${p.configDir}/containers.conf`,
+      CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
+    },
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,
       runtimeRunDir: p.runRoot,

@@ -217,6 +217,7 @@ const canonicalArgs = (p: ReturnType<typeof paths>) =>
 
 const canonicalEnv = (p: ReturnType<typeof paths>) => ({
   CONTAINERS_CONF: join(p.configDir, "containers.conf"),
+  CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
 });
 
 const writeLaunchState = (p: ReturnType<typeof paths>, pid: number) =>

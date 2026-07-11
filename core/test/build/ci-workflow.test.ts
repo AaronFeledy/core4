@@ -117,7 +117,7 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain("      - name: Configure Docker socket");
     expect(providerContracts).toContain("      - name: Pull live acceptance fixture images");
     expect(providerContracts).toContain(
-      '              "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
+      '                CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/lando-data/runtime/config/registries.conf" "$RUNNER_TEMP/lando-data/runtime/bin/podman" --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
     );
     expect(providerContracts).toContain(
       '              podman --url "unix://$LANDO_TEST_PODMAN_SOCKET" pull "$image"',
