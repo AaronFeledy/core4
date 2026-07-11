@@ -191,7 +191,9 @@ describe("meta:doctor command", () => {
     expect(runtime.version).toBe("0.0.0-test");
 
     const capabilities = check.capabilities as Record<string, unknown>;
+    const optionalCapabilityFields = new Set(["hostProxy"]);
     for (const field of Object.keys(ProviderCapabilities.fields)) {
+      if (optionalCapabilityFields.has(field)) continue;
       expect(capabilities).toHaveProperty(field);
     }
 

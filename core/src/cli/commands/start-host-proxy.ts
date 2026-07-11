@@ -112,6 +112,7 @@ export const startHostProxyRunLandoSession = (
     yield* Effect.context<ShellRunner | EventService | RedactionService>();
     const eligibleServices = hostProxyEligibleServices(plan);
     if (capabilities.hostReachability === "none" || eligibleServices.length === 0) return undefined;
+    if ((capabilities.hostProxy?.containerTargets.length ?? 0) === 0) return undefined;
     const shimTarget = yield* hostProxyShimTargetFor(capabilities);
     const platform = options.platform ?? makeLandoPaths().platform;
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);

@@ -730,7 +730,7 @@ describe("lando start", () => {
     }
   });
 
-  test("fails closed when selected provider does not declare a container target", async () => {
+  test("provider without a declared container target degrades to a host-proxy no-op at start/apply", async () => {
     await withHostProxyArtifact(async () => {
       const eligiblePlan = {
         ...plan,
@@ -741,13 +741,14 @@ describe("lando start", () => {
         providerCapabilities: { ...capabilities, hostProxy: { containerTargets: [] } },
       });
 
-      const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
-      }
-      expect(harness.applyPlans).toHaveLength(0);
+      const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+      );
     });
   });
 

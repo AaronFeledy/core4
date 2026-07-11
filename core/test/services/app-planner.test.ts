@@ -513,6 +513,26 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("records host-proxy runLando unavailable when the provider declares no container target", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "host-proxy-no-target",
+          runtime: 4,
+          services: { web: { type: "node:lts" } },
+        }),
+        { ...providerLandoCapabilities, hostProxy: { containerTargets: [] } },
+      );
+
+      expect(appPlan.extensions["@lando/core/host-proxy"]).toEqual({
+        runLando: {
+          availability: "unavailable",
+          reason: "Provider declares no host-proxy Linux container target; host-proxy runLando is disabled.",
+        },
+      });
+    });
+  });
+
   test("uses config defaultProviderId when no Landofile or env provider is set", async () => {
     const previous = process.env.LANDO_PROVIDER;
     Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
