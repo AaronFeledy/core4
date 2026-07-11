@@ -39,7 +39,10 @@ const LITERAL_FIELDS = {
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
-const EXPECTED_FIELD_SET = [...BOOLEAN_FIELDS, ...Object.keys(LITERAL_FIELDS), ...ARRAY_FIELDS].sort();
+const OPTIONAL_FIELDS = ["hostProxy"] as const;
+
+const REQUIRED_FIELD_SET = [...BOOLEAN_FIELDS, ...Object.keys(LITERAL_FIELDS), ...ARRAY_FIELDS].sort();
+const EXPECTED_FIELD_SET = [...REQUIRED_FIELD_SET, ...OPTIONAL_FIELDS].sort();
 
 const providerLandoFixture: typeof ProviderCapabilities.Encoded = {
   artifactBuild: true,
@@ -121,7 +124,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(28);
+    expect(actual).toHaveLength(29);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -181,6 +184,36 @@ describe("ProviderCapabilities — field set lock", () => {
       providerExtensions: ["compose", 1],
     });
     expect(Either.isLeft(rejected)).toBe(true);
+  });
+
+  test("hostProxy accepts structured container targets and a hostname-only TCP gateway", () => {
+    const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      hostProxy: {
+        containerTargets: [{ os: "linux", arch: "x64" }],
+        tcpHostGateway: "host.containers.internal",
+      },
+    });
+    expect(Either.isRight(accepted)).toBe(true);
+
+    const rejectedTarget = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      hostProxy: { containerTargets: [{ os: "darwin", arch: "arm64" }] },
+    });
+    expect(Either.isLeft(rejectedTarget)).toBe(true);
+
+    for (const tcpHostGateway of [
+      "",
+      "https://host.containers.internal",
+      "host.containers.internal:80",
+      "host/path",
+    ]) {
+      const rejectedGateway = Schema.decodeUnknownEither(ProviderCapabilities)({
+        ...providerLandoFixture,
+        hostProxy: { containerTargets: [], tcpHostGateway },
+      });
+      expect(Either.isLeft(rejectedGateway)).toBe(true);
+    }
   });
 });
 
@@ -291,7 +324,7 @@ describe("ProviderCapabilities — rejection paths", () => {
   });
 
   test("treats every field as required — omitting any one fails decoding (defaults are not from caller code)", () => {
-    for (const field of EXPECTED_FIELD_SET) {
+    for (const field of REQUIRED_FIELD_SET) {
       const { [field]: _omitted, ...partial } = providerLandoFixture as Record<string, unknown>;
       const result = Schema.decodeUnknownEither(ProviderCapabilities)(partial);
       expect(Either.isLeft(result)).toBe(true);

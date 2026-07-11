@@ -18,14 +18,17 @@ import { ProviderCapabilities } from "@lando/sdk/schema";
 
 describe("provider-podman capabilities", () => {
   test("declares every ProviderCapabilities field for Linux, macOS, and Windows", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields).sort();
+    const expectedFields = Object.keys(ProviderCapabilities.fields)
+      .filter((field) => field !== "hostProxy")
+      .sort();
+    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields).sort();
     const linux = podmanCapabilitiesForPlatform("linux");
     const macos = podmanCapabilitiesForPlatform("darwin");
     const windows = podmanCapabilitiesForPlatform("win32");
 
     expect(Object.keys(linux).sort()).toEqual(expectedFields);
     expect(Object.keys(macos).sort()).toEqual(expectedFields);
-    expect(Object.keys(windows).sort()).toEqual(expectedFields);
+    expect(Object.keys(windows).sort()).toEqual(expectedWindowsFields);
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
@@ -57,27 +60,16 @@ describe("provider-podman capabilities", () => {
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
-    expect(
-      podmanCapabilitiesForPlatform("linux").providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
-    expect(
-      podmanCapabilitiesForPlatform("darwin").providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
-    expect(
-      podmanCapabilitiesForPlatform("win32").providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
+    expect(podmanCapabilitiesForPlatform("linux").hostProxy).toBeUndefined();
+    expect(podmanCapabilitiesForPlatform("darwin").hostProxy).toBeUndefined();
+    expect(podmanCapabilitiesForPlatform("win32").hostProxy?.containerTargets).toEqual([]);
   });
 
   test("advertises Podman Desktop host alias for Windows TCP transport", () => {
-    expect(podmanCapabilitiesForPlatform("win32").providerExtensions).toContain(
-      "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
-    );
+    expect(podmanCapabilitiesForPlatform("win32").hostProxy).toEqual({
+      containerTargets: [],
+      tcpHostGateway: "host.containers.internal",
+    });
   });
 });
 
@@ -287,17 +279,13 @@ describe("provider-podman RuntimeProvider layer", () => {
     );
 
     expect(linuxProvider.id).toBe("podman");
-    expect(linuxProvider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-x64",
-    );
-    expect(macosProvider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
-    expect(windowsProvider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
+    expect(linuxProvider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "x64" }]);
+    expect(macosProvider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);
+    expect(windowsProvider.capabilities.hostProxy?.containerTargets).toEqual([
+      { os: "linux", arch: "arm64" },
+    ]);
     expect(windowsProvider.capabilities).toEqual({
-      ...podmanCapabilitiesForPlatform("win32", ["@lando/core/host-proxy-container-target:linux-arm64"]),
+      ...podmanCapabilitiesForPlatform("win32", [{ os: "linux", arch: "arm64" }]),
       serviceLogSources: false,
     });
   });
@@ -312,12 +300,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       }),
     );
 
-    expect(provider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
-    expect(provider.capabilities.providerExtensions).not.toContain(
-      "@lando/core/host-proxy-container-target:linux-x64",
-    );
+    expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);
   });
 
   test("omits Podman host-proxy target capability when API architecture is missing", async () => {
@@ -330,11 +313,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       }),
     );
 
-    expect(
-      provider.capabilities.providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
+    expect(provider.capabilities.hostProxy?.containerTargets).toEqual([]);
   });
 
   test("advertises service log source following only when file access is injected", async () => {

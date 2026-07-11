@@ -84,7 +84,8 @@ const capabilities: ProviderCapabilities = {
   rootless: true,
   privilegedServices: false,
   composeSpec: "portable",
-  providerExtensions: ["@lando/core/host-proxy-container-target:linux-x64"],
+  providerExtensions: [],
+  hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
 };
 
 const metadata = {
@@ -702,7 +703,7 @@ describe("lando start", () => {
         plannedApp: eligiblePlan,
         providerCapabilities: {
           ...capabilities,
-          providerExtensions: ["@lando/core/host-proxy-container-target:linux-arm64"],
+          hostProxy: { containerTargets: [{ os: "linux", arch: "arm64" }] },
         },
       });
 
@@ -737,7 +738,7 @@ describe("lando start", () => {
       };
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
-        providerCapabilities: { ...capabilities, providerExtensions: [] },
+        providerCapabilities: { ...capabilities, hostProxy: { containerTargets: [] } },
       });
 
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
@@ -763,10 +764,12 @@ describe("lando start", () => {
         plannedApp: eligiblePlan,
         providerCapabilities: {
           ...capabilities,
-          providerExtensions: [
-            "@lando/core/host-proxy-container-target:linux-x64",
-            "@lando/core/host-proxy-container-target:linux-arm64",
-          ],
+          hostProxy: {
+            containerTargets: [
+              { os: "linux", arch: "x64" },
+              { os: "linux", arch: "arm64" },
+            ],
+          },
         },
       });
 
@@ -823,10 +826,10 @@ describe("lando start", () => {
         providerPlatform: "win32",
         providerCapabilities: {
           ...capabilities,
-          providerExtensions: [
-            ...capabilities.providerExtensions,
-            "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
-          ],
+          hostProxy: {
+            containerTargets: capabilities.hostProxy?.containerTargets ?? [],
+            tcpHostGateway: "host.containers.internal",
+          },
         },
       });
 

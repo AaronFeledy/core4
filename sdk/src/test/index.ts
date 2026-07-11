@@ -302,6 +302,8 @@ const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(valu
 const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof typeof ProviderCapabilities.fields
 >;
+const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilities.fields>(["hostProxy"]);
+const REQUIRED_CAPABILITY_KEYS = CAPABILITY_KEYS.filter((key) => !OPTIONAL_CAPABILITY_KEYS.has(key));
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
@@ -548,7 +550,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
 
     yield* requireContract(Either.isRight(capabilities), "capability matrix decodes", capabilities);
-    for (const key of CAPABILITY_KEYS) {
+    for (const key of REQUIRED_CAPABILITY_KEYS) {
       yield* requireContract(
         (provider.capabilities as Readonly<Record<string, unknown>>)[key] !== undefined,
         `capability ${String(key)} is populated`,

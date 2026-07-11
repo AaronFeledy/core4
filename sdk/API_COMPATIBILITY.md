@@ -8,6 +8,7 @@
 - `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaAnnotationIssue`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
 - `GuideFrontmatter.defaultLayer` and `ScenarioProps.layer` accept `"e2e"` in addition to `"scenario"`; e2e guide scenarios are generated behind an explicit live-provider gate rather than rejected at decode time.
 - `FileFormat` (and therefore `ManagedFile.format`) accepts `"javascript"` and `"typescript"` in addition to the prior members; both encode/decode verbatim like `text` and carry a `//` ownership marker so scaffolded code files stay valid. Widening the literal is additive — prior values still decode.
+- `ProviderCapabilities` additively gains optional `hostProxy` structured capabilities with `containerTargets` and optional `tcpHostGateway`, replacing private pre-ship host-proxy provider-extension prefix conventions with Schema-validated fields.
 - `ProviderCapabilities` adds the data-plane capability fields `volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, and `ephemeralMounts`; `EphemeralRunSpec` adds mount/stdin/stdout/env/remove options; `RuntimeProviderShape` adds `runStream`, the eight data-plane methods, and optional `removeVolumeSnapshot` cleanup. These are additive provider-contract extensions for the §10.11 data plane.
 - `@lando/sdk/renderer` is a type/contract-only subpath (like `@lando/sdk/expressions`). It exports the terminal-renderer contracts `RendererIO` and `RendererContribution`. The bundled `@lando/renderer-lando` plugin now owns the default `lando` renderer implementation (task-tree painter, keybindings, formatters, event routing) and exports it as a finished `RendererContribution`; core resolves that contribution through its bundled-renderer registry. The prior core-injected dependency-injection seam is removed: the `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, and `RendererContributionFactory` types are dropped (pre-ship, no runtime consumers). It exports no runtime values and so does not appear in the `Object.keys()` runtime export checks.
 - `@lando/sdk/verified-stream` is the shared stream → SHA-256 → temp-file → atomic-rename helper used by verified artifact consumers. It exports runtime helpers like `@lando/sdk/landofile`, but no Live layers, service tags, OCLIF imports, or core runtime dependencies.
@@ -125,7 +126,10 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostProxyContainerTarget`
 - `HostProxyErrorCode`
+- `HostProxyGatewayHostname`
+- `HostProxyProviderCapabilities`
 - `HostProxyRequest`
 - `HostProxyResponse`
 - `HostProxyRunLandoRequest`

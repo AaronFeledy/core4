@@ -435,16 +435,31 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
   );
 };
 
-const hostProxyContainerTargetExtension = (arch?: string): ReadonlyArray<string> => {
+type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
+type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
   if (arch === "x86_64" || arch === "x64" || arch === "amd64") {
-    return ["@lando/core/host-proxy-container-target:linux-x64"];
+    return [{ os: "linux", arch: "x64" }];
   }
-  if (arch === "aarch64" || arch === "arm64") return ["@lando/core/host-proxy-container-target:linux-arm64"];
+  if (arch === "aarch64" || arch === "arm64") return [{ os: "linux", arch: "arm64" }];
   return [];
 };
 
-const hostProxyTransportExtensions = (platform: HostPlatform): ReadonlyArray<string> =>
-  platform === "win32" ? ["@lando/core/host-proxy-transport:tcp-host-gateway:host.docker.internal"] : [];
+const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
+  platform === "win32" ? "host.docker.internal" : undefined;
+
+const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostProxyTcpHostGateway(platform);
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
+};
 
 const dockerInfoArchitecture = (info: unknown): string | undefined => {
   if (typeof info !== "object" || info === null) return undefined;
@@ -455,7 +470,7 @@ const dockerInfoArchitecture = (info: unknown): string | undefined => {
 export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
   dockerHost: string,
-  providerExtensions: ReadonlyArray<string> = [],
+  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
 ): ProviderCapabilities =>
   buildProviderCapabilities({
     bindMounts: true,
@@ -468,7 +483,8 @@ export const dockerCapabilitiesForHost = (
     tlsCertificates: "none",
     rootless: false,
     composeSpec: "portable",
-    providerExtensions: [...providerExtensions, ...hostProxyTransportExtensions(platform)],
+    providerExtensions: [],
+    hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -515,7 +531,7 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const engineArch = dockerInfoArchitecture(info);
-      return dockerCapabilitiesForHost(platform, dockerHost, hostProxyContainerTargetExtension(engineArch));
+      return dockerCapabilitiesForHost(platform, dockerHost, hostProxyContainerTarget(engineArch));
     }),
   );
 

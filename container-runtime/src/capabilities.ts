@@ -15,6 +15,7 @@ export interface ProviderCapabilityConstants {
   readonly rootless: ProviderCapabilitiesShape["rootless"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
+  readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
 }
 
 export const buildProviderCapabilities = (
@@ -49,4 +50,5 @@ export const buildProviderCapabilities = (
     privilegedServices: false,
     composeSpec: constants.composeSpec,
     providerExtensions: constants.providerExtensions,
+    ...(constants.hostProxy === undefined ? {} : { hostProxy: constants.hostProxy }),
   });

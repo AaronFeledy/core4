@@ -79,7 +79,9 @@ const listenTcp = (server: Server): Promise<number> =>
 
 describe("provider-docker capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields).sort();
+    const expectedFields = Object.keys(ProviderCapabilities.fields)
+      .filter((field) => field !== "hostProxy")
+      .sort();
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");
 
@@ -174,12 +176,7 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(provider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
-    expect(provider.capabilities.providerExtensions).not.toContain(
-      "@lando/core/host-proxy-container-target:linux-x64",
-    );
+    expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);
   });
 
   test("omits Docker host-proxy target capability when API architecture is missing", async () => {
@@ -195,11 +192,7 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(
-      provider.capabilities.providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
+    expect(provider.capabilities.hostProxy).toBeUndefined();
   });
 
   test("default construction introspects Docker info architecture through resolved socket transport", async () => {
@@ -228,9 +221,7 @@ describe("provider-docker capabilities", () => {
 
       expect(requests).toHaveLength(1);
       expect(requests[0]).toStartWith("GET /v1.43/info HTTP/1.1");
-      expect(provider.capabilities.providerExtensions).toContain(
-        "@lando/core/host-proxy-container-target:linux-x64",
-      );
+      expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "x64" }]);
     } finally {
       await close(server);
       await rm(socketDir, { recursive: true, force: true });
@@ -238,9 +229,10 @@ describe("provider-docker capabilities", () => {
   });
 
   test("advertises Docker Desktop host alias for Windows TCP transport", () => {
-    expect(dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine").providerExtensions).toContain(
-      "@lando/core/host-proxy-transport:tcp-host-gateway:host.docker.internal",
-    );
+    expect(dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine").hostProxy).toEqual({
+      containerTargets: [],
+      tcpHostGateway: "host.docker.internal",
+    });
   });
 
   test("advertises service log source following only when file access is injected", async () => {

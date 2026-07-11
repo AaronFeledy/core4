@@ -1787,6 +1787,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ProviderCapabilities.copyOnWriteAppRoot",
   "ProviderCapabilities.ephemeralMounts",
   "ProviderCapabilities.hostPortPublish",
+  "ProviderCapabilities.hostProxy",
   "ProviderCapabilities.hostReachability",
   "ProviderCapabilities.multiServiceApply",
   "ProviderCapabilities.persistentStorage",

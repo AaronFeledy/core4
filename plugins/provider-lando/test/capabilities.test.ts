@@ -18,14 +18,17 @@ import { RuntimeProvider } from "@lando/sdk/services";
 
 describe("provider-lando capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields).sort();
+    const expectedFields = Object.keys(ProviderCapabilities.fields)
+      .filter((field) => field !== "hostProxy")
+      .sort();
+    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields).sort();
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");
     const windows = mvpProviderCapabilities("win32");
 
     expect(Object.keys(linux).sort()).toEqual(expectedFields);
     expect(Object.keys(macos).sort()).toEqual(expectedFields);
-    expect(Object.keys(windows).sort()).toEqual(expectedFields);
+    expect(Object.keys(windows).sort()).toEqual(expectedWindowsFields);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(windows.bindMountPerformance).toBe("slow");
@@ -35,17 +38,9 @@ describe("provider-lando capabilities", () => {
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
-    expect(linuxMvpCapabilities.providerExtensions).not.toContain(
-      "@lando/core/host-proxy-container-target:linux-x64",
-    );
-    expect(macosMvpCapabilities.providerExtensions).not.toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
-    expect(
-      mvpProviderCapabilities("win32").providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
+    expect(linuxMvpCapabilities.hostProxy).toBeUndefined();
+    expect(macosMvpCapabilities.hostProxy).toBeUndefined();
+    expect(mvpProviderCapabilities("win32").hostProxy?.containerTargets).toEqual([]);
   });
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
@@ -57,7 +52,7 @@ describe("provider-lando capabilities", () => {
 
     expect(runtimeProvider.capabilities).toEqual({
       ...linuxMvpCapabilities,
-      providerExtensions: ["@lando/core/host-proxy-container-target:linux-x64"],
+      hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
       serviceLogSources: false,
     });
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
@@ -93,7 +88,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.platform).toBe("darwin");
     expect(runtimeProvider.capabilities).toEqual({
       ...macosMvpCapabilities,
-      providerExtensions: ["@lando/core/host-proxy-container-target:linux-arm64"],
+      hostProxy: { containerTargets: [{ os: "linux", arch: "arm64" }] },
       serviceLogSources: false,
     });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);
@@ -111,9 +106,11 @@ describe("provider-lando capabilities", () => {
     });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
-    expect(runtimeProvider.capabilities.providerExtensions).toEqual([
-      "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
-    ]);
+    expect(runtimeProvider.capabilities.providerExtensions).toEqual([]);
+    expect(runtimeProvider.capabilities.hostProxy).toEqual({
+      containerTargets: [],
+      tcpHostGateway: "host.containers.internal",
+    });
   });
 
   test("uses Podman info architecture over injected host architecture", async () => {
@@ -129,12 +126,9 @@ describe("provider-lando capabilities", () => {
       ),
     );
 
-    expect(runtimeProvider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
-    expect(runtimeProvider.capabilities.providerExtensions).not.toContain(
-      "@lando/core/host-proxy-container-target:linux-x64",
-    );
+    expect(runtimeProvider.capabilities.hostProxy?.containerTargets).toEqual([
+      { os: "linux", arch: "arm64" },
+    ]);
   });
 
   test("omits host-proxy container targets when Podman info omits architecture despite injected host architecture", async () => {
@@ -150,11 +144,7 @@ describe("provider-lando capabilities", () => {
       ),
     );
 
-    expect(
-      runtimeProvider.capabilities.providerExtensions.some((extension) =>
-        extension.startsWith("@lando/core/host-proxy-container-target:"),
-      ),
-    ).toBe(false);
+    expect(runtimeProvider.capabilities.hostProxy).toBeUndefined();
   });
 
   test("introspects managed providerSocketPath API architecture for registry construction", async () => {
@@ -173,9 +163,9 @@ describe("provider-lando capabilities", () => {
       ),
     );
 
-    expect(runtimeProvider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
+    expect(runtimeProvider.capabilities.hostProxy?.containerTargets).toEqual([
+      { os: "linux", arch: "arm64" },
+    ]);
   });
 
   test("ensures managed providerSocketPath runtime before capability introspection", async () => {
@@ -237,15 +227,14 @@ describe("provider-lando capabilities", () => {
 
     expect(calls.indexOf("launch")).toBeGreaterThan(-1);
     expect(calls.indexOf("info")).toBeGreaterThan(calls.indexOf("launch"));
-    expect(provider.capabilities.providerExtensions).toContain(
-      "@lando/core/host-proxy-container-target:linux-arm64",
-    );
+    expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);
   });
 
   test("advertises Podman Desktop host alias for Windows TCP transport", () => {
-    expect(mvpProviderCapabilities("win32").providerExtensions).toContain(
-      "@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal",
-    );
+    expect(mvpProviderCapabilities("win32").hostProxy).toEqual({
+      containerTargets: [],
+      tcpHostGateway: "host.containers.internal",
+    });
   });
 
   test("builds Podman API HTTP-over-UNIX requests without invoking the podman binary", () => {

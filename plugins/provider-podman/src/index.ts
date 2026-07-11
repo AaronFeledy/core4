@@ -249,15 +249,30 @@ const bindMountPerformanceForPlatform = (
   return "none";
 };
 
-const hostProxyTransportExtensions = (platform: HostPlatform): ReadonlyArray<string> =>
-  platform === "win32" ? ["@lando/core/host-proxy-transport:tcp-host-gateway:host.containers.internal"] : [];
+type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
+type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
 
-const hostProxyContainerTargetExtension = (arch?: string): ReadonlyArray<string> => {
+const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
+  platform === "win32" ? "host.containers.internal" : undefined;
+
+const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
   if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
-    return ["@lando/core/host-proxy-container-target:linux-x64"];
+    return [{ os: "linux", arch: "x64" }];
   }
-  if (arch === "arm64" || arch === "aarch64") return ["@lando/core/host-proxy-container-target:linux-arm64"];
+  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
   return [];
+};
+
+const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostProxyTcpHostGateway(platform);
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
 };
 
 const podmanInfoArchitecture = (info: unknown): string | undefined => {
@@ -280,7 +295,7 @@ const podmanInfoArchitecture = (info: unknown): string | undefined => {
  */
 export const podmanCapabilitiesForPlatform = (
   platform: HostPlatform,
-  providerExtensions: ReadonlyArray<string> = [],
+  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
 ): ProviderCapabilities =>
   buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
@@ -293,7 +308,8 @@ export const podmanCapabilitiesForPlatform = (
     tlsCertificates: "none",
     rootless: true,
     composeSpec: "portable",
-    providerExtensions: [...providerExtensions, ...hostProxyTransportExtensions(platform)],
+    providerExtensions: [],
+    hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
@@ -651,7 +667,7 @@ export const makeRuntimeProvider = (
           return {
             serverVersion,
             capabilities: {
-              ...podmanCapabilitiesForPlatform(platform, hostProxyContainerTargetExtension(containerArch)),
+              ...podmanCapabilitiesForPlatform(platform, hostProxyContainerTarget(containerArch)),
               serviceLogSources: options.logFileAccess !== undefined,
             },
           };

@@ -9,8 +9,6 @@ import type { RedactionService } from "../../redaction/service.ts";
 import {
   type HostProxyShimTarget,
   defaultHostProxyShimArtifactPath,
-  hostProxyShimTargetsFromProviderExtensions,
-  hostProxyTcpGatewayHostFromProviderExtensions,
 } from "../../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
@@ -22,20 +20,20 @@ import {
   startDetachedHostProxyWorker,
 } from "../../subsystems/host-proxy/worker.ts";
 
-const HOST_PROXY_CONTAINER_TARGET_EXTENSION_KEY = "@lando/core/host-proxy-container-target";
-const HOST_PROXY_HOST_GATEWAY_EXTENSION = "@lando/core/host-proxy-transport:tcp-host-gateway";
+const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.containerTargets";
+const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHostGateway";
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
 
 const hostProxyShimTargetFor = (
   capabilities: ProviderCapabilities,
 ): Effect.Effect<HostProxyShimTarget, HostProxyTransportUnavailableError> => {
-  const providerTargets = hostProxyShimTargetsFromProviderExtensions(capabilities.providerExtensions);
+  const providerTargets = capabilities.hostProxy?.containerTargets ?? [];
   if (providerTargets.length === 0) {
     return Effect.fail(
       new HostProxyTransportUnavailableError({
         message: "Host-proxy requires a provider-declared eligible Linux container target.",
-        socketPath: HOST_PROXY_CONTAINER_TARGET_EXTENSION_KEY,
+        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
         remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
       }),
     );
@@ -45,7 +43,7 @@ const hostProxyShimTargetFor = (
     return Effect.fail(
       new HostProxyTransportUnavailableError({
         message: "Provider declared conflicting host-proxy container targets.",
-        socketPath: HOST_PROXY_CONTAINER_TARGET_EXTENSION_KEY,
+        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
         remediation: "Select a provider that advertises exactly one host-proxy Linux container target.",
       }),
     );
@@ -55,7 +53,7 @@ const hostProxyShimTargetFor = (
     return Effect.fail(
       new HostProxyTransportUnavailableError({
         message: "Host-proxy requires a provider-declared eligible Linux container target.",
-        socketPath: HOST_PROXY_CONTAINER_TARGET_EXTENSION_KEY,
+        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
         remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
       }),
     );
@@ -93,12 +91,12 @@ const validateHostProxyTransportCapability = (
   capabilities: ProviderCapabilities,
 ): Effect.Effect<string | undefined, HostProxyTransportUnavailableError> => {
   if (platform !== "win32") return Effect.succeed(undefined);
-  const hostGatewayName = hostProxyTcpGatewayHostFromProviderExtensions(capabilities.providerExtensions);
+  const hostGatewayName = capabilities.hostProxy?.tcpHostGateway;
   if (hostGatewayName !== undefined) return Effect.succeed(hostGatewayName);
   return Effect.fail(
     new HostProxyTransportUnavailableError({
       message: "Provider cannot realize the host-proxy TCP host-gateway transport for Linux containers.",
-      socketPath: HOST_PROXY_HOST_GATEWAY_EXTENSION,
+      socketPath: HOST_PROXY_HOST_GATEWAY_CAPABILITY,
       remediation: "Select a Windows provider that advertises host-proxy TCP host-gateway support.",
     }),
   );
