@@ -22,6 +22,7 @@ import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
 } from "../../../src/subsystems/host-proxy/dispatch.ts";
+import { defaultHostProxyShimArtifactPath } from "../../../src/subsystems/host-proxy/transport-shim.ts";
 import {
   HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
@@ -131,6 +132,18 @@ const compiledShimArtifact = async (): Promise<string> => {
   return output;
 };
 
+const compiledReleaseBinary = async (): Promise<string> => {
+  const output = join(await tempRoot(), "lando");
+  const proc = Bun.spawn({
+    cmd: [process.execPath, "build", "core/bin/lando.ts", "--compile", "--outfile", output],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  if (exitCode !== 0) throw new Error(stderr);
+  return output;
+};
+
 const expectMissingPath = async (path: string): Promise<void> => {
   try {
     await stat(path);
@@ -174,12 +187,21 @@ describe("host-proxy runLando physical transport", () => {
     expect(Exit.isFailure(missing)).toBe(true);
     expect(Exit.isFailure(stale)).toBe(true);
     expect(Exit.isFailure(crossApp)).toBe(true);
-    if (Exit.isFailure(missing) && missing.cause._tag === "Fail")
+    if (Exit.isFailure(missing) && missing.cause._tag === "Fail") {
       expect(missing.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
-    if (Exit.isFailure(stale) && stale.cause._tag === "Fail")
+      if (missing.cause.error instanceof HostProxyAuthenticationError)
+        expect(missing.cause.error.reason).toBe("missing");
+    }
+    if (Exit.isFailure(stale) && stale.cause._tag === "Fail") {
       expect(stale.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
-    if (Exit.isFailure(crossApp) && crossApp.cause._tag === "Fail")
+      if (stale.cause.error instanceof HostProxyAuthenticationError)
+        expect(stale.cause.error.reason).toBe("stale");
+    }
+    if (Exit.isFailure(crossApp) && crossApp.cause._tag === "Fail") {
       expect(crossApp.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
+      if (crossApp.cause.error instanceof HostProxyAuthenticationError)
+        expect(crossApp.cause.error.reason).toBe("cross-app");
+    }
     await session.close();
   });
 
@@ -420,7 +442,28 @@ describe("host-proxy runLando physical transport", () => {
     expect(rejected.statusCode).toBe(401);
     expect(rejected.body).toContain("HostProxyAuthenticationError");
     expect(rejected.body).not.toContain("Invalid host-proxy request");
-    expect(rejected.body).not.toContain("missing");
+    expect(rejected.body).toContain("missing");
+    await session.close();
+  });
+
+  test("counts an authenticated slow body against concurrency before parsing completes", async () => {
+    const session = await sessionFor(() => Effect.succeed({ envelope, exitCode: 0 }), {
+      concurrency: 1,
+      shimArtifactPath: await fakeExecutable(),
+    });
+    const slow = await openSlowAuthenticatedRequest(session.socketPath, authHeaders(session));
+
+    const saturated = await rawHttpExchange(
+      session.socketPath,
+      JSON.stringify({ _tag: "runLando", argv: ["open"], cwd: "/app", tty: false }),
+      authHeaders(session),
+    );
+
+    expect(saturated.statusCode).toBe(429);
+    expect(saturated.body).toContain("HostProxyBackpressureError");
+    slow.destroy();
+    const healthy = await run(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
+    expect(healthy.exitCode).toBe(0);
     await session.close();
   });
 
@@ -490,6 +533,36 @@ describe("host-proxy runLando physical transport", () => {
     );
     expect(Exit.isFailure(failed)).toBe(true);
     await expectMissingPath(join(failedStateDir, "lando"));
+  });
+
+  test("closes the listener when chmod fails after bind", async () => {
+    const paths = { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() };
+    const stateDir = hostProxyRunLandoStateDir(app, paths);
+    let deleting = true;
+    const remover = setInterval(() => {
+      if (deleting) void rm(join(stateDir, "host-proxy.sock"), { force: true });
+    }, 0);
+
+    try {
+      const failed = await runExit(
+        createHostProxyRunLandoSession({
+          app,
+          mountInfo: mount,
+          allowlist: ["app:open"],
+          callerService: "web",
+          executor: () => Effect.succeed({ envelope, exitCode: 0 }),
+          paths,
+          shimArtifactPath: await fakeExecutable(),
+        }),
+      );
+
+      expect(Exit.isFailure(failed)).toBe(true);
+      if (Exit.isFailure(failed) && failed.cause._tag === "Fail")
+        expect(failed.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+    } finally {
+      deleting = false;
+      clearInterval(remover);
+    }
   });
 
   test("cleans socket and shim artifacts on Effect scope close", async () => {
@@ -573,6 +646,41 @@ describe("host-proxy runLando physical transport", () => {
     });
     await session.close();
   });
+
+  test("release-shaped compiled binary supplies and executes the default host-proxy shim", async () => {
+    const artifactPath = await compiledReleaseBinary();
+    expect(defaultHostProxyShimArtifactPath({ env: {}, execPath: artifactPath })).toBe(artifactPath);
+
+    let captured: HostProxyRunLandoExecutorInput | undefined;
+    const session = await sessionFor(
+      (request) => {
+        captured = request;
+        return Effect.succeed({ envelope, exitCode: 0 });
+      },
+      { shimArtifactPath: defaultHostProxyShimArtifactPath({ env: {}, execPath: artifactPath }) },
+    );
+
+    const proc = Bun.spawn({
+      cmd: [session.shimPath, "open", "--print"],
+      cwd: "/tmp",
+      env: {
+        LANDO_HOST_PROXY_SOCKET: session.socketPath,
+        LANDO_HOST_PROXY_TOKEN: session.token,
+        LANDO_HOST_PROXY_SESSION: session.sessionId,
+        LANDO_HOST_PROXY_APP: session.appId,
+        LANDO_HOST_PROXY_CALLER: "web",
+        LANG: "C.UTF-8",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    expect(await proc.exited).toBe(0);
+    expect(await new Response(proc.stdout).text()).toContain('"ok":true');
+    expect(await new Response(proc.stderr).text()).toBe("");
+    expect(captured?.argv).toEqual(["open", "--print"]);
+    await session.close();
+  });
 });
 
 const rawHttpExchange = (
@@ -598,6 +706,29 @@ const rawSocketExchange = async (
   payload: string,
   headers: Readonly<Record<string, string>> = {},
 ): Promise<string> => (await rawHttpExchange(socketPath, payload, headers)).body;
+
+const openSlowAuthenticatedRequest = (
+  socketPath: string,
+  headers: Readonly<Record<string, string>>,
+): Promise<ReturnType<typeof createConnection>> =>
+  new Promise((resolveSocket, reject) => {
+    const socket = createConnection({ path: socketPath });
+    const headerLines = Object.entries(headers).map(([name, value]) => `${name}: ${value}`);
+    const requestHead = [
+      "POST /runLando HTTP/1.1",
+      "Host: localhost",
+      "Content-Type: application/json",
+      "Content-Length: 999999999",
+      ...headerLines,
+      "",
+      "",
+    ].join("\r\n");
+    socket.once("connect", () => {
+      socket.write(requestHead);
+      resolveSocket(socket);
+    });
+    socket.once("error", reject);
+  });
 
 const oversizedWriteThenContinue = (
   socketPath: string,

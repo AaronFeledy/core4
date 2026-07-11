@@ -135,7 +135,9 @@ const decodeWireResponse = (raw: string): HostProxyRunLandoResult => {
   switch (response.tag) {
     case "HostProxyAuthenticationError":
       throw authError(
-        response.reason === "missing" || response.reason === "cross-app" ? response.reason : "stale",
+        response.reason === "missing" || response.reason === "cross-app" || response.reason === "stale"
+          ? response.reason
+          : "stale",
       );
     case "HostProxyBackpressureError":
       throw new HostProxyBackpressureError({

@@ -171,16 +171,19 @@ export const createHostProxyRunLandoSession = (
         socketOwned = true;
         void chmod(paths.socketPath, 0o600).then(
           () => resume(Effect.void),
-          (cause) =>
-            resume(
-              Effect.fail(
-                new HostProxyTransportUnavailableError({
-                  message: cause instanceof Error ? cause.message : String(cause),
-                  socketPath: paths.socketPath,
-                  remediation: "Ensure the app run directory is writable.",
-                }),
-              ),
-            ),
+          (cause) => {
+            server.close(() => {
+              resume(
+                Effect.fail(
+                  new HostProxyTransportUnavailableError({
+                    message: cause instanceof Error ? cause.message : String(cause),
+                    socketPath: paths.socketPath,
+                    remediation: "Ensure the app run directory is writable.",
+                  }),
+                ),
+              );
+            });
+          },
         );
       });
     });

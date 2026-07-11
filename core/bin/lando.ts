@@ -19,15 +19,22 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { CORE_VERSION } from "../src/version.ts";
-
 const argv = Bun.argv.slice(2);
-if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
-  console.log(CORE_VERSION);
-  process.exit(0);
-}
+
+const hasHostProxyShimEnv = (): boolean => (process.env.LANDO_HOST_PROXY_SOCKET?.length ?? 0) > 0;
 
 const main = async (): Promise<void> => {
+  if (hasHostProxyShimEnv()) {
+    await import("../src/subsystems/host-proxy/shim-bin.ts");
+    return;
+  }
+
+  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
+    const { CORE_VERSION } = await import("../src/version.ts");
+    console.log(CORE_VERSION);
+    process.exit(0);
+  }
+
   if (argv.length === 1 && argv[0] === "shellenv") {
     const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
     console.log(renderShellenv("posix"));

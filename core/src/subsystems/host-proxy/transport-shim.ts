@@ -1,4 +1,5 @@
 import { chmod, copyFile, mkdir, stat } from "node:fs/promises";
+import { basename } from "node:path";
 import { dirname } from "node:path";
 import { Effect } from "effect";
 
@@ -8,9 +9,20 @@ export const HOST_PROXY_SHIM_SOURCE = "core/src/subsystems/host-proxy/shim-bin.t
 export const HOST_PROXY_SHIM_ARTIFACT_ENV = "LANDO_HOST_PROXY_SHIM_ARTIFACT";
 export const HOST_PROXY_SHIM_ARTIFACT = "core/dist/host-proxy/lando-shim";
 
-export const defaultHostProxyShimArtifactPath = (): string =>
-  process.env[HOST_PROXY_SHIM_ARTIFACT_ENV] ??
-  new URL("../../../dist/host-proxy/lando-shim", import.meta.url).pathname;
+export const defaultHostProxyShimArtifactPath = (
+  input: {
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly execPath?: string;
+  } = {},
+): string => {
+  const env = input.env ?? process.env;
+  const configured = env[HOST_PROXY_SHIM_ARTIFACT_ENV];
+  if (configured !== undefined && configured.length > 0) return configured;
+  const execPath = input.execPath ?? process.execPath;
+  const execName = basename(execPath).toLowerCase();
+  if (execName !== "bun" && execName !== "bun.exe") return execPath;
+  return new URL("../../../dist/host-proxy/lando-shim", import.meta.url).pathname;
+};
 
 export const installHostProxyShim = (
   artifact: string,

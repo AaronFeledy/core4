@@ -21,6 +21,7 @@ import { encodeNdjsonFrame } from "./transport-frames.ts";
 import {
   HOST_PROXY_MAX_FRAME_BYTES,
   type WireOk,
+  authError,
   errorResponse,
   validateWireRequest,
 } from "./transport-protocol.ts";
@@ -50,12 +51,6 @@ const invalidRequestResponse = {
   message: "Invalid host-proxy request.",
 };
 
-const unauthorizedResponse = {
-  _tag: "error" as const,
-  tag: "HostProxyAuthenticationError",
-  message: "Unauthorized.",
-};
-
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const headerValue = (request: IncomingMessage, name: string): string => {
@@ -71,7 +66,7 @@ const bodyText = (request: IncomingMessage): Promise<string> =>
     const cleanup = (): void => {
       request.off("data", onData);
       request.off("end", resolveOnce);
-      request.off("close", cleanup);
+      request.off("close", rejectClosed);
       if (!draining) request.off("error", rejectOnce);
     };
     const rejectOnce = (cause: Error): void => {
@@ -89,6 +84,10 @@ const bodyText = (request: IncomingMessage): Promise<string> =>
       cleanup();
       resolveText(body);
     };
+    const rejectClosed = (): void => {
+      if (!settled) rejectOnce(new Error("Host-proxy request closed before a complete body."));
+      cleanup();
+    };
     const onData = (chunk: string): void => {
       if (draining) return;
       if (settled) return;
@@ -102,7 +101,7 @@ const bodyText = (request: IncomingMessage): Promise<string> =>
     request.on("data", onData);
     request.on("error", rejectOnce);
     request.on("end", resolveOnce);
-    request.on("close", cleanup);
+    request.on("close", rejectClosed);
   });
 
 const messageHeaders = (request: IncomingMessage, options: HandlerOptions) => {
@@ -118,14 +117,15 @@ const messageHeaders = (request: IncomingMessage, options: HandlerOptions) => {
   };
 };
 
-const headersAreAuthenticated = (
+const authenticationFailure = (
   headers: ReturnType<typeof messageHeaders>,
   session: HandlerOptions["session"],
-): boolean =>
-  headers.token.length > 0 &&
-  headers.appId === session.appId &&
-  headers.sessionId === session.sessionId &&
-  headers.token === session.token;
+): HostProxyAuthenticationError | undefined => {
+  if (headers.token.length === 0) return authError("missing");
+  if (headers.appId !== session.appId) return authError("cross-app");
+  if (headers.sessionId !== session.sessionId || headers.token !== session.token) return authError("stale");
+  return undefined;
+};
 
 const writeTransportResponse = (
   response: ServerResponse,
@@ -219,8 +219,9 @@ const acquireDispatchSlot = (options: HandlerOptions): Effect.Effect<void, HostP
 export const makeHostProxyRunLandoHandler =
   (options: HandlerOptions) => (request: IncomingMessage, response: ServerResponse) => {
     const headers = messageHeaders(request, options);
-    if (!headersAreAuthenticated(headers, options.session)) {
-      writeTransportResponse(response, 401, unauthorizedResponse);
+    const authFailure = authenticationFailure(headers, options.session);
+    if (authFailure !== undefined) {
+      writeTransportResponse(response, 401, errorResponse(authFailure));
       void Effect.runPromise(
         publishRejected({
           app: options.app,
@@ -233,103 +234,135 @@ export const makeHostProxyRunLandoHandler =
       return;
     }
 
-    void bodyText(request)
-      .then((body) => {
-        const decodedRequest = Schema.decodeUnknownEither(HostProxyRunLandoRequest)(JSON.parse(body));
-        if (decodedRequest._tag === "Left") {
-          rejectInvalidAuthenticatedRequest(response, options, headers);
-          return;
-        }
-        const wire = {
-          ...headers,
-          request: decodedRequest.right,
-        };
-        const program = validateWireRequest(
-          wire,
-          options.session,
-          options.maxDepth,
-          0,
-          options.concurrency,
-        ).pipe(
-          Effect.flatMap(() => {
-            return acquireDispatchSlot(options);
-          }),
-          Effect.flatMap(() => {
-            const deps: DispatchRunLandoDeps = {
-              executor: options.executor,
-              allowlist: options.allowlist,
-              mountInfo: options.mountInfo,
-              callerService: wire.callerService,
-              depth: wire.depth,
-              app: options.app,
-            };
-            return dispatchRunLando(wire.request, deps).pipe(
-              Effect.map(
-                (result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode }),
-              ),
-              Effect.ensuring(
-                Effect.sync(() => {
-                  options.active.value -= 1;
-                }),
-              ),
-            );
-          }),
-        );
-        const respond = Effect.gen(function* () {
-          const exit = yield* Effect.exit(program.pipe(Effect.provide(options.runtimeContext)));
-          if (Exit.isSuccess(exit)) {
-            writeTransportResponse(response, 200, exit.value);
-            return;
-          }
-          if (Cause.isInterruptedOnly(exit.cause)) {
-            response.destroy();
-            return;
-          }
-          const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
-          const knownFailure =
-            failure instanceof HostProxyAuthenticationError ||
-            failure instanceof HostProxyBackpressureError ||
-            failure instanceof HostProxyCommandNotAllowedError ||
-            failure instanceof HostProxyRecursionError ||
-            failure instanceof HostProxySocketStaleError ||
-            failure instanceof HostProxyTransportUnavailableError;
-          const payload = knownFailure
+    let slotReleased = false;
+    const releaseDispatchSlot = (): void => {
+      if (slotReleased) return;
+      slotReleased = true;
+      options.active.value -= 1;
+    };
+
+    void Effect.runPromiseExit(acquireDispatchSlot(options)).then((slotExit) => {
+      if (Exit.isFailure(slotExit)) {
+        const failure = slotExit.cause._tag === "Fail" ? slotExit.cause.error : undefined;
+        const payload =
+          failure instanceof HostProxyBackpressureError
             ? errorResponse(failure)
             : {
                 _tag: "error" as const,
                 tag: "HostProxyTransportUnavailableError",
                 message: "Host-proxy dispatch failed.",
               };
-          if (
-            failure instanceof HostProxyAuthenticationError ||
-            failure instanceof HostProxyBackpressureError ||
-            failure instanceof HostProxyRecursionError
-          ) {
-            void Effect.runPromise(
-              publishRejected({
-                app: options.app,
-                callId: `hp-${Date.now()}-${randomBytes(4).toString("hex")}`,
+        writeTransportResponse(response, statusFor(failure), payload);
+        void Effect.runPromise(
+          publishRejected({
+            app: options.app,
+            callId: `hp-${Date.now()}-${randomBytes(4).toString("hex")}`,
+            callerService: headers.callerService,
+            depth: headers.depth,
+            failureDetail:
+              failure instanceof HostProxyBackpressureError
+                ? failure._tag
+                : "HostProxyTransportUnavailableError",
+          }).pipe(Effect.provide(options.runtimeContext)),
+        );
+        return;
+      }
+
+      void bodyText(request)
+        .then((body) => {
+          const decodedRequest = Schema.decodeUnknownEither(HostProxyRunLandoRequest)(JSON.parse(body));
+          if (decodedRequest._tag === "Left") {
+            releaseDispatchSlot();
+            rejectInvalidAuthenticatedRequest(response, options, headers);
+            return;
+          }
+          const wire = {
+            ...headers,
+            request: decodedRequest.right,
+          };
+          const program = validateWireRequest(
+            wire,
+            options.session,
+            options.maxDepth,
+            0,
+            options.concurrency,
+          ).pipe(
+            Effect.flatMap(() => {
+              const deps: DispatchRunLandoDeps = {
+                executor: options.executor,
+                allowlist: options.allowlist,
+                mountInfo: options.mountInfo,
                 callerService: wire.callerService,
                 depth: wire.depth,
-                failureDetail: failure._tag,
-              }).pipe(Effect.provide(options.runtimeContext)),
-            );
-          }
-          writeTransportResponse(response, statusFor(failure), payload);
-        });
-        const entryRef: { current?: HostProxyInFlightRequest } = {};
-        const fiber = Effect.runFork(
-          respond.pipe(
-            Effect.ensuring(
-              Effect.sync(() => {
-                if (entryRef.current !== undefined) options.inFlight.delete(entryRef.current);
-              }),
+                app: options.app,
+              };
+              return dispatchRunLando(wire.request, deps).pipe(
+                Effect.map(
+                  (result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode }),
+                ),
+              );
+            }),
+            Effect.ensuring(Effect.sync(releaseDispatchSlot)),
+          );
+          const respond = Effect.gen(function* () {
+            const exit = yield* Effect.exit(program.pipe(Effect.provide(options.runtimeContext)));
+            if (Exit.isSuccess(exit)) {
+              writeTransportResponse(response, 200, exit.value);
+              return;
+            }
+            if (Cause.isInterruptedOnly(exit.cause)) {
+              response.destroy();
+              return;
+            }
+            const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+            const knownFailure =
+              failure instanceof HostProxyAuthenticationError ||
+              failure instanceof HostProxyBackpressureError ||
+              failure instanceof HostProxyCommandNotAllowedError ||
+              failure instanceof HostProxyRecursionError ||
+              failure instanceof HostProxySocketStaleError ||
+              failure instanceof HostProxyTransportUnavailableError;
+            const payload = knownFailure
+              ? errorResponse(failure)
+              : {
+                  _tag: "error" as const,
+                  tag: "HostProxyTransportUnavailableError",
+                  message: "Host-proxy dispatch failed.",
+                };
+            if (
+              failure instanceof HostProxyAuthenticationError ||
+              failure instanceof HostProxyBackpressureError ||
+              failure instanceof HostProxyRecursionError
+            ) {
+              void Effect.runPromise(
+                publishRejected({
+                  app: options.app,
+                  callId: `hp-${Date.now()}-${randomBytes(4).toString("hex")}`,
+                  callerService: wire.callerService,
+                  depth: wire.depth,
+                  failureDetail: failure._tag,
+                }).pipe(Effect.provide(options.runtimeContext)),
+              );
+            }
+            writeTransportResponse(response, statusFor(failure), payload);
+          });
+          const entryRef: { current?: HostProxyInFlightRequest } = {};
+          const fiber = Effect.runFork(
+            respond.pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (entryRef.current !== undefined) options.inFlight.delete(entryRef.current);
+                }),
+              ),
             ),
-          ),
-        );
-        const entry = { fiber, response };
-        entryRef.current = entry;
-        options.inFlight.add(entry);
-      })
-      .catch(() => rejectInvalidAuthenticatedRequest(response, options, headers));
+          );
+          const entry = { fiber, response };
+          entryRef.current = entry;
+          options.inFlight.add(entry);
+        })
+        .catch(() => {
+          releaseDispatchSlot();
+          rejectInvalidAuthenticatedRequest(response, options, headers);
+        });
+    });
   };
