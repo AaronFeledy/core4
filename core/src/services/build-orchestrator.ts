@@ -112,7 +112,9 @@ const runProviderBuild = (
     const artifact = step.service.artifact;
     if (artifact?.kind === "ref" && buildStepsFor(step.service).length === 0) {
       if (provider.capabilities.artifactPull) {
-        return yield* provider.pullArtifact({ ref: artifact.ref });
+        const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
+        if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
+        return { ...pulled, digest: artifact.digest };
       }
       return {
         providerId: plan.provider,

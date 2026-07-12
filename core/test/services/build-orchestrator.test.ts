@@ -269,6 +269,65 @@ describe("BuildOrchestratorLive", () => {
     expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
   });
 
+  test("keeps planned artifact digest when artifactPull returns no digest", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: {
+          ...web,
+          artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+        },
+      },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) => Effect.succeed({ providerId, ref: spec.ref }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(builtPlan.services[web.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "debian:12.11-slim",
+      digest: "sha256:planned",
+    });
+  });
+
+  test("uses provider-returned artifact digest over planned digest", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: {
+          ...web,
+          artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+        },
+      },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:provider" }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(builtPlan.services[web.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "debian:12.11-slim",
+      digest: "sha256:provider",
+    });
+  });
+
   test("keeps ref-only artifacts local when the provider cannot pull artifacts", async () => {
     const artifactPlan: AppPlan = {
       ...plan,
