@@ -27,9 +27,6 @@ export type TerminateOwnershipResult = "terminated" | "absent";
 const removeRunDir = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): Effect.Effect<void> =>
   Effect.promise(() => rm(dirname(workerStatePath(app, paths)), { recursive: true, force: true }));
 
-const removeRecordDir = (path: string): Effect.Effect<void> =>
-  Effect.promise(() => rm(path, { recursive: true, force: true }));
-
 export const replaceExistingHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions = {},
@@ -89,7 +86,11 @@ export const terminateOwnedHostProxyWorkersInRoot = (
         yield* withAdvisoryLock(
           recordPath,
           "host-proxy-worker",
-          terminateControlRecord(legacyRecord, options, removeRecordDir(legacyDir)),
+          terminateControlRecord(
+            legacyRecord,
+            options,
+            Effect.promise(() => rm(legacyDir, { recursive: true, force: true })),
+          ),
         ).pipe(Effect.catchAll(() => Effect.void));
         continue;
       }
