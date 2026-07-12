@@ -94,7 +94,9 @@ export const destroyApp = (
           removeState: true,
         },
       )
-      .pipe(Effect.ensuring(cleanupHostProxyRunLandoState(ref)));
+      .pipe(
+        Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+      );
 
     if (volumes) {
       yield* Effect.promise(() =>

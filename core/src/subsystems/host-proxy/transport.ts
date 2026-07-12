@@ -98,9 +98,12 @@ const listenFailure = (
   });
 };
 
-export const hostProxyRunLandoStateDir = (app: Pick<AppRef, "id">, paths?: RootOverrides): string => {
+export const hostProxyRunLandoStateDir = (
+  app: Pick<AppRef, "id" | "root">,
+  paths?: RootOverrides,
+): string => {
   const landoPaths = makeLandoPaths(paths ?? {});
-  return landoPaths.hostProxyRunDir(app.id);
+  return landoPaths.hostProxyRunDir(app.id, app.root);
 };
 
 const sessionPaths = (options: HostProxyRunLandoSessionOptions) => {

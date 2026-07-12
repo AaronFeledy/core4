@@ -7,10 +7,10 @@ import { Duration, Effect, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import type { AppRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "../../config/paths.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths, sanitizeAppName } from "../../config/paths.ts";
 import { writeFileAtomicScoped } from "../../state-store/atomic.ts";
 import { withAdvisoryLock } from "../../state/lock.ts";
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
@@ -22,7 +22,7 @@ const CONTROL_TIMEOUT_MS = 2_000;
 const SHUTDOWN_WAIT_MS = 5_000;
 const KILL_GRACE_MS = 5_000;
 
-export const HostProxyWorkerRecord = Schema.Struct({
+const HostProxyControlRecord = Schema.Struct({
   appId: Schema.String,
   transport: Schema.Literal("unix-socket", "tcp-host-gateway"),
   socketPath: Schema.optional(Schema.String),
@@ -33,7 +33,16 @@ export const HostProxyWorkerRecord = Schema.Struct({
   pid: Schema.Number,
   controlToken: Schema.String,
 });
+type HostProxyControlRecord = typeof HostProxyControlRecord.Type;
+
+export const HostProxyWorkerRecord = Schema.Struct({
+  ...HostProxyControlRecord.fields,
+  appRoot: Schema.String,
+});
 export type HostProxyWorkerRecord = typeof HostProxyWorkerRecord.Type;
+
+const LegacyHostProxyWorkerRecord = HostProxyControlRecord;
+type LegacyHostProxyWorkerRecord = typeof LegacyHostProxyWorkerRecord.Type;
 
 const HostProxyWorkerIdentity = Schema.Struct({
   appId: Schema.String,
@@ -52,7 +61,7 @@ export interface TerminateHostProxyWorkerOptions {
 export type TerminateOwnershipResult = "terminated" | "absent";
 export type ProbeWorkerResult = "live" | "dead";
 
-export const workerStatePath = (app: Pick<AppRef, "id">, paths?: RootOverrides): string =>
+export const workerStatePath = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): string =>
   resolve(hostProxyRunLandoStateDir(app, paths), "worker.json");
 
 const stateError = (message: string, path: string, cause?: unknown): HostProxyTransportUnavailableError =>
@@ -81,7 +90,7 @@ const readBody = (response: IncomingMessage, timeoutMs: number): Promise<string>
   });
 
 const controlRequest = (
-  record: HostProxyWorkerRecord,
+  record: HostProxyControlRecord,
   input: { readonly method: "GET" | "POST"; readonly path: string; readonly timeoutMs: number },
 ): Promise<{ readonly statusCode: number; readonly body: string }> =>
   new Promise((resolveResponse, reject) => {
@@ -105,7 +114,7 @@ const controlRequest = (
     req.end();
   });
 
-export const readWorkerRecord = (app: Pick<AppRef, "id">, paths?: RootOverrides) =>
+export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides) =>
   Effect.tryPromise({
     try: async () => {
       const file = Bun.file(workerStatePath(app, paths));
@@ -122,6 +131,19 @@ const readWorkerRecordAt = (path: string): Effect.Effect<HostProxyWorkerRecord |
       const file = Bun.file(path);
       if (!(await file.exists())) return undefined;
       return Schema.decodeUnknownSync(HostProxyWorkerRecord)(await file.json());
+    } catch {
+      return undefined;
+    }
+  });
+
+const readLegacyWorkerRecordAt = (
+  path: string,
+): Effect.Effect<LegacyHostProxyWorkerRecord | undefined, never> =>
+  Effect.promise(async () => {
+    try {
+      const file = Bun.file(path);
+      if (!(await file.exists())) return undefined;
+      return Schema.decodeUnknownSync(LegacyHostProxyWorkerRecord)(await file.json());
     } catch {
       return undefined;
     }
@@ -149,7 +171,7 @@ export const writeWorkerRecord = (
   );
 };
 
-const identifyWorker = (record: HostProxyWorkerRecord) =>
+const identifyWorker = (record: HostProxyControlRecord) =>
   Effect.tryPromise({
     try: async () => {
       const response = await controlRequest(record, {
@@ -163,7 +185,7 @@ const identifyWorker = (record: HostProxyWorkerRecord) =>
     catch: (cause) => cause,
   });
 
-export const probeWorker = (record: HostProxyWorkerRecord): Effect.Effect<ProbeWorkerResult> =>
+export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<ProbeWorkerResult> =>
   runProbe(
     {
       id: `host-proxy-worker:${record.appId}`,
@@ -171,7 +193,10 @@ export const probeWorker = (record: HostProxyWorkerRecord): Effect.Effect<ProbeW
       classify: {
         success: (value) => {
           const identity = value as HostProxyWorkerIdentity;
-          return identity.appId === record.appId && identity.protocolVersion === record.protocolVersion
+          return identity.appId === record.appId &&
+            identity.protocolVersion === record.protocolVersion &&
+            identity.pid === record.pid &&
+            identity.transport === record.transport
             ? "green"
             : "red";
         },
@@ -184,7 +209,7 @@ export const probeWorker = (record: HostProxyWorkerRecord): Effect.Effect<ProbeW
     Effect.catchAll(() => Effect.succeed("dead" as const)),
   );
 
-const shutdownWorker = (record: HostProxyWorkerRecord) =>
+const shutdownWorker = (record: HostProxyControlRecord) =>
   Effect.tryPromise({
     try: async () => {
       await controlRequest(record, {
@@ -204,7 +229,7 @@ const defaultTerminateProcess = async (pid: number, signal: NodeJS.Signals): Pro
   }
 };
 
-const awaitWorkerDisconnect = (record: HostProxyWorkerRecord): Effect.Effect<boolean> =>
+const awaitWorkerDisconnect = (record: HostProxyControlRecord): Effect.Effect<boolean> =>
   runProbe(
     {
       id: `host-proxy-worker-shutdown:${record.appId}`,
@@ -218,7 +243,7 @@ const awaitWorkerDisconnect = (record: HostProxyWorkerRecord): Effect.Effect<boo
   );
 
 const forceTerminateIdentifiedWorker = (
-  record: HostProxyWorkerRecord,
+  record: HostProxyControlRecord,
   options: TerminateHostProxyWorkerOptions,
 ) =>
   Effect.promise(async () => {
@@ -228,40 +253,50 @@ const forceTerminateIdentifiedWorker = (
     await terminate(record.pid, "SIGKILL");
   });
 
-const removeRunDir = (app: Pick<AppRef, "id">, paths?: RootOverrides): Effect.Effect<void> =>
+const removeRunDir = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): Effect.Effect<void> =>
   Effect.promise(() => rm(dirname(workerStatePath(app, paths)), { recursive: true, force: true }));
 
+const removeRecordDir = (path: string): Effect.Effect<void> =>
+  Effect.promise(() => rm(path, { recursive: true, force: true }));
+
+const terminateControlRecord = (
+  record: HostProxyControlRecord,
+  options: TerminateHostProxyWorkerOptions,
+  removeDir: Effect.Effect<void>,
+): Effect.Effect<void> =>
+  probeWorker(record).pipe(
+    Effect.flatMap((status) =>
+      status === "dead"
+        ? removeDir
+        : shutdownWorker(record).pipe(
+            Effect.zipRight(awaitWorkerDisconnect(record)),
+            Effect.flatMap((stopped) =>
+              stopped ? Effect.void : forceTerminateIdentifiedWorker(record, options),
+            ),
+            Effect.zipRight(removeDir),
+          ),
+    ),
+  );
+
 export const replaceExistingHostProxyWorker = (
-  app: Pick<AppRef, "id">,
+  app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions = {},
 ) =>
   readWorkerRecord(app, options.paths).pipe(
     Effect.flatMap((record) => {
       if (record === undefined) return removeRunDir(app, options.paths);
-      return probeWorker(record).pipe(
-        Effect.flatMap((status) =>
-          status === "dead"
-            ? removeRunDir(app, options.paths)
-            : shutdownWorker(record).pipe(
-                Effect.zipRight(awaitWorkerDisconnect(record)),
-                Effect.flatMap((stopped) =>
-                  stopped ? Effect.void : forceTerminateIdentifiedWorker(record, options),
-                ),
-                Effect.zipRight(removeRunDir(app, options.paths)),
-              ),
-        ),
-      );
+      return terminateControlRecord(record, options, removeRunDir(app, options.paths));
     }),
   );
 
 export const withWorkerRecordLock = <A, E>(
-  app: Pick<AppRef, "id">,
+  app: Pick<AppRef, "id" | "root">,
   paths: RootOverrides | undefined,
   body: Effect.Effect<A, E>,
 ) => withAdvisoryLock(workerStatePath(app, paths), "host-proxy-worker", body);
 
 export const terminateOwnedHostProxyWorker = (
-  app: Pick<AppRef, "id">,
+  app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions = {},
 ) =>
   withWorkerRecordLock(
@@ -279,7 +314,7 @@ export const terminateOwnedHostProxyWorker = (
   ).pipe(Effect.catchAll(() => Effect.succeed("absent" as const)));
 
 export const removeOwnedHostProxyWorkerState = (
-  app: Pick<AppRef, "id">,
+  app: Pick<AppRef, "id" | "root">,
   paths?: RootOverrides,
   options: Omit<TerminateHostProxyWorkerOptions, "paths"> = {},
 ): Effect.Effect<void, never> =>
@@ -299,11 +334,26 @@ export const terminateOwnedHostProxyWorkersInRoot = (
     );
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const record = yield* readWorkerRecordAt(resolve(paths.hostProxyRunRoot, entry.name, "worker.json"));
-      if (record === undefined) continue;
-      if (resolve(paths.hostProxyRunDir(record.appId)) !== resolve(paths.hostProxyRunRoot, entry.name))
+      const recordPath = resolve(paths.hostProxyRunRoot, entry.name, "worker.json");
+      const record = yield* readWorkerRecordAt(recordPath);
+      if (record === undefined) {
+        const legacyRecord = yield* readLegacyWorkerRecordAt(recordPath);
+        if (legacyRecord === undefined) continue;
+        const legacyDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(legacyRecord.appId));
+        if (legacyDir !== resolve(paths.hostProxyRunRoot, entry.name)) continue;
+        yield* withAdvisoryLock(
+          recordPath,
+          "host-proxy-worker",
+          terminateControlRecord(legacyRecord, options, removeRecordDir(legacyDir)),
+        ).pipe(Effect.catchAll(() => Effect.void));
         continue;
-      const app = { id: record.appId };
+      }
+      if (
+        resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !==
+        resolve(paths.hostProxyRunRoot, entry.name)
+      )
+        continue;
+      const app = { id: record.appId, root: AbsolutePath.make(record.appRoot) };
       yield* terminateOwnedHostProxyWorker(app, { ...options, paths: { userDataRoot } }).pipe(Effect.asVoid);
     }
   }).pipe(Effect.catchAll(() => Effect.void));

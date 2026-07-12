@@ -26,16 +26,7 @@ ensureHostProxyNoProxy("localhost");
 
 const argv = Bun.argv.slice(2);
 
-const hasHostProxyShimEnv = (): boolean =>
-  (process.env.LANDO_HOST_PROXY_SOCKET?.length ?? 0) > 0 ||
-  (process.env.LANDO_HOST_PROXY_URL?.length ?? 0) > 0;
-
 const main = async (): Promise<void> => {
-  if (hasHostProxyShimEnv()) {
-    await import("../src/subsystems/host-proxy/shim-bin.ts");
-    return;
-  }
-
   if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
     const { CORE_VERSION } = await import("../src/version.ts");
     console.log(CORE_VERSION);

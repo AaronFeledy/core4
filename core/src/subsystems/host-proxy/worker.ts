@@ -155,6 +155,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
               });
               return writeWorkerRecord(options.app, options.paths, {
                 appId: options.app.id,
+                appRoot: options.app.root,
                 pid: worker.pid,
                 ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
                 ...(ready.url === undefined ? {} : { url: ready.url }),

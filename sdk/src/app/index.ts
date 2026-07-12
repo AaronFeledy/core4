@@ -81,6 +81,7 @@ import type {
   LandofileService,
   Logger,
   ManagedFileService,
+  PathsService,
   PluginRegistry,
   PluginTrustStore,
   PrivilegeService,
@@ -110,6 +111,7 @@ export type LandoRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | PathsService
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner

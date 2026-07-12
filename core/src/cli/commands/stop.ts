@@ -13,7 +13,13 @@ import {
   PreServiceStopEvent,
 } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  PathsService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
@@ -27,7 +33,7 @@ export const StopAppResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-type StopAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
+type StopAppServices = AppPlanner | EventService | LandofileService | PathsService | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -47,6 +53,7 @@ export const stopApp = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
     const events = yield* EventService;
+    const paths = yield* PathsService;
 
     const plan =
       target?.plan ??
@@ -84,7 +91,9 @@ export const stopApp = (
 
     yield* provider
       .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
-      .pipe(Effect.ensuring(cleanupHostProxyRunLandoState(ref)));
+      .pipe(
+        Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+      );
 
     for (const service of services) {
       yield* events.publish(

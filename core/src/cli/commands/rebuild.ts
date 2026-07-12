@@ -12,6 +12,7 @@ import type {
   FileSystem,
   GlobalAppService,
   LandofileService,
+  PathsService,
   PluginRegistry,
   RuntimeProviderRegistry,
   ShellRunner,
@@ -36,6 +37,7 @@ type RebuildAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | PathsService
   | PluginRegistry
   | RedactionService
   | RuntimeProviderRegistry

@@ -2,7 +2,7 @@ import { Effect, Ref, Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
-import type { EventService, ShellRunner } from "@lando/sdk/services";
+import { type EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "../../config/paths.ts";
 import type { RedactionService } from "../../redaction/service.ts";
@@ -106,7 +106,7 @@ export const startHostProxyRunLandoSession = (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
-  options: { readonly platform?: HostPlatform } = {},
+  options: RootOverrides = {},
 ) =>
   Effect.gen(function* () {
     yield* Effect.context<ShellRunner | EventService | RedactionService>();
@@ -114,12 +114,13 @@ export const startHostProxyRunLandoSession = (
     if (capabilities.hostReachability === "none" || eligibleServices.length === 0) return undefined;
     if ((capabilities.hostProxy?.containerTargets.length ?? 0) === 0) return undefined;
     const shimTarget = yield* hostProxyShimTargetFor(capabilities);
-    const platform = options.platform ?? makeLandoPaths().platform;
+    const landoPaths = makeLandoPaths(options);
+    const platform = landoPaths.platform;
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
     return yield* startDetachedHostProxyWorker({
       app,
       plan,
-      paths: { platform },
+      paths: { ...landoPaths.roots, platform },
       shimArtifactPath: defaultHostProxyShimArtifactPath({ target: shimTarget }),
       shimTarget,
       ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
@@ -138,13 +139,15 @@ export const withStartedHostProxy = <A, E, R>(
 ): Effect.Effect<
   A,
   E | HostProxyTransportUnavailableError,
-  R | ShellRunner | EventService | RedactionService
+  R | ShellRunner | EventService | RedactionService | PathsService
 > =>
   Effect.gen(function* () {
+    const paths = yield* PathsService;
     const keepSession = yield* Ref.make(false);
     return yield* Effect.acquireUseRelease(
       startHostProxyRunLandoSession(plan, app, capabilities, {
-        ...(options.platform === undefined ? {} : { platform: options.platform }),
+        ...paths.roots,
+        platform: options.platform ?? paths.platform,
       }),
       (session) => {
         const applyPlan = session === undefined ? plan : withHostProxyRunLando(plan, session);

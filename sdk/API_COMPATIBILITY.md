@@ -31,6 +31,7 @@
 - `McpConfig` is a new public schema export and `GlobalConfig.mcp` is a new additive optional global-config field for MCP allow/deny/tooling policy.
 - `AgentEnvConfig` is a new public schema export; `GlobalConfig.agentEnv` and the top-level `LandofileShape.agentEnv` are new additive optional fields for host agent-context env forwarding policy. `@lando/sdk/errors` additively gains the `AgentEnvPatternError` tagged error raised at config validation when `agentEnv.allow`/`deny` contain wildcard/pattern names.
 - `@lando/sdk` publishes an additive MCP (Model Context Protocol) contract surface (§10.14, §8.3): the `McpToolDescriptor`, `McpCatalog`, `McpCatalogOptions`, and `McpServeOptions` public schemas (each registered in the JSON Schema registry and snapshot), plus the `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError` tagged errors on `@lando/sdk/errors`. These are additive contracts; the MCP service dispatch and `lando mcp` command land in later stories.
+- `LandoPaths.hostProxyRunDir(appId, appRoot)` now fingerprints the app root in the run directory name so two apps with the same id in different roots do not share host-proxy worker state. `LandoRuntimeServices` additively includes `PathsService`, matching the app-tier runtime layer provided by core.
 
 ## Additive Alpha schema exports
 

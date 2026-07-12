@@ -12,6 +12,7 @@ import type {
   FileSystem,
   GlobalAppService,
   LandofileService,
+  PathsService,
   PluginRegistry,
   RuntimeProviderRegistry,
   ShellRunner,
@@ -35,6 +36,7 @@ type RestartAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | PathsService
   | PluginRegistry
   | RedactionService
   | RuntimeProviderRegistry

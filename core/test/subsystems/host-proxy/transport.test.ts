@@ -33,6 +33,7 @@ import {
   scopedHostProxyRunLandoSession,
   sendHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport.ts";
+import { CORE_VERSION } from "../../../src/version.ts";
 
 const tempDirs: string[] = [];
 
@@ -174,7 +175,7 @@ const expectMissingPath = async (path: string): Promise<void> => {
   try {
     await stat(path);
   } catch (cause) {
-    if (cause instanceof Error) return;
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return;
     throw cause;
   }
   throw new Error(`Expected ${path} to be removed.`);
@@ -883,6 +884,31 @@ describe("host-proxy runLando physical transport", () => {
     expect(await new Response(proc.stderr).text()).toBe("");
     expect(captured?.argv).toEqual(["open", "--print"]);
     await session.close();
+  });
+
+  test("release-shaped compiled host CLI ignores leaked host-proxy shim env", async () => {
+    const artifactPath = await compiledReleaseBinary();
+
+    const proc = Bun.spawn({
+      cmd: [artifactPath, "--version"],
+      env: {
+        LANDO_HOST_PROXY_URL: "http://127.0.0.1:9",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/leaked.sock",
+        LANDO_HOST_PROXY_TOKEN: "leaked-token",
+        LANDO_HOST_PROXY_SESSION: "leaked-session",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toBe(CORE_VERSION);
+    expect(stderr).toBe("");
   });
 });
 

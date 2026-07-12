@@ -16,6 +16,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
+import { makeLandoPaths, sanitizeAppName } from "../../../src/config/paths.ts";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/subsystems/host-proxy/session-env.ts";
 import { defaultSpawnWorker } from "../../../src/subsystems/host-proxy/worker-process.ts";
 import {
@@ -137,19 +138,46 @@ afterEach(killLeakedWorkers);
 const workerRecord = (
   root: string,
   overrides: { readonly socketPath?: string; readonly pid?: number } = {},
-): HostProxyWorkerRecord & { readonly socketPath: string } => ({
-  appId: app.id,
-  transport: "unix-socket" as const,
-  socketPath: overrides.socketPath ?? join(root, "run", "demo", "host-proxy.sock"),
-  shimPath: join(root, "run", "demo", "lando"),
-  protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
-  startedAt: "2026-01-01T00:00:00.000Z",
-  pid: overrides.pid ?? 12345,
-  controlToken: "control-token",
-});
+): HostProxyWorkerRecord & { readonly socketPath: string } => {
+  const runDir = dirname(workerStatePath(app, { userDataRoot: root }));
+  return {
+    appId: app.id,
+    appRoot: app.root,
+    transport: "unix-socket",
+    socketPath: overrides.socketPath ?? join(runDir, "host-proxy.sock"),
+    shimPath: join(runDir, "lando"),
+    protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    pid: overrides.pid ?? 12345,
+    controlToken: "control-token",
+  };
+};
 
-const listenControlServer = async (root: string) => {
-  const record = workerRecord(root);
+type TestControlRecord = Omit<HostProxyWorkerRecord, "appRoot" | "socketPath"> & {
+  readonly socketPath: string;
+};
+
+const legacyWorkerRecord = (root: string): TestControlRecord => {
+  const runDir = join(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot, sanitizeAppName(app.id));
+  return {
+    appId: app.id,
+    transport: "unix-socket",
+    socketPath: join(runDir, "host-proxy.sock"),
+    shimPath: join(runDir, "lando"),
+    protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    pid: 12345,
+    controlToken: "control-token",
+  };
+};
+
+const listenControlServerForRecord = async <Record extends TestControlRecord>(
+  record: Record,
+): Promise<{
+  readonly record: Record;
+  readonly server: ReturnType<typeof createServer>;
+  readonly shutdowns: () => number;
+}> => {
   let shutdowns = 0;
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? "", "http://control.invalid").pathname;
@@ -186,6 +214,8 @@ const listenControlServer = async (root: string) => {
   return { record, server, shutdowns: () => shutdowns };
 };
 
+const listenControlServer = async (root: string) => listenControlServerForRecord(workerRecord(root));
+
 describe("detached host-proxy worker manager", () => {
   test("starts a detached worker, persists socket-owned state, and keeps session token out of worker.json", async () => {
     const root = await tempRoot();
@@ -209,8 +239,8 @@ describe("detached host-proxy worker manager", () => {
               sessionId: "session-1",
               token: "secret-token",
               controlToken: "control-token",
-              socketPath: join(root, "run", "demo", "host-proxy.sock"),
-              shimPath: join(root, "run", "demo", "lando"),
+              socketPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "host-proxy.sock"),
+              shimPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "lando"),
               transport: "unix-socket" as const,
             }),
             terminate: async () => undefined,
@@ -228,6 +258,58 @@ describe("detached host-proxy worker manager", () => {
       expect(record).toContain('"protocolVersion": 1');
       expect(record).not.toContain("secret-token");
       expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("isolates worker state for the same app id in different app roots", async () => {
+    const root = await tempRoot();
+    const firstApp = { ...app, root: AbsolutePath.make("/srv/apps/first/demo") };
+    const secondApp = { ...app, root: AbsolutePath.make("/srv/apps/second/demo") };
+    const start = (currentApp: typeof app, pid: number) =>
+      startDetachedHostProxyWorker({
+        app: currentApp,
+        plan: { ...plan, root: currentApp.root },
+        paths: { userDataRoot: root },
+        shimArtifactPath: join(root, "shim"),
+        spawnWorker: (spec) => ({
+          pid,
+          argv: spec.argv,
+          writeStdin: async () => undefined,
+          readReady: async () => {
+            const runDir = dirname(workerStatePath(currentApp, { userDataRoot: root }));
+            return {
+              _tag: "ready",
+              appId: currentApp.id,
+              sessionId: `session-${pid}`,
+              token: `secret-${pid}`,
+              controlToken: `control-${pid}`,
+              socketPath: join(runDir, "host-proxy.sock"),
+              shimPath: join(runDir, "lando"),
+              transport: "unix-socket",
+            };
+          },
+          terminate: async () => undefined,
+        }),
+      });
+    try {
+      await writeFile(join(root, "shim"), "#!/usr/bin/env sh\nexit 0\n");
+      const first = await Effect.runPromise(start(firstApp, 11111));
+      const second = await Effect.runPromise(start(secondApp, 22222));
+
+      const firstRecord = await Effect.runPromise(readWorkerRecord(firstApp, { userDataRoot: root }));
+      const secondRecord = await Effect.runPromise(readWorkerRecord(secondApp, { userDataRoot: root }));
+
+      expect(workerStatePath(firstApp, { userDataRoot: root })).not.toBe(
+        workerStatePath(secondApp, { userDataRoot: root }),
+      );
+      expect(firstRecord?.pid).toBe(11111);
+      expect(firstRecord?.appRoot).toBe(firstApp.root);
+      expect(secondRecord?.pid).toBe(22222);
+      expect(secondRecord?.appRoot).toBe(secondApp.root);
+      await first.close();
+      await second.close();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -278,6 +360,17 @@ console.log(JSON.stringify({
     const { record, server } = await listenControlServer(root);
     try {
       expect(await Effect.runPromise(probeWorker(record))).toBe("live");
+    } finally {
+      server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects control identity when the worker pid does not match persisted state", async () => {
+    const root = await tempRoot();
+    const { record, server } = await listenControlServer(root);
+    try {
+      expect(await Effect.runPromise(probeWorker({ ...record, pid: record.pid + 1 }))).toBe("dead");
     } finally {
       server.close();
       await rm(root, { recursive: true, force: true });
@@ -362,8 +455,8 @@ console.log(JSON.stringify({
               sessionId: "session-2",
               token: "secret-token-2",
               controlToken: "control-token-2",
-              socketPath: join(root, "run", "demo", "host-proxy.sock"),
-              shimPath: join(root, "run", "demo", "lando"),
+              socketPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "host-proxy.sock"),
+              shimPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "lando"),
               transport: "unix-socket" as const,
             }),
             terminate: async () => {
@@ -519,6 +612,36 @@ console.log(JSON.stringify({
     }
   });
 
+  test("terminates and removes a legacy worker record under the old app-id run directory", async () => {
+    const root = await tempRoot();
+    const legacy = legacyWorkerRecord(root);
+    const control = await listenControlServerForRecord(legacy);
+    const runDir = dirname(legacy.socketPath);
+    try {
+      await writeFile(
+        join(runDir, "worker.json"),
+        `${JSON.stringify({
+          appId: legacy.appId,
+          transport: legacy.transport,
+          socketPath: legacy.socketPath,
+          shimPath: legacy.shimPath,
+          protocolVersion: legacy.protocolVersion,
+          startedAt: legacy.startedAt,
+          pid: legacy.pid,
+          controlToken: legacy.controlToken,
+        })}\n`,
+      );
+
+      await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(root));
+
+      expect(control.shutdowns()).toBe(1);
+      expect(existsSync(runDir)).toBe(false);
+    } finally {
+      control.server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("cleans worker directory when app id is sanitized in the run path", async () => {
     const root = await tempRoot();
     try {
@@ -538,8 +661,11 @@ console.log(JSON.stringify({
               sessionId: "session-space",
               token: "secret-token",
               controlToken: "control-token",
-              socketPath: join(root, "run", "demo-app", "host-proxy.sock"),
-              shimPath: join(root, "run", "demo-app", "lando"),
+              socketPath: join(
+                dirname(workerStatePath(spacedApp, { userDataRoot: root })),
+                "host-proxy.sock",
+              ),
+              shimPath: join(dirname(workerStatePath(spacedApp, { userDataRoot: root })), "lando"),
               transport: "unix-socket" as const,
             }),
             terminate: async () => undefined,

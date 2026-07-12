@@ -32,6 +32,7 @@ import {
   FileSyncEngine,
   type LandoEvent,
   LandofileService,
+  PathsService,
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
@@ -200,7 +201,7 @@ const expectMissingPath = async (path: string): Promise<void> => {
   try {
     await stat(path);
   } catch (cause) {
-    if (cause instanceof Error) return;
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return;
     throw cause;
   }
   throw new Error(`Expected ${path} to be removed.`);
@@ -269,6 +270,7 @@ const makeStartLayer = (
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
     readonly providerPlatform?: RuntimeProviderShape["platform"];
+    readonly pathsService?: ReturnType<typeof makeLandoPaths>;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -353,6 +355,7 @@ const makeStartLayer = (
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -549,6 +552,7 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: options.userPlan.name, services: {} }),
     }),
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, {
       plan: (landofile) =>
         Effect.succeed(
@@ -672,8 +676,57 @@ describe("lando start", () => {
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
       );
       expect(appliedDatabase?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
-      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
+      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
+  });
+
+  test("creates host-proxy session under the resolved PathsService roots", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-start-host-proxy-paths-")));
+    const previousArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    try {
+      const artifactPath = join(root, "dist", "host-proxy", "lando-shim");
+      await mkdir(dirname(artifactPath), { recursive: true });
+      await writeFile(artifactPath, "#!/usr/bin/env sh\nexit 0\n");
+      await chmod(artifactPath, 0o755);
+      process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = artifactPath;
+      process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
+      const dataRoot = join(root, "service-data");
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        pathsService: makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }),
+      });
+
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      await stat(
+        makeLandoPaths({ userDataRoot: dataRoot, env: {}, platform: "linux" }).hostProxyRunDir(
+          plan.id,
+          plan.root,
+        ),
+      );
+      await expectMissingPath(
+        makeLandoPaths({
+          userDataRoot: join(root, "leaked-default-data"),
+          env: {},
+          platform: "linux",
+        }).hostProxyRunDir(plan.id, plan.root),
+      );
+    } finally {
+      if (previousArtifact === undefined)
+        Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
+      else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("selects the provider-declared linux-arm64 shim for an eligible service on an x64 host", async () => {
@@ -710,7 +763,7 @@ describe("lando start", () => {
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
-      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ source: join(hostProxyDir, "lando"), target: "/usr/local/bin/lando" }),
       );
@@ -845,7 +898,9 @@ describe("lando start", () => {
         expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
       expect(appliedWeb?.hostAliases).toEqual([]);
-      await stat(makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
+      await stat(
+        makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root),
+      );
     });
   });
 
@@ -942,7 +997,7 @@ describe("lando start", () => {
       });
       await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
-      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
       await expectMissingPath(hostProxyDir);
     });
   });
@@ -970,7 +1025,7 @@ describe("lando start", () => {
       expect(exit._tag).toBe("Failure");
       expect(harness.applyPlans).toHaveLength(1);
       expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
-      await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id));
+      await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
 
@@ -994,7 +1049,7 @@ describe("lando start", () => {
       const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
 
       await inspectEntered;
-      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
       await stat(hostProxyDir);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
@@ -1024,7 +1079,7 @@ describe("lando start", () => {
       const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
 
       await applyEntered;
-      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
       await stat(hostProxyDir);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
@@ -1044,7 +1099,7 @@ describe("lando start", () => {
       const harness = makeStartLayer({ plannedApp: eligiblePlan, blockTreeStart: Effect.never });
       const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
 
-      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id);
+      const hostProxyDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
       await waitForTaskEvent(
         harness.taskEvents,
         (event) => event._tag === "task.tree.start" && event.label === "Apply test-start",
@@ -1331,6 +1386,7 @@ describe("lando start", () => {
     };
     const fullLayer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1456,6 +1512,7 @@ describe("lando start", () => {
     };
     const fullLayer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1575,6 +1632,7 @@ describe("lando start", () => {
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1697,6 +1755,7 @@ describe("lando start", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1817,6 +1876,7 @@ describe("lando start", () => {
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1957,6 +2017,7 @@ describe("lando start", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -1983,7 +2044,9 @@ describe("lando start", () => {
         "terminate:session-web-app-mount",
         "destroy:true:true",
       ]);
-      await expectMissingPath(makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id));
+      await expectMissingPath(
+        makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id, plan.root),
+      );
     } finally {
       if (previousArtifact === undefined)
         Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
@@ -2095,6 +2158,7 @@ describe("lando start", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),

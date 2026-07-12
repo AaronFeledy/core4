@@ -18,6 +18,7 @@ import {
   type FileSystem,
   type GlobalAppService,
   LandofileService,
+  type PathsService,
   type PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -58,6 +59,7 @@ type StartAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | PathsService
   | PluginRegistry
   | RedactionService
   | RuntimeProviderRegistry

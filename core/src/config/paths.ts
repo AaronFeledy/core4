@@ -231,7 +231,7 @@ export const resolveLandoRoots = (overrides: RootOverrides = {}): LandoRoots => 
 
 // --- app-name sanitization + app-root fingerprint ----------------------------
 
-const sanitizeAppName = (appName: string): string => {
+export const sanitizeAppName = (appName: string): string => {
   const cleaned = appName.replace(/[^A-Za-z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "");
   // Reject all-dot names (`.`, `..`, `...`) so they can't escape the
   // `<cacheRoot>/apps/<name>/` namespace via path normalization.
@@ -280,7 +280,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     runtimeStorageDir: j(userDataRoot, "runtime", "storage"),
     runtimeConfigDir: j(userDataRoot, "runtime", "config"),
     hostProxyRunRoot: j(userDataRoot, "run"),
-    hostProxyRunDir: (appId: string) => j(userDataRoot, "run", sanitizeAppName(appId)),
+    hostProxyRunDir: (appId: string, appRoot: string) =>
+      j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}`),
     providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: j(userDataRoot, "global"),
