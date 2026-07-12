@@ -1684,6 +1684,24 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Pre Global Rebuild Event.",
+    "docsPath": "docs/reference/schemas/pre-global-rebuild-event.mdx",
+    "id": "PreGlobalRebuildEvent",
+    "jsonSchemaPath": "dist/schemas/pre-global-rebuild-event.json",
+    "packageExport": "@lando/sdk/schema#PreGlobalRebuildEvent",
+    "title": "Pre Global Rebuild Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Post Global Rebuild Event.",
+    "docsPath": "docs/reference/schemas/post-global-rebuild-event.mdx",
+    "id": "PostGlobalRebuildEvent",
+    "jsonSchemaPath": "dist/schemas/post-global-rebuild-event.json",
+    "packageExport": "@lando/sdk/schema#PostGlobalRebuildEvent",
+    "title": "Post Global Rebuild Event"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Pre App Start Event.",
     "docsPath": "docs/reference/schemas/pre-app-start-event.mdx",
     "id": "PreAppStartEvent",

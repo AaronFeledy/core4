@@ -196,6 +196,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:global:install",
   "meta:global:list",
   "meta:global:logs",
+  "meta:global:rebuild",
   "meta:global:restart",
   "meta:global:start",
   "meta:global:status",

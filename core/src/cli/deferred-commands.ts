@@ -12,12 +12,6 @@ export interface DeferredCommandPlan {
   readonly remediation: string;
 }
 
-const META_GLOBAL_PLAN: DeferredCommandPlan = {
-  summary: "Rebuilding the global Lando app through `meta:global:rebuild` is not available yet.",
-  remediation:
-    "`meta:global:rebuild` is not available yet. Use `lando global:restart` to stop and start the global app.",
-};
-
 const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
   summary: "Plugin registry login/logout are not available yet.",
   remediation: "Plugin registry login/logout are not available yet.",
@@ -33,7 +27,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
   ["meta:events:follow", META_EVENTS_FOLLOW_PLAN],

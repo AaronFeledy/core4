@@ -420,3 +420,18 @@ Open closure categories:
 - Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its monthly model quota; no Bugbot findings were treated as approval evidence.
 - Verification: typecheck and lint passed; focused build-result, build-orchestrator, image-pull/capability, and doctor-OOM spot checks passed; strict TypeScript diagnostics passed. The no-excuse audit found only two pre-existing assertions in provider-lando capabilities outside the changed lines.
 ---
+## 2026-07-12 17:05 CDT - Babysit
+- PR: #576 https://github.com/AaronFeledy/core4/pull/576
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip on PR body; live bring-up HTTP readiness retry)
+- Merge: merged (squash)
+---
+
+## 2026-07-12 17:52 CDT - US-437
+- Global rebuild is now a real lifecycle command across source and compiled dispatch: it regenerates the global app, preserves missing-provider safety before destructive work, destroys existing resources without removing state or volumes, applies the BuildOrchestrator-returned plan with reconciliation, inspects rebuilt services, and publishes dedicated global rebuild events only on success.
+- Source, alias, and compiled help now agree; invalid flags fail at parity, deferred-command fixtures reject regression to NotImplementedError, and the global runtime provides BuildOrchestrator lazily.
+- Verification: typecheck and lint passed; focused SDK schema/event, global lifecycle, deferred-command, runtime, source/compiled parity, manifest, and snapshot tests passed; renderer, machine-output, redaction, probe, state-store, and paths boundaries passed; sandboxed source/compiled CLI help and typed failure behavior passed with clean teardown.
+- **Learnings for future iterations:**
+  - Compiled handlers must validate their remaining argv before running a no-flag command; parsing into an unused input silently accepts unknown flags and breaks source/compiled exit-code parity.
+  - Global rebuild must apply the plan returned by BuildOrchestrator, because produced or cached artifact refs are stamped into that returned plan rather than the originally loaded plan.
+---

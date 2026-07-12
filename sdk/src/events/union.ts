@@ -25,8 +25,10 @@ import {
 import { DeprecationUsedEvent } from "./deprecation.ts";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "./download.ts";
 import {
+  PostGlobalRebuildEvent,
   PostGlobalStartEvent,
   PostGlobalStopEvent,
+  PreGlobalRebuildEvent,
   PreGlobalStartEvent,
   PreGlobalStopEvent,
 } from "./global.ts";
@@ -113,6 +115,8 @@ export const LandoEvent = Schema.Union(
   PostGlobalStartEvent,
   PreGlobalStopEvent,
   PostGlobalStopEvent,
+  PreGlobalRebuildEvent,
+  PostGlobalRebuildEvent,
   PreAppStartEvent,
   PostAppStartEvent,
   PreAppStopEvent,

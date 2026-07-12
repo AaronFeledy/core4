@@ -535,6 +535,13 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       );
     }, 30_000);
 
+    test("global rebuild rejects unknown flags on both paths", async () => {
+      await expectUnknownFlagParity(
+        ["global:rebuild", "--definitely-not-a-global-rebuild-flag"],
+        "--definitely-not-a-global-rebuild-flag",
+      );
+    }, 30_000);
+
     test("open rejects arbitrary positional URLs on both paths", async () => {
       const source = await runSourceCli(["open", "https://example.test"]);
       const compiled = await runCompiledCli(["open", "https://example.test"]);

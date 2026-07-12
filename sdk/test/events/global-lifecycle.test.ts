@@ -4,8 +4,10 @@ import { DateTime, Either, ParseResult, Schema } from "effect";
 
 import {
   LandoEvent,
+  PostGlobalRebuildEvent,
   PostGlobalStartEvent,
   PostGlobalStopEvent,
+  PreGlobalRebuildEvent,
   PreGlobalStartEvent,
   PreGlobalStopEvent,
   PreStartEvent,
@@ -123,6 +125,29 @@ describe("global lifecycle event payload schemas", () => {
     if (Either.isRight(post)) expect(post.right.scope).toBe("global");
   });
 
+  test("pre-global-rebuild and post-global-rebuild carry scope:global and the global plan", () => {
+    const pre = Schema.decodeUnknownEither(PreGlobalRebuildEvent)({
+      _tag: "pre-global-rebuild",
+      scope: "global",
+      app: globalAppRef,
+      plan: globalPlanFixture,
+      timestamp,
+    });
+    const post = Schema.decodeUnknownEither(PostGlobalRebuildEvent)({
+      _tag: "post-global-rebuild",
+      scope: "global",
+      app: globalAppRef,
+      plan: globalPlanFixture,
+      services: ["traefik"],
+      timestamp,
+    });
+
+    expect(Either.isRight(pre)).toBe(true);
+    expect(Either.isRight(post)).toBe(true);
+    if (Either.isRight(pre)) expect(pre.right.plan.id).toBe("global");
+    if (Either.isRight(post)) expect(post.right.services).toEqual(["traefik"]);
+  });
+
   test("the per-app lifecycle analog carries scope:app, distinguishing it from the global scope", () => {
     const result = Schema.decodeUnknownEither(PreStartEvent)({
       _tag: "pre-start",
@@ -159,7 +184,7 @@ describe("global lifecycle event payload schemas", () => {
     }
   });
 
-  test("the LandoEvent union accepts all four global lifecycle events", () => {
+  test("the LandoEvent union accepts all six global lifecycle events", () => {
     const payloads = [
       {
         _tag: "pre-global-start",
@@ -187,6 +212,21 @@ describe("global lifecycle event payload schemas", () => {
         timestamp,
       },
       { _tag: "post-global-stop", scope: "global", app: globalAppRef, timestamp },
+      {
+        _tag: "pre-global-rebuild",
+        scope: "global",
+        app: globalAppRef,
+        plan: globalPlanFixture,
+        timestamp,
+      },
+      {
+        _tag: "post-global-rebuild",
+        scope: "global",
+        app: globalAppRef,
+        plan: globalPlanFixture,
+        services: ["traefik"],
+        timestamp,
+      },
     ];
 
     for (const payload of payloads) {

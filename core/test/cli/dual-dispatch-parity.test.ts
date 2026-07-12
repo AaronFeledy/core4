@@ -210,6 +210,8 @@ describe("dual-dispatch argv parser parity", () => {
       ["global:config:set", "services.proxy.type", "lando"],
     );
     expect(normalizeCompiledCommandArgv(["meta", "global", "restart"])).toEqual(["meta:global:restart"]);
+    expect(normalizeCompiledCommandArgv(["global", "rebuild"])).toEqual(["global:rebuild"]);
+    expect(normalizeCompiledCommandArgv(["meta", "global", "rebuild"])).toEqual(["meta:global:rebuild"]);
   });
 
   test("setup, shellenv, and uninstall helpers consume compiled argv input", () => {

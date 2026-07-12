@@ -4137,9 +4137,9 @@ export const COMPILED_OCLIF_MANIFEST = {
       ],
     },
     "meta:global:rebuild": {
-      aliases: [],
+      aliases: ["global:rebuild"],
       args: {},
-      description: "Global-app `rebuild` (deliverable).",
+      description: "Rebuild the host-level global Lando app.",
       flags: {
         format: {
           description: "Output format.",
@@ -4168,12 +4168,13 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:rebuild",
-        summary: "Global-app `rebuild` (deliverable).",
+        summary: "Rebuild the host-level global Lando app.",
         namespace: "meta",
-        bootstrap: "minimal",
+        topLevelAlias: "global:rebuild",
+        bootstrap: "global",
       },
-      bootstrap: "minimal",
-      aliasPermutations: [],
+      bootstrap: "global",
+      aliasPermutations: ["global:rebuild", "rebuild:global"],
       permutations: [
         "meta:global:rebuild",
         "global:meta:rebuild",

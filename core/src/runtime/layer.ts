@@ -160,7 +160,7 @@ type ProviderRuntimeServices =
   | RuntimeProviderRegistry
   | DataMover
   | GlobalAppService;
-type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
+type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator;
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService

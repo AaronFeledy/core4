@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
-import { GlobalAppError, GlobalDestroyConfirmationError, ProviderUnavailableError } from "@lando/core/errors";
+import {
+  GlobalAppError,
+  GlobalDestroyConfirmationError,
+  NoProviderInstalledError,
+  ProviderUnavailableError,
+} from "@lando/core/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -19,6 +24,7 @@ import {
   type AppPlanner,
   type AppSelector,
   type ApplyOptions,
+  BuildOrchestrator,
   type CacheService,
   type ConfigService,
   type DestroyOptions,
@@ -42,6 +48,7 @@ import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { globalList } from "../../src/cli/commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
+import { globalRebuild } from "../../src/cli/commands/meta/global-rebuild.ts";
 import { globalRestart } from "../../src/cli/commands/meta/global-restart.ts";
 import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
@@ -72,12 +79,14 @@ interface InspectCall {
 
 interface ProviderCalls {
   readonly apply: Array<ApplyCall>;
+  readonly build: Array<AppPlan>;
   readonly destroy: Array<DestroyCall>;
   readonly inspect: Array<InspectCall>;
 }
 
 type HarnessLayer = Layer.Layer<
   | AppPlanner
+  | BuildOrchestrator
   | CacheService
   | ConfigService
   | EventService
@@ -172,7 +181,7 @@ const makeHarness = async (
       ],
     },
   });
-  const calls: ProviderCalls = { apply: [], destroy: [], inspect: [] };
+  const calls: ProviderCalls = { apply: [], build: [], destroy: [], inspect: [] };
   const events: Array<LandoEvent> = [];
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
@@ -219,6 +228,21 @@ const makeHarness = async (
         : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
   };
+  const buildOrchestrator = {
+    build: (plan: AppPlan) =>
+      Effect.sync(() => {
+        calls.build.push(plan);
+        return {
+          ...plan,
+          services: Object.fromEntries(
+            Object.values(plan.services).map((service) => [
+              service.name,
+              { ...service, artifact: { kind: "ref" as const, ref: `built:${String(service.name)}` } },
+            ]),
+          ),
+        };
+      }),
+  };
   const layer = Layer.mergeAll(
     ConfigServiceLive,
     CacheServiceLive,
@@ -236,6 +260,7 @@ const makeHarness = async (
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
+    Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -747,6 +772,112 @@ describe("meta:global command effects", () => {
         "pre-global-start",
         "post-global-start",
       ]);
+    });
+  });
+
+  test("rebuild materializes, destroys, builds, applies the built plan with reconcile=true, and inspects services", async () => {
+    await withHarness(async (harness) => {
+      const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+
+      expect(harness.calls.destroy).toHaveLength(1);
+      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });
+      expect(harness.calls.build).toHaveLength(1);
+      expect(harness.calls.apply).toHaveLength(1);
+      expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
+      expect(harness.calls.apply[0]?.plan.services.proxy?.artifact).toEqual({
+        kind: "ref",
+        ref: "built:proxy",
+      });
+      expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
+        "mail",
+        "proxy",
+      ]);
+      expect(result.materialized).toBe(true);
+      expect(result.servicesRebuilt.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+    });
+  });
+
+  test("rebuild succeeds without provider calls when no global services are materialized", async () => {
+    await withHarness(async (harness) => {
+      const layer = Layer.mergeAll(
+        harness.layer,
+        Layer.succeed(PluginRegistry, {
+          list: Effect.succeed([]),
+          load: () => Effect.die("not used"),
+          loadServiceType: () => Effect.die("not used"),
+          loadServiceFeature: () => Effect.die("not used"),
+          loadAppFeature: () => Effect.die("not used"),
+        }),
+      );
+
+      const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(layer)));
+
+      expect(harness.calls.destroy).toEqual([]);
+      expect(harness.calls.build).toEqual([]);
+      expect(harness.calls.apply).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
+      expect(result).toEqual({ app: "global", materialized: true, servicesRebuilt: [] });
+    });
+  });
+
+  test("rebuild publishes pre/post-global-rebuild only after successful apply and inspect", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+
+      const lifecycle = harness.events.filter(
+        (event) => event._tag === "pre-global-rebuild" || event._tag === "post-global-rebuild",
+      );
+      expect(lifecycle.map((event) => event._tag)).toEqual(["pre-global-rebuild", "post-global-rebuild"]);
+      expect(lifecycle.every((event) => event.scope === "global")).toBe(true);
+    });
+  });
+
+  test("rebuild preserves a missing-provider failure before destructive actions", async () => {
+    await withHarness(async (harness) => {
+      const missingProvider = new NoProviderInstalledError({
+        message: "No runtime provider is installed.",
+        suggestion: "Run lando setup.",
+      });
+      const layer = Layer.mergeAll(
+        harness.layer,
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([]),
+          capabilities: Effect.fail(missingProvider),
+          select: () => Effect.fail(missingProvider),
+        }),
+      );
+
+      const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(layer)));
+
+      expect(failureOf(exit)).toBeInstanceOf(NoProviderInstalledError);
+      expect(harness.calls.destroy).toEqual([]);
+      expect(harness.calls.build).toEqual([]);
+      expect(harness.calls.apply).toEqual([]);
+      expect(harness.events.map((event) => event._tag)).not.toContain("pre-global-rebuild");
+    });
+  });
+
+  test("rebuild preserves typed provider failures and does not publish post-global-rebuild", async () => {
+    await withHarness(
+      async (harness) => {
+        const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+        const failure = failureOf(exit);
+
+        expect(failure).toBeInstanceOf(ProviderUnavailableError);
+        expect(harness.events.map((event) => event._tag)).toContain("pre-global-rebuild");
+        expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
+      },
+      { failInspect: true },
+    );
+  });
+
+  test("rebuild regression: adjacent restart still does not build", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+
+      await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
+
+      expect(harness.calls.build).toEqual([]);
     });
   });
 
